@@ -39,6 +39,7 @@ def test_builtin_models_are_registered() -> None:
 
     registry = build_model_registry()
 
+    assert registry.has_model("artwork")
     assert registry.has_model("circular")
     assert registry.has_model("logo")
 
@@ -53,9 +54,27 @@ def test_builtin_model_names() -> None:
     names = [model.name for model in registry.all_models()]
 
     assert names == [
+        "artwork",
         "circular",
         "logo",
     ]
+
+
+def test_artwork_model_metadata() -> None:
+    """
+    The artwork model exposes its basic identity.
+    """
+
+    registry = build_model_registry()
+
+    model = registry.get_model(
+        "artwork",
+    )
+
+    assert model.name == "artwork"
+    assert model.title == "Artwork"
+    assert model.defined_in is not None
+    assert model.defined_in.endswith(".models.artwork")
 
 
 def test_circular_model_metadata() -> None:
@@ -111,6 +130,8 @@ def test_model_packages_exist() -> None:
     The initial model implementation packages exist.
     """
 
+    assert (RESOURCE_DIR / "artwork").is_dir()
+
     assert (RESOURCE_DIR / "circular").is_dir()
 
     assert (RESOURCE_DIR / "logo").is_dir()
@@ -134,4 +155,6 @@ def test_bootstrap_returns_independent_registries() -> None:
 
     assert first is not second
 
+    assert first.get_model("artwork") is second.get_model("artwork")
     assert first.get_model("circular") is second.get_model("circular")
+    assert first.get_model("logo") is second.get_model("logo")

@@ -18,6 +18,10 @@ from rich.table import Table
 from rich.text import Text
 
 from lowkey_artifact_builder.model import ModelSpec
+from lowkey_artifact_builder.model.specs import (
+    ProductSpec,
+    StageSpec,
+)
 
 # =========================================================
 # Console
@@ -290,7 +294,7 @@ def _display_stage_parameters(
 
 
 def _display_stage_products(
-    products,
+    products: tuple[ProductSpec, ...],
 ) -> None:
     """
     Display filesystem products produced by a stage.
@@ -333,8 +337,158 @@ def _display_stage_products(
     )
 
 
+# =========================================================
+# Workplans
+# =========================================================
+
+
+def display_model_workplan(
+    model: ModelSpec,
+) -> None:
+    """
+    Display the complete declared workplan for a model.
+
+    The workplan is a compact workflow-oriented representation of the
+    model stages. It describes the potential work declared by the model;
+    it does not represent the execution state of a particular artifact.
+    """
+
+    console.print(
+        Text(
+            f"{model.title} Workplan",
+            style="bold",
+        )
+    )
+
+    if model.description:
+        console.print(
+            model.description,
+        )
+
+    console.print()
+
+    if not model.stages:
+        console.print("[dim]No stages are declared.[/dim]")
+        return
+
+    _display_workplan_table(
+        model.stages,
+    )
+
+
+def display_model_workplans(
+    models: Iterable[ModelSpec],
+) -> None:
+    """
+    Display declared workplans for multiple models.
+    """
+
+    model_list = list(models)
+
+    if not model_list:
+        console.print("[dim]No models are registered.[/dim]")
+        return
+
+    for index, model in enumerate(model_list):
+        if index:
+            console.print()
+
+        display_model_workplan(
+            model,
+        )
+
+
+def _display_workplan_table(
+    stages: tuple[StageSpec, ...],
+) -> None:
+    """
+    Display model stages as a compact workplan table.
+    """
+
+    table = Table(
+        show_header=True,
+        header_style="bold",
+    )
+
+    table.add_column(
+        "#",
+        justify="right",
+        style="dim",
+        no_wrap=True,
+    )
+
+    table.add_column(
+        "Stage",
+        style="bold",
+        no_wrap=True,
+    )
+
+    table.add_column(
+        "Depends On",
+        no_wrap=True,
+    )
+
+    table.add_column(
+        "Features",
+        no_wrap=True,
+    )
+
+    table.add_column(
+        "Parameters",
+    )
+
+    table.add_column(
+        "Products",
+    )
+
+    for index, stage in enumerate(
+        stages,
+        start=1,
+    ):
+        table.add_row(
+            str(index),
+            stage.name,
+            _format_values(stage.dependencies),
+            _format_values(stage.requires_features),
+            _format_values(stage.parameters),
+            _format_products(stage.products),
+        )
+
+    console.print(
+        table,
+    )
+
+
+def _format_values(
+    values: tuple[str, ...],
+) -> str:
+    """
+    Format a tuple of names for compact table presentation.
+    """
+
+    if not values:
+        return "-"
+
+    return "\n".join(values)
+
+
+def _format_products(
+    products: tuple[ProductSpec, ...],
+) -> str:
+    """
+    Format stage product paths for compact table presentation.
+    """
+
+    if not products:
+        return "-"
+
+    return "\n".join(product.path for product in products)
+
+
 __all__ = [
     "console",
     "display_model",
+    "display_model_workplan",
+    "display_model_workplans",
     "display_models",
 ]

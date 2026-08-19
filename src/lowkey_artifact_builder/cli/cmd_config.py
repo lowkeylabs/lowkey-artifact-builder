@@ -13,6 +13,7 @@ from __future__ import annotations
 import click
 
 from lowkey_artifact_builder.cli.display import (
+    display_model_workplans,
     display_models,
 )
 from lowkey_artifact_builder.model import (
@@ -39,10 +40,16 @@ from lowkey_artifact_builder.model import (
     is_flag=True,
     help="Display complete configuration information.",
 )
+@click.option(
+    "--workplan",
+    is_flag=True,
+    help="Display model stage workplans.",
+)
 def cli(
     artifact_ids: tuple[str, ...],
     list_models: bool,
     dump: bool,
+    workplan: bool,
 ) -> None:
     """
     Manage artifact configuration.
@@ -58,14 +65,32 @@ def cli(
         if artifact_ids:
             raise click.UsageError("--list-models cannot be used with artifact IDs.")
 
+        if dump and workplan:
+            raise click.UsageError("--dump and --workplan cannot be used together.")
+
         registry = build_model_registry()
+        models = registry.all_models()
+
+        if workplan:
+            display_model_workplans(
+                models,
+            )
+
+            return
 
         display_models(
-            registry.all_models(),
+            models,
             dump=dump,
         )
 
         return
+
+    # =====================================================
+    # Option validation
+    # =====================================================
+
+    if workplan:
+        raise click.UsageError("--workplan currently requires --list-models.")
 
     # =====================================================
     # Artifact configuration
