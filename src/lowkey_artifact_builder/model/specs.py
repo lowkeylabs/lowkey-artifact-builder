@@ -244,3 +244,40 @@ class ModelSpec:
     )
 
     defined_in: str | None = None
+
+    @property
+    def parameters(
+        self,
+    ) -> tuple[str, ...]:
+        """
+        Return all resolved parameters consumed by this model.
+
+        Parameters are collected from the model's stages in stage order
+        and parameter order.
+
+        Duplicate parameter names are removed while preserving the
+        position of their first occurrence.
+
+        This represents the complete set of resolved configuration
+        values consumed by the model's potential workflow. Whether a
+        particular value is needed by an artifact depends on which
+        stages participate in that artifact's workflow.
+
+        Whether a value is configured directly, inherited from a
+        configuration tier, or derived is the responsibility of the
+        configuration subsystem.
+        """
+
+        seen: set[str] = set()
+        parameters: list[str] = []
+
+        for stage in self.stages:
+            for parameter in stage.parameters:
+                if parameter in seen:
+                    continue
+
+                seen.add(parameter)
+
+                parameters.append(parameter)
+
+        return tuple(parameters)

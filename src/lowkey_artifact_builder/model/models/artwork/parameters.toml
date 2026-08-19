@@ -1,0 +1,8 @@
+[parameters]
+
+artwork_pixels = 1024
+artwork_raise = 1.0
+artwork_overlap = 0.1
+
+artwork_min_island_area = 0.16
+artwork_island_connectivity = 8

@@ -17,6 +17,10 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
+from lowkey_artifact_builder.build.plan import (
+    BuildPlan,
+    PlannedStage,
+)
 from lowkey_artifact_builder.model import ModelSpec
 from lowkey_artifact_builder.model.specs import (
     ProductSpec,
@@ -338,6 +342,303 @@ def _display_stage_products(
 
 
 # =========================================================
+# Artifact configuration
+# =========================================================
+
+
+def display_artifact_config(
+    artifact_id: str,
+    model: ModelSpec,
+    resolver,
+) -> None:
+    """
+    Display the resolved configuration for an artifact.
+
+    The model determines which resolved parameters participate in its
+    potential workflow.
+
+    Each parameter is displayed with its effective value and
+    configuration provenance.
+    """
+
+    console.print(
+        Text(
+            f"{artifact_id} Configuration",
+            style="bold",
+        )
+    )
+
+    console.print()
+
+    metadata = Table(
+        show_header=False,
+        box=None,
+        pad_edge=False,
+    )
+
+    metadata.add_column(
+        "Field",
+        style="bold",
+        no_wrap=True,
+    )
+
+    metadata.add_column(
+        "Value",
+    )
+
+    metadata.add_row(
+        "Artifact ID",
+        artifact_id,
+    )
+
+    metadata.add_row(
+        "Model",
+        model.name,
+    )
+
+    console.print(
+        metadata,
+    )
+
+    console.print()
+
+    _display_artifact_parameters(
+        model,
+        resolver,
+    )
+
+
+def _display_artifact_parameters(
+    model: ModelSpec,
+    resolver,
+) -> None:
+    """
+    Display resolved parameters consumed by an artifact model.
+
+    Parameters that cannot currently be resolved are shown as missing.
+    """
+
+    console.print("[bold]Resolved parameters[/bold]")
+
+    if not model.parameters:
+        console.print("  [dim](none)[/dim]")
+        return
+
+    table = Table(
+        show_header=True,
+        header_style="bold",
+    )
+
+    table.add_column(
+        "Parameter",
+        style="bold",
+        no_wrap=True,
+    )
+
+    table.add_column(
+        "Value",
+    )
+
+    table.add_column(
+        "Source",
+        no_wrap=True,
+    )
+
+    for parameter in model.parameters:
+        if not resolver.has(parameter):
+            table.add_row(
+                parameter,
+                "[red](missing)[/red]",
+                "-",
+            )
+
+            continue
+
+        value = resolver(parameter)
+
+        source = resolver.source(parameter)
+
+        table.add_row(
+            parameter,
+            _format_parameter_value(value),
+            source,
+        )
+
+    console.print(
+        table,
+    )
+
+
+def _format_parameter_value(
+    value: object,
+) -> str:
+    """
+    Format a resolved configuration value for terminal display.
+    """
+
+    if isinstance(
+        value,
+        list | tuple,
+    ):
+        return ", ".join(str(item) for item in value)
+
+    if value is None:
+        return "-"
+
+    return str(value)
+
+
+# =========================================================
+# Build plans
+# =========================================================
+
+
+def display_build_plan(
+    plan: BuildPlan,
+) -> None:
+    """
+    Display the concrete build plan for an artifact.
+
+    Unlike a model workplan, a build plan represents the resolved
+    workflow for one particular artifact.
+    """
+
+    console.print(
+        Text(
+            f"{plan.artifact_id} Build Plan",
+            style="bold",
+        )
+    )
+
+    console.print()
+
+    metadata = Table(
+        show_header=False,
+        box=None,
+        pad_edge=False,
+    )
+
+    metadata.add_column(
+        "Field",
+        style="bold",
+        no_wrap=True,
+    )
+
+    metadata.add_column(
+        "Value",
+    )
+
+    metadata.add_row(
+        "Artifact ID",
+        plan.artifact_id,
+    )
+
+    metadata.add_row(
+        "Model",
+        plan.model_name,
+    )
+
+    console.print(
+        metadata,
+    )
+
+    console.print()
+
+    if not plan.stages:
+        console.print("[dim]No build stages are required.[/dim]")
+        return
+
+    _display_build_plan_table(
+        plan.stages,
+    )
+
+
+def _display_build_plan_table(
+    stages: tuple[PlannedStage, ...],
+) -> None:
+    """
+    Display the resolved stages in an artifact build plan.
+    """
+
+    table = Table(
+        title="Execution Plan",
+        show_header=True,
+        header_style="bold",
+    )
+
+    table.add_column(
+        "#",
+        justify="right",
+        style="dim",
+        no_wrap=True,
+    )
+
+    table.add_column(
+        "Stage",
+        style="bold",
+        no_wrap=True,
+    )
+
+    table.add_column(
+        "Depends On",
+        no_wrap=True,
+    )
+
+    table.add_column(
+        "Parameters",
+    )
+
+    table.add_column(
+        "Products",
+    )
+
+    for index, stage in enumerate(
+        stages,
+        start=1,
+    ):
+        table.add_row(
+            str(index),
+            stage.name,
+            _format_values(stage.dependencies),
+            _format_planned_parameters(stage),
+            _format_planned_products(stage),
+        )
+
+    console.print(
+        table,
+    )
+
+
+def _format_planned_parameters(
+    stage: PlannedStage,
+) -> str:
+    """
+    Format resolved stage parameters for build-plan display.
+    """
+
+    if not stage.parameters:
+        return "-"
+
+    return "\n".join(
+        f"{parameter.name}={_format_parameter_value(parameter.value)}"
+        for parameter in stage.parameters
+    )
+
+
+def _format_planned_products(
+    stage: PlannedStage,
+) -> str:
+    """
+    Format stage products for build-plan display.
+    """
+
+    if not stage.products:
+        return "-"
+
+    return "\n".join(product.spec.path for product in stage.products)
+
+
+# =========================================================
 # Workplans
 # =========================================================
 
@@ -487,6 +788,8 @@ def _format_products(
 
 __all__ = [
     "console",
+    "display_artifact_config",
+    "display_build_plan",
     "display_model",
     "display_model_workplan",
     "display_model_workplans",

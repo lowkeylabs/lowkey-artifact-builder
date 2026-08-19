@@ -1,0 +1,120 @@
+#
+# System configuration defaults for lowkey-artifact-builder.
+#
+# These values apply across artifact models unless overridden
+# by workspace.toml or artifact.toml.
+#
+# Model-specific defaults are stored in:
+#
+#     model/models/<model>/parameters.toml
+#
+# Effective configured parameter precedence is:
+#
+#     artifact
+#         >
+#     workspace
+#         >
+#     model
+#         >
+#     system
+#
+# Derived values are supplied by each model's derived.py.
+#
+
+
+# =========================================================
+# Parameters
+# =========================================================
+
+[parameters]
+
+
+# ---------------------------------------------------------
+# Printer
+# ---------------------------------------------------------
+
+#
+# Colors available to the printer for this artifact.
+#
+# Workspaces commonly override this to describe the colors
+# currently loaded or intended for a particular project.
+#
+# Individual artifacts may override the palette when their
+# artwork requires a specific subset of colors.
+#
+
+printer_colors = [
+    "brown",
+    "black",
+    "gold",
+    "white",
+    "silver",
+]
+
+
+# ---------------------------------------------------------
+# OpenSCAD
+# ---------------------------------------------------------
+
+#
+# Number of fragments used for curved OpenSCAD geometry.
+#
+# This is a system-level rendering quality setting shared
+# by models that generate OpenSCAD geometry.
+#
+
+openscad_fn = 360
+
+
+# =========================================================
+# Color catalog
+# =========================================================
+
+#
+# Color definitions are reference/catalog data rather than
+# ordinary resolved parameters.
+#
+# They do not participate in the normal:
+#
+#     system -> model -> workspace -> artifact
+#
+# parameter override chain.
+#
+# Entries may provide physical filament information and an
+# RGB representation used by artwork processing.
+#
+
+[colors.black]
+manufacturer = "eSUN"
+filament = "Black"
+rgb = [20, 20, 20]
+
+
+[colors.brown]
+manufacturer = "eSUN"
+filament = "Brown"
+rgb = [105, 63, 35]
+
+
+[colors.red]
+manufacturer = "eSUN"
+filament = "Fire Engine Red"
+rgb = [220, 38, 38]
+
+
+[colors.gold]
+manufacturer = "eSUN"
+filament = "Gold"
+rgb = [205, 165, 55]
+
+
+[colors.white]
+manufacturer = "eSUN"
+filament = "Cold White"
+rgb = [255, 255, 255]
+
+
+[colors.silver]
+manufacturer = "eSUN"
+filament = "Silver"
+rgb = [180, 180, 180]

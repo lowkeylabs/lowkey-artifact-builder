@@ -10,11 +10,21 @@ options.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import click
 
 from lowkey_artifact_builder.cli.display import (
+    display_artifact_config,
     display_model_workplans,
     display_models,
+)
+from lowkey_artifact_builder.cli.setup import (
+    setup_artifact,
+)
+from lowkey_artifact_builder.config import (
+    get_resolver,
+    update_artifact_config,
 )
 from lowkey_artifact_builder.model import (
     build_model_registry,
@@ -86,7 +96,7 @@ def cli(
         return
 
     # =====================================================
-    # Option validation
+    # Artifact option validation
     # =====================================================
 
     if workplan:
@@ -96,13 +106,56 @@ def cli(
     # Artifact configuration
     # =====================================================
 
-    #
-    # Artifact configuration handling will be implemented as
-    # the configuration subsystem is developed.
-    #
-
     if artifact_ids:
-        click.echo("Artifact configuration is not yet implemented.")
+        if len(artifact_ids) != 1:
+            raise click.UsageError("Artifact configuration requires exactly one artifact ID.")
+
+        artifact_id = artifact_ids[0]
+        project_root = Path.cwd()
+
+        registry = build_model_registry()
+
+        # -------------------------------------------------
+        # Configuration dump
+        # -------------------------------------------------
+
+        if dump:
+            resolver = get_resolver(
+                artifact_id,
+                project_root=project_root,
+            )
+
+            model_name = resolver("model")
+
+            model = registry.get_model(model_name)
+
+            display_artifact_config(
+                artifact_id,
+                model,
+                resolver,
+            )
+
+            return
+
+        # -------------------------------------------------
+        # Interactive configuration
+        # -------------------------------------------------
+
+        setup = setup_artifact(
+            artifact_id,
+            registry,
+            project_root=project_root,
+        )
+
+        values = dict(setup.values)
+
+        values["model"] = setup.model
+
+        update_artifact_config(
+            artifact_id,
+            values,
+            project_root=project_root,
+        )
 
         return
 
