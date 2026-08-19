@@ -1,0 +1,186 @@
+[project]
+name = "lowkey-artifact-builder"
+version = "0.1.0"
+
+description = "A model-driven build system for creating reproducible 3D-printable artifacts."
+readme = "README.md"
+requires-python = ">=3.14"
+
+license = "Apache-2.0"
+
+authors = [
+    { name = "John Leonard", email = "john@lowkeylabs.com" },
+]
+
+maintainers = [
+    { name = "John Leonard", email = "john@lowkeylabs.com" },
+]
+
+keywords = [
+    "3d-printing",
+    "3mf",
+    "openscad",
+    "artifact-builder",
+    "build-system",
+    "cad",
+    "digital-fabrication",
+    "reproducible-builds",
+]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Manufacturing",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+    "Topic :: Software Development :: Build Tools",
+]
+
+
+# =========================================================
+# Runtime dependencies
+# =========================================================
+
+dependencies = [
+    "click>=8.2",
+    "rich>=14.0",
+    "tomlkit>=0.14",
+]
+
+
+# =========================================================
+# Project URLs
+# =========================================================
+
+[project.urls]
+Homepage = "https://lowkeylabs.com"
+Repository = "https://github.com/lowkeylabs/lowkey-artifact-builder"
+Issues = "https://github.com/lowkeylabs/lowkey-artifact-builder/issues"
+
+
+# =========================================================
+# CLI
+# =========================================================
+
+[project.scripts]
+artifact = "lowkey_artifact_builder.cli._main:cli"
+
+
+# =========================================================
+# Development dependencies
+# =========================================================
+#
+# uv installs the dev dependency group by default when
+# running `uv sync`.
+#
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6.9",
+    "pre-commit>=3.7.0",
+    "pytest>=9.0",
+    "pytest-cov>=7.0",
+    "pyright>=1.1.400",
+    "import-linter>=2.3",
+    "grimp>=3.11",
+]
+
+
+# =========================================================
+# Build system
+# =========================================================
+
+[build-system]
+requires = [
+    "uv_build>=0.12.0,<0.13.0",
+]
+build-backend = "uv_build"
+
+
+# =========================================================
+# Ruff
+# =========================================================
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+fix = true
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # import sorting
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+
+ignore = [
+    "E501",  # line length handled pragmatically
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+
+# =========================================================
+# pytest
+# =========================================================
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+addopts = "-ra"
+testpaths = [
+    "tests",
+]
+pythonpath = [
+    "src",
+]
+python_files = [
+    "test_*.py",
+]
+console_output_style = "progress"
+
+
+# =========================================================
+# Coverage
+# =========================================================
+
+[tool.coverage.run]
+source = [
+    "src/lowkey_artifact_builder",
+]
+
+[tool.coverage.report]
+skip_empty = true
+show_missing = true
+
+omit = [
+    "tests/*",
+]
+
+
+# =========================================================
+# Pyright
+# =========================================================
+
+[tool.pyright]
+include = [
+    "src",
+    "tests",
+]
+
+pythonVersion = "3.14"
+typeCheckingMode = "basic"
+
+reportMissingImports = true
+reportMissingTypeStubs = false

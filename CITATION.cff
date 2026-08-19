@@ -1,0 +1,23 @@
+fxcff-version: 1.2.0
+message: >-
+  If you use lowkey-artifact-builder in academic or published
+  work, please cite it using the metadata in this file.
+
+title: "lowkey-artifact-builder"
+
+type: software
+
+authors:
+  - family-names: "Leonard"
+    given-names: "John"
+
+abstract: >-
+  A model-driven artifact build system for creating reproducible
+  3D-printable artifacts through configurable, staged build
+  pipelines.
+
+license: Apache-2.0
+
+repository-code: "https://github.com/lowkeylabs/lowkey-artifact-builder"
+
+url: "https://lowkeylabs.com"
