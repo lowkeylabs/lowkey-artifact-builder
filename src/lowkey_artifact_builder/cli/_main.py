@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import click
 
+from ..logging_config import configure_logging, get_logger
 from .cmd_config import cli as cmd_config
+
+logger = get_logger(__name__)
 
 
 def alias_command(base_cmd: click.Command, name: str, *, help: str | None = None) -> click.Command:
@@ -32,8 +35,9 @@ def cli(
 
     See main project README.md
     """
-
+    configure_logging()
     ctx.ensure_object(dict)
+
     #
     # No subcommand?
     #
