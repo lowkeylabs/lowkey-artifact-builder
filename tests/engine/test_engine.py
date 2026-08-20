@@ -2,8 +2,9 @@
 Tests for the artifact build engine.
 
 These tests exercise the public engine interface and verify build
-planning, stage execution contexts, workspace management, stage
-execution, and product verification.
+planning, external input materialization, stage execution contexts,
+workspace management, stage dispatch, stage execution, and product
+verification.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from lowkey_artifact_builder.engine import (
     BuildError,
     BuildPlan,
     BuildPlanError,
+    PlannedInput,
     PlannedProduct,
     PlannedStage,
     ResolvedParameter,
@@ -25,19 +27,21 @@ from lowkey_artifact_builder.engine import (
     create_build_plan,
     execute_build,
 )
+from lowkey_artifact_builder.engine.registry import StageRegistry
 
 # =========================================================
 # Public interface
 # =========================================================
 
 
-def test_engine_public_interface():
+def test_engine_public_interface() -> None:
     """
     The engine package exposes its planning and execution interface.
     """
 
     assert BuildPlan is not None
     assert BuildPlanError is not None
+    assert PlannedInput is not None
     assert PlannedProduct is not None
     assert PlannedStage is not None
     assert ResolvedParameter is not None
@@ -57,7 +61,7 @@ def test_engine_public_interface():
 def test_create_build_plan_for_artwork(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     A configured artwork artifact produces the complete artwork build
     workflow in declared stage order.
@@ -90,10 +94,10 @@ def test_create_build_plan_for_artwork(
 def test_create_build_plan_resolves_stage_parameters(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
-    Planned stages contain the configuration values they consume,
-    together with configuration provenance.
+    Planned stages contain the non-filesystem configuration values they
+    consume together with configuration provenance.
     """
 
     plan = _create_artwork_plan(
@@ -105,13 +109,9 @@ def test_create_build_plan_resolves_stage_parameters(
 
     assert prepare.name == "prepare"
 
-    assert tuple(parameter.name for parameter in prepare.parameters) == (
-        "source",
-        "artwork_colors",
-    )
+    assert tuple(parameter.name for parameter in prepare.parameters) == ("artwork_colors",)
 
     assert tuple(parameter.value for parameter in prepare.parameters) == (
-        "source.png",
         [
             "white",
             "black",
@@ -121,10 +121,37 @@ def test_create_build_plan_resolves_stage_parameters(
     assert all(parameter.source == "test" for parameter in prepare.parameters)
 
 
+def test_create_build_plan_resolves_external_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Planning resolves external filesystem inputs to both their original
+    source and artifact-owned materialization paths.
+    """
+
+    plan = _create_artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    prepare = plan.stages[0]
+
+    assert len(prepare.inputs) == 1
+
+    source = prepare.inputs[0]
+
+    assert source.name == "source"
+
+    assert source.source_path == (tmp_path / "source.png")
+
+    assert source.path == (plan.artifact_dir / "artifact.png")
+
+
 def test_create_build_plan_materializes_product_paths(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     Declarative product paths are materialized relative to the
     artifact working directory.
@@ -153,7 +180,7 @@ def test_create_build_plan_materializes_product_paths(
 def test_create_build_plan_preserves_dependencies(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     Planned stages preserve their declared workflow dependencies.
     """
@@ -182,10 +209,10 @@ def test_create_build_plan_preserves_dependencies(
 def test_create_build_plan_does_not_create_artifact_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     Planning is read-only and does not create the artifact working
-    directory.
+    directory or materialize external inputs.
     """
 
     plan = _create_artwork_plan(
@@ -194,6 +221,8 @@ def test_create_build_plan_does_not_create_artifact_directory(
     )
 
     assert not plan.artifact_dir.exists()
+
+    assert not (plan.artifact_dir / "artifact.png").exists()
 
 
 # =========================================================
@@ -204,7 +233,7 @@ def test_create_build_plan_does_not_create_artifact_directory(
 def test_create_build_plan_rejects_unknown_model(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     Planning fails when an artifact references a model that is not
     registered.
@@ -247,7 +276,7 @@ def test_create_build_plan_rejects_unknown_model(
 
 def test_stage_context_accessors(
     tmp_path: Path,
-):
+) -> None:
     """
     Stage contexts expose parameters, inputs, and outputs through their
     execution-oriented accessors.
@@ -282,7 +311,7 @@ def test_stage_context_accessors(
 
 def test_stage_context_rejects_unknown_parameter(
     tmp_path: Path,
-):
+) -> None:
     """
     Missing stage parameters produce a StageContextError rather than a
     raw mapping KeyError.
@@ -301,10 +330,10 @@ def test_stage_context_rejects_unknown_parameter(
 
 def test_stage_context_rejects_unknown_input(
     tmp_path: Path,
-):
+) -> None:
     """
-    Missing dependency products produce a StageContextError rather than
-    a raw mapping KeyError.
+    Missing filesystem inputs produce a StageContextError rather than a
+    raw mapping KeyError.
     """
 
     context = _empty_stage_context(
@@ -320,7 +349,7 @@ def test_stage_context_rejects_unknown_input(
 
 def test_stage_context_rejects_unknown_output(
     tmp_path: Path,
-):
+) -> None:
     """
     Missing declared outputs produce a StageContextError rather than a
     raw mapping KeyError.
@@ -345,11 +374,13 @@ def test_stage_context_rejects_unknown_output(
 def test_execute_build_creates_declared_workspace(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     Execution creates the complete declared workspace before the first
     stage implementation runs.
     """
+
+    _create_source(tmp_path)
 
     plan = _create_artwork_plan(
         tmp_path,
@@ -385,6 +416,129 @@ def test_execute_build_creates_declared_workspace(
 
 
 # =========================================================
+# External input materialization
+# =========================================================
+
+
+def test_execute_build_materializes_external_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Execution copies the configured external source into the
+    artifact-owned materialization path before stage execution.
+    """
+
+    source = tmp_path / "source.png"
+    source.write_bytes(b"source artwork")
+
+    plan = _create_artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    materialized = plan.artifact_dir / "artifact.png"
+
+    def implementation(
+        context: StageContext,
+    ) -> None:
+        if context.stage_name == "prepare":
+            assert materialized.is_file()
+
+            assert materialized.read_bytes() == (b"source artwork")
+
+        _create_declared_outputs(context)
+
+    _install_stage_implementation(
+        monkeypatch,
+        implementation,
+    )
+
+    execute_build(plan)
+
+    assert materialized.is_file()
+    assert materialized.read_bytes() == (b"source artwork")
+
+
+def test_execute_build_prepare_receives_materialized_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    The prepare implementation receives the artifact-owned source path
+    rather than the original project source path.
+    """
+
+    source = tmp_path / "source.png"
+    source.touch()
+
+    plan = _create_artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    observed: Path | None = None
+
+    def implementation(
+        context: StageContext,
+    ) -> None:
+        nonlocal observed
+
+        if context.stage_name == "prepare":
+            observed = context.input("source")
+
+        _create_declared_outputs(context)
+
+    _install_stage_implementation(
+        monkeypatch,
+        implementation,
+    )
+
+    execute_build(plan)
+
+    assert observed == (plan.artifact_dir / "artifact.png")
+
+    assert observed != source
+
+
+def test_execute_build_rejects_missing_external_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Execution fails before any stage runs when a required external
+    filesystem input does not exist.
+    """
+
+    plan = _create_artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    executed: list[str] = []
+
+    def implementation(
+        context: StageContext,
+    ) -> None:
+        executed.append(context.stage_name)
+
+        _create_declared_outputs(context)
+
+    _install_stage_implementation(
+        monkeypatch,
+        implementation,
+    )
+
+    with pytest.raises(
+        BuildError,
+        match="does not exist",
+    ):
+        execute_build(plan)
+
+    assert executed == []
+
+
+# =========================================================
 # Build execution order
 # =========================================================
 
@@ -392,11 +546,13 @@ def test_execute_build_creates_declared_workspace(
 def test_execute_build_runs_stages_in_plan_order(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     Execution invokes model stages in the order established by the
     build plan.
     """
+
+    _create_source(tmp_path)
 
     plan = _create_artwork_plan(
         tmp_path,
@@ -436,11 +592,13 @@ def test_execute_build_runs_stages_in_plan_order(
 def test_execute_build_sets_stage_working_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     Each implementation executes from the directory containing its
     declared products.
     """
+
+    _create_source(tmp_path)
 
     plan = _create_artwork_plan(
         tmp_path,
@@ -480,11 +638,13 @@ def test_execute_build_sets_stage_working_directory(
 def test_execute_build_restores_working_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     Execution restores the caller's working directory after a
     successful build.
     """
+
+    _create_source(tmp_path)
 
     plan = _create_artwork_plan(
         tmp_path,
@@ -511,11 +671,13 @@ def test_execute_build_restores_working_directory(
 def test_execute_build_restores_working_directory_after_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     A failing implementation does not leave the process inside the
     artifact workspace.
     """
+
+    _create_source(tmp_path)
 
     plan = _create_artwork_plan(
         tmp_path,
@@ -550,11 +712,13 @@ def test_execute_build_restores_working_directory_after_failure(
 def test_execute_build_context_contains_stage_parameters(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
-    Stage implementations receive their resolved stage parameters
+    Stage implementations receive resolved non-filesystem parameters
     through the execution context.
     """
+
+    _create_source(tmp_path)
 
     plan = _create_artwork_plan(
         tmp_path,
@@ -582,7 +746,6 @@ def test_execute_build_context_contains_stage_parameters(
 
     assert observed == {
         "prepare": {
-            "source",
             "artwork_colors",
         },
         "raster": {
@@ -607,14 +770,16 @@ def test_execute_build_context_contains_stage_parameters(
 # =========================================================
 
 
-def test_execute_build_context_contains_dependency_products(
+def test_execute_build_context_contains_external_input(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
-    Stage contexts expose products from direct dependencies using
-    qualified input names.
+    Explicit external inputs are exposed using their declarative names
+    and artifact-owned paths.
     """
+
+    _create_source(tmp_path)
 
     plan = _create_artwork_plan(
         tmp_path,
@@ -640,7 +805,49 @@ def test_execute_build_context_contains_dependency_products(
 
     execute_build(plan)
 
-    assert observed["prepare"] == {}
+    assert observed["prepare"] == {
+        "source": (plan.artifact_dir / "artifact.png"),
+    }
+
+
+def test_execute_build_context_contains_dependency_products(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Stage contexts expose products from direct dependencies using
+    qualified input names.
+    """
+
+    _create_source(tmp_path)
+
+    plan = _create_artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    observed: dict[
+        str,
+        dict[str, Path],
+    ] = {}
+
+    def implementation(
+        context: StageContext,
+    ) -> None:
+        observed[context.stage_name] = dict(context.inputs)
+
+        _create_declared_outputs(context)
+
+    _install_stage_implementation(
+        monkeypatch,
+        implementation,
+    )
+
+    execute_build(plan)
+
+    assert observed["prepare"] == {
+        "source": (plan.artifact_dir / "artifact.png"),
+    }
 
     assert observed["raster"] == {
         "prepare.trace": (plan.artifact_dir / "prepare" / "trace.svg"),
@@ -667,11 +874,13 @@ def test_execute_build_context_contains_dependency_products(
 def test_execute_build_context_contains_declared_outputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     Stage contexts expose current-stage products by declarative product
     name.
     """
+
+    _create_source(tmp_path)
 
     plan = _create_artwork_plan(
         tmp_path,
@@ -726,11 +935,13 @@ def test_execute_build_context_contains_declared_outputs(
 def test_execute_build_rejects_missing_declared_product(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     A stage that returns without creating its declared product causes
     the build to fail immediately.
     """
+
+    _create_source(tmp_path)
 
     plan = _create_artwork_plan(
         tmp_path,
@@ -772,11 +983,13 @@ def test_execute_build_rejects_missing_declared_product(
 def test_execute_build_stops_after_stage_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     An exception from a stage implementation stops the build and
     prevents later stages from executing.
     """
+
+    _create_source(tmp_path)
 
     plan = _create_artwork_plan(
         tmp_path,
@@ -816,11 +1029,13 @@ def test_execute_build_stops_after_stage_failure(
 def test_execute_build_wraps_stage_failure_with_context(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     Exceptions from model-specific implementations are exposed as
     BuildError with artifact, model, and stage context.
     """
+
+    _create_source(tmp_path)
 
     plan = _create_artwork_plan(
         tmp_path,
@@ -858,15 +1073,22 @@ def test_execute_build_wraps_stage_failure_with_context(
 def test_execute_build_rejects_unregistered_stage(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     Execution fails cleanly when no model-specific implementation is
     registered for a planned stage.
     """
 
+    _create_source(tmp_path)
+
     plan = _create_artwork_plan(
         tmp_path,
         monkeypatch,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.build.build_stage_registry",
+        lambda: StageRegistry(),
     )
 
     with pytest.raises(
@@ -929,6 +1151,20 @@ def _create_artwork_plan(
     )
 
 
+def _create_source(
+    tmp_path: Path,
+) -> Path:
+    """
+    Create the standard external source image used by execution tests.
+    """
+
+    source = tmp_path / "source.png"
+
+    source.write_bytes(b"source artwork")
+
+    return source
+
+
 def _empty_stage_context(
     tmp_path: Path,
 ) -> StageContext:
@@ -959,12 +1195,30 @@ def _install_stage_implementation(
     ],
 ) -> None:
     """
-    Install one test implementation for every model stage.
+    Install one test implementation for every artwork model stage.
+
+    Tests replace engine bootstrap with an isolated registry rather
+    than patching private stage-dispatch behavior.
     """
 
+    registry = StageRegistry()
+
+    for stage_name in (
+        "prepare",
+        "raster",
+        "vector",
+        "extrude",
+        "package",
+    ):
+        registry.register(
+            "artwork",
+            stage_name,
+            implementation,
+        )
+
     monkeypatch.setattr(
-        "lowkey_artifact_builder.engine.build._get_stage_implementation",
-        lambda model_name, stage_name: implementation,
+        "lowkey_artifact_builder.engine.build.build_stage_registry",
+        lambda: registry,
     )
 
 

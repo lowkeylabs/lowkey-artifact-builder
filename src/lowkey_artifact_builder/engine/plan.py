@@ -5,11 +5,12 @@ This module converts a configured artifact and its declarative model
 definition into a concrete build plan.
 
 Planning is read-only. It resolves configuration, determines the model
-workflow, validates stage dependencies, resolves stage parameters, and
-materializes product paths.
+workflow, validates stage dependencies, resolves stage parameters,
+materializes external filesystem input paths, and materializes product
+paths.
 
-Planning does not create directories, execute stages, or modify build
-products.
+Planning does not create directories, copy inputs, execute stages, or
+modify build products.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from lowkey_artifact_builder.config import (
     get_resolver,
 )
 from lowkey_artifact_builder.model import (
+    InputSpec,
     ModelNotFoundError,
     ModelSpec,
     ProductSpec,
@@ -30,6 +32,7 @@ from lowkey_artifact_builder.model import (
 
 from .specs import (
     BuildPlan,
+    PlannedInput,
     PlannedProduct,
     PlannedStage,
     ResolvedParameter,
@@ -63,10 +66,17 @@ def create_build_plan(
     The artifact model is then obtained from the model registry and its
     stages are materialized in declared stage order.
 
-    No filesystem products are created and no stages are executed.
+    External filesystem inputs are resolved to both their external
+    source locations and their artifact-owned materialization
+    locations.
+
+    No filesystem resources are created, copied, or modified and no
+    stages are executed.
     """
 
     root = project_root if project_root is not None else Path.cwd()
+
+    root = root.resolve()
 
     try:
         resolver = get_resolver(
@@ -95,6 +105,7 @@ def create_build_plan(
         artifact_id,
         model,
         resolver,
+        root,
         artifact_dir,
     )
 
@@ -116,6 +127,7 @@ def _plan_stages(
     artifact_id: str,
     model: ModelSpec,
     resolver,
+    project_root: Path,
     artifact_dir: Path,
 ) -> tuple[PlannedStage, ...]:
     """
@@ -151,6 +163,7 @@ def _plan_stages(
                 artifact_id,
                 stage,
                 resolver,
+                project_root,
                 artifact_dir,
             )
         )
@@ -193,11 +206,24 @@ def _plan_stage(
     artifact_id: str,
     stage: StageSpec,
     resolver,
+    project_root: Path,
     artifact_dir: Path,
 ) -> PlannedStage:
     """
     Materialize one stage.
+
+    External inputs, non-filesystem parameters, and declared products
+    are materialized independently so execution receives a complete
+    description of the resources required by the stage.
     """
+
+    inputs = _resolve_stage_inputs(
+        artifact_id,
+        stage,
+        resolver,
+        project_root,
+        artifact_dir,
+    )
 
     parameters = _resolve_stage_parameters(
         artifact_id,
@@ -215,9 +241,149 @@ def _plan_stage(
 
     return PlannedStage(
         spec=stage,
+        inputs=inputs,
         parameters=parameters,
         products=products,
     )
+
+
+# =========================================================
+# Input resolution
+# =========================================================
+
+
+def _resolve_stage_inputs(
+    artifact_id: str,
+    stage: StageSpec,
+    resolver,
+    project_root: Path,
+    artifact_dir: Path,
+) -> tuple[PlannedInput, ...]:
+    """
+    Resolve all external filesystem inputs consumed by a stage.
+
+    Each InputSpec identifies:
+
+        parameter
+            The resolved configuration value containing the external
+            source location.
+
+        path
+            The artifact-local location at which execution will
+            materialize that external resource.
+
+    Relative external source paths are interpreted relative to the
+    project root. Absolute external source paths are preserved.
+
+    Artifact-local paths are interpreted relative to the artifact
+    working directory.
+
+    Planning computes these locations but does not require the external
+    resource to exist and does not copy or otherwise materialize it.
+    """
+
+    inputs: list[PlannedInput] = []
+
+    for input_spec in stage.inputs:
+        try:
+            value = resolver(input_spec.parameter)
+
+        except ConfigError as exc:
+            raise BuildPlanError(
+                f"Artifact {artifact_id!r} cannot be built: "
+                f"input {input_spec.name!r} required by stage "
+                f"{stage.name!r} cannot be resolved from "
+                f"parameter {input_spec.parameter!r}."
+            ) from exc
+
+        source_path = _resolve_input_source_path(
+            artifact_id,
+            stage,
+            input_spec,
+            value,
+            project_root,
+        )
+
+        path = _resolve_input_materialization_path(
+            artifact_id,
+            stage,
+            input_spec,
+            artifact_dir,
+        )
+
+        inputs.append(
+            PlannedInput(
+                spec=input_spec,
+                source_path=source_path,
+                path=path,
+            )
+        )
+
+    return tuple(inputs)
+
+
+def _resolve_input_source_path(
+    artifact_id: str,
+    stage: StageSpec,
+    input_spec: InputSpec,
+    value,
+    project_root: Path,
+) -> Path:
+    """
+    Materialize one configured external input source path.
+
+    Relative configured paths are resolved from the project root.
+    Absolute configured paths are preserved.
+
+    The path is normalized to an absolute Path without requiring the
+    resource to exist.
+    """
+
+    if not isinstance(
+        value,
+        str | Path,
+    ):
+        raise BuildPlanError(
+            f"Artifact {artifact_id!r} cannot be built: "
+            f"input {input_spec.name!r} required by stage "
+            f"{stage.name!r} must resolve from parameter "
+            f"{input_spec.parameter!r} to a filesystem path, "
+            f"not {type(value).__name__}."
+        )
+
+    path = Path(value).expanduser()
+
+    if not path.is_absolute():
+        path = project_root / path
+
+    return path.resolve()
+
+
+def _resolve_input_materialization_path(
+    artifact_id: str,
+    stage: StageSpec,
+    input_spec: InputSpec,
+    artifact_dir: Path,
+) -> Path:
+    """
+    Materialize the artifact-owned path for an external input.
+
+    InputSpec.path must be relative to the artifact working directory.
+    Absolute artifact-local paths are rejected because model
+    declarations must not escape or redefine artifact workspace layout.
+    """
+
+    path = Path(input_spec.path)
+
+    if path.is_absolute():
+        raise BuildPlanError(
+            f"Artifact {artifact_id!r} cannot be built: "
+            f"input {input_spec.name!r} required by stage "
+            f"{stage.name!r} declares absolute artifact path "
+            f"{input_spec.path!r}."
+        )
+
+    return (artifact_dir / path).resolve()
 
 
 # =========================================================
@@ -231,10 +397,12 @@ def _resolve_stage_parameters(
     resolver,
 ) -> tuple[ResolvedParameter, ...]:
     """
-    Resolve all parameters consumed by a stage.
+    Resolve all non-filesystem parameters consumed by a stage.
 
     Failure to resolve any declared stage parameter makes the artifact
     unbuildable and therefore prevents construction of the build plan.
+
+    Filesystem inputs are resolved separately from StageSpec.inputs.
     """
 
     parameters: list[ResolvedParameter] = []

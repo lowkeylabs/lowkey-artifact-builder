@@ -8,10 +8,48 @@ import pytest
 
 from lowkey_artifact_builder.model.specs import (
     FeatureSpec,
+    InputSpec,
     ModelSpec,
     ProductSpec,
     StageSpec,
 )
+
+# =========================================================
+# InputSpec
+# =========================================================
+
+
+def test_input_spec() -> None:
+    """
+    Input specifications retain their definition.
+    """
+
+    input_spec = InputSpec(
+        name="source",
+        parameter="source",
+        path="artifact.png",
+        description="Source artwork",
+    )
+
+    assert input_spec.name == "source"
+    assert input_spec.parameter == "source"
+    assert input_spec.path == "artifact.png"
+    assert input_spec.description == "Source artwork"
+
+
+def test_input_spec_defaults() -> None:
+    """
+    Input descriptions are optional.
+    """
+
+    input_spec = InputSpec(
+        name="source",
+        parameter="source",
+        path="artifact.png",
+    )
+
+    assert input_spec.description == ""
+
 
 # =========================================================
 # ProductSpec
@@ -88,6 +126,12 @@ def test_stage_spec() -> None:
     Stage specifications retain their complete definition.
     """
 
+    input_spec = InputSpec(
+        name="source",
+        parameter="source",
+        path="artifact.png",
+    )
+
     product = ProductSpec(
         name="stl",
         path="holder/model.stl",
@@ -98,6 +142,7 @@ def test_stage_spec() -> None:
         description="Build the artifact holder",
         dependencies=("source",),
         requires_features=("artwork",),
+        inputs=(input_spec,),
         parameters=(
             "outside_diameter",
             "base_raise",
@@ -109,6 +154,7 @@ def test_stage_spec() -> None:
     assert stage.description == "Build the artifact holder"
     assert stage.dependencies == ("source",)
     assert stage.requires_features == ("artwork",)
+    assert stage.inputs == (input_spec,)
     assert stage.parameters == (
         "outside_diameter",
         "base_raise",
@@ -119,7 +165,7 @@ def test_stage_spec() -> None:
 def test_stage_spec_defaults() -> None:
     """
     Stages default to no dependencies, required features,
-    parameters, or products.
+    inputs, parameters, or products.
     """
 
     stage = StageSpec(
@@ -129,6 +175,7 @@ def test_stage_spec_defaults() -> None:
     assert stage.description == ""
     assert stage.dependencies == ()
     assert stage.requires_features == ()
+    assert stage.inputs == ()
     assert stage.parameters == ()
     assert stage.products == ()
 
@@ -145,6 +192,28 @@ def test_stage_spec_required_features() -> None:
     )
 
     assert stage.requires_features == ("labels",)
+
+
+def test_stage_spec_inputs() -> None:
+    """
+    Stages declare external filesystem inputs separately from ordinary
+    resolved parameters.
+    """
+
+    input_spec = InputSpec(
+        name="source",
+        parameter="source",
+        path="artifact.png",
+    )
+
+    stage = StageSpec(
+        name="prepare",
+        inputs=(input_spec,),
+        parameters=("artwork_colors",),
+    )
+
+    assert stage.inputs == (input_spec,)
+    assert stage.parameters == ("artwork_colors",)
 
 
 def test_stage_spec_parameters() -> None:
@@ -256,9 +325,109 @@ def test_model_spec_defaults() -> None:
     assert model.defined_in is None
 
 
+def test_model_parameters_include_input_parameters() -> None:
+    """
+    Model parameters include configuration values used to locate
+    external filesystem inputs.
+    """
+
+    input_spec = InputSpec(
+        name="source",
+        parameter="source",
+        path="artifact.png",
+    )
+
+    stage = StageSpec(
+        name="prepare",
+        inputs=(input_spec,),
+        parameters=("artwork_colors",),
+    )
+
+    model = ModelSpec(
+        name="example",
+        title="Example",
+        stages=(stage,),
+    )
+
+    assert model.parameters == (
+        "source",
+        "artwork_colors",
+    )
+
+
+def test_model_parameters_preserve_first_occurrence() -> None:
+    """
+    Model parameters are unique and preserve their first occurrence
+    across stage inputs and ordinary parameters.
+    """
+
+    first = StageSpec(
+        name="prepare",
+        inputs=(
+            InputSpec(
+                name="source",
+                parameter="source",
+                path="artifact.png",
+            ),
+        ),
+        parameters=(
+            "artwork_colors",
+            "shared",
+        ),
+    )
+
+    second = StageSpec(
+        name="build",
+        inputs=(
+            InputSpec(
+                name="reference",
+                parameter="reference",
+                path="reference.png",
+            ),
+        ),
+        parameters=(
+            "shared",
+            "artwork_size",
+            "source",
+        ),
+    )
+
+    model = ModelSpec(
+        name="example",
+        title="Example",
+        stages=(
+            first,
+            second,
+        ),
+    )
+
+    assert model.parameters == (
+        "source",
+        "artwork_colors",
+        "shared",
+        "reference",
+        "artwork_size",
+    )
+
+
 # =========================================================
 # Immutability
 # =========================================================
+
+
+def test_input_spec_is_immutable() -> None:
+    """
+    Input definitions cannot be modified after creation.
+    """
+
+    input_spec = InputSpec(
+        name="source",
+        parameter="source",
+        path="artifact.png",
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        input_spec.name = "changed"  # type: ignore[misc]
 
 
 def test_product_spec_is_immutable() -> None:

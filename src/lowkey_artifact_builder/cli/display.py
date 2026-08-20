@@ -17,12 +17,13 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
-from lowkey_artifact_builder.engine.plan import (
+from lowkey_artifact_builder.engine import (
     BuildPlan,
     PlannedStage,
 )
-from lowkey_artifact_builder.model import ModelSpec
-from lowkey_artifact_builder.model.specs import (
+from lowkey_artifact_builder.model import (
+    InputSpec,
+    ModelSpec,
     ProductSpec,
     StageSpec,
 )
@@ -273,6 +274,11 @@ def _display_stages(
         if stage.dependencies:
             console.print("    [bold]Dependencies:[/bold] " + ", ".join(stage.dependencies))
 
+        if stage.inputs:
+            _display_stage_inputs(
+                stage.inputs,
+            )
+
         if stage.parameters:
             _display_stage_parameters(
                 stage.parameters,
@@ -284,11 +290,61 @@ def _display_stages(
             )
 
 
+def _display_stage_inputs(
+    inputs: tuple[InputSpec, ...],
+) -> None:
+    """
+    Display external filesystem inputs consumed by a stage.
+    """
+
+    console.print("    [bold]Inputs[/bold]")
+
+    table = Table(
+        show_header=True,
+        header_style="bold",
+        box=None,
+        pad_edge=False,
+    )
+
+    table.add_column(
+        "Name",
+        style="bold",
+        no_wrap=True,
+    )
+
+    table.add_column(
+        "Parameter",
+        no_wrap=True,
+    )
+
+    table.add_column(
+        "Materialized Path",
+        no_wrap=True,
+    )
+
+    table.add_column(
+        "Description",
+    )
+
+    for input_spec in inputs:
+        table.add_row(
+            input_spec.name,
+            input_spec.parameter,
+            input_spec.path,
+            input_spec.description,
+        )
+
+    console.print(
+        table,
+        justify="left",
+    )
+
+
 def _display_stage_parameters(
     parameters: tuple[str, ...],
 ) -> None:
     """
-    Display resolved parameters consumed by a stage.
+    Display resolved non-filesystem parameters consumed by a stage.
     """
 
     console.print("    [bold]Parameters[/bold]")
@@ -354,11 +410,11 @@ def display_artifact_config(
     """
     Display the resolved configuration for an artifact.
 
-    The model determines which resolved parameters participate in its
-    potential workflow.
+    The model determines which resolved parameters and external input
+    parameters participate in its potential workflow.
 
-    Each parameter is displayed with its effective value and
-    configuration provenance.
+    Each value is displayed with its effective value and configuration
+    provenance.
     """
 
     console.print(
@@ -413,14 +469,21 @@ def _display_artifact_parameters(
     resolver,
 ) -> None:
     """
-    Display resolved parameters consumed by an artifact model.
+    Display resolved configuration consumed by an artifact model.
+
+    Both ordinary stage parameters and configuration parameters backing
+    external filesystem inputs are included.
 
     Parameters that cannot currently be resolved are shown as missing.
     """
 
     console.print("[bold]Resolved parameters[/bold]")
 
-    if not model.parameters:
+    parameters = _model_configuration_parameters(
+        model,
+    )
+
+    if not parameters:
         console.print("  [dim](none)[/dim]")
         return
 
@@ -444,7 +507,7 @@ def _display_artifact_parameters(
         no_wrap=True,
     )
 
-    for parameter in model.parameters:
+    for parameter in parameters:
         if not resolver.has(parameter):
             table.add_row(
                 parameter,
@@ -467,6 +530,39 @@ def _display_artifact_parameters(
     console.print(
         table,
     )
+
+
+def _model_configuration_parameters(
+    model: ModelSpec,
+) -> tuple[str, ...]:
+    """
+    Return configuration parameter names consumed by a model.
+
+    Ordinary stage parameters and parameters backing external inputs
+    are collected in stage order with duplicates removed.
+    """
+
+    seen: set[str] = set()
+    parameters: list[str] = []
+
+    for stage in model.stages:
+        for input_spec in stage.inputs:
+            if input_spec.parameter in seen:
+                continue
+
+            seen.add(input_spec.parameter)
+
+            parameters.append(input_spec.parameter)
+
+        for parameter in stage.parameters:
+            if parameter in seen:
+                continue
+
+            seen.add(parameter)
+
+            parameters.append(parameter)
+
+    return tuple(parameters)
 
 
 def _format_parameter_value(
@@ -538,6 +634,11 @@ def display_build_plan(
         plan.model_name,
     )
 
+    metadata.add_row(
+        "Artifact directory",
+        str(plan.artifact_dir),
+    )
+
     console.print(
         metadata,
     )
@@ -585,6 +686,10 @@ def _display_build_plan_table(
     )
 
     table.add_column(
+        "Inputs",
+    )
+
+    table.add_column(
         "Parameters",
     )
 
@@ -600,6 +705,7 @@ def _display_build_plan_table(
             str(index),
             stage.name,
             _format_values(stage.dependencies),
+            _format_planned_inputs(stage),
             _format_planned_parameters(stage),
             _format_planned_products(stage),
         )
@@ -607,6 +713,34 @@ def _display_build_plan_table(
     console.print(
         table,
     )
+
+
+def _format_planned_inputs(
+    stage: PlannedStage,
+) -> str:
+    """
+    Format resolved external inputs for build-plan display.
+
+    Both the original source and artifact-owned materialization path
+    are shown when they differ.
+    """
+
+    if not stage.inputs:
+        return "-"
+
+    values: list[str] = []
+
+    for planned_input in stage.inputs:
+        source = str(planned_input.source_path)
+
+        materialized = str(planned_input.path)
+
+        if planned_input.source_path == planned_input.path:
+            values.append(f"{planned_input.name}={materialized}")
+        else:
+            values.append(f"{planned_input.name}={source}\n  -> {materialized}")
+
+    return "\n".join(values)
 
 
 def _format_planned_parameters(
@@ -620,7 +754,7 @@ def _format_planned_parameters(
         return "-"
 
     return "\n".join(
-        f"{parameter.name}={_format_parameter_value(parameter.value)}"
+        (f"{parameter.name}={_format_parameter_value(parameter.value)}")
         for parameter in stage.parameters
     )
 
@@ -635,7 +769,7 @@ def _format_planned_products(
     if not stage.products:
         return "-"
 
-    return "\n".join(product.spec.path for product in stage.products)
+    return "\n".join(str(product.path) for product in stage.products)
 
 
 # =========================================================
@@ -650,8 +784,9 @@ def display_model_workplan(
     Display the complete declared workplan for a model.
 
     The workplan is a compact workflow-oriented representation of the
-    model stages. It describes the potential work declared by the model;
-    it does not represent the execution state of a particular artifact.
+    model stages. It describes the potential work declared by the
+    model; it does not represent the execution state of a particular
+    artifact.
     """
 
     console.print(
@@ -735,6 +870,10 @@ def _display_workplan_table(
     )
 
     table.add_column(
+        "Inputs",
+    )
+
+    table.add_column(
         "Parameters",
     )
 
@@ -751,6 +890,7 @@ def _display_workplan_table(
             stage.name,
             _format_values(stage.dependencies),
             _format_values(stage.requires_features),
+            _format_inputs(stage.inputs),
             _format_values(stage.parameters),
             _format_products(stage.products),
         )
@@ -771,6 +911,21 @@ def _format_values(
         return "-"
 
     return "\n".join(values)
+
+
+def _format_inputs(
+    inputs: tuple[InputSpec, ...],
+) -> str:
+    """
+    Format stage external inputs for compact workplan presentation.
+    """
+
+    if not inputs:
+        return "-"
+
+    return "\n".join(
+        (f"{input_spec.name}: {input_spec.parameter} -> {input_spec.path}") for input_spec in inputs
+    )
 
 
 def _format_products(

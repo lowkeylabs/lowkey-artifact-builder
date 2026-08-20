@@ -18,6 +18,8 @@ from lowkey_artifact_builder.cli.display import (
     display_build_plan,
 )
 from lowkey_artifact_builder.engine import (
+    BuildError,
+    BuildPlanError,
     create_build_plan,
     execute_build,
 )
@@ -64,29 +66,36 @@ def cli(
         if index:
             click.echo()
 
-        plan = create_build_plan(
-            artifact_id,
-            project_root=project_root,
-        )
+        try:
+            plan = create_build_plan(
+                artifact_id,
+                project_root=project_root,
+            )
 
-        # -------------------------------------------------
-        # Dry run
-        # -------------------------------------------------
+            # ---------------------------------------------
+            # Dry run
+            # ---------------------------------------------
 
-        if dry_run:
-            display_build_plan(
+            if dry_run:
+                display_build_plan(
+                    plan,
+                )
+
+                continue
+
+            # ---------------------------------------------
+            # Build
+            # ---------------------------------------------
+
+            execute_build(
                 plan,
             )
 
-            continue
-
-        # -------------------------------------------------
-        # Build
-        # -------------------------------------------------
-
-        execute_build(
-            plan,
-        )
+        except (
+            BuildPlanError,
+            BuildError,
+        ) as exc:
+            raise click.ClickException(str(exc)) from exc
 
 
 if __name__ == "__main__":

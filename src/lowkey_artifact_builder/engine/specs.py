@@ -10,7 +10,8 @@ specifications, which describe what may be built independently of any
 particular artifact.
 
 Planning constructs BuildPlan instances from configured artifacts and
-their declarative models. Execution consumes those plans and constructs
+their declarative models. Execution consumes those plans, materializes
+external filesystem inputs into the artifact workspace, and constructs
 StageContext instances for individual stage invocations.
 """
 
@@ -22,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from lowkey_artifact_builder.model import (
+    InputSpec,
     ModelSpec,
     ProductSpec,
     StageSpec,
@@ -60,6 +62,75 @@ class ResolvedParameter:
     value: Any
 
     source: str
+
+
+# =========================================================
+# Planned inputs
+# =========================================================
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class PlannedInput:
+    """
+    An external filesystem input materialized for an artifact build.
+
+    Source_path is the concrete external filesystem resource identified
+    by resolved artifact configuration.
+
+    Path is the artifact-owned location at which the build engine
+    materializes that resource before stage execution.
+
+    For example:
+
+        source_path
+            projects/new-york-deli-blimp.png
+
+        path
+            projects/artifacts/nydeli/artifact.png
+
+    The original InputSpec is retained so callers still have access to
+    the input's declarative name, artifact-local path, and description.
+
+    Planning resolves both filesystem locations but does not copy or
+    otherwise modify the resource.
+
+    Execution materializes source_path at path before any stage that
+    consumes the input executes.
+
+    Model-specific stage implementations receive only path through
+    StageContext. They therefore consume artifact-owned resources
+    without needing to understand project layout, configuration path
+    semantics, or the location of the original external resource.
+    """
+
+    spec: InputSpec
+
+    source_path: Path
+
+    path: Path
+
+    @property
+    def name(
+        self,
+    ) -> str:
+        """
+        Return the declarative input name.
+        """
+
+        return self.spec.name
+
+    @property
+    def description(
+        self,
+    ) -> str:
+        """
+        Return the declarative input description.
+        """
+
+        return self.spec.description
 
 
 # =========================================================
@@ -121,11 +192,24 @@ class PlannedStage:
     One stage materialized for an artifact build.
 
     The original StageSpec is retained as the declarative definition.
-    Parameters and products contain the artifact-specific resolved
-    values needed to execute that stage.
+
+    Inputs contain external filesystem resources and their
+    artifact-owned materialization locations.
+
+    Parameters contain artifact-specific resolved non-filesystem values
+    consumed by the stage.
+
+    Products contain the concrete filesystem locations at which the
+    stage is expected to create its declared persistent outputs.
+
+    Products from dependency stages are not duplicated in inputs here.
+    The build engine exposes those dependency products through the
+    StageContext when the stage executes.
     """
 
     spec: StageSpec
+
+    inputs: tuple[PlannedInput, ...] = ()
 
     parameters: tuple[ResolvedParameter, ...] = ()
 
@@ -178,9 +262,11 @@ class BuildPlan:
     A BuildPlan contains everything needed to describe the work that
     would be performed for an artifact without actually performing it.
 
-    Planning constructs the plan without modifying filesystem products.
+    Planning constructs the plan without modifying filesystem products
+    or materializing external inputs.
+
     Execution consumes the completed plan without resolving artifact
-    configuration again.
+    configuration or filesystem locations again.
     """
 
     artifact_id: str
@@ -220,19 +306,37 @@ class StageContext:
     A StageContext is constructed by the build engine immediately
     before executing a model-specific stage implementation.
 
-    The context provides the resolved parameters consumed by the stage,
-    persistent products produced by direct dependency stages, declared
-    outputs of the current stage, and filesystem locations associated
-    with the artifact build.
+    The context provides:
 
-    Input names are qualified by dependency stage name so products with
-    identical names remain unambiguous. For example:
+        parameters
+            Resolved non-filesystem values consumed by the stage.
+
+        inputs
+            Artifact-owned filesystem resources available to the stage.
+            These include explicitly declared stage inputs materialized
+            by the engine and products supplied by direct dependency
+            stages.
+
+        outputs
+            Concrete filesystem paths for the current stage's declared
+            products.
+
+    Explicit stage inputs use their declarative names, for example:
+
+        source
+
+    Products supplied by dependency stages use qualified names so
+    products with identical names remain unambiguous, for example:
 
         prepare.trace
         raster.manifest
         vector.manifest
 
-    Output names are the declarative product names of the current stage.
+    The engine resolves and materializes external filesystem resources
+    before constructing this context. Model-specific stage
+    implementations therefore use StageContext paths directly rather
+    than interpret project layout, configuration path semantics,
+    external source locations, or dependency structure themselves.
 
     Model-specific stage implementations should consume StageContext
     rather than inspect BuildPlan or PlannedStage directly.
@@ -277,9 +381,10 @@ class StageContext:
         name: str,
     ) -> Path:
         """
-        Return the path of a dependency product.
+        Return the path of an input filesystem resource.
 
-        Input names are qualified by dependency stage name, such as
+        Explicit stage inputs use their declarative names. Products
+        supplied by dependency stages use qualified names such as
         'prepare.trace'.
         """
 
@@ -306,6 +411,7 @@ class StageContext:
 
 __all__ = [
     "BuildPlan",
+    "PlannedInput",
     "PlannedProduct",
     "PlannedStage",
     "ResolvedParameter",

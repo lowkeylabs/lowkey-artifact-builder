@@ -7,38 +7,36 @@ Build planning is performed separately by the planning subsystem.
 Execution consumes an already-resolved BuildPlan and performs the
 declared workflow stages.
 
-The build engine owns the artifact workspace and stage execution
-environment. Model-specific stage implementations receive a
-StageContext containing the resolved parameters, dependency products,
-declared outputs, and filesystem locations required by the stage.
+The build engine owns the artifact workspace, external input
+materialization, and stage execution environment. Model-specific stage
+implementations receive a StageContext containing resolved parameters,
+artifact-owned filesystem inputs, dependency products, declared
+outputs, and filesystem locations required by the stage.
 
-The engine does not interpret model-specific parameters or product
+The engine does not interpret model-specific parameters, resolve
+configuration, resolve external input paths, or interpret product
 contents.
 """
 
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Iterator
+import shutil
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from .bootstrap import build_stage_registry
+from .registry import (
+    StageImplementationNotFoundError,
+    StageRegistry,
+)
 from .specs import (
     BuildPlan,
+    PlannedInput,
     PlannedStage,
     StageContext,
 )
-
-# =========================================================
-# Types
-# =========================================================
-
-
-StageImplementation = Callable[
-    [StageContext],
-    None,
-]
-
 
 # =========================================================
 # Errors
@@ -65,6 +63,11 @@ def execute_build(
     The complete declared artifact workspace is created before any
     stage executes.
 
+    External filesystem inputs are then materialized into their
+    artifact-owned locations.
+
+    A stage implementation registry is constructed once for the build.
+
     Stages execute in planned order. Before each stage executes, the
     engine constructs its StageContext and changes the process working
     directory to the stage working directory.
@@ -73,11 +76,16 @@ def execute_build(
     including when execution fails.
 
     After a stage completes, all of its declared products must exist.
-    Failure to execute a stage or produce its declared products stops
-    the build immediately.
+    Failure to prepare the workspace, materialize an input, locate an
+    implementation, execute a stage, or produce its declared products
+    stops the build immediately.
     """
 
+    registry = build_stage_registry()
+
     _prepare_workspace(plan)
+
+    _materialize_inputs(plan)
 
     for stage in plan.stages:
         context = _create_stage_context(
@@ -85,7 +93,10 @@ def execute_build(
             stage,
         )
 
-        _execute_stage(context)
+        _execute_stage(
+            context,
+            registry,
+        )
 
         _verify_products(context)
 
@@ -101,12 +112,13 @@ def _prepare_workspace(
     """
     Create the complete declared artifact workspace.
 
-    The artifact directory and the parent directories of every declared
-    stage product are created before stage execution begins.
+    The artifact directory, parent directories of all materialized
+    external inputs, and parent directories of every declared stage
+    product are created before stage execution begins.
 
     Model-specific stages may create additional private temporary or
-    diagnostic directories when needed, but declared product directory
-    structure is owned by the engine.
+    diagnostic directories when needed, but declared artifact
+    filesystem structure is owned by the engine.
     """
 
     directories = {
@@ -114,6 +126,9 @@ def _prepare_workspace(
     }
 
     for stage in plan.stages:
+        for planned_input in stage.inputs:
+            directories.add(planned_input.path.parent)
+
         for product in stage.products:
             directories.add(product.path.parent)
 
@@ -149,6 +164,150 @@ def _directory_sort_key(
 
 
 # =========================================================
+# Input materialization
+# =========================================================
+
+
+def _materialize_inputs(
+    plan: BuildPlan,
+) -> None:
+    """
+    Materialize all external inputs into the artifact workspace.
+
+    A configured external resource may be consumed by more than one
+    stage. Each unique source/materialization pair is copied only once
+    during a build.
+
+    Input materialization occurs before any stage executes so every
+    StageContext refers only to artifact-owned resources.
+
+    The external source must exist and must be a regular file.
+    """
+
+    materialized: set[tuple[Path, Path]] = set()
+
+    destinations: dict[
+        Path,
+        Path,
+    ] = {}
+
+    for stage in plan.stages:
+        for planned_input in stage.inputs:
+            key = (
+                planned_input.source_path,
+                planned_input.path,
+            )
+
+            if key in materialized:
+                continue
+
+            _validate_input_destination(
+                plan,
+                stage,
+                planned_input,
+                destinations,
+            )
+
+            _materialize_input(
+                plan,
+                stage,
+                planned_input,
+            )
+
+            destinations[planned_input.path] = planned_input.source_path
+
+            materialized.add(key)
+
+
+def _validate_input_destination(
+    plan: BuildPlan,
+    stage: PlannedStage,
+    planned_input: PlannedInput,
+    destinations: dict[Path, Path],
+) -> None:
+    """
+    Ensure one artifact-local input path does not represent two sources.
+
+    Multiple stages may consume the same materialized input, but two
+    different external resources may not be materialized to the same
+    artifact-local path during one build.
+    """
+
+    previous_source = destinations.get(planned_input.path)
+
+    if previous_source is None:
+        return
+
+    if previous_source == planned_input.source_path:
+        return
+
+    raise BuildError(
+        f"Cannot materialize input {planned_input.name!r} "
+        f"for stage {stage.name!r} of artifact "
+        f"{plan.artifact_id!r}: artifact path "
+        f"{planned_input.path} is already assigned to "
+        f"external source {previous_source}."
+    )
+
+
+def _materialize_input(
+    plan: BuildPlan,
+    stage: PlannedStage,
+    planned_input: PlannedInput,
+) -> None:
+    """
+    Materialize one external filesystem input.
+
+    The original external resource is copied to its planned
+    artifact-owned location. Metadata is preserved where supported by
+    the filesystem.
+
+    Model-specific stage implementations never receive source_path.
+    """
+
+    source = planned_input.source_path
+    destination = planned_input.path
+
+    if not source.exists():
+        raise BuildError(
+            f"Cannot materialize input {planned_input.name!r} "
+            f"for stage {stage.name!r} of artifact "
+            f"{plan.artifact_id!r}: external source "
+            f"{source} does not exist."
+        )
+
+    if not source.is_file():
+        raise BuildError(
+            f"Cannot materialize input {planned_input.name!r} "
+            f"for stage {stage.name!r} of artifact "
+            f"{plan.artifact_id!r}: external source "
+            f"{source} is not a regular file."
+        )
+
+    try:
+        destination.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        if source.resolve() == destination.resolve():
+            return
+
+        shutil.copy2(
+            source,
+            destination,
+        )
+
+    except OSError as exc:
+        raise BuildError(
+            f"Cannot materialize input {planned_input.name!r} "
+            f"for stage {stage.name!r} of artifact "
+            f"{plan.artifact_id!r} from {source} "
+            f"to {destination}: {exc}"
+        ) from exc
+
+
+# =========================================================
 # Stage context construction
 # =========================================================
 
@@ -162,14 +321,21 @@ def _create_stage_context(
 
     Parameters are exposed by their resolved parameter names.
 
-    Inputs contain every declared product of every direct dependency.
-    Input names are qualified by dependency stage name, for example:
+    Inputs contain both:
 
-        prepare.trace
-        raster.manifest
+        explicitly declared filesystem inputs
+            These use their declarative input names and refer to
+            artifact-owned materialized resources.
+
+        products from direct dependency stages
+            These use qualified names of the form
+            '<stage>.<product>'.
 
     Outputs contain the current stage's declared products keyed by their
     declarative product names.
+
+    Model-specific implementations do not resolve project or artifact
+    filesystem layout themselves.
     """
 
     parameters = {parameter.name: parameter.value for parameter in stage.parameters}
@@ -204,19 +370,75 @@ def _collect_stage_inputs(
     stage: PlannedStage,
 ) -> dict[str, Path]:
     """
-    Collect declared products from the stage's direct dependencies.
+    Collect all filesystem inputs available to a stage.
 
-    Dependency products are exposed using qualified names of the form:
+    Explicit stage inputs are exposed using their declarative names:
 
-        <stage>.<product>
+        source
+
+    Products from direct dependencies are exposed using qualified names:
+
+        prepare.trace
+        raster.manifest
+
+    Input names must be unique. A collision between an explicit input
+    and a dependency product is treated as an invalid execution
+    context rather than silently replacing either resource.
     """
-
-    planned_stages = {planned_stage.name: planned_stage for planned_stage in plan.stages}
 
     inputs: dict[
         str,
         Path,
     ] = {}
+
+    _add_explicit_inputs(
+        plan,
+        stage,
+        inputs,
+    )
+
+    _add_dependency_inputs(
+        plan,
+        stage,
+        inputs,
+    )
+
+    return inputs
+
+
+def _add_explicit_inputs(
+    plan: BuildPlan,
+    stage: PlannedStage,
+    inputs: dict[str, Path],
+) -> None:
+    """
+    Add the stage's explicitly declared filesystem inputs.
+
+    Planned inputs contain both the original external source and its
+    artifact-owned materialized location. Only the artifact-owned path
+    is exposed to the stage.
+    """
+
+    for planned_input in stage.inputs:
+        _add_stage_input(
+            plan,
+            stage,
+            inputs,
+            planned_input.name,
+            planned_input.path,
+        )
+
+
+def _add_dependency_inputs(
+    plan: BuildPlan,
+    stage: PlannedStage,
+    inputs: dict[str, Path],
+) -> None:
+    """
+    Add products supplied by the stage's direct dependencies.
+    """
+
+    planned_stages = {planned_stage.name: planned_stage for planned_stage in plan.stages}
 
     for dependency_name in stage.dependencies:
         try:
@@ -233,16 +455,36 @@ def _collect_stage_inputs(
         for product in dependency.products:
             name = f"{dependency.name}.{product.name}"
 
-            if name in inputs:
-                raise BuildError(
-                    f"Cannot execute stage {stage.name!r} "
-                    f"for artifact {plan.artifact_id!r}: "
-                    f"duplicate input name {name!r}."
-                )
+            _add_stage_input(
+                plan,
+                stage,
+                inputs,
+                name,
+                product.path,
+            )
 
-            inputs[name] = product.path
 
-    return inputs
+def _add_stage_input(
+    plan: BuildPlan,
+    stage: PlannedStage,
+    inputs: dict[str, Path],
+    name: str,
+    path: Path,
+) -> None:
+    """
+    Add one filesystem input to a stage execution context.
+
+    Duplicate execution-facing input names are rejected.
+    """
+
+    if name in inputs:
+        raise BuildError(
+            f"Cannot execute stage {stage.name!r} "
+            f"for artifact {plan.artifact_id!r}: "
+            f"duplicate input name {name!r}."
+        )
+
+    inputs[name] = path
 
 
 # =========================================================
@@ -262,6 +504,9 @@ def _stage_working_directory(
 
     A stage without declared products executes from the artifact
     working directory.
+
+    Working-directory selection is an engine concern. Stage
+    implementations should not change directories themselves.
     """
 
     if not stage.products:
@@ -303,19 +548,30 @@ def _working_directory(
 
 def _execute_stage(
     context: StageContext,
+    registry: StageRegistry,
 ) -> None:
     """
     Execute one model-specific stage.
 
-    Model implementation lookup is isolated from the generic execution
-    loop so the dispatch mechanism may evolve independently of build
-    execution.
+    The executable implementation is obtained from the completed stage
+    registry using the model and stage names carried by StageContext.
+
+    The generic build engine does not know which models, features, or
+    plugins supplied the implementation.
     """
 
-    implementation = _get_stage_implementation(
-        context.model_name,
-        context.stage_name,
-    )
+    try:
+        implementation = registry.get(
+            context.model_name,
+            context.stage_name,
+        )
+
+    except StageImplementationNotFoundError as exc:
+        raise BuildError(
+            f"No implementation is registered for "
+            f"model {context.model_name!r}, "
+            f"stage {context.stage_name!r}."
+        ) from exc
 
     try:
         with _working_directory(context.working_dir):
@@ -333,25 +589,6 @@ def _execute_stage(
         ) from exc
 
 
-def _get_stage_implementation(
-    model_name: str,
-    stage_name: str,
-) -> StageImplementation:
-    """
-    Return the implementation for a model stage.
-
-    Model-specific stage registration has not yet been introduced.
-
-    This function intentionally isolates implementation lookup from the
-    generic execution machinery. The first artwork stage implementation
-    will establish the concrete registration or dispatch mechanism.
-    """
-
-    raise BuildError(
-        f"No implementation is registered for model {model_name!r}, stage {stage_name!r}."
-    )
-
-
 # =========================================================
 # Product verification
 # =========================================================
@@ -367,7 +604,14 @@ def _verify_products(
     interpreted by the generic build engine.
     """
 
-    missing = [(name, path) for name, path in context.outputs.items() if not path.exists()]
+    missing = [
+        (
+            name,
+            path,
+        )
+        for name, path in context.outputs.items()
+        if not path.exists()
+    ]
 
     if not missing:
         return

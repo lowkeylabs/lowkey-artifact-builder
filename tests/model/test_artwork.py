@@ -40,15 +40,28 @@ def test_artwork_stage_dependencies() -> None:
     assert stages["package"].dependencies == ("extrude",)
 
 
-def test_artwork_prepare_inputs() -> None:
-    """Artwork preparation depends on source and artwork palette."""
+def test_artwork_prepare_external_input() -> None:
+    """Artwork preparation consumes a materialized source image."""
 
     stages = {stage.name: stage for stage in MODEL.stages}
 
-    assert stages["prepare"].parameters == (
-        "source",
-        "artwork_colors",
-    )
+    prepare = stages["prepare"]
+
+    assert len(prepare.inputs) == 1
+
+    source = prepare.inputs[0]
+
+    assert source.name == "source"
+    assert source.parameter == "source"
+    assert source.path == "artifact.png"
+
+
+def test_artwork_prepare_parameters() -> None:
+    """Artwork preparation consumes the artwork palette."""
+
+    stages = {stage.name: stage for stage in MODEL.stages}
+
+    assert stages["prepare"].parameters == ("artwork_colors",)
 
 
 def test_artwork_raster_inputs() -> None:
@@ -88,8 +101,32 @@ def test_artwork_stage_products() -> None:
 
     stages = {stage.name: stage for stage in MODEL.stages}
 
-    assert stages["prepare"].products[0].path == ("prepare/trace.svg")
-    assert stages["raster"].products[0].path == ("raster/products.json")
-    assert stages["vector"].products[0].path == ("vector/products.json")
-    assert stages["extrude"].products[0].path == ("extrude/products.json")
-    assert stages["package"].products[0].path == ("artifact.3mf")
+    assert stages["prepare"].products[0].path == "prepare/trace.svg"
+
+    assert stages["raster"].products[0].path == "raster/products.json"
+
+    assert stages["vector"].products[0].path == "vector/products.json"
+
+    assert stages["extrude"].products[0].path == "extrude/products.json"
+
+    assert stages["package"].products[0].path == "artifact.3mf"
+
+
+def test_artwork_model_parameters() -> None:
+    """
+    Model parameters include configuration consumed through inputs.
+
+    External input parameters participate in the model's complete
+    configuration requirements even though they are not ordinary stage
+    parameters.
+    """
+
+    assert MODEL.parameters == (
+        "source",
+        "artwork_colors",
+        "artwork_pixels",
+        "artwork_min_island_area",
+        "artwork_island_connectivity",
+        "artwork_size",
+        "artwork_raise",
+    )
