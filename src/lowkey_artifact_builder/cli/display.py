@@ -17,7 +17,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
-from lowkey_artifact_builder.build.plan import (
+from lowkey_artifact_builder.engine.plan import (
     BuildPlan,
     PlannedStage,
 )
