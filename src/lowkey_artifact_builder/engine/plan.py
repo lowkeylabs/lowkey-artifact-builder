@@ -14,19 +14,25 @@ products.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from lowkey_artifact_builder.config import (
     ConfigError,
     get_resolver,
 )
 from lowkey_artifact_builder.model import (
+    ModelNotFoundError,
     ModelSpec,
     ProductSpec,
     StageSpec,
     build_model_registry,
+)
+
+from .specs import (
+    BuildPlan,
+    PlannedProduct,
+    PlannedStage,
+    ResolvedParameter,
 )
 
 # =========================================================
@@ -38,168 +44,6 @@ class BuildPlanError(RuntimeError):
     """
     Raised when a valid build plan cannot be constructed.
     """
-
-
-# =========================================================
-# Resolved parameters
-# =========================================================
-
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class ResolvedParameter:
-    """
-    A resolved parameter consumed by a planned stage.
-
-    Source identifies the configuration provenance reported by the
-    resolver, such as master, model, workspace, artifact, or derived.
-    """
-
-    name: str
-
-    value: Any
-
-    source: str
-
-
-# =========================================================
-# Planned products
-# =========================================================
-
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class PlannedProduct:
-    """
-    A filesystem product materialized for an artifact build.
-
-    Path is the concrete path at which the stage product is expected to
-    exist.
-
-    The original ProductSpec is retained so callers still have access
-    to the product's declarative name and description.
-    """
-
-    spec: ProductSpec
-
-    path: Path
-
-    @property
-    def name(
-        self,
-    ) -> str:
-        """
-        Return the declarative product name.
-        """
-
-        return self.spec.name
-
-    @property
-    def description(
-        self,
-    ) -> str:
-        """
-        Return the declarative product description.
-        """
-
-        return self.spec.description
-
-
-# =========================================================
-# Planned stages
-# =========================================================
-
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class PlannedStage:
-    """
-    One stage materialized for an artifact build.
-
-    The original StageSpec is retained as the declarative definition.
-    Parameters and products contain the artifact-specific resolved
-    values needed to execute that stage.
-    """
-
-    spec: StageSpec
-
-    parameters: tuple[ResolvedParameter, ...] = ()
-
-    products: tuple[PlannedProduct, ...] = ()
-
-    @property
-    def name(
-        self,
-    ) -> str:
-        """
-        Return the stage name.
-        """
-
-        return self.spec.name
-
-    @property
-    def dependencies(
-        self,
-    ) -> tuple[str, ...]:
-        """
-        Return stage dependency names.
-        """
-
-        return self.spec.dependencies
-
-    @property
-    def requires_features(
-        self,
-    ) -> tuple[str, ...]:
-        """
-        Return features required by this stage.
-        """
-
-        return self.spec.requires_features
-
-
-# =========================================================
-# Build plan
-# =========================================================
-
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class BuildPlan:
-    """
-    Concrete execution plan for one configured artifact.
-
-    A BuildPlan contains everything needed to describe the work that
-    would be performed for an artifact without actually performing it.
-    """
-
-    artifact_id: str
-
-    model: ModelSpec
-
-    project_root: Path
-
-    artifact_dir: Path
-
-    stages: tuple[PlannedStage, ...]
-
-    @property
-    def model_name(
-        self,
-    ) -> str:
-        """
-        Return the artifact model name.
-        """
-
-        return self.model.name
 
 
 # =========================================================
@@ -240,7 +84,7 @@ def create_build_plan(
     try:
         model = registry.get_model(model_name)
 
-    except (KeyError, ValueError) as exc:
+    except ModelNotFoundError as exc:
         raise BuildPlanError(
             f"Artifact {artifact_id!r} references unknown model {model_name!r}."
         ) from exc
@@ -335,6 +179,7 @@ def _stage_participates(
     for feature in stage.requires_features:
         try:
             enabled = resolver(feature)
+
         except ConfigError:
             return False
 
@@ -483,10 +328,6 @@ def _validate_dependencies(
 
 
 __all__ = [
-    "BuildPlan",
     "BuildPlanError",
-    "PlannedProduct",
-    "PlannedStage",
-    "ResolvedParameter",
     "create_build_plan",
 ]

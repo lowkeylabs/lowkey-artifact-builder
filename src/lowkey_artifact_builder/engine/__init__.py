@@ -13,12 +13,16 @@ from .build import (
     execute_build,
 )
 from .plan import (
-    BuildPlan,
     BuildPlanError,
+    create_build_plan,
+)
+from .specs import (
+    BuildPlan,
     PlannedProduct,
     PlannedStage,
     ResolvedParameter,
-    create_build_plan,
+    StageContext,
+    StageContextError,
 )
 
 __all__ = [
@@ -28,6 +32,8 @@ __all__ = [
     "PlannedProduct",
     "PlannedStage",
     "ResolvedParameter",
+    "StageContext",
+    "StageContextError",
     "create_build_plan",
     "execute_build",
 ]
