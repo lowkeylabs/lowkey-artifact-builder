@@ -12,7 +12,9 @@ here.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from pathlib import Path
 
+from rich import box
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
@@ -34,6 +36,29 @@ from lowkey_artifact_builder.model import (
 
 
 console = Console()
+
+
+# =========================================================
+# Common Table Factory
+# =========================================================
+
+
+def _create_table(
+    *,
+    title: str | None = None,
+    show_header: bool = True,
+) -> Table:
+    """
+    Create a table using the standard CLI presentation style.
+    """
+
+    return Table(
+        title=title,
+        show_header=show_header,
+        header_style="bold",
+        box=box.SIMPLE,
+        pad_edge=False,
+    )
 
 
 # =========================================================
@@ -84,10 +109,9 @@ def _display_model_summary(
     Display a concise table of registered models.
     """
 
-    table = Table(
+    table = _create_table(
         title="Available Models",
         show_header=True,
-        header_style="bold",
     )
 
     table.add_column(
@@ -155,10 +179,8 @@ def _display_model_metadata(
     Display model identity and provenance.
     """
 
-    table = Table(
+    table = _create_table(
         show_header=False,
-        box=None,
-        pad_edge=False,
     )
 
     table.add_column(
@@ -211,11 +233,8 @@ def _display_features(
         console.print("  [dim](none)[/dim]")
         return
 
-    table = Table(
+    table = _create_table(
         show_header=True,
-        header_style="bold",
-        box=None,
-        pad_edge=False,
     )
 
     table.add_column(
@@ -299,11 +318,8 @@ def _display_stage_inputs(
 
     console.print("    [bold]Inputs[/bold]")
 
-    table = Table(
+    table = _create_table(
         show_header=True,
-        header_style="bold",
-        box=None,
-        pad_edge=False,
     )
 
     table.add_column(
@@ -362,11 +378,8 @@ def _display_stage_products(
 
     console.print("    [bold]Products[/bold]")
 
-    table = Table(
+    table = _create_table(
         show_header=True,
-        header_style="bold",
-        box=None,
-        pad_edge=False,
     )
 
     table.add_column(
@@ -426,10 +439,8 @@ def display_artifact_config(
 
     console.print()
 
-    metadata = Table(
+    metadata = _create_table(
         show_header=False,
-        box=None,
-        pad_edge=False,
     )
 
     metadata.add_column(
@@ -487,9 +498,8 @@ def _display_artifact_parameters(
         console.print("  [dim](none)[/dim]")
         return
 
-    table = Table(
+    table = _create_table(
         show_header=True,
-        header_style="bold",
     )
 
     table.add_column(
@@ -608,10 +618,8 @@ def display_build_plan(
 
     console.print()
 
-    metadata = Table(
+    metadata = _create_table(
         show_header=False,
-        box=None,
-        pad_edge=False,
     )
 
     metadata.add_column(
@@ -651,20 +659,22 @@ def display_build_plan(
 
     _display_build_plan_table(
         plan.stages,
+        project_root=plan.project_root,
     )
 
 
 def _display_build_plan_table(
     stages: tuple[PlannedStage, ...],
+    *,
+    project_root: Path,
 ) -> None:
     """
     Display the resolved stages in an artifact build plan.
     """
 
-    table = Table(
+    table = _create_table(
         title="Execution Plan",
         show_header=True,
-        header_style="bold",
     )
 
     table.add_column(
@@ -705,9 +715,9 @@ def _display_build_plan_table(
             str(index),
             stage.name,
             _format_values(stage.dependencies),
-            _format_planned_inputs(stage),
+            _format_planned_inputs(stage, project_root=project_root),
             _format_planned_parameters(stage),
-            _format_planned_products(stage),
+            _format_planned_products(stage, project_root=project_root),
         )
 
     console.print(
@@ -717,9 +727,13 @@ def _display_build_plan_table(
 
 def _format_planned_inputs(
     stage: PlannedStage,
+    *,
+    project_root: Path,
 ) -> str:
     """
     Format resolved external inputs for build-plan display.
+
+    Paths are displayed relative to the project root.
 
     Both the original source and artifact-owned materialization path
     are shown when they differ.
@@ -731,9 +745,13 @@ def _format_planned_inputs(
     values: list[str] = []
 
     for planned_input in stage.inputs:
-        source = str(planned_input.source_path)
+        source = planned_input.source_path.relative_to(
+            project_root,
+        )
 
-        materialized = str(planned_input.path)
+        materialized = planned_input.path.relative_to(
+            project_root,
+        )
 
         if planned_input.source_path == planned_input.path:
             values.append(f"{planned_input.name}={materialized}")
@@ -761,15 +779,26 @@ def _format_planned_parameters(
 
 def _format_planned_products(
     stage: PlannedStage,
+    *,
+    project_root: Path,
 ) -> str:
     """
     Format stage products for build-plan display.
+
+    Paths are displayed relative to the project root.
     """
 
     if not stage.products:
         return "-"
 
-    return "\n".join(str(product.path) for product in stage.products)
+    return "\n".join(
+        str(
+            product.path.relative_to(
+                project_root,
+            )
+        )
+        for product in stage.products
+    )
 
 
 # =========================================================
@@ -841,9 +870,8 @@ def _display_workplan_table(
     Display model stages as a compact workplan table.
     """
 
-    table = Table(
+    table = _create_table(
         show_header=True,
-        header_style="bold",
     )
 
     table.add_column(
