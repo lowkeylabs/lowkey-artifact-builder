@@ -1,27 +1,19 @@
 """
-CLI presentation helpers.
+Model display helpers.
 
-This module owns human-readable terminal presentation for the command
-line interface.
-
-Core application subsystems should not depend on Rich. Commands obtain
-application objects and pass them to the display functions defined
-here.
+This module owns human-readable terminal presentation for registered
+artifact models and their declared workplans.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
-from pathlib import Path
 
-from rich import box
-from rich.console import Console
-from rich.table import Table
 from rich.text import Text
 
-from lowkey_artifact_builder.engine import (
-    BuildPlan,
-    PlannedStage,
+from lowkey_artifact_builder.cli.display.common import (
+    console,
+    create_table,
 )
 from lowkey_artifact_builder.model import (
     InputSpec,
@@ -29,37 +21,6 @@ from lowkey_artifact_builder.model import (
     ProductSpec,
     StageSpec,
 )
-
-# =========================================================
-# Console
-# =========================================================
-
-
-console = Console()
-
-
-# =========================================================
-# Common Table Factory
-# =========================================================
-
-
-def _create_table(
-    *,
-    title: str | None = None,
-    show_header: bool = True,
-) -> Table:
-    """
-    Create a table using the standard CLI presentation style.
-    """
-
-    return Table(
-        title=title,
-        show_header=show_header,
-        header_style="bold",
-        box=box.SIMPLE,
-        pad_edge=False,
-    )
-
 
 # =========================================================
 # Models
@@ -109,7 +70,7 @@ def _display_model_summary(
     Display a concise table of registered models.
     """
 
-    table = _create_table(
+    table = create_table(
         title="Available Models",
         show_header=True,
     )
@@ -179,7 +140,7 @@ def _display_model_metadata(
     Display model identity and provenance.
     """
 
-    table = _create_table(
+    table = create_table(
         show_header=False,
     )
 
@@ -233,7 +194,7 @@ def _display_features(
         console.print("  [dim](none)[/dim]")
         return
 
-    table = _create_table(
+    table = create_table(
         show_header=True,
     )
 
@@ -318,7 +279,7 @@ def _display_stage_inputs(
 
     console.print("    [bold]Inputs[/bold]")
 
-    table = _create_table(
+    table = create_table(
         show_header=True,
     )
 
@@ -378,7 +339,7 @@ def _display_stage_products(
 
     console.print("    [bold]Products[/bold]")
 
-    table = _create_table(
+    table = create_table(
         show_header=True,
     )
 
@@ -407,397 +368,6 @@ def _display_stage_products(
     console.print(
         table,
         justify="left",
-    )
-
-
-# =========================================================
-# Artifact configuration
-# =========================================================
-
-
-def display_artifact_config(
-    artifact_id: str,
-    model: ModelSpec,
-    resolver,
-) -> None:
-    """
-    Display the resolved configuration for an artifact.
-
-    The model determines which resolved parameters and external input
-    parameters participate in its potential workflow.
-
-    Each value is displayed with its effective value and configuration
-    provenance.
-    """
-
-    console.print(
-        Text(
-            f"{artifact_id} Configuration",
-            style="bold",
-        )
-    )
-
-    console.print()
-
-    metadata = _create_table(
-        show_header=False,
-    )
-
-    metadata.add_column(
-        "Field",
-        style="bold",
-        no_wrap=True,
-    )
-
-    metadata.add_column(
-        "Value",
-    )
-
-    metadata.add_row(
-        "Artifact ID",
-        artifact_id,
-    )
-
-    metadata.add_row(
-        "Model",
-        model.name,
-    )
-
-    console.print(
-        metadata,
-    )
-
-    console.print()
-
-    _display_artifact_parameters(
-        model,
-        resolver,
-    )
-
-
-def _display_artifact_parameters(
-    model: ModelSpec,
-    resolver,
-) -> None:
-    """
-    Display resolved configuration consumed by an artifact model.
-
-    Both ordinary stage parameters and configuration parameters backing
-    external filesystem inputs are included.
-
-    Parameters that cannot currently be resolved are shown as missing.
-    """
-
-    console.print("[bold]Resolved parameters[/bold]")
-
-    parameters = _model_configuration_parameters(
-        model,
-    )
-
-    if not parameters:
-        console.print("  [dim](none)[/dim]")
-        return
-
-    table = _create_table(
-        show_header=True,
-    )
-
-    table.add_column(
-        "Parameter",
-        style="bold",
-        no_wrap=True,
-    )
-
-    table.add_column(
-        "Value",
-    )
-
-    table.add_column(
-        "Source",
-        no_wrap=True,
-    )
-
-    for parameter in parameters:
-        if not resolver.has(parameter):
-            table.add_row(
-                parameter,
-                "[red](missing)[/red]",
-                "-",
-            )
-
-            continue
-
-        value = resolver(parameter)
-
-        source = resolver.source(parameter)
-
-        table.add_row(
-            parameter,
-            _format_parameter_value(value),
-            source,
-        )
-
-    console.print(
-        table,
-    )
-
-
-def _model_configuration_parameters(
-    model: ModelSpec,
-) -> tuple[str, ...]:
-    """
-    Return configuration parameter names consumed by a model.
-
-    Ordinary stage parameters and parameters backing external inputs
-    are collected in stage order with duplicates removed.
-    """
-
-    seen: set[str] = set()
-    parameters: list[str] = []
-
-    for stage in model.stages:
-        for input_spec in stage.inputs:
-            if input_spec.parameter in seen:
-                continue
-
-            seen.add(input_spec.parameter)
-
-            parameters.append(input_spec.parameter)
-
-        for parameter in stage.parameters:
-            if parameter in seen:
-                continue
-
-            seen.add(parameter)
-
-            parameters.append(parameter)
-
-    return tuple(parameters)
-
-
-def _format_parameter_value(
-    value: object,
-) -> str:
-    """
-    Format a resolved configuration value for terminal display.
-    """
-
-    if isinstance(
-        value,
-        list | tuple,
-    ):
-        return ", ".join(str(item) for item in value)
-
-    if value is None:
-        return "-"
-
-    return str(value)
-
-
-# =========================================================
-# Build plans
-# =========================================================
-
-
-def display_build_plan(
-    plan: BuildPlan,
-) -> None:
-    """
-    Display the concrete build plan for an artifact.
-
-    Unlike a model workplan, a build plan represents the resolved
-    workflow for one particular artifact.
-    """
-
-    console.print(
-        Text(
-            f"{plan.artifact_id} Build Plan",
-            style="bold",
-        )
-    )
-
-    console.print()
-
-    metadata = _create_table(
-        show_header=False,
-    )
-
-    metadata.add_column(
-        "Field",
-        style="bold",
-        no_wrap=True,
-    )
-
-    metadata.add_column(
-        "Value",
-    )
-
-    metadata.add_row(
-        "Artifact ID",
-        plan.artifact_id,
-    )
-
-    metadata.add_row(
-        "Model",
-        plan.model_name,
-    )
-
-    metadata.add_row(
-        "Artifact directory",
-        str(plan.artifact_dir),
-    )
-
-    console.print(
-        metadata,
-    )
-
-    console.print()
-
-    if not plan.stages:
-        console.print("[dim]No build stages are required.[/dim]")
-        return
-
-    _display_build_plan_table(
-        plan.stages,
-        project_root=plan.project_root,
-    )
-
-
-def _display_build_plan_table(
-    stages: tuple[PlannedStage, ...],
-    *,
-    project_root: Path,
-) -> None:
-    """
-    Display the resolved stages in an artifact build plan.
-    """
-
-    table = _create_table(
-        title="Execution Plan",
-        show_header=True,
-    )
-
-    table.add_column(
-        "#",
-        justify="right",
-        style="dim",
-        no_wrap=True,
-    )
-
-    table.add_column(
-        "Stage",
-        style="bold",
-        no_wrap=True,
-    )
-
-    table.add_column(
-        "Depends On",
-        no_wrap=True,
-    )
-
-    table.add_column(
-        "Inputs",
-    )
-
-    table.add_column(
-        "Parameters",
-    )
-
-    table.add_column(
-        "Products",
-    )
-
-    for index, stage in enumerate(
-        stages,
-        start=1,
-    ):
-        table.add_row(
-            str(index),
-            stage.name,
-            _format_values(stage.dependencies),
-            _format_planned_inputs(stage, project_root=project_root),
-            _format_planned_parameters(stage),
-            _format_planned_products(stage, project_root=project_root),
-        )
-
-    console.print(
-        table,
-    )
-
-
-def _format_planned_inputs(
-    stage: PlannedStage,
-    *,
-    project_root: Path,
-) -> str:
-    """
-    Format resolved external inputs for build-plan display.
-
-    Paths are displayed relative to the project root.
-
-    Both the original source and artifact-owned materialization path
-    are shown when they differ.
-    """
-
-    if not stage.inputs:
-        return "-"
-
-    values: list[str] = []
-
-    for planned_input in stage.inputs:
-        source = planned_input.source_path.relative_to(
-            project_root,
-        )
-
-        materialized = planned_input.path.relative_to(
-            project_root,
-        )
-
-        if planned_input.source_path == planned_input.path:
-            values.append(f"{planned_input.name}={materialized}")
-        else:
-            values.append(f"{planned_input.name}={source}\n  -> {materialized}")
-
-    return "\n".join(values)
-
-
-def _format_planned_parameters(
-    stage: PlannedStage,
-) -> str:
-    """
-    Format resolved stage parameters for build-plan display.
-    """
-
-    if not stage.parameters:
-        return "-"
-
-    return "\n".join(
-        (f"{parameter.name}={_format_parameter_value(parameter.value)}")
-        for parameter in stage.parameters
-    )
-
-
-def _format_planned_products(
-    stage: PlannedStage,
-    *,
-    project_root: Path,
-) -> str:
-    """
-    Format stage products for build-plan display.
-
-    Paths are displayed relative to the project root.
-    """
-
-    if not stage.products:
-        return "-"
-
-    return "\n".join(
-        str(
-            product.path.relative_to(
-                project_root,
-            )
-        )
-        for product in stage.products
     )
 
 
@@ -870,7 +440,7 @@ def _display_workplan_table(
     Display model stages as a compact workplan table.
     """
 
-    table = _create_table(
+    table = create_table(
         show_header=True,
     )
 
@@ -928,6 +498,11 @@ def _display_workplan_table(
     )
 
 
+# =========================================================
+# Formatting
+# =========================================================
+
+
 def _format_values(
     values: tuple[str, ...],
 ) -> str:
@@ -970,9 +545,6 @@ def _format_products(
 
 
 __all__ = [
-    "console",
-    "display_artifact_config",
-    "display_build_plan",
     "display_model",
     "display_model_workplan",
     "display_model_workplans",

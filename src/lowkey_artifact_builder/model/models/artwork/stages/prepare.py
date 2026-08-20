@@ -11,6 +11,7 @@ parameters, and outputs supplied through StageContext.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -62,7 +63,11 @@ def execute(
     Parameters:
 
         artwork_colors
-            Number of colors to retain in the multicolor trace.
+            Ordered sequence of configured artwork color names.
+
+            The number of configured colors determines the number of
+            colors retained by the multicolor trace. Color assignment
+            is performed by a later stage.
 
     Outputs:
 
@@ -83,7 +88,7 @@ def execute(
         "trace",
     )
 
-    colors = _require_color_count(
+    colors = _require_colors(
         context.parameter(
             "artwork_colors",
         )
@@ -92,7 +97,7 @@ def execute(
     _trace_multicolor(
         source,
         output,
-        colors=colors,
+        colors=len(colors),
     )
 
 
@@ -101,27 +106,48 @@ def execute(
 # =========================================================
 
 
-def _require_color_count(
+def _require_colors(
     value: Any,
-) -> int:
+) -> tuple[str, ...]:
     """
-    Return a validated multicolor trace color count.
+    Return a validated sequence of artwork color names.
+
+    At least two colors are required for Inkscape's multicolor trace.
+    Color names must be unique because later stages perform a
+    one-to-one assignment between traced regions and configured
+    artwork colors.
     """
 
-    if (
-        isinstance(
-            value,
-            bool,
-        )
-        or not isinstance(
-            value,
-            int,
-        )
-        or value < 2
+    if isinstance(
+        value,
+        str | bytes,
+    ) or not isinstance(
+        value,
+        Sequence,
     ):
-        raise PrepareError("artwork_colors must be an integer greater than or equal to 2.")
+        raise PrepareError("artwork_colors must be a sequence of color names.")
 
-    return value
+    colors: list[str] = []
+
+    for color in value:
+        if (
+            not isinstance(
+                color,
+                str,
+            )
+            or not color.strip()
+        ):
+            raise PrepareError("artwork_colors must contain non-empty color names.")
+
+        colors.append(color.strip())
+
+    if len(colors) < 2:
+        raise PrepareError("artwork_colors must contain at least two colors.")
+
+    if len(set(colors)) != len(colors):
+        raise PrepareError("artwork_colors must contain unique color names.")
+
+    return tuple(colors)
 
 
 def _require_source(
@@ -196,6 +222,9 @@ def _trace_multicolor(
         source,
         output,
     )
+
+    if colors < 2:
+        raise PrepareError("Trace color count must be at least two.")
 
     if speckles < 0:
         raise PrepareError("Trace speckle size cannot be negative.")
