@@ -13,6 +13,11 @@ Planning constructs BuildPlan instances from configured artifacts and
 their declarative models. Execution consumes those plans, materializes
 external filesystem inputs into the artifact workspace, and constructs
 StageContext instances for individual stage invocations.
+
+The artifact-specific configuration Resolver is the single runtime
+authority for resolved configuration. Model stages declare the
+parameters they normally consume through StageSpec, but all stages have
+access to the complete artifact configuration through the Resolver.
 """
 
 from __future__ import annotations
@@ -20,8 +25,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
+from lowkey_artifact_builder.config import (
+    Resolver,
+)
 from lowkey_artifact_builder.model import (
     InputSpec,
     ModelSpec,
@@ -38,30 +45,6 @@ class StageContextError(RuntimeError):
     """
     Raised when a stage execution value cannot be obtained.
     """
-
-
-# =========================================================
-# Resolved parameters
-# =========================================================
-
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class ResolvedParameter:
-    """
-    A resolved parameter consumed by a planned stage.
-
-    Source identifies the configuration provenance reported by the
-    resolver, such as master, model, workspace, artifact, or derived.
-    """
-
-    name: str
-
-    value: Any
-
-    source: str
 
 
 # =========================================================
@@ -193,11 +176,14 @@ class PlannedStage:
 
     The original StageSpec is retained as the declarative definition.
 
+    StageSpec.parameters declares the configuration parameters normally
+    consumed by the stage. Parameter values are not copied into the
+    planned stage. The artifact Resolver retained by BuildPlan is the
+    authoritative source for all resolved configuration values and
+    provenance.
+
     Inputs contain external filesystem resources and their
     artifact-owned materialization locations.
-
-    Parameters contain artifact-specific resolved non-filesystem values
-    consumed by the stage.
 
     Products contain the concrete filesystem locations at which the
     stage is expected to create its declared persistent outputs.
@@ -210,8 +196,6 @@ class PlannedStage:
     spec: StageSpec
 
     inputs: tuple[PlannedInput, ...] = ()
-
-    parameters: tuple[ResolvedParameter, ...] = ()
 
     products: tuple[PlannedProduct, ...] = ()
 
@@ -259,19 +243,32 @@ class BuildPlan:
     """
     Concrete execution plan for one configured artifact.
 
-    A BuildPlan contains everything needed to describe the work that
-    would be performed for an artifact without actually performing it.
+    A BuildPlan contains everything needed to describe and execute the
+    work for an artifact.
+
+    The resolver is the artifact-specific configuration authority
+    created during planning. It contains the complete effective
+    configuration view for the artifact, including configured values,
+    derived values, provenance, and shared reference configuration such
+    as the color catalog.
+
+    Stage parameter declarations remain on StageSpec and describe which
+    configuration values a stage normally consumes. Parameter values
+    themselves are obtained directly from resolver and are not copied
+    into PlannedStage.
 
     Planning constructs the plan without modifying filesystem products
     or materializing external inputs.
 
-    Execution consumes the completed plan without resolving artifact
-    configuration or filesystem locations again.
+    Execution consumes the completed plan without creating another
+    configuration resolver or resolving filesystem locations again.
     """
 
     artifact_id: str
 
     model: ModelSpec
+
+    resolver: Resolver
 
     project_root: Path
 
@@ -308,8 +305,11 @@ class StageContext:
 
     The context provides:
 
-        parameters
-            Resolved non-filesystem values consumed by the stage.
+        resolver
+            The same artifact-specific configuration Resolver retained
+            by BuildPlan. It is the authoritative source for all
+            resolved configuration values, provenance, derivations, and
+            shared reference configuration.
 
         inputs
             Artifact-owned filesystem resources available to the stage.
@@ -320,6 +320,17 @@ class StageContext:
         outputs
             Concrete filesystem paths for the current stage's declared
             products.
+
+    StageSpec.parameters declares the parameters a stage normally
+    consumes, but it is not an access-control boundary. Every stage has
+    visibility to the complete artifact configuration through resolver.
+
+    For example:
+
+        context.resolver("artwork_colors")
+        context.resolver("printer_colors")
+        context.resolver.source("artwork_colors")
+        context.resolver.colors
 
     Explicit stage inputs use their declarative names, for example:
 
@@ -332,10 +343,10 @@ class StageContext:
         raster.manifest
         vector.manifest
 
-    The engine resolves and materializes external filesystem resources
-    before constructing this context. Model-specific stage
-    implementations therefore use StageContext paths directly rather
-    than interpret project layout, configuration path semantics,
+    The engine resolves configuration and materializes external
+    filesystem resources before constructing this context.
+    Model-specific stage implementations therefore use StageContext
+    rather than interpret project layout, configuration path semantics,
     external source locations, or dependency structure themselves.
 
     Model-specific stage implementations should consume StageContext
@@ -354,27 +365,11 @@ class StageContext:
 
     working_dir: Path
 
-    parameters: Mapping[str, Any]
+    resolver: Resolver
 
     inputs: Mapping[str, Path]
 
     outputs: Mapping[str, Path]
-
-    def parameter(
-        self,
-        name: str,
-    ) -> Any:
-        """
-        Return a resolved parameter consumed by this stage.
-        """
-
-        try:
-            return self.parameters[name]
-
-        except KeyError as exc:
-            raise StageContextError(
-                f"Stage {self.stage_name!r} has no parameter {name!r}."
-            ) from exc
 
     def input(
         self,
@@ -414,7 +409,6 @@ __all__ = [
     "PlannedInput",
     "PlannedProduct",
     "PlannedStage",
-    "ResolvedParameter",
     "StageContext",
     "StageContextError",
 ]

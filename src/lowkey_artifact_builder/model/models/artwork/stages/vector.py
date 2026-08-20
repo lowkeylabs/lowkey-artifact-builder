@@ -179,7 +179,7 @@ def execute(
 
     artwork_size = _positive_number(
         "artwork_size",
-        context.parameter(
+        context.resolver(
             "artwork_size",
         ),
     )

@@ -185,34 +185,34 @@ def execute(
 
     colors = _positive_integer(
         "artwork_colors",
-        context.parameter(
+        context.resolver(
             "artwork_colors",
         ),
     )
 
     pixels = _positive_integer(
         "artwork_pixels",
-        context.parameter(
+        context.resolver(
             "artwork_pixels",
         ),
     )
 
     artwork_size = _positive_number(
         "artwork_size",
-        context.parameter(
+        context.resolver(
             "artwork_size",
         ),
     )
 
     minimum_area = _positive_number(
         "artwork_min_island_area",
-        context.parameter(
+        context.resolver(
             "artwork_min_island_area",
         ),
     )
 
     connectivity = _connectivity(
-        context.parameter(
+        context.resolver(
             "artwork_island_connectivity",
         )
     )

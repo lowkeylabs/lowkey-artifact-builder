@@ -125,7 +125,10 @@ def _display_execution_plan(
                 plan,
                 stage,
             ),
-            _format_parameters(stage),
+            _format_parameters(
+                plan,
+                stage,
+            ),
             _format_products(
                 plan,
                 stage,
@@ -191,9 +194,6 @@ def _format_input(
         root=plan.project_root,
     )
 
-    if planned_input.source_path is None:
-        return f"{planned_input.name}={destination}"
-
     source = _display_path(
         planned_input.source_path,
         root=plan.project_root,
@@ -203,18 +203,23 @@ def _format_input(
 
 
 def _format_parameters(
+    plan: BuildPlan,
     stage: PlannedStage,
 ) -> str:
     """
-    Format resolved stage parameters.
+    Format parameters declared by a planned stage.
+
+    StageSpec declares which parameters the stage normally consumes.
+    Values are obtained directly from the artifact-specific Resolver
+    retained by BuildPlan rather than from copied stage-local values.
     """
 
-    if not stage.parameters:
+    parameters = stage.spec.parameters
+
+    if not parameters:
         return "-"
 
-    return "\n".join(
-        (f"{parameter.name}={format_value(parameter.value)}") for parameter in stage.parameters
-    )
+    return "\n".join((f"{name}={format_value(plan.resolver(name))}") for name in parameters)
 
 
 def _format_products(

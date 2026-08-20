@@ -89,7 +89,7 @@ def execute(
     )
 
     colors = _require_colors(
-        context.parameter(
+        context.resolver(
             "artwork_colors",
         )
     )

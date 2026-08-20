@@ -107,13 +107,13 @@ def execute(
         "manifest",
     )
 
-    artwork_colors = context.parameter(
+    artwork_colors = context.resolver(
         "artwork_colors",
     )
 
     artwork_raise = _positive_number(
         "artwork_raise",
-        context.parameter(
+        context.resolver(
             "artwork_raise",
         ),
     )

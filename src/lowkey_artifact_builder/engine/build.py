@@ -9,9 +9,14 @@ declared workflow stages.
 
 The build engine owns the artifact workspace, external input
 materialization, and stage execution environment. Model-specific stage
-implementations receive a StageContext containing resolved parameters,
-artifact-owned filesystem inputs, dependency products, declared
-outputs, and filesystem locations required by the stage.
+implementations receive a StageContext containing the artifact-specific
+configuration Resolver, artifact-owned filesystem inputs, dependency
+products, declared outputs, and filesystem locations required by the
+stage.
+
+The Resolver retained by BuildPlan is the single runtime authority for
+artifact configuration. The same Resolver instance is supplied to every
+StageContext in the build.
 
 The engine does not interpret model-specific parameters, resolve
 configuration, resolve external input paths, or interpret product
@@ -69,7 +74,8 @@ def execute_build(
     A stage implementation registry is constructed once for the build.
 
     Stages execute in planned order. Before each stage executes, the
-    engine constructs its StageContext and changes the process working
+    engine constructs its StageContext using the same artifact-specific
+    Resolver retained by BuildPlan and changes the process working
     directory to the stage working directory.
 
     The previous working directory is restored after stage execution,
@@ -184,7 +190,12 @@ def _materialize_inputs(
     The external source must exist and must be a regular file.
     """
 
-    materialized: set[tuple[Path, Path]] = set()
+    materialized: set[
+        tuple[
+            Path,
+            Path,
+        ]
+    ] = set()
 
     destinations: dict[
         Path,
@@ -242,11 +253,13 @@ def _validate_input_destination(
         return
 
     raise BuildError(
-        f"Cannot materialize input {planned_input.name!r} "
-        f"for stage {stage.name!r} of artifact "
-        f"{plan.artifact_id!r}: artifact path "
-        f"{planned_input.path} is already assigned to "
-        f"external source {previous_source}."
+        f"Cannot materialize input "
+        f"{planned_input.name!r} "
+        f"for stage {stage.name!r} "
+        f"of artifact {plan.artifact_id!r}: "
+        f"artifact path {planned_input.path} "
+        f"is already assigned to external "
+        f"source {previous_source}."
     )
 
 
@@ -270,18 +283,22 @@ def _materialize_input(
 
     if not source.exists():
         raise BuildError(
-            f"Cannot materialize input {planned_input.name!r} "
-            f"for stage {stage.name!r} of artifact "
-            f"{plan.artifact_id!r}: external source "
-            f"{source} does not exist."
+            f"Cannot materialize input "
+            f"{planned_input.name!r} "
+            f"for stage {stage.name!r} "
+            f"of artifact {plan.artifact_id!r}: "
+            f"external source {source} "
+            "does not exist."
         )
 
     if not source.is_file():
         raise BuildError(
-            f"Cannot materialize input {planned_input.name!r} "
-            f"for stage {stage.name!r} of artifact "
-            f"{plan.artifact_id!r}: external source "
-            f"{source} is not a regular file."
+            f"Cannot materialize input "
+            f"{planned_input.name!r} "
+            f"for stage {stage.name!r} "
+            f"of artifact {plan.artifact_id!r}: "
+            f"external source {source} "
+            "is not a regular file."
         )
 
     try:
@@ -300,10 +317,12 @@ def _materialize_input(
 
     except OSError as exc:
         raise BuildError(
-            f"Cannot materialize input {planned_input.name!r} "
-            f"for stage {stage.name!r} of artifact "
-            f"{plan.artifact_id!r} from {source} "
-            f"to {destination}: {exc}"
+            f"Cannot materialize input "
+            f"{planned_input.name!r} "
+            f"for stage {stage.name!r} "
+            f"of artifact {plan.artifact_id!r} "
+            f"from {source} to {destination}: "
+            f"{exc}"
         ) from exc
 
 
@@ -319,7 +338,9 @@ def _create_stage_context(
     """
     Construct the execution context for one planned stage.
 
-    Parameters are exposed by their resolved parameter names.
+    The artifact-specific Resolver retained by BuildPlan is supplied
+    directly to StageContext. Parameter values are not copied into a
+    separate stage-local mapping.
 
     Inputs contain both:
 
@@ -337,8 +358,6 @@ def _create_stage_context(
     Model-specific implementations do not resolve project or artifact
     filesystem layout themselves.
     """
-
-    parameters = {parameter.name: parameter.value for parameter in stage.parameters}
 
     inputs = _collect_stage_inputs(
         plan,
@@ -359,7 +378,7 @@ def _create_stage_context(
         project_root=plan.project_root,
         artifact_dir=plan.artifact_dir,
         working_dir=working_dir,
-        parameters=parameters,
+        resolver=plan.resolver,
         inputs=inputs,
         outputs=outputs,
     )
@@ -446,10 +465,14 @@ def _add_dependency_inputs(
 
         except KeyError as exc:
             raise BuildError(
-                f"Cannot execute stage {stage.name!r} "
-                f"for artifact {plan.artifact_id!r}: "
-                f"dependency {dependency_name!r} "
-                "is not present in the build plan."
+                f"Cannot execute stage "
+                f"{stage.name!r} "
+                f"for artifact "
+                f"{plan.artifact_id!r}: "
+                f"dependency "
+                f"{dependency_name!r} "
+                "is not present in the "
+                "build plan."
             ) from exc
 
         for product in dependency.products:
@@ -479,9 +502,12 @@ def _add_stage_input(
 
     if name in inputs:
         raise BuildError(
-            f"Cannot execute stage {stage.name!r} "
-            f"for artifact {plan.artifact_id!r}: "
-            f"duplicate input name {name!r}."
+            f"Cannot execute stage "
+            f"{stage.name!r} "
+            f"for artifact "
+            f"{plan.artifact_id!r}: "
+            f"duplicate input name "
+            f"{name!r}."
         )
 
     inputs[name] = path
@@ -568,9 +594,11 @@ def _execute_stage(
 
     except StageImplementationNotFoundError as exc:
         raise BuildError(
-            f"No implementation is registered for "
-            f"model {context.model_name!r}, "
-            f"stage {context.stage_name!r}."
+            f"No implementation is registered "
+            f"for model "
+            f"{context.model_name!r}, "
+            f"stage "
+            f"{context.stage_name!r}."
         ) from exc
 
     try:
@@ -582,9 +610,12 @@ def _execute_stage(
 
     except Exception as exc:
         raise BuildError(
-            f"Stage {context.stage_name!r} failed "
-            f"for artifact {context.artifact_id!r} "
-            f"using model {context.model_name!r}: "
+            f"Stage "
+            f"{context.stage_name!r} "
+            f"failed for artifact "
+            f"{context.artifact_id!r} "
+            f"using model "
+            f"{context.model_name!r}: "
             f"{exc}"
         ) from exc
 
@@ -619,8 +650,10 @@ def _verify_products(
     details = ", ".join(f"{name!r} ({path})" for name, path in missing)
 
     raise BuildError(
-        f"Stage {context.stage_name!r} "
-        f"for artifact {context.artifact_id!r} "
+        f"Stage "
+        f"{context.stage_name!r} "
+        f"for artifact "
+        f"{context.artifact_id!r} "
         f"did not produce declared product"
         f"{'s' if len(missing) != 1 else ''}: "
         f"{details}."

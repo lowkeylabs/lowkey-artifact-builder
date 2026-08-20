@@ -14,6 +14,9 @@ from pathlib import Path
 
 import pytest
 
+from lowkey_artifact_builder.config import (
+    Resolver,
+)
 from lowkey_artifact_builder.engine import (
     BuildError,
     BuildPlan,
@@ -21,7 +24,6 @@ from lowkey_artifact_builder.engine import (
     PlannedInput,
     PlannedProduct,
     PlannedStage,
-    ResolvedParameter,
     StageContext,
     StageContextError,
     create_build_plan,
@@ -44,7 +46,6 @@ def test_engine_public_interface() -> None:
     assert PlannedInput is not None
     assert PlannedProduct is not None
     assert PlannedStage is not None
-    assert ResolvedParameter is not None
     assert StageContext is not None
     assert StageContextError is not None
     assert BuildError is not None
@@ -91,13 +92,15 @@ def test_create_build_plan_for_artwork(
     )
 
 
-def test_create_build_plan_resolves_stage_parameters(
+def test_create_build_plan_retains_resolver(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Planned stages contain the non-filesystem configuration values they
-    consume together with configuration provenance.
+    A build plan retains the artifact-specific configuration resolver.
+
+    Stage parameter declarations remain on StageSpec while their
+    effective values and provenance come from the shared resolver.
     """
 
     plan = _create_artwork_plan(
@@ -109,16 +112,14 @@ def test_create_build_plan_resolves_stage_parameters(
 
     assert prepare.name == "prepare"
 
-    assert tuple(parameter.name for parameter in prepare.parameters) == ("artwork_colors",)
+    assert prepare.spec.parameters == ("artwork_colors",)
 
-    assert tuple(parameter.value for parameter in prepare.parameters) == (
-        [
-            "white",
-            "black",
-        ],
-    )
+    assert plan.resolver("artwork_colors") == [
+        "white",
+        "black",
+    ]
 
-    assert all(parameter.source == "test" for parameter in prepare.parameters)
+    assert plan.resolver.source("artwork_colors") == "test"
 
 
 def test_create_build_plan_resolves_external_input(
@@ -278,11 +279,13 @@ def test_stage_context_accessors(
     tmp_path: Path,
 ) -> None:
     """
-    Stage contexts expose parameters, inputs, and outputs through their
-    execution-oriented accessors.
+    Stage contexts expose the artifact resolver together with
+    filesystem input and output accessors.
     """
 
     artifact_dir = tmp_path / "artifacts" / "example"
+
+    resolver = _test_resolver()
 
     context = StageContext(
         artifact_id="example",
@@ -291,9 +294,7 @@ def test_stage_context_accessors(
         project_root=tmp_path,
         artifact_dir=artifact_dir,
         working_dir=(artifact_dir / "raster"),
-        parameters={
-            "artwork_pixels": 1024,
-        },
+        resolver=resolver,
         inputs={
             "prepare.trace": (artifact_dir / "prepare" / "trace.svg"),
         },
@@ -302,30 +303,29 @@ def test_stage_context_accessors(
         },
     )
 
-    assert context.parameter("artwork_pixels") == 1024
+    assert context.resolver is resolver
+
+    assert context.resolver("artwork_pixels") == 1024
 
     assert context.input("prepare.trace") == (artifact_dir / "prepare" / "trace.svg")
 
     assert context.output("manifest") == (artifact_dir / "raster" / "products.json")
 
 
-def test_stage_context_rejects_unknown_parameter(
+def test_stage_context_exposes_resolver(
     tmp_path: Path,
 ) -> None:
     """
-    Missing stage parameters produce a StageContextError rather than a
-    raw mapping KeyError.
+    Stage contexts expose the artifact configuration resolver directly.
     """
 
     context = _empty_stage_context(
         tmp_path,
     )
 
-    with pytest.raises(
-        StageContextError,
-        match="has no parameter",
-    ):
-        context.parameter("missing")
+    assert context.resolver("artwork_pixels") == 1024
+
+    assert context.resolver.source("artwork_pixels") == "test"
 
 
 def test_stage_context_rejects_unknown_input(
@@ -709,13 +709,13 @@ def test_execute_build_restores_working_directory_after_failure(
 # =========================================================
 
 
-def test_execute_build_context_contains_stage_parameters(
+def test_execute_build_context_uses_plan_resolver(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Stage implementations receive resolved non-filesystem parameters
-    through the execution context.
+    Every stage receives the exact artifact resolver retained by the
+    build plan.
     """
 
     _create_source(tmp_path)
@@ -727,13 +727,59 @@ def test_execute_build_context_contains_stage_parameters(
 
     observed: dict[
         str,
-        set[str],
+        object,
     ] = {}
 
     def implementation(
         context: StageContext,
     ) -> None:
-        observed[context.stage_name] = set(context.parameters)
+        observed[context.stage_name] = context.resolver
+
+        _create_declared_outputs(context)
+
+    _install_stage_implementation(
+        monkeypatch,
+        implementation,
+    )
+
+    execute_build(plan)
+
+    assert set(observed) == {
+        "prepare",
+        "raster",
+        "vector",
+        "extrude",
+        "package",
+    }
+
+    assert all(resolver is plan.resolver for resolver in observed.values())
+
+
+def test_execute_build_context_has_full_configuration_visibility(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Stage parameter declarations describe normal dependencies but do
+    not restrict access to the complete artifact configuration.
+    """
+
+    _create_source(tmp_path)
+
+    plan = _create_artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    observed: dict[
+        str,
+        float,
+    ] = {}
+
+    def implementation(
+        context: StageContext,
+    ) -> None:
+        observed[context.stage_name] = context.resolver("artwork_size")
 
         _create_declared_outputs(context)
 
@@ -745,24 +791,11 @@ def test_execute_build_context_contains_stage_parameters(
     execute_build(plan)
 
     assert observed == {
-        "prepare": {
-            "artwork_colors",
-        },
-        "raster": {
-            "artwork_colors",
-            "artwork_pixels",
-            "artwork_size",
-            "artwork_min_island_area",
-            "artwork_island_connectivity",
-        },
-        "vector": {
-            "artwork_size",
-        },
-        "extrude": {
-            "artwork_colors",
-            "artwork_raise",
-        },
-        "package": set(),
+        "prepare": 150.0,
+        "raster": 150.0,
+        "vector": 150.0,
+        "extrude": 150.0,
+        "package": 150.0,
     }
 
 
@@ -1104,16 +1137,14 @@ def test_execute_build_rejects_unregistered_stage(
 # =========================================================
 
 
-def _create_artwork_plan(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> BuildPlan:
+def _test_resolver() -> Resolver:
     """
-    Construct a standard artwork build plan for engine tests.
+    Construct the standard artifact configuration resolver used by
+    engine tests.
     """
 
-    class Resolver:
-        values = {
+    return Resolver(
+        values={
             "model": "artwork",
             "source": "source.png",
             "artwork_colors": [
@@ -1125,21 +1156,29 @@ def _create_artwork_plan(
             "artwork_island_connectivity": 8,
             "artwork_size": 150.0,
             "artwork_raise": 1.0,
-        }
+        },
+        provenance={
+            "model": "test",
+            "source": "test",
+            "artwork_colors": "test",
+            "artwork_pixels": "test",
+            "artwork_min_island_area": "test",
+            "artwork_island_connectivity": "test",
+            "artwork_size": "test",
+            "artwork_raise": "test",
+        },
+    )
 
-        def __call__(
-            self,
-            name: str,
-        ):
-            return self.values[name]
 
-        def source(
-            self,
-            name: str,
-        ) -> str:
-            return "test"
+def _create_artwork_plan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> BuildPlan:
+    """
+    Construct a standard artwork build plan for engine tests.
+    """
 
-    resolver = Resolver()
+    resolver = _test_resolver()
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_resolver",
@@ -1182,7 +1221,7 @@ def _empty_stage_context(
         project_root=tmp_path,
         artifact_dir=artifact_dir,
         working_dir=(artifact_dir / "prepare"),
-        parameters={},
+        resolver=_test_resolver(),
         inputs={},
         outputs={},
     )

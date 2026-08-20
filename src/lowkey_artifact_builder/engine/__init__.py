@@ -25,7 +25,6 @@ from .specs import (
     PlannedInput,
     PlannedProduct,
     PlannedStage,
-    ResolvedParameter,
     StageContext,
     StageContextError,
 )
@@ -37,7 +36,6 @@ __all__ = [
     "PlannedInput",
     "PlannedProduct",
     "PlannedStage",
-    "ResolvedParameter",
     "StageContext",
     "StageContextError",
     "create_build_plan",
