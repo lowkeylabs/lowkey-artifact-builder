@@ -881,3 +881,96 @@ def test_write_stls(
         "first",
         "second",
     ]
+
+
+def test_write_restores_model_default_namespace(
+    tmp_path: Path,
+) -> None:
+    """
+    Model serialization restores the 3MF core default namespace.
+
+    ElementTree namespace registration is process-global. Another XML
+    subsystem may therefore replace the default namespace before a 3MF
+    document is written.
+    """
+
+    ET.register_namespace(
+        "",
+        "http://www.w3.org/2000/svg",
+    )
+
+    output = tmp_path / "artifact.3mf"
+
+    write(
+        (
+            Component(
+                name="triangle",
+                mesh=Mesh(
+                    vertices=(
+                        (0.0, 0.0, 0.0),
+                        (1.0, 0.0, 0.0),
+                        (0.0, 1.0, 0.0),
+                    ),
+                    triangles=((0, 1, 2),),
+                ),
+            ),
+        ),
+        output,
+    )
+
+    with zipfile.ZipFile(
+        output,
+        "r",
+    ) as package:
+        model = package.read("3D/3dmodel.model").decode("utf-8")
+
+    assert f'xmlns="{CORE_NS}"' in model
+
+    assert "ns0:model" not in model
+
+
+def test_write_restores_package_default_namespaces(
+    tmp_path: Path,
+) -> None:
+    """
+    Package metadata is serialized with its required default namespaces.
+    """
+
+    ET.register_namespace(
+        "",
+        "http://www.w3.org/2000/svg",
+    )
+
+    output = tmp_path / "artifact.3mf"
+
+    write(
+        (
+            Component(
+                name="triangle",
+                mesh=Mesh(
+                    vertices=(
+                        (0.0, 0.0, 0.0),
+                        (1.0, 0.0, 0.0),
+                        (0.0, 1.0, 0.0),
+                    ),
+                    triangles=((0, 1, 2),),
+                ),
+            ),
+        ),
+        output,
+    )
+
+    with zipfile.ZipFile(
+        output,
+        "r",
+    ) as package:
+        content_types = package.read("[Content_Types].xml").decode("utf-8")
+
+        relationships = package.read("_rels/.rels").decode("utf-8")
+
+    assert f'xmlns="{CONTENT_TYPES_NS}"' in content_types
+
+    assert f'xmlns="{RELATIONSHIPS_NS}"' in relationships
+
+    assert "ns0:Types" not in content_types
+    assert "ns0:Relationships" not in relationships

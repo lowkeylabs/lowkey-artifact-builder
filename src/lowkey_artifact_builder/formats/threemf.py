@@ -35,6 +35,7 @@ MODEL_RELATIONSHIP_TYPE = "http://schemas.microsoft.com/3dmanufacturing/2013/01/
 
 MODEL_CONTENT_TYPE = "application/vnd.ms-package.3dmanufacturing-3dmodel+xml"
 
+
 # =========================================================
 # Errors
 # =========================================================
@@ -65,12 +66,20 @@ class Mesh:
     """
 
     vertices: tuple[
-        tuple[float, float, float],
+        tuple[
+            float,
+            float,
+            float,
+        ],
         ...,
     ]
 
     triangles: tuple[
-        tuple[int, int, int],
+        tuple[
+            int,
+            int,
+            int,
+        ],
         ...,
     ]
 
@@ -165,12 +174,28 @@ def _load_binary_stl(
         80,
     )[0]
 
-    vertices: list[tuple[float, float, float]] = []
+    vertices: list[
+        tuple[
+            float,
+            float,
+            float,
+        ]
+    ] = []
 
-    triangles: list[tuple[int, int, int]] = []
+    triangles: list[
+        tuple[
+            int,
+            int,
+            int,
+        ]
+    ] = []
 
     vertex_indexes: dict[
-        tuple[float, float, float],
+        tuple[
+            float,
+            float,
+            float,
+        ],
         int,
     ] = {}
 
@@ -242,12 +267,28 @@ def _load_ascii_stl(
     except UnicodeDecodeError as exc:
         raise ThreeMFError(f"STL file is neither valid binary nor UTF-8 ASCII STL: {path}") from exc
 
-    vertices: list[tuple[float, float, float]] = []
+    vertices: list[
+        tuple[
+            float,
+            float,
+            float,
+        ]
+    ] = []
 
-    triangles: list[tuple[int, int, int]] = []
+    triangles: list[
+        tuple[
+            int,
+            int,
+            int,
+        ]
+    ] = []
 
     vertex_indexes: dict[
-        tuple[float, float, float],
+        tuple[
+            float,
+            float,
+            float,
+        ],
         int,
     ] = {}
 
@@ -343,20 +384,29 @@ def _validate_mesh(
 
 
 def write(
-    components: tuple[Component, ...],
+    components: tuple[
+        Component,
+        ...,
+    ],
     path: Path,
 ) -> None:
     """
     Write components to a 3MF package.
 
-    Each component becomes an independent 3MF mesh object and is added
-    independently to the build section.
+    Each component becomes an independent 3MF mesh object
+    and is added independently to the build section.
+
+    Namespace registration is deliberately performed at
+    serialization time. ElementTree namespace registration
+    is process-global, so another subsystem such as SVG
+    processing may change the default namespace between
+    construction and serialization.
 
     Raises:
         ThreeMFError:
-            If no components are supplied, component names are
-            duplicated, mesh geometry is invalid, or the package cannot
-            be written.
+            If no components are supplied, component names
+            are duplicated, mesh geometry is invalid, or
+            the package cannot be written.
     """
 
     path = Path(path)
@@ -385,17 +435,26 @@ def write(
         ) as package:
             package.writestr(
                 "[Content_Types].xml",
-                _serialize_xml(content_types),
+                _serialize_xml(
+                    content_types,
+                    CONTENT_TYPES_NS,
+                ),
             )
 
             package.writestr(
                 "_rels/.rels",
-                _serialize_xml(relationships),
+                _serialize_xml(
+                    relationships,
+                    RELATIONSHIPS_NS,
+                ),
             )
 
             package.writestr(
                 "3D/3dmodel.model",
-                _serialize_xml(model),
+                _serialize_xml(
+                    model,
+                    CORE_NS,
+                ),
             )
 
     except (
@@ -407,7 +466,10 @@ def write(
 
 def write_stls(
     stls: tuple[
-        tuple[str, Path],
+        tuple[
+            str,
+            Path,
+        ],
         ...,
     ],
     path: Path,
@@ -415,7 +477,8 @@ def write_stls(
     """
     Construct a 3MF document directly from named STL files.
 
-    This is a convenience operation around load_stl() and write().
+    This is a convenience operation around load_stl()
+    and write().
     """
 
     components = tuple(
@@ -438,7 +501,10 @@ def write_stls(
 
 
 def _validate_components(
-    components: tuple[Component, ...],
+    components: tuple[
+        Component,
+        ...,
+    ],
 ) -> None:
     """
     Validate components before constructing the package.
@@ -464,16 +530,18 @@ def _validate_components(
 
 
 def _build_model(
-    components: tuple[Component, ...],
+    components: tuple[
+        Component,
+        ...,
+    ],
 ) -> ET.Element:
     """
     Construct the primary 3MF model document.
-    """
 
-    ET.register_namespace(
-        "",
-        CORE_NS,
-    )
+    Namespace registration intentionally does not occur
+    here. The correct default namespace is established
+    immediately before serialization.
+    """
 
     model = ET.Element(
         f"{{{CORE_NS}}}model",
@@ -542,7 +610,11 @@ def _add_mesh_object(
         f"{{{CORE_NS}}}vertices",
     )
 
-    for x, y, z in component.mesh.vertices:
+    for (
+        x,
+        y,
+        z,
+    ) in component.mesh.vertices:
         ET.SubElement(
             vertices_element,
             f"{{{CORE_NS}}}vertex",
@@ -558,7 +630,11 @@ def _add_mesh_object(
         f"{{{CORE_NS}}}triangles",
     )
 
-    for v1, v2, v3 in component.mesh.triangles:
+    for (
+        v1,
+        v2,
+        v3,
+    ) in component.mesh.triangles:
         ET.SubElement(
             triangles_element,
             f"{{{CORE_NS}}}triangle",
@@ -578,12 +654,10 @@ def _add_mesh_object(
 def _build_content_types() -> ET.Element:
     """
     Construct the OPC content-types document.
-    """
 
-    ET.register_namespace(
-        "",
-        CONTENT_TYPES_NS,
-    )
+    Namespace registration intentionally occurs only during
+    serialization.
+    """
 
     types = ET.Element(f"{{{CONTENT_TYPES_NS}}}Types")
 
@@ -600,8 +674,8 @@ def _build_content_types() -> ET.Element:
         types,
         f"{{{CONTENT_TYPES_NS}}}Override",
         {
-            "PartName": "/3D/3dmodel.model",
-            "ContentType": MODEL_CONTENT_TYPE,
+            "PartName": ("/3D/3dmodel.model"),
+            "ContentType": (MODEL_CONTENT_TYPE),
         },
     )
 
@@ -611,12 +685,10 @@ def _build_content_types() -> ET.Element:
 def _build_relationships() -> ET.Element:
     """
     Construct the root OPC relationships document.
-    """
 
-    ET.register_namespace(
-        "",
-        RELATIONSHIPS_NS,
-    )
+    Namespace registration intentionally occurs only during
+    serialization.
+    """
 
     relationships = ET.Element(f"{{{RELATIONSHIPS_NS}}}Relationships")
 
@@ -624,9 +696,9 @@ def _build_relationships() -> ET.Element:
         relationships,
         f"{{{RELATIONSHIPS_NS}}}Relationship",
         {
-            "Target": "/3D/3dmodel.model",
+            "Target": ("/3D/3dmodel.model"),
             "Id": "rel0",
-            "Type": MODEL_RELATIONSHIP_TYPE,
+            "Type": (MODEL_RELATIONSHIP_TYPE),
         },
     )
 
@@ -640,10 +712,24 @@ def _build_relationships() -> ET.Element:
 
 def _serialize_xml(
     root: ET.Element,
+    namespace: str,
 ) -> bytes:
     """
     Serialize an XML document with an XML declaration.
+
+    ElementTree namespace registration is process-global.
+
+    Re-establish the namespace belonging to this document
+    immediately before serialization. This prevents another
+    XML subsystem from changing the default namespace and
+    causing ElementTree to emit namespace prefixes such as
+    ``ns0`` into a 3MF package.
     """
+
+    ET.register_namespace(
+        "",
+        namespace,
+    )
 
     return ET.tostring(
         root,
@@ -658,8 +744,8 @@ def _format_float(
     """
     Format a floating-point coordinate for 3MF XML.
 
-    Unnecessary trailing zeroes are removed while retaining sufficient
-    precision for STL-derived geometry.
+    Unnecessary trailing zeroes are removed while retaining
+    sufficient precision for STL-derived geometry.
     """
 
     return format(
