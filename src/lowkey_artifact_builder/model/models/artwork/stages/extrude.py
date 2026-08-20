@@ -4,20 +4,32 @@ Artwork extrusion stage.
 The extrusion stage converts registered vector color layers into
 independently printable STL components.
 
-Filesystem layout, dependency resolution, and configuration resolution
-are responsibilities of the build engine. This implementation consumes
-only the paths and values supplied through StageContext.
+Each vector layer is imported into OpenSCAD, centered about the origin,
+and linearly extruded from Z=0 through the configured artwork raise.
 
 The vector manifest identifies the dynamically generated vector layers
 that participate in this stage. The generated STL components are
 dynamic products whose filenames, geometry associations, and color
 assignments are recorded in the declared extrusion manifest.
+
+Filesystem layout, dependency resolution, and configuration resolution
+are responsibilities of the build engine. This implementation consumes
+only the paths and values supplied through StageContext.
 """
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
 from lowkey_artifact_builder.engine import (
     StageContext,
+)
+from lowkey_artifact_builder.tools.openscad import (
+    OpenSCADError,
+    render_stl_source,
 )
 
 # =========================================================
@@ -32,7 +44,32 @@ class ExtrudeError(RuntimeError):
 
 
 # =========================================================
-# Stage implementation
+# Specifications
+# =========================================================
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class VectorLayer:
+    """
+    One vector layer described by the vector manifest.
+    """
+
+    index: int
+
+    path: Path
+
+    color: tuple[
+        int,
+        int,
+        int,
+    ]
+
+
+# =========================================================
+# Public interface
 # =========================================================
 
 
@@ -60,9 +97,6 @@ def execute(
         manifest
             Manifest describing the dynamically generated STL
             components and their artwork color assignments.
-
-    The actual SVG-to-STL extrusion implementation has not yet been
-    introduced.
     """
 
     vector_manifest = context.input(
@@ -77,8 +111,11 @@ def execute(
         "artwork_colors",
     )
 
-    artwork_raise = context.parameter(
+    artwork_raise = _positive_number(
         "artwork_raise",
+        context.parameter(
+            "artwork_raise",
+        ),
     )
 
     if not vector_manifest.is_file():
@@ -87,13 +124,391 @@ def execute(
     if not artwork_colors:
         raise ExtrudeError("Artwork palette is empty.")
 
-    if artwork_raise <= 0:
-        raise ExtrudeError("Artwork raise must be greater than zero.")
+    extrude_manifest.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
-    raise ExtrudeError(
-        "Artwork extrusion is not yet implemented. "
-        f"Input manifest: {vector_manifest}; "
-        f"output manifest: {extrude_manifest}"
+    try:
+        layers = _load_vector_manifest(vector_manifest)
+
+        outputs: list[
+            tuple[
+                VectorLayer,
+                Path,
+            ]
+        ] = []
+
+        for layer in layers:
+            output = extrude_manifest.parent / f"color-{layer.index}.stl"
+
+            source = _build_scad(
+                layer.path,
+                artwork_raise=artwork_raise,
+            )
+
+            render_stl_source(
+                source,
+                output,
+            )
+
+            if not output.is_file():
+                raise ExtrudeError(
+                    f"OpenSCAD completed without creating the expected STL: {output}"
+                )
+
+            outputs.append(
+                (
+                    layer,
+                    output,
+                )
+            )
+
+        _write_manifest(
+            extrude_manifest,
+            outputs,
+            artwork_raise=artwork_raise,
+        )
+
+    except ExtrudeError:
+        raise
+
+    except OpenSCADError as exc:
+        raise ExtrudeError(f"Could not extrude artwork from {vector_manifest}: {exc}") from exc
+
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        KeyError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise ExtrudeError(
+            f"Could not process vector artwork manifest {vector_manifest}: {exc}"
+        ) from exc
+
+
+# =========================================================
+# Validation
+# =========================================================
+
+
+def _positive_number(
+    name: str,
+    value: Any,
+) -> float:
+    """
+    Return a validated positive number.
+    """
+
+    if isinstance(
+        value,
+        bool,
+    ):
+        raise ExtrudeError(f"{name} must be greater than zero.")
+
+    try:
+        result = float(value)
+
+    except (
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise ExtrudeError(f"{name} must be numeric.") from exc
+
+    if result <= 0:
+        raise ExtrudeError(f"{name} must be greater than zero.")
+
+    return result
+
+
+def _color_component(
+    color: dict[str, Any],
+    name: str,
+    index: int,
+) -> int:
+    """
+    Return one validated RGB component.
+    """
+
+    value = color.get(name)
+
+    if (
+        isinstance(
+            value,
+            bool,
+        )
+        or not isinstance(
+            value,
+            int,
+        )
+        or value < 0
+        or value > 255
+    ):
+        raise ExtrudeError(f"Vector product {index} has invalid {name} color component.")
+
+    return value
+
+
+# =========================================================
+# Vector manifest
+# =========================================================
+
+
+def _load_vector_manifest(
+    manifest: Path,
+) -> list[VectorLayer]:
+    """
+    Load vector products from the vector manifest.
+    """
+
+    try:
+        data = json.loads(
+            manifest.read_text(
+                encoding="utf-8",
+            )
+        )
+
+    except (
+        OSError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise ExtrudeError(f"Could not read vector manifest: {manifest}") from exc
+
+    products = data.get("products")
+
+    if not isinstance(
+        products,
+        list,
+    ):
+        raise ExtrudeError("Vector manifest does not contain a products list.")
+
+    if not products:
+        raise ExtrudeError("Vector manifest contains no vector products.")
+
+    result: list[VectorLayer] = []
+
+    for product in products:
+        if not isinstance(
+            product,
+            dict,
+        ):
+            raise ExtrudeError("Vector manifest contains an invalid product.")
+
+        index = product.get("index")
+
+        filename = product.get("path")
+
+        color_data = product.get("color")
+
+        if (
+            isinstance(
+                index,
+                bool,
+            )
+            or not isinstance(
+                index,
+                int,
+            )
+            or index < 1
+        ):
+            raise ExtrudeError("Vector product index must be a positive integer.")
+
+        if (
+            not isinstance(
+                filename,
+                str,
+            )
+            or not filename
+        ):
+            raise ExtrudeError(f"Vector product {index} has no valid path.")
+
+        if not isinstance(
+            color_data,
+            dict,
+        ):
+            raise ExtrudeError(f"Vector product {index} has no valid color.")
+
+        color = (
+            _color_component(
+                color_data,
+                "red",
+                index,
+            ),
+            _color_component(
+                color_data,
+                "green",
+                index,
+            ),
+            _color_component(
+                color_data,
+                "blue",
+                index,
+            ),
+        )
+
+        path = manifest.parent / filename
+
+        if not path.is_file():
+            raise ExtrudeError(f"Vector product does not exist: {path}")
+
+        if path.suffix.lower() != ".svg":
+            raise ExtrudeError(f"Vector product must be an SVG file: {path}")
+
+        result.append(
+            VectorLayer(
+                index=index,
+                path=path,
+                color=color,
+            )
+        )
+
+    indexes = [layer.index for layer in result]
+
+    if len(indexes) != len(set(indexes)):
+        raise ExtrudeError("Vector product indexes must be unique.")
+
+    result.sort(key=lambda layer: layer.index)
+
+    return result
+
+
+# =========================================================
+# OpenSCAD source
+# =========================================================
+
+
+def _scad_number(
+    value: float,
+) -> str:
+    """
+    Format a number for generated OpenSCAD source.
+    """
+
+    if value.is_integer():
+        return str(int(value))
+
+    return format(
+        value,
+        ".12g",
+    )
+
+
+def _scad_string(
+    value: str,
+) -> str:
+    """
+    Quote a string for generated OpenSCAD source.
+    """
+
+    escaped = value.replace(
+        "\\",
+        "\\\\",
+    ).replace(
+        '"',
+        '\\"',
+    )
+
+    return f'"{escaped}"'
+
+
+def _build_scad(
+    svg: Path,
+    *,
+    artwork_raise: float,
+) -> str:
+    """
+    Return OpenSCAD source for one artwork color layer.
+
+    The SVG produced by the vector stage has physical width and height
+    corresponding to artwork_size and uses an origin at its upper-left
+    corner.
+
+    OpenSCAD imports that SVG into the XY plane. The imported geometry
+    is centered using the SVG document's physical dimensions and then
+    extruded upward from Z=0.
+    """
+
+    svg = svg.resolve()
+
+    if not svg.is_file():
+        raise ExtrudeError(f"Artwork SVG does not exist: {svg}")
+
+    artwork_raise_scad = _scad_number(artwork_raise)
+
+    artwork_svg = _scad_string(str(svg))
+
+    return f"""//
+// Generated artwork color layer.
+//
+// DO NOT EDIT THIS FILE.
+//
+
+artwork_raise = {artwork_raise_scad};
+
+artwork_svg = {artwork_svg};
+
+
+// ---------------------------------------------------------
+// Artwork solid
+// ---------------------------------------------------------
+
+linear_extrude(
+    height = artwork_raise,
+    convexity = 10
+)
+    import(
+        artwork_svg,
+        center = true
+    );
+"""
+
+
+# =========================================================
+# Extrusion manifest
+# =========================================================
+
+
+def _write_manifest(
+    path: Path,
+    layers: list[
+        tuple[
+            VectorLayer,
+            Path,
+        ]
+    ],
+    *,
+    artwork_raise: float,
+) -> None:
+    """
+    Write the extrusion product manifest.
+    """
+
+    products = [
+        {
+            "index": vector.index,
+            "path": stl.name,
+            "color": {
+                "red": vector.color[0],
+                "green": vector.color[1],
+                "blue": vector.color[2],
+            },
+        }
+        for vector, stl in layers
+    ]
+
+    data = {
+        "artwork_raise": artwork_raise,
+        "products": products,
+    }
+
+    path.write_text(
+        json.dumps(
+            data,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
     )
 
 

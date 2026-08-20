@@ -751,6 +751,7 @@ def test_execute_build_context_contains_stage_parameters(
         "raster": {
             "artwork_colors",
             "artwork_pixels",
+            "artwork_size",
             "artwork_min_island_area",
             "artwork_island_connectivity",
         },

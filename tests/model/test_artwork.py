@@ -72,6 +72,7 @@ def test_artwork_raster_inputs() -> None:
     assert stages["raster"].parameters == (
         "artwork_colors",
         "artwork_pixels",
+        "artwork_size",
         "artwork_min_island_area",
         "artwork_island_connectivity",
     )
@@ -119,14 +120,17 @@ def test_artwork_model_parameters() -> None:
     External input parameters participate in the model's complete
     configuration requirements even though they are not ordinary stage
     parameters.
+
+    Parameters consumed by multiple stages appear once, ordered by
+    their first occurrence in the model workflow.
     """
 
     assert MODEL.parameters == (
         "source",
         "artwork_colors",
         "artwork_pixels",
+        "artwork_size",
         "artwork_min_island_area",
         "artwork_island_connectivity",
-        "artwork_size",
         "artwork_raise",
     )

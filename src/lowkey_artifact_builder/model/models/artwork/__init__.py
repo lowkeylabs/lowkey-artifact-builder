@@ -96,6 +96,7 @@ STAGES = (
         parameters=(
             "artwork_colors",
             "artwork_pixels",
+            "artwork_size",
             "artwork_min_island_area",
             "artwork_island_connectivity",
         ),

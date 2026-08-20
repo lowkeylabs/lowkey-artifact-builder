@@ -10,14 +10,23 @@ through StageContext.
 
 The extrusion manifest identifies the dynamically generated STL
 components that participate in the final artifact. The package stage
-must use that manifest rather than discover components by scanning the
+uses that manifest rather than discovering components by scanning the
 extrusion directory.
 """
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
 from lowkey_artifact_builder.engine import (
     StageContext,
+)
+from lowkey_artifact_builder.formats.threemf import (
+    ThreeMFError,
+    write_stls,
 )
 
 # =========================================================
@@ -29,6 +38,31 @@ class PackageError(RuntimeError):
     """
     Raised when artwork packaging cannot be completed.
     """
+
+
+# =========================================================
+# Specifications
+# =========================================================
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class ExtrudedComponent:
+    """
+    One STL component described by the extrusion manifest.
+    """
+
+    index: int
+
+    path: Path
+
+    color: tuple[
+        int,
+        int,
+        int,
+    ]
 
 
 # =========================================================
@@ -52,9 +86,6 @@ def execute(
 
         artifact
             Final multicomponent 3MF artifact.
-
-    The actual STL-to-3MF packaging implementation has not yet been
-    introduced.
     """
 
     extrude_manifest = context.input(
@@ -68,11 +99,244 @@ def execute(
     if not extrude_manifest.is_file():
         raise PackageError(f"Extrusion product manifest does not exist: {extrude_manifest}")
 
-    raise PackageError(
-        "Artwork 3MF packaging is not yet implemented. "
-        f"Input manifest: {extrude_manifest}; "
-        f"output artifact: {artifact}"
+    try:
+        components = _load_extrude_manifest(extrude_manifest)
+
+        stls = tuple(
+            (
+                _component_name(component),
+                component.path,
+            )
+            for component in components
+        )
+
+        write_stls(
+            stls,
+            artifact,
+        )
+
+        if not artifact.is_file():
+            raise PackageError(
+                f"3MF packaging completed without creating the expected artifact: {artifact}"
+            )
+
+    except PackageError:
+        raise
+
+    except ThreeMFError as exc:
+        raise PackageError(
+            f"Could not package artwork components from {extrude_manifest}: {exc}"
+        ) from exc
+
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        KeyError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise PackageError(
+            f"Could not process extrusion manifest {extrude_manifest}: {exc}"
+        ) from exc
+
+
+# =========================================================
+# Manifest loading
+# =========================================================
+
+
+def _load_extrude_manifest(
+    manifest: Path,
+) -> list[ExtrudedComponent]:
+    """
+    Load STL components from the extrusion manifest.
+    """
+
+    try:
+        data = json.loads(
+            manifest.read_text(
+                encoding="utf-8",
+            )
+        )
+
+    except (
+        OSError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise PackageError(f"Could not read extrusion manifest: {manifest}") from exc
+
+    if not isinstance(
+        data,
+        dict,
+    ):
+        raise PackageError("Extrusion manifest must contain a JSON object.")
+
+    products = data.get("products")
+
+    if not isinstance(
+        products,
+        list,
+    ):
+        raise PackageError("Extrusion manifest does not contain a products list.")
+
+    if not products:
+        raise PackageError("Extrusion manifest contains no STL products.")
+
+    result: list[ExtrudedComponent] = []
+
+    for product in products:
+        result.append(
+            _load_component(
+                manifest,
+                product,
+            )
+        )
+
+    indexes = [component.index for component in result]
+
+    if len(indexes) != len(set(indexes)):
+        raise PackageError("Extrusion product indexes must be unique.")
+
+    result.sort(key=lambda component: component.index)
+
+    return result
+
+
+def _load_component(
+    manifest: Path,
+    product: Any,
+) -> ExtrudedComponent:
+    """
+    Load and validate one extrusion product.
+    """
+
+    if not isinstance(
+        product,
+        dict,
+    ):
+        raise PackageError("Extrusion manifest contains an invalid product.")
+
+    index = product.get("index")
+
+    filename = product.get("path")
+
+    color_data = product.get("color")
+
+    if (
+        isinstance(
+            index,
+            bool,
+        )
+        or not isinstance(
+            index,
+            int,
+        )
+        or index < 1
+    ):
+        raise PackageError("Extrusion product index must be a positive integer.")
+
+    if (
+        not isinstance(
+            filename,
+            str,
+        )
+        or not filename
+    ):
+        raise PackageError(f"Extrusion product {index} has no valid path.")
+
+    if not isinstance(
+        color_data,
+        dict,
+    ):
+        raise PackageError(f"Extrusion product {index} has no valid color.")
+
+    color = (
+        _color_component(
+            color_data,
+            "red",
+            index,
+        ),
+        _color_component(
+            color_data,
+            "green",
+            index,
+        ),
+        _color_component(
+            color_data,
+            "blue",
+            index,
+        ),
     )
+
+    path = manifest.parent / filename
+
+    if not path.is_file():
+        raise PackageError(f"Extrusion product does not exist: {path}")
+
+    if path.suffix.lower() != ".stl":
+        raise PackageError(f"Extrusion product must be an STL file: {path}")
+
+    return ExtrudedComponent(
+        index=index,
+        path=path,
+        color=color,
+    )
+
+
+# =========================================================
+# Color validation
+# =========================================================
+
+
+def _color_component(
+    color: dict[str, Any],
+    name: str,
+    index: int,
+) -> int:
+    """
+    Return one validated RGB component.
+    """
+
+    value = color.get(name)
+
+    if (
+        isinstance(
+            value,
+            bool,
+        )
+        or not isinstance(
+            value,
+            int,
+        )
+        or value < 0
+        or value > 255
+    ):
+        raise PackageError(f"Extrusion product {index} has invalid {name} color component.")
+
+    return value
+
+
+# =========================================================
+# Component naming
+# =========================================================
+
+
+def _component_name(
+    component: ExtrudedComponent,
+) -> str:
+    """
+    Return the 3MF object name for one artwork component.
+
+    The layer number is retained because it is the stable identity of
+    the independently printable artwork component.
+
+    RGB is included to preserve the artwork color assignment in the
+    otherwise color-neutral core 3MF representation.
+    """
+
+    red, green, blue = component.color
+
+    return f"color-{component.index}-{red:02x}{green:02x}{blue:02x}"
 
 
 __all__ = [

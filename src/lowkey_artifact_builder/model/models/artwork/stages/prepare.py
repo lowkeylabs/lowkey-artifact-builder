@@ -2,17 +2,24 @@
 Artwork prepare stage.
 
 The prepare stage converts the materialized source raster artwork into
-a multicolor vector trace using the resolved artwork palette.
+a multicolor SVG trace.
 
 Filesystem layout and configuration resolution are responsibilities of
-the build engine. This implementation consumes only the paths and
-values supplied through StageContext.
+the build engine. This implementation consumes only the inputs,
+parameters, and outputs supplied through StageContext.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+
 from lowkey_artifact_builder.engine import (
     StageContext,
+)
+from lowkey_artifact_builder.tools.inkscape import (
+    InkscapeError,
+    run,
 )
 
 # =========================================================
@@ -27,7 +34,17 @@ class PrepareError(RuntimeError):
 
 
 # =========================================================
-# Stage implementation
+# Trace defaults
+# =========================================================
+
+
+DEFAULT_SPECKLES = 2
+DEFAULT_SMOOTH_CORNERS = 1.0
+DEFAULT_OPTIMIZE = 0.2
+
+
+# =========================================================
+# Public interface
 # =========================================================
 
 
@@ -37,44 +54,211 @@ def execute(
     """
     Execute the artwork prepare stage.
 
-    The stage consumes:
+    Inputs:
 
         source
-            Materialized source raster artwork.
+            Materialized source PNG.
+
+    Parameters:
 
         artwork_colors
-            Resolved artwork palette.
+            Number of colors to retain in the multicolor trace.
 
-    The stage produces:
+    Outputs:
 
         trace
-            Multicolor SVG trace of the source artwork.
+            Multicolor SVG trace.
 
-    The actual raster-to-vector tracing implementation has not yet
-    been introduced.
+    The traced SVG intentionally contains both the original raster
+    image and the generated vector trace. This preserves the behavior
+    of the original artwork workflow and makes the intermediate SVG
+    useful for visual inspection.
     """
 
     source = context.input(
         "source",
     )
 
-    trace = context.output(
+    output = context.output(
         "trace",
     )
 
-    artwork_colors = context.parameter(
-        "artwork_colors",
+    colors = _require_color_count(
+        context.parameter(
+            "artwork_colors",
+        )
     )
+
+    _trace_multicolor(
+        source,
+        output,
+        colors=colors,
+    )
+
+
+# =========================================================
+# Validation
+# =========================================================
+
+
+def _require_color_count(
+    value: Any,
+) -> int:
+    """
+    Return a validated multicolor trace color count.
+    """
+
+    if (
+        isinstance(
+            value,
+            bool,
+        )
+        or not isinstance(
+            value,
+            int,
+        )
+        or value < 2
+    ):
+        raise PrepareError("artwork_colors must be an integer greater than or equal to 2.")
+
+    return value
+
+
+def _require_source(
+    source: Path,
+) -> None:
+    """
+    Validate the source raster artwork.
+    """
 
     if not source.is_file():
-        raise PrepareError(f"Artwork source does not exist: {source}")
+        raise PrepareError(f"Source artwork does not exist: {source}")
 
-    if not artwork_colors:
-        raise PrepareError("Artwork palette is empty.")
+    if source.suffix.lower() != ".png":
+        raise PrepareError(f"Source artwork must be a PNG file: {source}")
 
-    raise PrepareError(
-        f"Artwork prepare tracing is not yet implemented. Source: {source}; output: {trace}"
+
+def _require_output(
+    source: Path,
+    output: Path,
+) -> None:
+    """
+    Validate the trace output path.
+    """
+
+    if output.suffix.lower() != ".svg":
+        raise PrepareError(f"Trace output must be an SVG file: {output}")
+
+    if source.resolve() == output.resolve():
+        raise PrepareError("Trace output must differ from the source artwork.")
+
+
+# =========================================================
+# Multicolor tracing
+# =========================================================
+
+
+def _trace_multicolor(
+    source: Path,
+    output: Path,
+    *,
+    colors: int,
+    smooth: bool = True,
+    stack: bool = True,
+    remove_background: bool = False,
+    speckles: int = DEFAULT_SPECKLES,
+    smooth_corners: float = DEFAULT_SMOOTH_CORNERS,
+    optimize: float = DEFAULT_OPTIMIZE,
+) -> None:
+    """
+    Trace a PNG into an inspectable multicolor SVG.
+
+    Inkscape opens the PNG directly, performs a multicolor bitmap
+    trace, and exports the complete page as SVG.
+
+    The action sequence is inherited from the original working artwork
+    pipeline.
+    """
+
+    source = Path(
+        source,
     )
+
+    output = Path(
+        output,
+    ).resolve()
+
+    _require_source(
+        source,
+    )
+
+    _require_output(
+        source,
+        output,
+    )
+
+    if speckles < 0:
+        raise PrepareError("Trace speckle size cannot be negative.")
+
+    if smooth_corners < 0:
+        raise PrepareError("Trace corner smoothing cannot be negative.")
+
+    if optimize < 0:
+        raise PrepareError("Trace optimization tolerance cannot be negative.")
+
+    output.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    trace_parameters = ",".join(
+        (
+            str(colors),
+            _bool_value(smooth),
+            _bool_value(stack),
+            _bool_value(remove_background),
+            str(speckles),
+            str(smooth_corners),
+            str(optimize),
+        )
+    )
+
+    actions = (
+        "select-all",
+        f"object-trace:{trace_parameters}",
+        "export-type:svg",
+        f"export-filename:{output}",
+        "export-area-page",
+        "export-do",
+    )
+
+    try:
+        run(
+            source,
+            actions=actions,
+        )
+
+    except InkscapeError as exc:
+        raise PrepareError(f"Could not trace source artwork: {source}") from exc
+
+    if not output.is_file():
+        raise PrepareError(f"Inkscape did not create the expected trace output: {output}")
+
+
+# =========================================================
+# Helpers
+# =========================================================
+
+
+def _bool_value(
+    value: bool,
+) -> str:
+    """
+    Return the boolean representation expected by Inkscape's
+    object-trace action.
+    """
+
+    return "true" if value else "false"
 
 
 __all__ = [
