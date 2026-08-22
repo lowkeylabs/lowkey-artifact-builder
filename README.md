@@ -1,12 +1,8 @@
 # lowkey-artifact-builder
 
-`lowkey-artifact-builder` is a model-driven build system for creating
-reproducible, 3D-printable artifacts.
+`lowkey-artifact-builder` is a model-driven build system for creating reproducible, 3D-printable artifacts.
 
-The project manages configurable artifacts through declarative build
-pipelines. Each artifact selects a model, enables optional features, and
-provides configuration that is resolved into a build plan consisting of
-stages, dependencies, and filesystem products.
+The project manages configurable artifacts through declarative build pipelines. Each artifact selects a model and provides configuration that is resolved into a build plan consisting of stages, dependencies, inputs, parameters, and filesystem products.
 
 The final product of a successful build is a ready-to-slice 3MF file:
 
@@ -14,57 +10,70 @@ The final product of a successful build is a ready-to-slice 3MF file:
 artifacts/<artifact_id>.3mf
 ```
 
-`lowkey-artifact-builder` is developed by
-[LowKeyLabs LLC](https://lowkeylabs.com).
-
+`lowkey-artifact-builder` is developed by [LowKeyLabs LLC](https://lowkeylabs.com).
 
 ## Status
 
-**Early development / architectural implementation.**
+**Active development with a working end-to-end artwork pipeline.**
 
-The project is currently establishing the model registry, configuration
-system, build planner, dependency graph, filesystem conventions, and
-pipeline runner.
+The generic configuration, model registry, build planning, stage execution, filesystem, and packaging infrastructure is implemented and is currently exercised by the `artwork` model.
 
-The initial implementation is derived from experience building the
-[`low-ornament-workflow`](https://github.com/lowkeylabs/low-ornament-workflow)
-PNG-to-3MF pipeline.
+The `artwork` model provides a complete raster-to-3MF pipeline:
 
-The new architecture generalizes that workflow so that multiple artifact
-models can share the same configuration and build infrastructure.
+```text
+source PNG
+    │
+    ▼
+ prepare
+    │
+    ▼
+ raster
+    │
+    ▼
+ vector
+    │
+    ▼
+ extrude
+    │
+    ▼
+ package
+    │
+    ▼
+artifact.3mf
+```
 
+It converts source raster artwork into registered, mutually exclusive color geometry, extrudes the geometry into independently printable components, and packages those components into a multicomponent 3MF file.
+
+Additional models, including `circular` and `logo`, are under development.
+
+The project grew from experience with the [`low-ornament-workflow`](https://github.com/lowkeylabs/low-ornament-workflow) PNG-to-3MF pipeline. The current architecture generalizes that workflow so multiple artifact models can share the same configuration, planning, execution, and filesystem infrastructure.
 
 ## Goals
 
 `lowkey-artifact-builder` is designed around several principles:
 
-- **Model independent** — the build engine should not contain assumptions
-  about a particular artifact geometry.
-- **Artifact oriented** — every build operates on a uniquely identified
-  artifact.
-- **Declarative** — models declare their features, stages, dependencies,
-  and expected filesystem products before execution begins.
-- **Inspectable** — the complete build plan can be examined before a build.
-- **Resumable** — completed filesystem products can be reused rather than
-  regenerated unnecessarily.
-- **Debuggable** — intermediate products remain available for inspection.
-- **Reproducible** — configuration and build dependencies determine what
-  must be rebuilt.
-- **Extensible** — new models can use the generic pipeline without adding
-  model-specific behavior to the build engine.
-
+* **Model independent** — the build engine does not contain assumptions about a particular artifact geometry.
+* **Artifact oriented** — every build operates on a uniquely identified artifact.
+* **Declarative** — models declare their stages, dependencies, parameters, inputs, and expected filesystem products.
+* **Inspectable** — a complete build plan can be constructed and examined before execution.
+* **Debuggable** — intermediate products remain available for inspection.
+* **Reproducible** — source material and resolved configuration determine the generated artifact.
+* **Extensible** — new models use the generic build infrastructure without adding model-specific behavior to the build engine.
+* **Composable** — the architecture is intended to support increasingly complex artifacts assembled from independently generated geometry.
 
 ## Concepts
 
 ### Workspace
 
-A workspace is a directory containing the source material and configuration
-for one or more artifacts.
+A workspace is a directory containing source material and configuration for one or more artifacts.
 
-A workspace will contain a `workspace.toml` file that provides
-workspace-wide and artifact-specific configuration.
+Workspace configuration is stored in:
 
-For example:
+```text
+workspace.toml
+```
+
+A workspace might contain:
 
 ```text
 customer-project/
@@ -74,16 +83,13 @@ customer-project/
 └── artifacts/
 ```
 
-Artifacts in the same workspace can share configuration such as physical
-dimensions, printer characteristics, and filament colors while overriding
-settings specific to an individual artifact.
-
+Artifacts in the same workspace can share configuration while overriding values specific to an individual artifact.
 
 ### Artifact
 
 An artifact is an individual object managed by the build system.
 
-Every artifact has an `artifact_id`, such as:
+Every artifact has an `artifact_id`, for example:
 
 ```text
 2121_stuart
@@ -91,115 +97,291 @@ goldberry
 fan_district
 ```
 
-The artifact ID is used throughout configuration, planning, building, and
-filesystem organization.
-
+The artifact ID is used throughout configuration, planning, building, and filesystem organization.
 
 ### Model
 
 Each artifact selects a registered model.
 
-A model defines the model-specific behavior required to transform source
-material and resolved parameters into a final 3MF.
+A model declaratively defines the stages required to transform source material and resolved parameters into its products.
 
-Possible models include:
+Models are independently extensible packages implementing the interfaces defined by `lowkey-artifact-builder`.
+
+The generic build engine does not need to know whether a model represents artwork, a coaster, an ornament, a logo, a medallion, or another type of object.
+
+Current model packages include:
 
 ```text
+artwork
 circular
 logo
 ```
 
-Models are independently extensible packages implementing the interfaces
-defined by `lowkey-artifact-builder`.
+The `artwork` model currently provides the complete end-to-end implementation. The other models are under development.
 
-The generic build system should not need to know whether a model represents
-a coaster, ornament, logo, medallion, or another type of object.
+### Stage
 
+A stage is a node in a model's dependency graph.
 
-### Features
+Each stage declares:
 
-Models may provide optional features.
+* its name and description;
+* dependencies on other stages;
+* configuration parameters that affect it;
+* source inputs, when applicable; and
+* expected filesystem products.
 
-For example, a circular model may eventually support:
+Stage implementations are registered separately from the declarative model definition. This keeps model metadata independent from the generic execution engine.
 
-```text
-labels
-hanger
-magnet
-```
+### Product
 
-Features may affect:
+A product is a filesystem artifact generated by a stage.
 
-- configuration requirements;
-- model geometry;
-- enabled build stages;
-- stage dependencies; and
-- generated products.
-
-Features belong to the model rather than the generic build engine.
-
-
-### Stages
-
-A model declares the stages that make up its build pipeline.
-
-For example, a circular model might contain:
+Products may include:
 
 ```text
-holder
-labels
-artwork
-package
+PNG
+SVG
+JSON manifests
+STL
+3MF
 ```
 
-Stages are dependency-graph nodes rather than merely a fixed sequence of
-commands.
+A stage declares its stable products before execution.
+
+Stages that generate a variable number of files can expose those files through manifests such as:
+
+```text
+products.json
+```
+
+This allows the generic build engine to operate without knowing how many color layers or geometry components a particular artifact contains.
+
+## Artwork Model
+
+The `artwork` model is the current reference implementation.
+
+It represents multicolor 2.5D artwork consisting of independently printable color components with no underlying base.
+
+The model converts source raster artwork through five stages.
+
+### `prepare`
+
+The `prepare` stage traces the source artwork using the configured artwork palette.
+
+Input:
+
+```text
+artifact.png
+```
+
+Products include:
+
+```text
+prepare/trace.svg
+prepare/envelope.svg
+```
+
+The trace contains the multicolor vector representation of the source artwork. The envelope describes the outside boundary used during subsequent processing.
+
+### `raster`
+
+The `raster` stage converts the prepared artwork into registered, mutually exclusive raster color layers.
+
+It performs artwork-specific processing such as:
+
+* palette-based layer construction;
+* image registration;
+* removal of unwanted islands;
+* connectivity handling; and
+* generation of mutually exclusive color regions.
+
+Its stable product is:
+
+```text
+raster/products.json
+```
+
+The manifest describes the generated raster layers and their artwork color assignments.
+
+### `vector`
+
+The `vector` stage converts the registered raster layers into registered vector geometry.
+
+Its stable product is:
+
+```text
+vector/products.json
+```
+
+The manifest describes the generated vector color layers.
+
+### `extrude`
+
+The `extrude` stage converts the vector color layers into printable 2.5D geometry.
+
+Each color layer is extruded into an STL component using the configured artwork height.
+
+Its stable product is:
+
+```text
+extrude/products.json
+```
+
+The manifest describes the generated STL components and their artwork colors.
+
+### `package`
+
+The `package` stage assembles the generated STL components into the final multicomponent 3MF.
+
+Product:
+
+```text
+artifact.3mf
+```
+
+The completed artifact is materialized as:
+
+```text
+artifacts/<artifact_id>.3mf
+```
+
+## Artwork Configuration
+
+Artwork-specific defaults are provided by the model.
+
+Current model parameters include values controlling:
+
+```text
+artwork_pixels
+artwork_raise
+artwork_overlap
+artwork_min_island_area
+artwork_island_connectivity
+```
+
+Artwork colors describe the colors represented by the artwork itself.
+
+They are intentionally distinct from printer colors. A future artifact model may consume artwork geometry and map those artwork colors to the available colors or toolheads of a particular printer.
+
+## Build Architecture
+
+The high-level architecture is:
+
+```text
+                    workspace.toml
+                          │
+                          ▼
+                    configuration
+                          │
+                          ▼
+                       artifact
+                          │
+                          ▼
+                    ModelRegistry
+                          │
+                          ▼
+                      ModelSpec
+                          │
+                          ▼
+                      BuildPlan
+                          │
+                          ▼
+                  dependency graph
+                          │
+                          ▼
+                    stage runner
+                          │
+                          ▼
+                 filesystem products
+                          │
+                          ▼
+             artifacts/<artifact_id>.3mf
+```
+
+Model-specific behavior belongs in model packages.
+
+The generic configuration, planning, dependency, and execution systems do not need to special-case individual model implementations.
+
+## Model and Stage Registration
+
+Models are registered through the model registry.
+
+A model provides a declarative `ModelSpec` describing its stages and products.
+
+Executable stage implementations are registered separately with the build engine.
+
+Conceptually:
+
+```text
+ModelSpec
+    │
+    ▼
+BuildPlan
+    │
+    ▼
+StageImplementationRegistry
+    │
+    ▼
+stage execution
+```
+
+This separation allows the build planner to reason about a model without executing external tools or importing model-specific implementation details into the generic engine.
+
+## Build Planning
+
+Before execution, the build system constructs a complete `BuildPlan`.
+
+The plan contains the information needed to execute the artifact, including:
+
+* artifact ID;
+* selected model;
+* resolved configuration;
+* stages;
+* stage dependencies;
+* configuration dependencies;
+* source inputs; and
+* expected products.
+
+A build plan can be inspected without executing the build:
+
+```bash
+artifact build <artifact_id> --dry-run
+```
+
+This is useful for validating configuration and understanding exactly what the build system intends to execute.
+
+## Building Artifacts
+
+Build one configured artifact with:
+
+```bash
+artifact build <artifact_id>
+```
 
 For example:
 
-```text
-              holder ────┐
-                         │
-              labels ────┼──> package
-                         │
-              artwork ───┘
+```bash
+artifact build nydeli
 ```
 
-If labels are not enabled, the model may produce a different build plan:
+Multiple artifacts may be supplied in one invocation:
 
-```text
-              holder ────┐
-                         ├──> package
-              artwork ───┘
+```bash
+artifact build artifact_one artifact_two artifact_three
 ```
 
-This allows independent stages to be inspected, rebuilt, and tested
-separately.
+To display the build plan without performing any work:
 
-
-### Products
-
-Every stage declares its expected filesystem products before execution.
-
-Products may include files such as:
-
-```text
-source.png
-mask.png
-source.svg
-paths.svg
-model.scad
-model.stl
-model.3mf
+```bash
+artifact build nydeli --dry-run
 ```
 
-The filesystem path identifies the artifact and stage, allowing product
-filenames themselves to remain consistent.
-
+The build engine resolves the artifact configuration, constructs the build plan, determines the registered implementation for each stage, and executes the dependency graph.
 
 ## Artifact Filesystem
 
-All generated products are stored beneath:
+Generated products are stored beneath:
 
 ```text
 artifacts/
@@ -211,75 +393,62 @@ Intermediate products for an artifact are stored beneath:
 artifacts/<artifact_id>/
 ```
 
-The final ready-to-slice product is stored directly in the `artifacts`
-directory:
+The final ready-to-slice product is stored directly in the `artifacts` directory:
 
 ```text
 artifacts/<artifact_id>.3mf
 ```
 
-For example:
+For an artwork artifact, the working tree is conceptually:
 
 ```text
 artifacts/
-├── 2121_stuart.3mf
-├── goldberry.3mf
+├── nydeli.3mf
 │
-├── 2121_stuart/
-│   ├── holder/
-│   │   ├── model.scad
-│   │   └── model.stl
-│   │
-│   ├── labels/
-│   │   ├── source.svg
-│   │   ├── paths.svg
-│   │   └── model.stl
-│   │
-│   └── artwork/
-│       └── ...
-│
-└── goldberry/
-    ├── holder/
-    └── artwork/
+└── nydeli/
+    ├── artifact.png
+    │
+    ├── prepare/
+    │   ├── trace.svg
+    │   └── envelope.svg
+    │
+    ├── raster/
+    │   ├── products.json
+    │   └── ...
+    │
+    ├── vector/
+    │   ├── products.json
+    │   └── ...
+    │
+    └── extrude/
+        ├── products.json
+        └── ...
 ```
 
 This provides two useful invariants:
 
 ```text
-artifacts/<artifact_id>/     intermediate and reviewable products
+artifacts/<artifact_id>/     intermediate and inspectable products
 artifacts/<artifact_id>.3mf  final ready-to-slice product
 ```
 
 Generated products are not intended to be committed to Git.
 
-
 ## Configuration
 
-The planned configuration system uses three levels of parameter resolution:
-
-```text
-master defaults
-      ↓
-workspace overrides
-      ↓
-artifact overrides
-```
-
-The model defines which parameters and features are valid.
-
-The configuration system determines their effective values and tracks
-parameter provenance so that users can determine where a value originated
-and whether it has been overridden.
-
-The user-facing workspace configuration is stored in:
+User-facing workspace configuration is stored in:
 
 ```text
 workspace.toml
 ```
 
-TOML is intentionally retained as a human-readable, version-controllable
-configuration format.
+Configuration is resolved from defaults and workspace/artifact-specific values before a build plan is constructed.
 
+The configuration system also tracks parameter provenance so effective values can be inspected and their source determined.
+
+Model-specific defaults are kept with their model packages rather than embedded in the generic build engine.
+
+This allows models to introduce their own parameters without requiring model-specific configuration logic in the engine.
 
 ## Command Line Interface
 
@@ -289,110 +458,92 @@ The command-line entry point is:
 artifact
 ```
 
-The planned interface includes commands such as:
+The currently implemented top-level commands are:
 
 ```bash
-artifact models
 artifact config
-artifact plan <artifact_id>
-artifact build <artifact_id>
-artifact status <artifact_id>
-artifact clean <artifact_id>
+artifact build
 ```
 
-During early development, not all commands shown above are implemented.
+Use:
 
-The CLI uses Click for command organization and Rich where enhanced terminal
-presentation is useful.
+```bash
+artifact --help
+```
 
+for the current command set and:
 
-## Build Planning
+```bash
+artifact build --help
+artifact config --help
+```
 
-A model will be queried before execution to construct a complete build plan.
+for command-specific options.
 
-The plan describes:
+The CLI uses Click for command organization and Rich where enhanced terminal presentation is useful.
 
-- selected model;
-- enabled features;
-- stages;
-- stage dependencies;
-- configuration dependencies;
-- input files;
-- expected filesystem products; and
-- final 3MF product.
+## Source Organization
 
-This makes it possible to inspect the complete workflow before starting a
-build and provides the information needed for progress reporting,
-incremental rebuilding, status reporting, and debugging.
-
-
-## Incremental Builds
-
-The build system is intended to operate similarly to `make`.
-
-A stage should only be rebuilt when necessary, such as when:
-
-- an expected product is missing;
-- an input has changed;
-- relevant configuration has changed;
-- an enabled feature has changed; or
-- a dependency has been rebuilt.
-
-Intermediate products are intentionally retained so that a build can be
-stopped, inspected, and resumed.
-
-The build engine is responsible for deciding whether a stage is current;
-individual models should not need to implement their own incremental-build
-systems.
-
-
-## Architecture
-
-The high-level architecture is:
+The main package is organized by responsibility:
 
 ```text
-                 workspace.toml
-                       │
-                       ▼
-                 configuration
-                       │
-                       ▼
-                    artifact
-                       │
-                       ▼
-                 ModelRegistry
-                       │
-             ┌─────────┴─────────┐
-             ▼                   ▼
-          circular              logo
-             │                   │
-             └─────────┬─────────┘
-                       ▼
-                   BuildPlan
-                       │
-                       ▼
-                dependency graph
-                       │
-                       ▼
-                  stage runner
-                       │
-                       ▼
-              filesystem products
-                       │
-                       ▼
-          artifacts/<artifact_id>.3mf
+src/lowkey_artifact_builder/
+├── cli/
+├── config/
+├── engine/
+├── formats/
+├── model/
+│   ├── bootstrap.py
+│   ├── registry.py
+│   ├── specs.py
+│   └── models/
+│       ├── artwork/
+│       ├── circular/
+│       └── logo/
+├── tools/
+├── colors.py
+└── logging_config.py
 ```
 
-Model-specific behavior belongs in model packages.
+The major architectural boundaries are:
 
-The generic configuration, planning, dependency, and build systems should
-not import or special-case individual model implementations.
+```text
+config/     configuration loading, validation, and resolution
 
+model/      declarative model definitions and model registration
+
+engine/     build plans, execution specifications, stage registration,
+            and build execution
+
+formats/    artifact/file-format support
+
+tools/      interfaces to external graphics and modeling tools
+
+cli/        user-facing command-line interface
+```
+
+Model-specific geometry and transformation logic belongs beneath:
+
+```text
+model/models/<model_name>/
+```
+
+rather than in the generic engine.
+
+## External Tools
+
+The artwork pipeline uses external graphics and modeling tools through focused interfaces rather than embedding command execution throughout the generic build engine.
+
+The pipeline is designed around transformations involving tools such as:
+
+* Inkscape for raster/vector processing and tracing; and
+* OpenSCAD for generation of printable geometry.
+
+Keeping these integrations outside the generic planner and registry allows the core architecture to be tested independently from installed external applications.
 
 ## Development
 
-See [`SETUP.md`](SETUP.md) for complete development-environment setup
-instructions.
+See [`SETUP.md`](SETUP.md) for complete development-environment setup instructions.
 
 The short version is:
 
@@ -425,20 +576,15 @@ make check
 make pre-commit
 ```
 
-
 ## Testing
 
 The project uses pytest.
 
-Tests are organized to mirror the source package:
+The test suite covers both generic infrastructure and model-specific behavior.
 
-```text
-tests/
-├── test_installation.py
-├── cli/
-├── models/
-└── build/
-```
+The generic model registry, configuration system, build planner, dependency handling, and pipeline runner are designed to be testable without requiring external graphics or modeling tools.
+
+External tool behavior is isolated so integration testing can be focused on the portions of the pipeline that actually require applications such as Inkscape or OpenSCAD.
 
 Run the complete test suite with:
 
@@ -446,18 +592,42 @@ Run the complete test suite with:
 make test
 ```
 
-The generic model registry, build planner, dependency graph, and pipeline
-runner are designed to be testable without requiring external tools such
-as OpenSCAD or Inkscape.
+Run the complete development validation suite with:
 
-External modeling and graphics tools should be introduced through focused
-integration tests rather than being required by the core test suite.
+```bash
+make check
+```
 
+## Current Development Direction
+
+The `artwork` model establishes the reference implementation for a complete model-driven build.
+
+Current development is focused on extending the same architecture to higher-level printable artifacts.
+
+The model packages currently include placeholders or developing implementations for:
+
+```text
+circular
+logo
+```
+
+A circular artifact may ultimately combine independently generated components such as:
+
+```text
+              holder ──────┐
+                           │
+              labels ──────┼──> package
+                           │
+              artwork ─────┘
+```
+
+This introduces the next major architectural problem for the project: allowing higher-level artifact models to consume or compose reusable geometry produced by other model workflows without duplicating their implementation.
+
+The goal is for models such as `circular` to reuse the working artwork pipeline while keeping both the generic engine and the artwork implementation independent of ornament- or coaster-specific geometry.
 
 ## Documentation
 
-Repository-level development and contributor documentation is maintained
-at the repository root:
+Repository-level development and contributor documentation is maintained at the repository root:
 
 ```text
 README.md
@@ -465,19 +635,17 @@ SETUP.md
 CONTRIBUTING.md
 ```
 
-Source material for the project website and GitHub Pages documentation will
-be maintained under:
+Source material for project website and GitHub Pages documentation may be maintained under:
 
 ```text
 site-src/
 ```
 
-Generated GitHub Pages content will be written to:
+with generated site content under:
 
 ```text
 docs/
 ```
-
 
 ## Contributing
 
@@ -485,32 +653,26 @@ Contributions are welcome.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidelines.
 
-
 ## License
 
-`lowkey-artifact-builder` is open-source software distributed under the
-Apache License, Version 2.0.
+`lowkey-artifact-builder` is open-source software distributed under the Apache License, Version 2.0.
 
-Commercial use, modification, and redistribution are permitted subject to
-the terms of the license.
+Commercial use, modification, and redistribution are permitted subject to the terms of the license.
 
 See:
 
-- [`LICENSE`](LICENSE)
-- [`NOTICE`](NOTICE)
-- [`COPYRIGHT`](COPYRIGHT)
-- [`COMMERCIAL.md`](COMMERCIAL.md)
-
+* [`LICENSE`](LICENSE)
+* [`NOTICE`](NOTICE)
+* [`COPYRIGHT`](COPYRIGHT)
+* [`COMMERCIAL.md`](COMMERCIAL.md)
 
 ## Citation
 
 Citation metadata is provided in [`CITATION.cff`](CITATION.cff).
 
-
 ## About LowKeyLabs
 
-`lowkey-artifact-builder` is developed by
-[LowKeyLabs LLC](https://lowkeylabs.com).
+`lowkey-artifact-builder` is developed by [LowKeyLabs LLC](https://lowkeylabs.com).
 
 Project repository:
 
