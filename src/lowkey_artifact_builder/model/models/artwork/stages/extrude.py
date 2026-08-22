@@ -9,8 +9,9 @@ and linearly extruded from Z=0 through the configured artwork raise.
 
 The vector manifest identifies the dynamically generated vector layers
 that participate in this stage. The generated STL components are
-dynamic products whose filenames, geometry associations, and color
-assignments are recorded in the declared extrusion manifest.
+dynamic products whose filenames, geometry associations, semantic color
+names, and color assignments are recorded in the declared extrusion
+manifest.
 
 Filesystem layout, dependency resolution, and configuration resolution
 are responsibilities of the build engine. This implementation consumes
@@ -55,11 +56,16 @@ class ExtrudeError(RuntimeError):
 class VectorLayer:
     """
     One vector layer described by the vector manifest.
+
+    name preserves the semantic artwork color assigned by the raster
+    stage and propagated by the vector stage.
     """
 
     index: int
 
     path: Path
+
+    name: str
 
     color: tuple[
         int,
@@ -96,7 +102,7 @@ def execute(
 
         manifest
             Manifest describing the dynamically generated STL
-            components and their artwork color assignments.
+            components and their semantic artwork color assignments.
     """
 
     vector_manifest = context.input(
@@ -109,6 +115,13 @@ def execute(
 
     artwork_colors = context.resolver(
         "artwork_colors",
+    )
+
+    artwork_size = _positive_number(
+        "artwork_size",
+        context.resolver(
+            "artwork_size",
+        ),
     )
 
     artwork_raise = _positive_number(
@@ -144,6 +157,7 @@ def execute(
 
             source = _build_scad(
                 layer.path,
+                artwork_size=artwork_size,
                 artwork_raise=artwork_raise,
             )
 
@@ -260,6 +274,9 @@ def _load_vector_manifest(
 ) -> list[VectorLayer]:
     """
     Load vector products from the vector manifest.
+
+    Semantic color names assigned by the raster stage are required and
+    preserved together with their configured RGB representations.
     """
 
     try:
@@ -299,6 +316,8 @@ def _load_vector_manifest(
 
         filename = product.get("path")
 
+        name = product.get("name")
+
         color_data = product.get("color")
 
         if (
@@ -322,6 +341,17 @@ def _load_vector_manifest(
             or not filename
         ):
             raise ExtrudeError(f"Vector product {index} has no valid path.")
+
+        if (
+            not isinstance(
+                name,
+                str,
+            )
+            or not name.strip()
+        ):
+            raise ExtrudeError(f"Vector product {index} has no valid color name.")
+
+        name = name.strip()
 
         if not isinstance(
             color_data,
@@ -359,6 +389,7 @@ def _load_vector_manifest(
             VectorLayer(
                 index=index,
                 path=path,
+                name=name,
                 color=color,
             )
         )
@@ -367,6 +398,11 @@ def _load_vector_manifest(
 
     if len(indexes) != len(set(indexes)):
         raise ExtrudeError("Vector product indexes must be unique.")
+
+    names = [layer.name for layer in result]
+
+    if len(names) != len(set(names)):
+        raise ExtrudeError("Vector product color names must be unique.")
 
     result.sort(key=lambda layer: layer.index)
 
@@ -415,18 +451,23 @@ def _scad_string(
 def _build_scad(
     svg: Path,
     *,
+    artwork_size: float,
     artwork_raise: float,
 ) -> str:
     """
     Return OpenSCAD source for one artwork color layer.
 
-    The SVG produced by the vector stage has physical width and height
-    corresponding to artwork_size and uses an origin at its upper-left
-    corner.
+    All SVG color layers share one common document coordinate system.
+    Their individual geometry bounds intentionally differ and must not
+    be centered independently.
 
-    OpenSCAD imports that SVG into the XY plane. The imported geometry
-    is centered using the SVG document's physical dimensions and then
-    extruded upward from Z=0.
+    The SVG is therefore imported without OpenSCAD centering. The
+    complete artwork coordinate system is translated by half the
+    configured physical artwork size so that the common SVG canvas is
+    centered at the model origin.
+
+    This identical translation is applied to every color layer,
+    preserving registration between layers.
     """
 
     svg = svg.resolve()
@@ -434,9 +475,17 @@ def _build_scad(
     if not svg.is_file():
         raise ExtrudeError(f"Artwork SVG does not exist: {svg}")
 
-    artwork_raise_scad = _scad_number(artwork_raise)
+    artwork_size_scad = _scad_number(
+        artwork_size,
+    )
 
-    artwork_svg = _scad_string(str(svg))
+    artwork_raise_scad = _scad_number(
+        artwork_raise,
+    )
+
+    artwork_svg = _scad_string(
+        str(svg),
+    )
 
     return f"""//
 // Generated artwork color layer.
@@ -444,6 +493,7 @@ def _build_scad(
 // DO NOT EDIT THIS FILE.
 //
 
+artwork_size = {artwork_size_scad};
 artwork_raise = {artwork_raise_scad};
 
 artwork_svg = {artwork_svg};
@@ -453,14 +503,21 @@ artwork_svg = {artwork_svg};
 // Artwork solid
 // ---------------------------------------------------------
 
-linear_extrude(
-    height = artwork_raise,
-    convexity = 10
+translate(
+    [
+        -artwork_size / 2,
+        -artwork_size / 2,
+        0
+    ]
 )
-    import(
-        artwork_svg,
-        center = true
-    );
+    linear_extrude(
+        height = artwork_raise,
+        convexity = 10
+    )
+        import(
+            artwork_svg,
+            center = false
+        );
 """
 
 
@@ -482,12 +539,16 @@ def _write_manifest(
 ) -> None:
     """
     Write the extrusion product manifest.
+
+    Semantic artwork color names and their configured RGB
+    representations are propagated unchanged from the vector stage.
     """
 
     products = [
         {
             "index": vector.index,
             "path": stl.name,
+            "name": vector.name,
             "color": {
                 "red": vector.color[0],
                 "green": vector.color[1],

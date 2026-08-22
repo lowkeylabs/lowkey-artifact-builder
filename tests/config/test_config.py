@@ -783,7 +783,7 @@ def test_artwork_colors_are_derived_from_printer_colors(
     tmp_path: Path,
 ) -> None:
     """
-    Artwork color count is the length of printer_colors.
+    Artwork colors default to the configured printer colors.
     """
 
     write_artifact_config(
@@ -804,19 +804,23 @@ def test_artwork_colors_are_derived_from_printer_colors(
         project_root=tmp_path,
     )
 
-    assert resolver("artwork_colors") == 3
+    assert resolver("artwork_colors") == (
+        "black",
+        "white",
+        "red",
+    )
 
     assert resolver.source("artwork_colors") == "derived"
 
 
-def test_duplicate_printer_colors_count_as_available_colors(
+def test_duplicate_printer_colors_are_preserved_in_artwork_colors(
     tmp_path: Path,
 ) -> None:
     """
     Multiple printer heads may intentionally contain the same color.
 
-    artwork_colors therefore reflects the number of configured printer
-    color positions rather than the number of unique color names.
+    Derived artwork colors preserve printer color order and duplicate
+    color positions.
     """
 
     write_artifact_config(
@@ -838,14 +842,21 @@ def test_duplicate_printer_colors_count_as_available_colors(
         project_root=tmp_path,
     )
 
-    assert resolver("artwork_colors") == 4
+    assert resolver("artwork_colors") == (
+        "black",
+        "white",
+        "red",
+        "red",
+    )
+
+    assert resolver.source("artwork_colors") == "derived"
 
 
 def test_configured_value_can_override_derivation(
     tmp_path: Path,
 ) -> None:
     """
-    Explicit configuration wins over a derived value.
+    Explicit artwork colors override the derived printer colors.
     """
 
     write_artifact_config(
@@ -857,7 +868,10 @@ def test_configured_value_can_override_derivation(
                 "white",
                 "red",
             ],
-            "artwork_colors": 2,
+            "artwork_colors": [
+                "black",
+                "red",
+            ],
         },
         project_root=tmp_path,
     )
@@ -867,7 +881,10 @@ def test_configured_value_can_override_derivation(
         project_root=tmp_path,
     )
 
-    assert resolver("artwork_colors") == 2
+    assert resolver("artwork_colors") == [
+        "black",
+        "red",
+    ]
 
     assert resolver.source("artwork_colors") == "artifact (overrides derived)"
 

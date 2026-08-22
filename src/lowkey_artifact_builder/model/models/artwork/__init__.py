@@ -87,6 +87,11 @@ STAGES = (
                 path="prepare/trace.svg",
                 description=("Multicolor vector trace of the source artwork."),
             ),
+            ProductSpec(
+                name="envelope",
+                path="prepare/envelope.svg",
+                description=("Envelope surrounding outside of image."),
+            ),
         ),
     ),
     StageSpec(

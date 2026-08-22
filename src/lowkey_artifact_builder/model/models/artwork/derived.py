@@ -25,14 +25,15 @@ if TYPE_CHECKING:
 
 def derive_artwork_colors(
     resolver: Resolver,
-) -> int:
+) -> tuple[str, ...]:
     """
-    Derive the number of artwork colors available for tracing.
+    Derive artwork colors from the configured printer colors.
 
-    Each configured printer color represents one available printer
-    color position. Duplicate colors are intentional and therefore
-    count independently.
+    By default, artwork may use every color configured for the printer.
 
+    Printer color order is preserved.
+
+    Duplicate printer colors are intentional and are also preserved.
     For example:
 
         printer_colors = [
@@ -44,10 +45,20 @@ def derive_artwork_colors(
 
     produces:
 
-        artwork_colors = 4
+        artwork_colors = (
+            "black",
+            "white",
+            "red",
+            "red",
+        )
+
+    An explicitly configured artwork_colors value overrides this
+    derivation through normal configuration resolution.
     """
 
-    printer_colors = resolver("printer_colors")
+    printer_colors = resolver(
+        "printer_colors",
+    )
 
     if not isinstance(
         printer_colors,
@@ -58,7 +69,54 @@ def derive_artwork_colors(
     if not printer_colors:
         raise ValueError("printer_colors cannot be empty.")
 
-    return len(printer_colors)
+    colors: list[str] = []
+
+    for color in printer_colors:
+        if (
+            not isinstance(
+                color,
+                str,
+            )
+            or not color.strip()
+        ):
+            raise ValueError("printer_colors must contain non-empty color names.")
+
+        colors.append(
+            color.strip(),
+        )
+
+    return tuple(colors)
+
+
+def derive_artwork_fill_color(
+    resolver: Resolver,
+) -> str:
+    """
+    Derive the artwork fill color.
+
+    White is the default physical fill/background color when it is
+    available in the artwork palette.
+
+    The fill color is used to receive any unassigned geometry inside
+    the artwork envelope.
+    """
+
+    artwork_colors = resolver("artwork_colors")
+
+    if not isinstance(
+        artwork_colors,
+        list | tuple,
+    ):
+        raise ValueError("artwork_colors must be a list or tuple.")
+
+    if not artwork_colors:
+        raise ValueError("artwork_colors cannot be empty.")
+
+    for color in artwork_colors:
+        if color == "white":
+            return color
+
+    raise ValueError("artwork_colors must contain 'white' to derive artwork_fill_color.")
 
 
 # =========================================================
@@ -68,8 +126,8 @@ def derive_artwork_colors(
 
 DERIVED = {
     "artwork_colors": derive_artwork_colors,
+    "artwork_fill_color": derive_artwork_fill_color,
 }
-
 
 # =========================================================
 # Exports
@@ -79,4 +137,5 @@ DERIVED = {
 __all__ = [
     "DERIVED",
     "derive_artwork_colors",
+    "derive_artwork_fill_color",
 ]

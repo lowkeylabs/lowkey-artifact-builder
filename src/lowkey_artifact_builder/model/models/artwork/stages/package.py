@@ -12,6 +12,10 @@ The extrusion manifest identifies the dynamically generated STL
 components that participate in the final artifact. The package stage
 uses that manifest rather than discovering components by scanning the
 extrusion directory.
+
+Semantic artwork color names assigned during rasterization are
+preserved through the pipeline and used to construct meaningful 3MF
+object names.
 """
 
 from __future__ import annotations
@@ -52,11 +56,16 @@ class PackageError(RuntimeError):
 class ExtrudedComponent:
     """
     One STL component described by the extrusion manifest.
+
+    name is the semantic artwork color assigned by the raster stage
+    and propagated through vectorization and extrusion.
     """
 
     index: int
 
     path: Path
+
+    name: str
 
     color: tuple[
         int,
@@ -104,7 +113,10 @@ def execute(
 
         stls = tuple(
             (
-                _component_name(component),
+                _component_name(
+                    context.artifact_id,
+                    component,
+                ),
                 component.path,
             )
             for component in components
@@ -197,6 +209,11 @@ def _load_extrude_manifest(
     if len(indexes) != len(set(indexes)):
         raise PackageError("Extrusion product indexes must be unique.")
 
+    names = [component.name for component in result]
+
+    if len(names) != len(set(names)):
+        raise PackageError("Extrusion product color names must be unique.")
+
     result.sort(key=lambda component: component.index)
 
     return result
@@ -219,6 +236,8 @@ def _load_component(
     index = product.get("index")
 
     filename = product.get("path")
+
+    name = product.get("name")
 
     color_data = product.get("color")
 
@@ -243,6 +262,17 @@ def _load_component(
         or not filename
     ):
         raise PackageError(f"Extrusion product {index} has no valid path.")
+
+    if (
+        not isinstance(
+            name,
+            str,
+        )
+        or not name.strip()
+    ):
+        raise PackageError(f"Extrusion product {index} has no valid color name.")
+
+    name = name.strip()
 
     if not isinstance(
         color_data,
@@ -279,6 +309,7 @@ def _load_component(
     return ExtrudedComponent(
         index=index,
         path=path,
+        name=name,
         color=color,
     )
 
@@ -322,21 +353,23 @@ def _color_component(
 
 
 def _component_name(
+    artifact_id: str,
     component: ExtrudedComponent,
 ) -> str:
     """
-    Return the 3MF object name for one artwork component.
+    Return the semantic 3MF object name for one artwork component.
 
-    The layer number is retained because it is the stable identity of
-    the independently printable artwork component.
+    Object names combine the artifact identity with the semantic
+    artwork color assigned during rasterization.
 
-    RGB is included to preserve the artwork color assignment in the
-    otherwise color-neutral core 3MF representation.
+    For example:
+
+        nydeli-black
+        nydeli-red
+        nydeli-white
     """
 
-    red, green, blue = component.color
-
-    return f"color-{component.index}-{red:02x}{green:02x}{blue:02x}"
+    return f"{artifact_id}-{component.name}"
 
 
 __all__ = [

@@ -9,13 +9,9 @@ that participate in this stage. One common square crop is calculated
 from the union of all raster layers and applied to every layer so that
 registration is preserved.
 
-Each cropped raster layer is traced by Inkscape. The resulting path
-geometry is scaled directly into the SVG coordinate system used by CAD
-applications:
-
-    artwork_size * 96 / 25.4
-
-SVG user units.
+Each cropped raster layer is traced by Inkscape. The resulting SVG
+document is assigned the configured physical artwork dimensions while
+preserving the common coordinate system produced by tracing.
 
 Scaling is baked into path geometry rather than represented by SVG
 transforms.
@@ -28,7 +24,6 @@ only the paths and values supplied through StageContext.
 from __future__ import annotations
 
 import json
-import re
 import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -49,19 +44,18 @@ from lowkey_artifact_builder.formats.svg import (
     load,
     save,
 )
+from lowkey_artifact_builder.logging_config import get_logger
 from lowkey_artifact_builder.tools.inkscape import (
     InkscapeError,
     run,
 )
 
+logger = get_logger(__name__)
+
 # =========================================================
 # Constants
 # =========================================================
 
-
-SVG_DPI = 96.0
-
-MM_PER_INCH = 25.4
 
 DEFAULT_SPECKLES = 2
 
@@ -98,6 +92,8 @@ class RasterLayer:
     index: int
 
     path: Path
+
+    name: str
 
     color: tuple[
         int,
@@ -324,6 +320,8 @@ def _load_raster_manifest(
 
         filename = product.get("path")
 
+        name = product.get("name")
+
         color_data = product.get("color")
 
         if (
@@ -347,6 +345,17 @@ def _load_raster_manifest(
             or not filename
         ):
             raise VectorError(f"Raster product {index} has no valid path.")
+
+        if (
+            not isinstance(
+                name,
+                str,
+            )
+            or not name.strip()
+        ):
+            raise VectorError(f"Raster product {index} has no valid color name.")
+
+        name = name.strip()
 
         if not isinstance(
             color_data,
@@ -381,6 +390,7 @@ def _load_raster_manifest(
             RasterLayer(
                 index=index,
                 path=path,
+                name=name,
                 color=color,
             )
         )
@@ -389,6 +399,11 @@ def _load_raster_manifest(
 
     if len(indexes) != len(set(indexes)):
         raise VectorError("Raster product indexes must be unique.")
+
+    names = [layer.name for layer in result]
+
+    if len(names) != len(set(names)):
+        raise VectorError("Raster product color names must be unique.")
 
     result.sort(key=lambda layer: layer.index)
 
@@ -552,7 +567,19 @@ def _crop_raster(
     crop: RasterCrop,
 ) -> None:
     """
-    Apply the common crop to one raster layer.
+    Apply the common crop to one raster layer and convert the result
+    into a hard opaque black-and-white tracing image.
+
+    Raster-layer membership is defined exclusively by alpha:
+
+        opaque pixel       -> black
+        transparent pixel  -> white
+
+    The resulting PNG is fully opaque. This prevents Inkscape from
+    interpreting source RGB values, transparency, or antialiased
+    boundary colors while tracing.
+
+    All layers use the same crop, preserving registration.
     """
 
     with Image.open(source) as image:
@@ -567,13 +594,50 @@ def _crop_raster(
         ):
             raise VectorError("Raster crop lies outside the source image.")
 
-        cropped = rgba.crop(crop.box)
+        cropped = rgba.crop(
+            crop.box,
+        )
 
         try:
-            cropped.save(
-                output,
-                format="PNG",
-            )
+            alpha = cropped.getchannel("A")
+
+            try:
+                #
+                # Raster masks produced by the preceding stage should
+                # already be categorical. Treat every nonzero alpha
+                # value as geometry so no antialiased alpha values are
+                # passed to Inkscape.
+                #
+                mask = alpha.point(
+                    [255] + [0] * 255,
+                    mode="1",
+                )
+
+                try:
+                    #
+                    # Convert back to an ordinary 8-bit grayscale image.
+                    #
+                    # Geometry is black and background is white.
+                    # Every output pixel is fully opaque.
+                    #
+                    tracing_image = mask.convert(
+                        "L",
+                    )
+
+                    try:
+                        tracing_image.save(
+                            output,
+                            format="PNG",
+                        )
+
+                    finally:
+                        tracing_image.close()
+
+                finally:
+                    mask.close()
+
+            finally:
+                alpha.close()
 
         finally:
             cropped.close()
@@ -589,18 +653,29 @@ def _crop_raster(
 
 def _trace_actions(
     *,
-    speckles: int = DEFAULT_SPECKLES,
-    smooth_corners: float = DEFAULT_SMOOTH_CORNERS,
-    optimize: float = DEFAULT_OPTIMIZE,
+    speckles: int = 0,
+    smooth_corners: float = 0.0,
+    optimize: float = 0.0,
 ) -> tuple[str, ...]:
     """
-    Return Inkscape actions for tracing a monochrome mask.
+    Return Inkscape actions for tracing a hard monochrome mask.
+
+    The raster supplied to Inkscape is already categorical:
+
+        black = geometry
+        white = background
+
+    Smoothing and optimization are disabled here because the raster
+    stage has already established the authoritative color boundaries.
+
+    Vectorization should reproduce those boundaries rather than
+    independently reinterpret or simplify them.
     """
 
     parameters = ",".join(
         (
             "2",
-            "true",
+            "false",
             "true",
             "true",
             str(speckles),
@@ -623,7 +698,21 @@ def _trace_mask(
     artwork_size: float,
 ) -> None:
     """
-    Trace one raster mask into a CAD-ready SVG.
+    Trace one categorical raster mask into a CAD-ready SVG.
+
+    The source mask is first cropped using the common artwork crop and
+    converted into a fully opaque black-and-white tracing image.
+
+    Raster alpha defines geometry:
+
+        opaque source pixel       -> black
+        transparent source pixel  -> white
+
+    Inkscape therefore receives no source colors, transparency, or
+    antialiased intermediate values.
+
+    The resulting SVG document is assigned the configured physical
+    artwork dimensions while preserving registration between layers.
     """
 
     output = output.resolve()
@@ -636,11 +725,11 @@ def _trace_mask(
     with tempfile.TemporaryDirectory() as directory:
         temporary = Path(directory)
 
-        cropped = temporary / "cropped.png"
+        tracing_image = temporary / "mask.png"
 
         _crop_raster(
             source,
-            cropped,
+            tracing_image,
             crop,
         )
 
@@ -656,24 +745,19 @@ def _trace_mask(
         )
 
         run(
-            cropped,
+            tracing_image,
             actions=tuple(actions),
         )
 
     if not output.is_file():
         raise VectorError(f"Inkscape did not create expected vector layer: {output}")
 
-    tree = load(output)
+    tree = load(
+        output,
+    )
 
-    _remove_raster_images(tree)
-
-    svg_size = _diameter_to_svg_units(artwork_size)
-
-    scale = svg_size / crop.size
-
-    _scale_paths(
+    _remove_raster_images(
         tree,
-        scale,
     )
 
     _set_document_geometry(
@@ -687,246 +771,6 @@ def _trace_mask(
     )
 
 
-# =========================================================
-# SVG path scaling
-# =========================================================
-
-
-_PATH_TOKEN_RE = re.compile(
-    r"""
-    [AaCcHhLlMmQqSsTtVvZz]
-    |
-    [-+]?
-    (?:
-        (?:\d+\.\d*)
-        |
-        (?:\.\d+)
-        |
-        (?:\d+)
-    )
-    (?:[eE][-+]?\d+)?
-    """,
-    re.VERBOSE,
-)
-
-
-_PATH_PARAMETER_COUNTS = {
-    "M": 2,
-    "L": 2,
-    "H": 1,
-    "V": 1,
-    "C": 6,
-    "S": 4,
-    "Q": 4,
-    "T": 2,
-    "A": 7,
-    "Z": 0,
-}
-
-
-def _path_tokens(
-    path_data: str,
-) -> list[str]:
-    """
-    Tokenize SVG path data.
-    """
-
-    return _PATH_TOKEN_RE.findall(path_data)
-
-
-def _is_command(
-    token: str,
-) -> bool:
-    """
-    Return whether a path token is an SVG command.
-    """
-
-    return len(token) == 1 and token.isalpha()
-
-
-def _format_number(
-    value: float,
-) -> str:
-    """
-    Format a path coordinate compactly.
-    """
-
-    if abs(value) < 1e-12:
-        value = 0.0
-
-    text = f"{value:.9f}".rstrip("0").rstrip(".")
-
-    if text == "-0":
-        return "0"
-
-    return text
-
-
-def _scaled_parameters(
-    command: str,
-    values: list[float],
-    scale: float,
-) -> list[float]:
-    """
-    Scale one SVG path segment.
-    """
-
-    if command.upper() == "A":
-        return [
-            values[0] * scale,
-            values[1] * scale,
-            values[2],
-            values[3],
-            values[4],
-            values[5] * scale,
-            values[6] * scale,
-        ]
-
-    return [value * scale for value in values]
-
-
-def _scale_path_data(
-    path_data: str,
-    scale: float,
-) -> str:
-    """
-    Bake uniform scaling into SVG path data.
-    """
-
-    tokens = _path_tokens(path_data)
-
-    if not tokens:
-        raise VectorError("SVG path contains no path data.")
-
-    output: list[str] = []
-
-    index = 0
-
-    command: str | None = None
-
-    while index < len(tokens):
-        token = tokens[index]
-
-        if _is_command(token):
-            command = token
-
-            output.append(command)
-
-            index += 1
-
-            if command.upper() == "Z":
-                command = None
-
-                continue
-
-        if command is None:
-            raise VectorError("Malformed SVG path data.")
-
-        upper = command.upper()
-
-        parameter_count = _PATH_PARAMETER_COUNTS.get(upper)
-
-        if parameter_count is None:
-            raise VectorError(f"Unsupported SVG path command: {command}")
-
-        if parameter_count == 0:
-            continue
-
-        first_group = True
-
-        while index < len(tokens) and not _is_command(tokens[index]):
-            end = index + parameter_count
-
-            if end > len(tokens):
-                raise VectorError("Incomplete SVG path command.")
-
-            segment = tokens[index:end]
-
-            if any(_is_command(item) for item in segment):
-                raise VectorError("Incomplete SVG path command.")
-
-            values = [float(item) for item in segment]
-
-            scaled = _scaled_parameters(
-                command,
-                values,
-                scale,
-            )
-
-            if upper == "M" and not first_group:
-                output.append("l" if command == "m" else "L")
-
-            output.extend(_format_number(value) for value in scaled)
-
-            index = end
-
-            first_group = False
-
-    return " ".join(output)
-
-
-def _scale_paths(
-    tree: ET.ElementTree[ET.Element[str]],
-    scale: float,
-) -> None:
-    """
-    Bake uniform scaling into every path.
-    """
-
-    if scale <= 0:
-        raise VectorError("SVG path scale must be greater than zero.")
-
-    root = tree.getroot()
-
-    for element in root.iter():
-        transform = element.get("transform")
-
-        if transform:
-            raise VectorError(
-                "Traced SVG contains a transform that "
-                "must be flattened before CAD export: "
-                f"{transform}"
-            )
-
-    path_tag = f"{{{SVG_NS}}}path"
-
-    count = 0
-
-    for path in root.iter(path_tag):
-        path_data = path.get("d")
-
-        if not path_data:
-            continue
-
-        path.set(
-            "d",
-            _scale_path_data(
-                path_data,
-                scale,
-            ),
-        )
-
-        count += 1
-
-    if count == 0:
-        raise VectorError("Traced SVG contains no vector paths.")
-
-
-# =========================================================
-# SVG document geometry
-# =========================================================
-
-
-def _diameter_to_svg_units(
-    artwork_size: float,
-) -> float:
-    """
-    Convert millimeters into SVG user units at 96 DPI.
-    """
-
-    return artwork_size * SVG_DPI / MM_PER_INCH
-
-
 def _set_document_geometry(
     tree: ET.ElementTree[ET.Element[str]],
     *,
@@ -935,8 +779,6 @@ def _set_document_geometry(
     """
     Set final CAD-compatible SVG dimensions.
     """
-
-    svg_size = _diameter_to_svg_units(artwork_size)
 
     root = tree.getroot()
 
@@ -948,13 +790,6 @@ def _set_document_geometry(
     root.set(
         "height",
         f"{artwork_size:g}mm",
-    )
-
-    formatted = _format_number(svg_size)
-
-    root.set(
-        "viewBox",
-        (f"0 0 {formatted} {formatted}"),
     )
 
 
@@ -999,6 +834,7 @@ def _write_manifest(
         {
             "index": raster.index,
             "path": vector.name,
+            "name": raster.name,
             "color": {
                 "red": raster.color[0],
                 "green": raster.color[1],

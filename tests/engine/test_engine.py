@@ -170,7 +170,10 @@ def test_create_build_plan_materializes_product_paths(
     artifact_dir = tmp_path / "artifacts" / "example"
 
     assert products == {
-        "prepare": (artifact_dir / "prepare" / "trace.svg",),
+        "prepare": (
+            artifact_dir / "prepare" / "trace.svg",
+            artifact_dir / "prepare" / "envelope.svg",
+        ),
         "raster": (artifact_dir / "raster" / "products.json",),
         "vector": (artifact_dir / "vector" / "products.json",),
         "extrude": (artifact_dir / "extrude" / "products.json",),
@@ -885,6 +888,7 @@ def test_execute_build_context_contains_dependency_products(
 
     assert observed["raster"] == {
         "prepare.trace": (plan.artifact_dir / "prepare" / "trace.svg"),
+        "prepare.envelope": (plan.artifact_dir / "prepare" / "envelope.svg"),
     }
 
     assert observed["vector"] == {
@@ -942,6 +946,7 @@ def test_execute_build_context_contains_declared_outputs(
 
     assert observed["prepare"] == {
         "trace": (plan.artifact_dir / "prepare" / "trace.svg"),
+        "envelope": (plan.artifact_dir / "prepare" / "envelope.svg"),
     }
 
     assert observed["raster"] == {

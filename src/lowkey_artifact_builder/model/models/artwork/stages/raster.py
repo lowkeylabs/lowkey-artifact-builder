@@ -9,10 +9,12 @@ square export region. The original embedded raster image supplies the
 artwork footprint. Visible regions are then calculated in pixel space
 so no SVG Boolean operations are required.
 
-Small disconnected islands are removed using a physical-area threshold.
+Each traced color is assigned one-to-one to the configured artwork
+palette using perceptual color matching. The resulting semantic color
+identity is recorded in the stage manifest for consumption by later
+stages.
 
-The generated color layers and their trace colors are recorded in the
-stage manifest for consumption by later stages.
+Small disconnected islands are removed using a physical-area threshold.
 """
 
 from __future__ import annotations
@@ -28,6 +30,13 @@ from typing import Any
 
 from PIL import Image
 
+from lowkey_artifact_builder.colors import (
+    ColorAssignment,
+    ColorError,
+    MeasuredColor,
+    assign_colors,
+    resolve_palette,
+)
 from lowkey_artifact_builder.engine import (
     StageContext,
 )
@@ -155,7 +164,7 @@ def execute(
     Parameters:
 
         artwork_colors
-            Expected number of traced colors.
+            Ordered semantic color names available to the artwork.
 
         artwork_pixels
             Width and height of every registered raster layer.
@@ -172,7 +181,9 @@ def execute(
     Outputs:
 
         manifest
-            JSON manifest describing generated raster layers.
+            JSON manifest describing generated raster layers,
+            semantic color assignments, measured trace colors, and
+            perceptual assignment distances.
     """
 
     trace = context.input(
@@ -183,11 +194,10 @@ def execute(
         "manifest",
     )
 
-    colors = _positive_integer(
-        "artwork_colors",
+    artwork_colors = _color_names(
         context.resolver(
             "artwork_colors",
-        ),
+        )
     )
 
     pixels = _positive_integer(
@@ -226,14 +236,19 @@ def execute(
     )
 
     try:
+        palette = resolve_palette(
+            artwork_colors,
+            context.resolver.colors,
+        )
+
         tree = load(trace)
 
         objects = get_trace_objects(tree)
 
-        if len(objects) != colors:
+        if len(objects) != len(palette):
             raise RasterError(
                 "Unexpected number of traced color objects. "
-                f"Requested {colors}, found {len(objects)}."
+                f"Requested {len(palette)}, found {len(objects)}."
             )
 
         trace_colors = tuple(
@@ -244,6 +259,22 @@ def execute(
             for object_id in objects
         )
 
+        measured_colors = tuple(
+            MeasuredColor(
+                index=index,
+                rgb=color,
+            )
+            for index, color in enumerate(
+                trace_colors,
+                start=1,
+            )
+        )
+
+        assignments = assign_colors(
+            measured_colors,
+            palette,
+        )
+
         bounds = _square_bounds(
             trace,
             objects,
@@ -252,7 +283,7 @@ def execute(
         layers = _render_layers(
             trace,
             objects,
-            trace_colors,
+            tuple(assignment.color.rgb for assignment in assignments),
             directory=manifest.parent,
             bounds=bounds,
             pixels=pixels,
@@ -268,11 +299,12 @@ def execute(
         _write_manifest(
             manifest,
             layers,
-            trace_colors,
+            assignments,
             pixels=pixels,
         )
 
     except (
+        ColorError,
         SVGError,
         InkscapeError,
         OSError,
@@ -283,6 +315,41 @@ def execute(
 # =========================================================
 # Parameter validation
 # =========================================================
+
+
+def _color_names(
+    value: Any,
+) -> tuple[str, ...]:
+    """
+    Return a validated sequence of artwork color names.
+    """
+
+    if isinstance(
+        value,
+        str | bytes,
+    ):
+        raise RasterError("artwork_colors must be a sequence of color names.")
+
+    try:
+        colors = tuple(value)
+
+    except TypeError as exc:
+        raise RasterError("artwork_colors must be a sequence of color names.") from exc
+
+    if not colors:
+        raise RasterError("artwork_colors must contain at least one color.")
+
+    if not all(
+        isinstance(
+            color,
+            str,
+        )
+        and bool(color.strip())
+        for color in colors
+    ):
+        raise RasterError("artwork_colors must contain only non-empty color names.")
+
+    return tuple(color.strip() for color in colors)
 
 
 def _positive_integer(
@@ -739,6 +806,9 @@ def _render_layers(
 ) -> list[Path]:
     """
     Render mutually exclusive registered color layers.
+
+    The supplied colors are the assigned configured palette colors,
+    not the measured trace colors.
     """
 
     outputs: list[Path] = []
@@ -1062,8 +1132,8 @@ def _cleanup_layers(
 def _write_manifest(
     path: Path,
     layers: list[Path],
-    colors: tuple[
-        tuple[int, int, int],
+    assignments: tuple[
+        ColorAssignment,
         ...,
     ],
     *,
@@ -1071,25 +1141,48 @@ def _write_manifest(
 ) -> None:
     """
     Write the raster product manifest.
+
+    Each product records:
+
+        name
+            Semantic configured artwork color.
+
+        color
+            Configured RGB representation of that semantic color.
+
+        trace_color
+            RGB value measured from the corresponding Inkscape trace
+            object.
+
+        distance
+            Perceptual distance between the measured trace color and
+            the assigned configured color.
     """
 
     products = [
         {
             "index": index,
             "path": layer.name,
+            "name": assignment.color.name,
             "color": {
-                "red": color[0],
-                "green": color[1],
-                "blue": color[2],
+                "red": assignment.color.rgb[0],
+                "green": assignment.color.rgb[1],
+                "blue": assignment.color.rgb[2],
             },
+            "trace_color": {
+                "red": assignment.measured.rgb[0],
+                "green": assignment.measured.rgb[1],
+                "blue": assignment.measured.rgb[2],
+            },
+            "distance": assignment.distance,
         }
         for index, (
             layer,
-            color,
+            assignment,
         ) in enumerate(
             zip(
                 layers,
-                colors,
+                assignments,
                 strict=True,
             ),
             start=1,
