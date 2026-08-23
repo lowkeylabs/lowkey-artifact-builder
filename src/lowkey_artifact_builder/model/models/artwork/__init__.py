@@ -66,11 +66,6 @@ class StageImplementationRegistry(
 # =========================================================
 
 
-# =========================================================
-# Stages
-# =========================================================
-
-
 STAGES = (
     StageSpec(
         id=10,
@@ -90,12 +85,12 @@ STAGES = (
         products=(
             ProductSpec(
                 name="trace",
-                path="prepare/trace.svg",
+                path="trace.svg",
                 description=("Multicolor vector trace of the source artwork."),
             ),
             ProductSpec(
                 name="envelope",
-                path="prepare/envelope.svg",
+                path="envelope.svg",
                 description=("Envelope surrounding outside of image."),
             ),
         ),
@@ -115,7 +110,7 @@ STAGES = (
         products=(
             ProductSpec(
                 name="manifest",
-                path="raster/products.json",
+                path="products.json",
                 description=(
                     "Manifest describing the generated raster color "
                     "layers and their artwork color assignments."
@@ -132,7 +127,7 @@ STAGES = (
         products=(
             ProductSpec(
                 name="manifest",
-                path="vector/products.json",
+                path="products.json",
                 description=("Manifest describing the generated vector color layers."),
             ),
         ),
@@ -149,7 +144,7 @@ STAGES = (
         products=(
             ProductSpec(
                 name="manifest",
-                path="extrude/products.json",
+                path="products.json",
                 description=(
                     "Manifest describing the generated artwork STL "
                     "components and their artwork colors."

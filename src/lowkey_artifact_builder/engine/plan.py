@@ -324,14 +324,23 @@ def _plan_stage_products(
     """
     Materialize persistent product locations for one stage.
 
-    Product paths declared by StageSpec are relative to the artifact
-    directory.
+    Product paths declared by StageSpec are relative to their producing
+    stage.
+
+    The current artifact layout stores intermediate-stage products in a
+    directory named for the stage while final package products remain
+    directly in the artifact directory.
+
+    Filesystem layout policy will move to the product resolver as the
+    architecture migration progresses.
     """
+
+    stage_dir = artifact_dir if stage.name == "package" else artifact_dir / stage.name
 
     return tuple(
         PlannedProduct(
             spec=product,
-            path=(artifact_dir / product.path),
+            path=(stage_dir / product.path),
         )
         for product in stage.products
     )

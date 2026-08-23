@@ -104,17 +104,25 @@ def test_artwork_extrude_inputs() -> None:
 
 
 def test_artwork_stage_products() -> None:
-    """Artwork stages declare their persistent checkpoint products."""
+    """
+    Artwork product paths are local to their producing stages.
+
+    Product specifications identify paths within a stage rather than
+    encoding the stage directory itself.
+    """
 
     stages = {stage.name: stage for stage in MODEL.stages}
 
-    assert stages["prepare"].products[0].path == "prepare/trace.svg"
+    assert tuple(product.path for product in stages["prepare"].products) == (
+        "trace.svg",
+        "envelope.svg",
+    )
 
-    assert stages["raster"].products[0].path == "raster/products.json"
+    assert stages["raster"].products[0].path == "products.json"
 
-    assert stages["vector"].products[0].path == "vector/products.json"
+    assert stages["vector"].products[0].path == "products.json"
 
-    assert stages["extrude"].products[0].path == "extrude/products.json"
+    assert stages["extrude"].products[0].path == "products.json"
 
     assert stages["package"].products[0].path == "artifact.3mf"
 

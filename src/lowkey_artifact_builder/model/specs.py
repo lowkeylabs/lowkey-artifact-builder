@@ -138,7 +138,12 @@ class ProductSpec:
     """
     Define a persistent filesystem work product produced by a stage.
 
-    The path is relative to the artifact working directory.
+    The path is relative to the producing stage.
+
+    Product paths do not include the producing stage's directory.
+    Filesystem placement of a stage and its products is the
+    responsibility of the build planning and path resolution
+    subsystems.
 
     Product filenames are intentionally artifact-independent because
     every artifact receives its own working directory.
