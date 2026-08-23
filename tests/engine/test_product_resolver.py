@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lowkey_artifact_builder.engine.product_resolver import ProductResolver
-from lowkey_artifact_builder.model.specs import StageSpec
+from lowkey_artifact_builder.model.specs import ProductSpec, StageSpec
 
 
 def test_product_resolver_resolves_artifact_directory(
@@ -65,3 +65,29 @@ def test_product_resolver_resolves_stage_directory(
         realization="default",
         stage=stage,
     ) == (tmp_path / "artifacts" / "nydeli" / "artwork" / "default" / "30-vector")
+
+
+def test_product_resolver_resolves_product_path(
+    tmp_path: Path,
+) -> None:
+    resolver = ProductResolver(
+        project_root=tmp_path,
+    )
+
+    stage = StageSpec(
+        id=30,
+        name="vector",
+    )
+
+    product = ProductSpec(
+        name="colors",
+        path="colors.svg",
+    )
+
+    assert resolver.product_path(
+        artifact="nydeli",
+        model="artwork",
+        realization="default",
+        stage=stage,
+        product=product,
+    ) == (tmp_path / "artifacts" / "nydeli" / "artwork" / "default" / "30-vector" / "colors.svg")

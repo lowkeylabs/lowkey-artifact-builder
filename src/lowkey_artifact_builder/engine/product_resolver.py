@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from lowkey_artifact_builder.model.specs import StageSpec
+from lowkey_artifact_builder.model.specs import ProductSpec, StageSpec
 
 
 @dataclass(
@@ -84,6 +84,29 @@ class ProductResolver:
                 realization=realization,
             )
             / f"{stage.id}-{stage.name}"
+        )
+
+    def product_path(
+        self,
+        *,
+        artifact: str,
+        model: str,
+        realization: str,
+        stage: StageSpec,
+        product: ProductSpec,
+    ) -> Path:
+        """
+        Return the canonical filesystem path for a product.
+        """
+
+        return (
+            self.stage_dir(
+                artifact=artifact,
+                model=model,
+                realization=realization,
+                stage=stage,
+            )
+            / product.path
         )
 
 
