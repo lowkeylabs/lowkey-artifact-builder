@@ -40,8 +40,6 @@ def test_builtin_models_are_registered() -> None:
     registry = build_model_registry()
 
     assert registry.has_model("artwork")
-    assert registry.has_model("circular")
-    assert registry.has_model("logo")
 
 
 def test_builtin_model_names() -> None:
@@ -55,8 +53,6 @@ def test_builtin_model_names() -> None:
 
     assert names == [
         "artwork",
-        "circular",
-        "logo",
     ]
 
 
@@ -75,40 +71,6 @@ def test_artwork_model_metadata() -> None:
     assert model.title == "Artwork"
     assert model.defined_in is not None
     assert model.defined_in.endswith(".models.artwork")
-
-
-def test_circular_model_metadata() -> None:
-    """
-    The circular model exposes its basic identity.
-    """
-
-    registry = build_model_registry()
-
-    model = registry.get_model(
-        "circular",
-    )
-
-    assert model.name == "circular"
-    assert model.title == "Circular"
-    assert model.defined_in is not None
-    assert model.defined_in.endswith(".models.circular")
-
-
-def test_logo_model_metadata() -> None:
-    """
-    The logo model exposes its basic identity.
-    """
-
-    registry = build_model_registry()
-
-    model = registry.get_model(
-        "logo",
-    )
-
-    assert model.name == "logo"
-    assert model.title == "Logo"
-    assert model.defined_in is not None
-    assert model.defined_in.endswith(".models.logo")
 
 
 # =========================================================
@@ -132,10 +94,6 @@ def test_model_packages_exist() -> None:
 
     assert (RESOURCE_DIR / "artwork").is_dir()
 
-    assert (RESOURCE_DIR / "circular").is_dir()
-
-    assert (RESOURCE_DIR / "logo").is_dir()
-
 
 # =========================================================
 # Registry independence
@@ -156,5 +114,3 @@ def test_bootstrap_returns_independent_registries() -> None:
     assert first is not second
 
     assert first.get_model("artwork") is second.get_model("artwork")
-    assert first.get_model("circular") is second.get_model("circular")
-    assert first.get_model("logo") is second.get_model("logo")

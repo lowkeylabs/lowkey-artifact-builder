@@ -16,20 +16,26 @@ def test_artwork_model_has_no_features() -> None:
     assert MODEL.features == ()
 
 
-def test_artwork_stage_order() -> None:
-    """The artwork workflow contains the expected ordered stages."""
+def test_artwork_stages() -> None:
+    """
+    The artwork workflow declares the expected stages with stable
+    numeric identifiers.
+    """
 
-    assert tuple(stage.name for stage in MODEL.stages) == (
-        "prepare",
-        "raster",
-        "vector",
-        "extrude",
-        "package",
+    assert tuple((stage.id, stage.name) for stage in MODEL.stages) == (
+        (10, "prepare"),
+        (20, "raster"),
+        (30, "vector"),
+        (40, "extrude"),
+        (50, "package"),
     )
 
 
 def test_artwork_stage_dependencies() -> None:
-    """Artwork stages form a linear dependency chain."""
+    """
+    Artwork stages form a linear dependency chain using semantic stage
+    names rather than numeric stage identifiers.
+    """
 
     stages = {stage.name: stage for stage in MODEL.stages}
 

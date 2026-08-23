@@ -66,8 +66,14 @@ class StageImplementationRegistry(
 # =========================================================
 
 
+# =========================================================
+# Stages
+# =========================================================
+
+
 STAGES = (
     StageSpec(
+        id=10,
         name="prepare",
         description=("Trace the source artwork using the configured artwork palette."),
         inputs=(
@@ -95,6 +101,7 @@ STAGES = (
         ),
     ),
     StageSpec(
+        id=20,
         name="raster",
         description=("Build registered, mutually exclusive raster color layers."),
         dependencies=("prepare",),
@@ -117,6 +124,7 @@ STAGES = (
         ),
     ),
     StageSpec(
+        id=30,
         name="vector",
         description=("Convert registered raster color layers into registered vector geometry."),
         dependencies=("raster",),
@@ -130,6 +138,7 @@ STAGES = (
         ),
     ),
     StageSpec(
+        id=40,
         name="extrude",
         description=("Extrude vector color layers into printable STL components."),
         dependencies=("vector",),
@@ -149,6 +158,7 @@ STAGES = (
         ),
     ),
     StageSpec(
+        id=50,
         name="package",
         description=("Package the artwork STL components into the final 3MF."),
         dependencies=("extrude",),
@@ -161,7 +171,6 @@ STAGES = (
         ),
     ),
 )
-
 
 # =========================================================
 # Model

@@ -210,6 +210,11 @@ class FeatureSpec:
 # =========================================================
 
 
+# =========================================================
+# Stages
+# =========================================================
+
+
 @dataclass(
     frozen=True,
     slots=True,
@@ -220,6 +225,14 @@ class StageSpec:
 
     A stage is the smallest unit of work that the build system may
     independently determine to be current, stale, or incomplete.
+
+    ID is a stable numeric identifier used for human presentation and
+    filesystem organization.
+
+    The numeric ID does not define the semantic identity of the stage
+    and does not determine dependency or execution order. The stage
+    name is its semantic identity, and dependencies are expressed using
+    stage names.
 
     Dependencies identify other stages that must be satisfied before
     this stage may execute.
@@ -265,6 +278,8 @@ class StageSpec:
     Products describe persistent filesystem outputs whose existence and
     validity participate in determining whether the stage is satisfied.
     """
+
+    id: int
 
     name: str
 

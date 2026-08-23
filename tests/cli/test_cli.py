@@ -92,12 +92,6 @@ def test_cli_config_list_models() -> None:
 
     assert "Available Models" in result.output
 
-    assert "circular" in result.output
-    assert "Circular" in result.output
-
-    assert "logo" in result.output
-    assert "Logo" in result.output
-
 
 def test_cli_config_list_models_dump() -> None:
     """Config can dump complete registered model definitions."""
@@ -115,13 +109,8 @@ def test_cli_config_list_models_dump() -> None:
 
     assert result.exit_code == 0
 
-    assert "circular" in result.output
-    assert "Circular" in result.output
     assert "Features" in result.output
     assert "Stages" in result.output
-
-    assert "logo" in result.output
-    assert "Logo" in result.output
 
 
 def test_cli_config_list_models_rejects_artifact_ids() -> None:

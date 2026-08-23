@@ -138,6 +138,7 @@ def test_stage_spec() -> None:
     )
 
     stage = StageSpec(
+        id=10,
         name="holder",
         description="Build the artifact holder",
         dependencies=("source",),
@@ -150,6 +151,7 @@ def test_stage_spec() -> None:
         products=(product,),
     )
 
+    assert stage.id == 10
     assert stage.name == "holder"
     assert stage.description == "Build the artifact holder"
     assert stage.dependencies == ("source",)
@@ -164,14 +166,16 @@ def test_stage_spec() -> None:
 
 def test_stage_spec_defaults() -> None:
     """
-    Stages default to no dependencies, required features,
-    inputs, parameters, or products.
+    Stages require an ID and name and default to no dependencies,
+    required features, inputs, parameters, or products.
     """
 
     stage = StageSpec(
+        id=10,
         name="holder",
     )
 
+    assert stage.id == 10
     assert stage.description == ""
     assert stage.dependencies == ()
     assert stage.requires_features == ()
@@ -186,6 +190,7 @@ def test_stage_spec_required_features() -> None:
     """
 
     stage = StageSpec(
+        id=10,
         name="labels",
         description="Build artifact labels",
         requires_features=("labels",),
@@ -207,6 +212,7 @@ def test_stage_spec_inputs() -> None:
     )
 
     stage = StageSpec(
+        id=10,
         name="prepare",
         inputs=(input_spec,),
         parameters=("artwork_colors",),
@@ -222,6 +228,7 @@ def test_stage_spec_parameters() -> None:
     """
 
     stage = StageSpec(
+        id=10,
         name="holder",
         parameters=(
             "outside_diameter",
@@ -250,6 +257,7 @@ def test_stage_parameters_are_independent_of_source() -> None:
     """
 
     stage = StageSpec(
+        id=10,
         name="holder",
         parameters=(
             "outside_diameter",
@@ -284,6 +292,7 @@ def test_model_spec() -> None:
     )
 
     stage = StageSpec(
+        id=10,
         name="holder",
         parameters=(
             "outside_diameter",
@@ -338,6 +347,7 @@ def test_model_parameters_include_input_parameters() -> None:
     )
 
     stage = StageSpec(
+        id=10,
         name="prepare",
         inputs=(input_spec,),
         parameters=("artwork_colors",),
@@ -362,6 +372,7 @@ def test_model_parameters_preserve_first_occurrence() -> None:
     """
 
     first = StageSpec(
+        id=10,
         name="prepare",
         inputs=(
             InputSpec(
@@ -377,6 +388,7 @@ def test_model_parameters_preserve_first_occurrence() -> None:
     )
 
     second = StageSpec(
+        id=20,
         name="build",
         inputs=(
             InputSpec(
@@ -459,12 +471,17 @@ def test_feature_spec_is_immutable() -> None:
 
 def test_stage_spec_is_immutable() -> None:
     """
-    Stage definitions cannot be modified after creation.
+    Stage definitions, including their stable IDs, cannot be modified
+    after creation.
     """
 
     stage = StageSpec(
+        id=10,
         name="holder",
     )
+
+    with pytest.raises(FrozenInstanceError):
+        stage.id = 20  # type: ignore[misc]
 
     with pytest.raises(FrozenInstanceError):
         stage.name = "changed"  # type: ignore[misc]
