@@ -160,6 +160,25 @@ class ProductRef:
 
     product: str
 
+    @classmethod
+    def parse(
+        cls,
+        value: str,
+    ) -> ProductRef:
+        """
+        Parse a canonical logical product reference.
+        """
+
+        artifact, model, realization, stage, product = value.split(":")
+
+        return cls(
+            artifact=artifact,
+            model=model,
+            realization=realization,
+            stage=stage,
+            product=product,
+        )
+
     def __str__(
         self,
     ) -> str:

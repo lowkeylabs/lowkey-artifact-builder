@@ -148,3 +148,31 @@ def test_product_ref_formats_canonical_reference() -> None:
     )
 
     assert str(ref) == "nydeli:artwork:default:vector:colors"
+
+
+def test_product_ref_parses_canonical_reference() -> None:
+    ref = ProductRef.parse(
+        "nydeli:artwork:default:vector:colors",
+    )
+
+    assert ref == ProductRef(
+        artifact="nydeli",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="colors",
+    )
+
+
+def test_product_ref_round_trips_through_string_representation() -> None:
+    original = ProductRef(
+        artifact="nydeli",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="colors",
+    )
+
+    parsed = ProductRef.parse(str(original))
+
+    assert parsed == original
