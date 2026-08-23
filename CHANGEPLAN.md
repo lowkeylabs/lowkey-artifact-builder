@@ -166,7 +166,35 @@ extrude → package
 
 ---
 
-## Phase 8 — Product State and Resumability
+## Phase 8 — Independent Stage Execution
+
+Make individual registered stages executable through the same execution
+contract used by normal graph-driven builds.
+
+- Establish a complete resolved stage execution context.
+- Refactor stage invocation so normal builds execute stages through one
+  reusable execution primitive.
+- Ensure stage implementations do not depend upon implicit model traversal.
+- Add explicit single-stage execution through the CLI.
+- Resolve CLI-supplied inputs, dependency products, parameters, and output
+  locations into the normal stage execution context.
+- Validate explicit inputs and outputs against the registered `StageSpec`.
+- Execute only the requested stage; do not implicitly execute dependencies.
+- Add tests proving that graph-driven and explicit execution invoke the same
+  stage implementation contract.
+- Add CLI tests for successful execution and invalid/missing inputs,
+  parameters, products, and stage identities.
+
+Do not introduce a second stage implementation API for command-line
+execution.
+
+Ad-hoc sequences of explicit stage commands may be used for experimentation
+and development, but persistent reusable workflows should be represented by
+models or declarative graphs.
+
+---
+
+## Phase 9 — Product State and Resumability
 
 Make execution depend upon product state.
 
@@ -185,7 +213,7 @@ Make execution depend upon product state.
 
 ---
 
-## Phase 9 — Cross-Model and Cross-Artifact Reuse
+## Phase 10 — Cross-Model and Cross-Artifact Reuse
 
 Exercise the first-class product architecture.
 
@@ -197,7 +225,7 @@ Exercise the first-class product architecture.
 
 ---
 
-## Phase 10 — Registered Geometry and Composition
+## Phase 11 — Registered Geometry and Composition
 
 Formalize reusable 2D geometry contracts and exercise them with additional
 models.

@@ -286,6 +286,25 @@ eagerly.
 
 ---
 
+## 3.8 Execution is independent of orchestration
+
+Stage implementations are reusable execution units.
+
+A stage implementation must be executable from a complete resolved stage
+context without requiring the caller to execute or traverse the surrounding
+model.
+
+Model planning, graph execution, and explicit command-line execution are
+different ways of constructing and supplying that context. They must converge
+on the same stage execution contract rather than implement separate execution
+APIs.
+
+Orchestration determines what should execute.
+
+The stage implementation determines how one stage executes.
+
+---
+
 # 4. Terminology
 
 ## 4.1 Workspace
@@ -539,7 +558,79 @@ Stages participate in a dependency graph.
 
 ---
 
-## 4.9 Stage ID
+## 4.9 Independent stage execution
+
+A stage is independently executable when supplied with a complete resolved
+execution context.
+
+Normal model execution determines stage inputs, parameters, products, and
+dependencies through planning and graph resolution. The resulting stage
+execution must not, however, depend upon being invoked through that particular
+planning path.
+
+Conceptually:
+
+```text
+model / graph planning ──┐
+                         │
+                         ▼
+                  resolved stage context
+                         │
+                         ▼
+                  stage implementation
+                         ▲
+                         │
+manual execution ────────┘
+```
+
+The same stage implementation must be usable by both normal model execution
+and explicit single-stage execution.
+
+Independent stage execution may supply explicitly:
+
+* source inputs;
+* dependency products;
+* resolved parameter values;
+* product destinations;
+* other execution context required by the stage contract.
+
+The stage implementation must not require implicit traversal of its model's
+dependency graph.
+
+Normal model execution remains responsible for:
+
+* dependency traversal;
+* selecting required stages;
+* configuration resolution;
+* product-state evaluation;
+* resumability;
+* dependency validation;
+* determining canonical product locations.
+
+Explicit stage execution executes only the requested stage. It does not
+implicitly execute dependencies. Required dependency products must already
+exist or be supplied explicitly.
+
+Stage specifications remain authoritative. Explicit execution may choose
+physical input and output locations, but it does not redefine the stage's
+declared inputs, parameters, products, or semantic identity.
+
+This capability supports:
+
+* development and debugging;
+* testing individual transformations;
+* experimentation;
+* reproducibility of individual processing steps;
+* use of registered stages as composable command-line tools.
+
+Repeated or persistent orchestration of multiple stages should normally be
+represented as a model or other declarative graph definition rather than
+creating a second independent pipeline abstraction.
+
+
+---
+
+## 4.10 Stage ID
 
 Every stage has a stable numeric identifier used for human presentation and
 filesystem organization.
@@ -578,7 +669,7 @@ Logical product references therefore do not depend on the numeric stage ID.
 
 ---
 
-## 4.10 Product
+## 4.11 Product
 
 A product is a named persistent output produced by a stage.
 
@@ -603,7 +694,7 @@ All products are first-class and reusable.
 
 ---
 
-## 4.11 Product collection
+## 4.12 Product collection
 
 Some logical products consist of a variable number of physical files.
 
