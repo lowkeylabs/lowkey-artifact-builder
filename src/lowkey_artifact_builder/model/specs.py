@@ -331,6 +331,8 @@ class ModelSpec:
     artifact workflows may contain only a subset of those stages when
     stages depend on optional features that are not enabled.
 
+    Stage IDs and stage names must each be unique within a model.
+
     ModelSpec is declarative. It does not execute stages, describe
     individual artwork instances, interpret feature behavior, resolve
     configuration, resolve filesystem paths, determine stage validity,
@@ -357,6 +359,27 @@ class ModelSpec:
     )
 
     defined_in: str | None = None
+
+    def __post_init__(
+        self,
+    ) -> None:
+        """
+        Validate model-level specification invariants.
+        """
+
+        stage_ids: set[int] = set()
+        stage_names: set[str] = set()
+
+        for stage in self.stages:
+            if stage.id in stage_ids:
+                raise ValueError(f"Duplicate stage ID {stage.id!r} in model {self.name!r}.")
+
+            stage_ids.add(stage.id)
+
+            if stage.name in stage_names:
+                raise ValueError(f"Duplicate stage name {stage.name!r} in model {self.name!r}.")
+
+            stage_names.add(stage.name)
 
     @property
     def parameters(

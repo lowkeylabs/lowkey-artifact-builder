@@ -334,6 +334,64 @@ def test_model_spec_defaults() -> None:
     assert model.defined_in is None
 
 
+def test_model_spec_rejects_duplicate_stage_ids() -> None:
+    """
+    Stage IDs must be unique within a model.
+    """
+
+    first = StageSpec(
+        id=10,
+        name="prepare",
+    )
+
+    second = StageSpec(
+        id=10,
+        name="raster",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="stage ID",
+    ):
+        ModelSpec(
+            name="example",
+            title="Example",
+            stages=(
+                first,
+                second,
+            ),
+        )
+
+
+def test_model_spec_rejects_duplicate_stage_names() -> None:
+    """
+    Stage names must be unique within a model.
+    """
+
+    first = StageSpec(
+        id=10,
+        name="prepare",
+    )
+
+    second = StageSpec(
+        id=20,
+        name="prepare",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="stage name",
+    ):
+        ModelSpec(
+            name="example",
+            title="Example",
+            stages=(
+                first,
+                second,
+            ),
+        )
+
+
 def test_model_parameters_include_input_parameters() -> None:
     """
     Model parameters include configuration values used to locate
