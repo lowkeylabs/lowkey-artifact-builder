@@ -134,6 +134,54 @@ class InputSpec:
     frozen=True,
     slots=True,
 )
+class ProductRef:
+    """
+    Identify one logical product.
+
+    A product is identified by the artifact, model, realization, stage,
+    and product to which it belongs.
+
+    ProductRef is a value object. Equality and hashing are therefore
+    structural: two references with the same identity components refer
+    to the same logical product.
+
+    ProductRef contains no filesystem information. Mapping a logical
+    product reference to a physical location is the responsibility of
+    the product resolver.
+    """
+
+    artifact: str
+
+    model: str
+
+    realization: str
+
+    stage: str
+
+    product: str
+
+    def __str__(
+        self,
+    ) -> str:
+        """
+        Return the canonical logical product reference.
+        """
+
+        return ":".join(
+            (
+                self.artifact,
+                self.model,
+                self.realization,
+                self.stage,
+                self.product,
+            )
+        )
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
 class ProductSpec:
     """
     Define a persistent filesystem work product produced by a stage.
@@ -208,11 +256,6 @@ class FeatureSpec:
     name: str
 
     description: str = ""
-
-
-# =========================================================
-# Stages
-# =========================================================
 
 
 # =========================================================
@@ -437,6 +480,7 @@ __all__ = [
     "FeatureSpec",
     "InputSpec",
     "ModelSpec",
+    "ProductRef",
     "ProductSpec",
     "StageSpec",
 ]
