@@ -160,6 +160,36 @@ class ProductRef:
 
     product: str
 
+    def __post_init__(
+        self,
+    ) -> None:
+        """
+        Validate logical product identity components.
+        """
+
+        components = {
+            "artifact": self.artifact,
+            "model": self.model,
+            "realization": self.realization,
+            "stage": self.stage,
+            "product": self.product,
+        }
+
+        for name, value in components.items():
+            if not value:
+                raise ValueError(f"ProductRef {name} must not be empty.")
+
+            if value != value.strip():
+                raise ValueError(
+                    f"ProductRef {name} must not contain leading or trailing whitespace."
+                )
+
+            if ":" in value:
+                raise ValueError(f"ProductRef {name} must not contain ':'.")
+
+            if "/" in value or "\\" in value:
+                raise ValueError(f"ProductRef {name} must not contain path separators.")
+
     @classmethod
     def parse(
         cls,
@@ -169,7 +199,12 @@ class ProductRef:
         Parse a canonical logical product reference.
         """
 
-        artifact, model, realization, stage, product = value.split(":")
+        components = value.split(":")
+
+        if len(components) != 5:
+            raise ValueError("ProductRef must contain exactly five components.")
+
+        artifact, model, realization, stage, product = components
 
         return cls(
             artifact=artifact,

@@ -176,3 +176,75 @@ def test_product_ref_round_trips_through_string_representation() -> None:
     parsed = ProductRef.parse(str(original))
 
     assert parsed == original
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("artifact", ""),
+        ("model", ""),
+        ("realization", ""),
+        ("stage", ""),
+        ("product", ""),
+        ("artifact", "   "),
+        ("model", " artwork"),
+        ("realization", "default "),
+        ("stage", "vec:tor"),
+        ("product", "color/one"),
+        ("product", r"color\one"),
+    ],
+)
+def test_product_ref_rejects_invalid_components(
+    field: str,
+    value: str,
+) -> None:
+    values = {
+        "artifact": "nydeli",
+        "model": "artwork",
+        "realization": "default",
+        "stage": "vector",
+        "product": "colors",
+    }
+
+    values[field] = value
+
+    with pytest.raises(ValueError):
+        ProductRef(**values)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        ":artwork:default:vector:colors",
+        "nydeli::default:vector:colors",
+        "nydeli:artwork::vector:colors",
+        "nydeli:artwork:default::colors",
+        "nydeli:artwork:default:vector:",
+    ],
+)
+def test_product_ref_parse_rejects_malformed_reference(
+    value: str,
+) -> None:
+    with pytest.raises(ValueError):
+        ProductRef.parse(value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "nydeli",
+        "nydeli:artwork",
+        "nydeli:artwork:default",
+        "nydeli:artwork:default:vector",
+        "nydeli:artwork:default:vector:colors:extra",
+    ],
+)
+def test_product_ref_parse_rejects_wrong_component_count(
+    value: str,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="exactly five components",
+    ):
+        ProductRef.parse(value)
