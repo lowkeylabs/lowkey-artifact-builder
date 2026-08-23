@@ -10,7 +10,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from lowkey_artifact_builder.model.specs import ProductSpec, StageSpec
+from lowkey_artifact_builder.model.specs import (
+    ProductRef,
+    ProductSpec,
+    StageSpec,
+)
 
 
 @dataclass(
@@ -107,6 +111,25 @@ class ProductResolver:
                 stage=stage,
             )
             / product.path
+        )
+
+    def resolve(
+        self,
+        ref: ProductRef,
+        *,
+        stage: StageSpec,
+        product: ProductSpec,
+    ) -> Path:
+        """
+        Resolve a logical product reference to its canonical filesystem path.
+        """
+
+        return self.product_path(
+            artifact=ref.artifact,
+            model=ref.model,
+            realization=ref.realization,
+            stage=stage,
+            product=product,
         )
 
 
