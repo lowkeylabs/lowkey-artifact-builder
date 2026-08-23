@@ -25,6 +25,7 @@ from lowkey_artifact_builder.model.specs import (
     ModelSpec,
     ProductSpec,
     StageSpec,
+    VariantSpec,
 )
 
 __all__ = [
@@ -37,6 +38,7 @@ __all__ = [
     "ModelSpec",
     "ProductSpec",
     "StageSpec",
+    "VariantSpec",
     "build_model_registry",
     "register_stage_implementations",
 ]

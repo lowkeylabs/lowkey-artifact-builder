@@ -65,6 +65,8 @@ import tomlkit
 from tomlkit.exceptions import ParseError
 from tomlkit.toml_document import TOMLDocument
 
+from lowkey_artifact_builder.model import build_model_registry
+
 # =========================================================
 # Types
 # =========================================================
@@ -342,11 +344,16 @@ def get_resolver(
             model="artwork",
         )
 
+    An artifact may select one of the variants declared by its model.
+    When no variant is configured, the model's default variant is used.
+
     Configuration precedence is:
 
         system
             <
         model
+            <
+        variant
             <
         workspace
             <
@@ -377,7 +384,8 @@ def get_resolver(
     # Artifact configuration
     #
     # Inspect this before model parameters are loaded because
-    # an existing artifact normally identifies its model.
+    # an existing artifact normally identifies its model and
+    # selected variant.
     # -----------------------------------------------------
 
     artifact_document = load_artifact_config(
@@ -393,6 +401,10 @@ def get_resolver(
         requested_model=model,
     )
 
+    variant_name = _artifact_variant(
+        artifact_document,
+    )
+
     # -----------------------------------------------------
     # Model configuration
     # -----------------------------------------------------
@@ -400,6 +412,13 @@ def get_resolver(
     model_parameters = _load_model_parameters(model_name)
 
     derivations = _load_model_derivations(model_name)
+
+    model_spec = build_model_registry().get_model(model_name)
+
+    variant = _resolve_variant(
+        model_spec,
+        variant_name,
+    )
 
     # -----------------------------------------------------
     # Workspace configuration
@@ -442,6 +461,13 @@ def get_resolver(
     _merge(
         values,
         provenance,
+        variant.parameters,
+        source=f"variant {variant.name!r}",
+    )
+
+    _merge(
+        values,
+        provenance,
         workspace_parameters,
         source="workspace",
     )
@@ -466,6 +492,13 @@ def get_resolver(
         provenance["model"] = "artifact"
     else:
         provenance["model"] = "setup"
+
+    values["variant"] = variant.name
+
+    if variant_name is not None:
+        provenance["variant"] = "artifact"
+    else:
+        provenance["variant"] = "default"
 
     return Resolver(
         values,
@@ -693,6 +726,18 @@ def _validate_artifact_document(
         if not model.strip():
             raise ConfigError("Artifact model cannot be empty.")
 
+    variant = document.get("variant")
+
+    if variant is not None:
+        if not isinstance(
+            variant,
+            str,
+        ):
+            raise ConfigError("Artifact variant must be a string.")
+
+        if not variant.strip():
+            raise ConfigError("Artifact variant cannot be empty.")
+
     parameters = document.get("parameters")
 
     if parameters is not None and not isinstance(
@@ -850,6 +895,58 @@ def _artifact_model(
         raise ConfigError("Artifact model cannot be empty.")
 
     return value
+
+
+def _artifact_variant(
+    document: Mapping[str, Any],
+) -> str | None:
+    """
+    Return the variant declared by artifact.toml.
+
+    Variant selection is artifact identity rather than an ordinary
+    inherited parameter. It therefore lives at the document's top
+    level.
+
+    A missing variant selects the model's default variant.
+    """
+
+    value = document.get("variant")
+
+    if value is None:
+        return None
+
+    if not isinstance(
+        value,
+        str,
+    ):
+        raise ConfigError("Artifact variant must be a string.")
+
+    value = value.strip()
+
+    if not value:
+        raise ConfigError("Artifact variant cannot be empty.")
+
+    return value
+
+
+def _resolve_variant(
+    model,
+    configured_variant: str | None,
+):
+    """
+    Resolve the selected variant within one model.
+
+    Variant names are model-scoped. A missing artifact variant selects
+    the model's default variant.
+    """
+
+    variant_name = configured_variant if configured_variant is not None else "default"
+
+    for variant in model.variants:
+        if variant.name == variant_name:
+            return variant
+
+    raise ConfigError(f"unknown variant {variant_name!r} for model {model.name!r}.")
 
 
 def _resolve_model_name(
@@ -1111,6 +1208,7 @@ def _artifact_parameters(
     for name, value in document.items():
         if name in {
             "model",
+            "variant",
             "parameters",
         }:
             continue
