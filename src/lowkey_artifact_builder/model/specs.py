@@ -15,6 +15,9 @@ A model consists of:
     Feature
         An optional capability or behavior supported by a model.
 
+    Variant
+        A named, model-scoped parameter preset.
+
     Stage
         One resumable step in the model workflow.
 
@@ -53,6 +56,10 @@ model might support features such as:
 A feature may enable a stage, modify the behavior of an existing stage,
 or do both.
 
+Variants describe reusable named parameter presets belonging to a
+model. A variant does not identify a particular artifact realization
+and does not resolve configuration itself.
+
 Execution, artifact configuration, configuration resolution, filesystem
 path resolution, feature interpretation, dependency resolution, stage
 validity, and artifact materialization belong to other subsystems.
@@ -60,7 +67,10 @@ validity, and artifact materialization belong to other subsystems.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import Any
 
 # =========================================================
 # Inputs
@@ -313,6 +323,58 @@ class FeatureSpec:
 
 
 # =========================================================
+# Variants
+# =========================================================
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class VariantSpec:
+    """
+    Define a named parameter preset belonging to a model.
+
+    Variants provide reusable model-scoped configuration presets.
+
+    Parameters contain resolved-configuration overrides associated with
+    the variant. They describe parameter values rather than filesystem
+    locations or execution state.
+
+    VariantSpec is declarative. It does not select a variant for an
+    artifact, resolve parameter precedence, create a realization, plan
+    stages, resolve products, or manipulate filesystem resources.
+
+    The parameter mapping is copied and made immutable during
+    construction so that a VariantSpec behaves as an immutable value
+    definition even when constructed from a mutable dictionary.
+    """
+
+    name: str
+
+    parameters: Mapping[str, Any] = field(
+        default_factory=dict,
+    )
+
+    description: str = ""
+
+    def __post_init__(
+        self,
+    ) -> None:
+        """
+        Freeze the parameter preset.
+        """
+
+        parameters = MappingProxyType(dict(self.parameters))
+
+        object.__setattr__(
+            self,
+            "parameters",
+            parameters,
+        )
+
+
+# =========================================================
 # Stages
 # =========================================================
 
@@ -424,16 +486,26 @@ class ModelSpec:
     Features identify optional capabilities or behaviors supported by
     the model.
 
+    Variants identify reusable named parameter presets supported by the
+    model. Variant names are scoped to their model.
+
+    Every model has a default variant. When a model does not explicitly
+    declare one, an empty default variant is inserted automatically.
+    This preserves simple-model behavior while giving all models a
+    uniform variant identity.
+
     Stages define the model's complete potential workflow. Individual
     artifact workflows may contain only a subset of those stages when
     stages depend on optional features that are not enabled.
 
-    Stage IDs and stage names must each be unique within a model.
+    Variant names, stage IDs, and stage names must each be unique within
+    a model.
 
     ModelSpec is declarative. It does not execute stages, describe
-    individual artwork instances, interpret feature behavior, resolve
-    configuration, resolve filesystem paths, determine stage validity,
-    or manipulate artifact files.
+    individual artwork instances, interpret feature behavior, select
+    variants, resolve configuration, create realizations, resolve
+    filesystem paths, determine stage validity, or manipulate artifact
+    files.
 
     Model construction and feature discovery are separate concerns.
     This permits future model extension mechanisms to contribute
@@ -451,6 +523,10 @@ class ModelSpec:
         default_factory=tuple,
     )
 
+    variants: tuple[VariantSpec, ...] = field(
+        default_factory=tuple,
+    )
+
     stages: tuple[StageSpec, ...] = field(
         default_factory=tuple,
     )
@@ -461,8 +537,32 @@ class ModelSpec:
         self,
     ) -> None:
         """
-        Validate model-level specification invariants.
+        Normalize variants and validate model-level invariants.
         """
+
+        variants = self.variants
+
+        if not any(variant.name == "default" for variant in variants):
+            variants = (
+                VariantSpec(
+                    name="default",
+                ),
+                *variants,
+            )
+
+        variant_names: set[str] = set()
+
+        for variant in variants:
+            if variant.name in variant_names:
+                raise ValueError(f"Duplicate variant name {variant.name!r} in model {self.name!r}.")
+
+            variant_names.add(variant.name)
+
+        object.__setattr__(
+            self,
+            "variants",
+            variants,
+        )
 
         stage_ids: set[int] = set()
         stage_names: set[str] = set()
@@ -537,4 +637,5 @@ __all__ = [
     "ProductRef",
     "ProductSpec",
     "StageSpec",
+    "VariantSpec",
 ]
