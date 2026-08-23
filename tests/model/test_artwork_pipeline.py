@@ -12,7 +12,10 @@ prepare -> raster -> vector -> extrude -> package transformation.
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
+from typing import Any
 
 from PIL import Image
 
@@ -20,6 +23,10 @@ from lowkey_artifact_builder.config import write_artifact_config
 from lowkey_artifact_builder.engine import (
     create_build_plan,
     execute_build,
+)
+from lowkey_artifact_builder.formats.threemf import (
+    CORE_NS,
+    load_stl,
 )
 
 # =========================================================
@@ -112,16 +119,148 @@ def _write_source(
 
 def _read_manifest(
     path: Path,
-) -> dict:
+) -> dict[str, Any]:
     """
     Read one artwork dynamic-product manifest.
     """
 
-    return json.loads(
+    data = json.loads(
         path.read_text(
             encoding="utf-8",
         )
     )
+
+    assert isinstance(
+        data,
+        dict,
+    )
+
+    return data
+
+
+def _build_artwork(
+    project_root: Path,
+) -> Path:
+    """
+    Build the deterministic artwork fixture and return its realization
+    directory.
+    """
+
+    _write_workspace(project_root)
+
+    source = project_root / "source.png"
+
+    _write_source(source)
+
+    write_artifact_config(
+        "example",
+        {
+            "model": "artwork",
+            "source": "source.png",
+        },
+        project_root=project_root,
+    )
+
+    plan = create_build_plan(
+        "example",
+        project_root=project_root,
+    )
+
+    execute_build(plan)
+
+    return project_root / "artifacts" / "example" / "artwork" / "default"
+
+
+def _manifest_products(
+    manifest: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """
+    Return the dynamic products from a stage manifest.
+    """
+
+    products = manifest["products"]
+
+    assert isinstance(
+        products,
+        list,
+    )
+
+    assert all(isinstance(product, dict) for product in products)
+
+    return products
+
+
+def _assert_raster_has_geometry(
+    path: Path,
+) -> None:
+    """
+    Verify that a raster product contains visible geometry.
+    """
+
+    with Image.open(path) as image:
+        rgba = image.convert("RGBA")
+
+        try:
+            alpha = rgba.getchannel("A")
+
+            assert alpha.getbbox() is not None
+
+        finally:
+            rgba.close()
+
+
+def _assert_svg_has_geometry(
+    path: Path,
+) -> None:
+    """
+    Verify that an SVG product contains vector geometry.
+    """
+
+    root = ET.parse(path).getroot()
+
+    geometry_tags = {
+        "path",
+        "rect",
+        "circle",
+        "ellipse",
+        "line",
+        "polyline",
+        "polygon",
+    }
+
+    geometry = tuple(
+        element
+        for element in root.iter()
+        if element.tag.rsplit(
+            "}",
+            maxsplit=1,
+        )[-1]
+        in geometry_tags
+    )
+
+    assert geometry
+
+
+def _read_3mf_model(
+    path: Path,
+) -> ET.Element:
+    """
+    Read the primary model document from a 3MF package.
+    """
+
+    with zipfile.ZipFile(
+        path,
+        mode="r",
+    ) as package:
+        members = set(package.namelist())
+
+        assert "[Content_Types].xml" in members
+        assert "_rels/.rels" in members
+        assert "3D/3dmodel.model" in members
+
+        model_data = package.read("3D/3dmodel.model")
+
+    return ET.fromstring(model_data)
 
 
 # =========================================================
@@ -141,29 +280,9 @@ def test_artwork_pipeline_produces_canonical_products(
     execute_build() rather than invoking stage implementations directly.
     """
 
-    _write_workspace(tmp_path)
-
-    source = tmp_path / "source.png"
-
-    _write_source(source)
-
-    write_artifact_config(
-        "example",
-        {
-            "model": "artwork",
-            "source": "source.png",
-        },
-        project_root=tmp_path,
+    realization = _build_artwork(
+        tmp_path,
     )
-
-    plan = create_build_plan(
-        "example",
-        project_root=tmp_path,
-    )
-
-    execute_build(plan)
-
-    realization = tmp_path / "artifacts" / "example" / "artwork" / "default"
 
     prepare_directory = realization / "10-prepare"
     raster_directory = realization / "20-raster"
@@ -193,7 +312,9 @@ def test_artwork_pipeline_produces_canonical_products(
         raster_manifest_path,
     )
 
-    raster_products = raster_manifest["products"]
+    raster_products = _manifest_products(
+        raster_manifest,
+    )
 
     assert raster_products
 
@@ -217,7 +338,9 @@ def test_artwork_pipeline_produces_canonical_products(
         vector_manifest_path,
     )
 
-    vector_products = vector_manifest["products"]
+    vector_products = _manifest_products(
+        vector_manifest,
+    )
 
     assert vector_products
 
@@ -241,7 +364,9 @@ def test_artwork_pipeline_produces_canonical_products(
         extrude_manifest_path,
     )
 
-    extrude_products = extrude_manifest["products"]
+    extrude_products = _manifest_products(
+        extrude_manifest,
+    )
 
     assert extrude_products
 
@@ -275,29 +400,9 @@ def test_artwork_pipeline_preserves_dynamic_product_identity(
     filesystem.
     """
 
-    _write_workspace(tmp_path)
-
-    source = tmp_path / "source.png"
-
-    _write_source(source)
-
-    write_artifact_config(
-        "example",
-        {
-            "model": "artwork",
-            "source": "source.png",
-        },
-        project_root=tmp_path,
+    realization = _build_artwork(
+        tmp_path,
     )
-
-    plan = create_build_plan(
-        "example",
-        project_root=tmp_path,
-    )
-
-    execute_build(plan)
-
-    realization = tmp_path / "artifacts" / "example" / "artwork" / "default"
 
     raster = _read_manifest(realization / "20-raster" / "products.json")
 
@@ -305,9 +410,17 @@ def test_artwork_pipeline_preserves_dynamic_product_identity(
 
     extrude = _read_manifest(realization / "40-extrude" / "products.json")
 
-    raster_products = raster["products"]
-    vector_products = vector["products"]
-    extrude_products = extrude["products"]
+    raster_products = _manifest_products(
+        raster,
+    )
+
+    vector_products = _manifest_products(
+        vector,
+    )
+
+    extrude_products = _manifest_products(
+        extrude,
+    )
 
     assert len(raster_products) == len(vector_products)
     assert len(vector_products) == len(extrude_products)
@@ -329,3 +442,149 @@ def test_artwork_pipeline_preserves_dynamic_product_identity(
         == [product["color"] for product in vector_products]
         == [product["color"] for product in extrude_products]
     )
+
+
+def test_artwork_pipeline_products_are_functionally_equivalent(
+    tmp_path: Path,
+) -> None:
+    """
+    The complete artwork pipeline preserves meaningful geometry through
+    raster, vector, STL, and 3MF representations.
+
+    This test deliberately verifies semantic properties rather than
+    exact serialized bytes so that harmless differences between external
+    tool versions do not make the regression test brittle.
+    """
+
+    realization = _build_artwork(
+        tmp_path,
+    )
+
+    raster_directory = realization / "20-raster"
+    vector_directory = realization / "30-vector"
+    extrude_directory = realization / "40-extrude"
+    package_directory = realization / "50-package"
+
+    raster_manifest = _read_manifest(raster_directory / "products.json")
+
+    vector_manifest = _read_manifest(vector_directory / "products.json")
+
+    extrude_manifest = _read_manifest(extrude_directory / "products.json")
+
+    raster_products = _manifest_products(
+        raster_manifest,
+    )
+
+    vector_products = _manifest_products(
+        vector_manifest,
+    )
+
+    extrude_products = _manifest_products(
+        extrude_manifest,
+    )
+
+    # -----------------------------------------------------
+    # Expected semantic products
+    # -----------------------------------------------------
+
+    expected_names = {
+        "white",
+        "black",
+    }
+
+    assert {product["name"] for product in raster_products} == expected_names
+
+    assert {product["name"] for product in vector_products} == expected_names
+
+    assert {product["name"] for product in extrude_products} == expected_names
+
+    # -----------------------------------------------------
+    # Raster geometry
+    # -----------------------------------------------------
+
+    raster_paths = tuple(raster_directory / product["path"] for product in raster_products)
+
+    for path in raster_paths:
+        _assert_raster_has_geometry(
+            path,
+        )
+
+    # -----------------------------------------------------
+    # Vector geometry
+    # -----------------------------------------------------
+
+    vector_paths = tuple(vector_directory / product["path"] for product in vector_products)
+
+    for path in vector_paths:
+        _assert_svg_has_geometry(
+            path,
+        )
+
+    # -----------------------------------------------------
+    # STL geometry
+    # -----------------------------------------------------
+
+    extrude_paths = tuple(extrude_directory / product["path"] for product in extrude_products)
+
+    meshes = tuple(load_stl(path) for path in extrude_paths)
+
+    assert all(mesh.vertices for mesh in meshes)
+
+    assert all(mesh.triangles for mesh in meshes)
+
+    # Extrusion must produce actual three-dimensional geometry.
+    for mesh in meshes:
+        z_values = {vertex[2] for vertex in mesh.vertices}
+
+        assert len(z_values) > 1
+
+        assert max(z_values) > min(z_values)
+
+    # -----------------------------------------------------
+    # 3MF package
+    # -----------------------------------------------------
+
+    artifact = package_directory / "artifact.3mf"
+
+    model = _read_3mf_model(
+        artifact,
+    )
+
+    namespace = {
+        "m": CORE_NS,
+    }
+
+    objects = model.findall(
+        "./m:resources/m:object",
+        namespace,
+    )
+
+    build_items = model.findall(
+        "./m:build/m:item",
+        namespace,
+    )
+
+    assert len(objects) == len(extrude_products)
+    assert len(build_items) == len(extrude_products)
+
+    expected_component_names = {f"example-{name}" for name in expected_names}
+
+    assert {object_element.get("name") for object_element in objects} == expected_component_names
+
+    for object_element in objects:
+        vertices = object_element.findall(
+            "./m:mesh/m:vertices/m:vertex",
+            namespace,
+        )
+
+        triangles = object_element.findall(
+            "./m:mesh/m:triangles/m:triangle",
+            namespace,
+        )
+
+        assert vertices
+        assert triangles
+
+    object_ids = [object_element.get("id") for object_element in objects]
+
+    assert [item.get("objectid") for item in build_items] == object_ids
