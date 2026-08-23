@@ -176,10 +176,13 @@ def test_execute_build_creates_declared_workspace(
 
     expected = {
         plan.artifact_dir,
-        plan.artifact_dir / "prepare",
-        plan.artifact_dir / "raster",
-        plan.artifact_dir / "vector",
-        plan.artifact_dir / "extrude",
+        plan.artifact_dir / "artwork",
+        plan.artifact_dir / "artwork" / "default",
+        plan.artifact_dir / "artwork" / "default" / "10-prepare",
+        plan.artifact_dir / "artwork" / "default" / "20-raster",
+        plan.artifact_dir / "artwork" / "default" / "30-vector",
+        plan.artifact_dir / "artwork" / "default" / "40-extrude",
+        plan.artifact_dir / "artwork" / "default" / "50-package",
     }
 
     observed: set[Path] = set()
@@ -419,11 +422,11 @@ def test_execute_build_sets_stage_working_directory(
     execute_build(plan)
 
     assert observed == {
-        "prepare": (plan.artifact_dir / "prepare"),
-        "raster": (plan.artifact_dir / "raster"),
-        "vector": (plan.artifact_dir / "vector"),
-        "extrude": (plan.artifact_dir / "extrude"),
-        "package": plan.artifact_dir,
+        "prepare": (plan.artifact_dir / "artwork" / "default" / "10-prepare"),
+        "raster": (plan.artifact_dir / "artwork" / "default" / "20-raster"),
+        "vector": (plan.artifact_dir / "artwork" / "default" / "30-vector"),
+        "extrude": (plan.artifact_dir / "artwork" / "default" / "40-extrude"),
+        "package": (plan.artifact_dir / "artwork" / "default" / "50-package"),
     }
 
 
@@ -682,20 +685,28 @@ def test_execute_build_context_contains_dependency_products(
     }
 
     assert observed["raster"] == {
-        "prepare.trace": (plan.artifact_dir / "prepare" / "trace.svg"),
-        "prepare.envelope": (plan.artifact_dir / "prepare" / "envelope.svg"),
+        "prepare.trace": (plan.artifact_dir / "artwork" / "default" / "10-prepare" / "trace.svg"),
+        "prepare.envelope": (
+            plan.artifact_dir / "artwork" / "default" / "10-prepare" / "envelope.svg"
+        ),
     }
 
     assert observed["vector"] == {
-        "raster.manifest": (plan.artifact_dir / "raster" / "products.json"),
+        "raster.manifest": (
+            plan.artifact_dir / "artwork" / "default" / "20-raster" / "products.json"
+        ),
     }
 
     assert observed["extrude"] == {
-        "vector.manifest": (plan.artifact_dir / "vector" / "products.json"),
+        "vector.manifest": (
+            plan.artifact_dir / "artwork" / "default" / "30-vector" / "products.json"
+        ),
     }
 
     assert observed["package"] == {
-        "extrude.manifest": (plan.artifact_dir / "extrude" / "products.json"),
+        "extrude.manifest": (
+            plan.artifact_dir / "artwork" / "default" / "40-extrude" / "products.json"
+        ),
     }
 
 
@@ -741,24 +752,24 @@ def test_execute_build_context_contains_declared_outputs(
     execute_build(plan)
 
     assert observed["prepare"] == {
-        "trace": (plan.artifact_dir / "prepare" / "trace.svg"),
-        "envelope": (plan.artifact_dir / "prepare" / "envelope.svg"),
+        "trace": (plan.artifact_dir / "artwork" / "default" / "10-prepare" / "trace.svg"),
+        "envelope": (plan.artifact_dir / "artwork" / "default" / "10-prepare" / "envelope.svg"),
     }
 
     assert observed["raster"] == {
-        "manifest": (plan.artifact_dir / "raster" / "products.json"),
+        "manifest": (plan.artifact_dir / "artwork" / "default" / "20-raster" / "products.json"),
     }
 
     assert observed["vector"] == {
-        "manifest": (plan.artifact_dir / "vector" / "products.json"),
+        "manifest": (plan.artifact_dir / "artwork" / "default" / "30-vector" / "products.json"),
     }
 
     assert observed["extrude"] == {
-        "manifest": (plan.artifact_dir / "extrude" / "products.json"),
+        "manifest": (plan.artifact_dir / "artwork" / "default" / "40-extrude" / "products.json"),
     }
 
     assert observed["package"] == {
-        "artifact": (plan.artifact_dir / "artifact.3mf"),
+        "artifact": (plan.artifact_dir / "artwork" / "default" / "50-package" / "artifact.3mf"),
     }
 
 

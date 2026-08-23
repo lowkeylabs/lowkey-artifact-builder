@@ -121,8 +121,8 @@ def test_create_build_plan_materializes_product_paths(
     artwork_plan,
 ) -> None:
     """
-    Declarative product paths are materialized relative to the
-    artifact working directory.
+    Declarative products are materialized using the canonical
+    artifact/model/realization/stage hierarchy.
     """
 
     plan = artwork_plan(
@@ -138,13 +138,13 @@ def test_create_build_plan_materializes_product_paths(
 
     assert products == {
         "prepare": (
-            artifact_dir / "prepare" / "trace.svg",
-            artifact_dir / "prepare" / "envelope.svg",
+            artifact_dir / "artwork" / "default" / "10-prepare" / "trace.svg",
+            artifact_dir / "artwork" / "default" / "10-prepare" / "envelope.svg",
         ),
-        "raster": (artifact_dir / "raster" / "products.json",),
-        "vector": (artifact_dir / "vector" / "products.json",),
-        "extrude": (artifact_dir / "extrude" / "products.json",),
-        "package": (artifact_dir / "artifact.3mf",),
+        "raster": (artifact_dir / "artwork" / "default" / "20-raster" / "products.json",),
+        "vector": (artifact_dir / "artwork" / "default" / "30-vector" / "products.json",),
+        "extrude": (artifact_dir / "artwork" / "default" / "40-extrude" / "products.json",),
+        "package": (artifact_dir / "artwork" / "default" / "50-package" / "artifact.3mf",),
     }
 
 

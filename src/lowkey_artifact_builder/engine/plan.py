@@ -20,6 +20,7 @@ from lowkey_artifact_builder.config import (
     Resolver,
     get_resolver,
 )
+from lowkey_artifact_builder.engine.product_resolver import ProductResolver
 from lowkey_artifact_builder.engine.specs import (
     BuildPlan,
     PlannedInput,
@@ -85,14 +86,24 @@ def create_build_plan(
     except ModelNotFoundError as exc:
         raise BuildPlanError(f"unknown model {model_name!r}") from exc
 
-    artifact_dir = root / "artifacts" / artifact_id
+    product_resolver = ProductResolver(
+        project_root=root,
+    )
+
+    artifact_dir = product_resolver.artifact_dir(
+        artifact_id,
+    )
+
+    realization = "default"
 
     stages = _plan_stages(
         artifact_id,
         model,
+        realization,
         resolver,
         root,
         artifact_dir,
+        product_resolver,
     )
 
     return BuildPlan(
@@ -113,9 +124,11 @@ def create_build_plan(
 def _plan_stages(
     artifact_id: str,
     model: ModelSpec,
+    realization: str,
     resolver: Resolver,
     project_root: Path,
     artifact_dir: Path,
+    product_resolver: ProductResolver,
 ) -> tuple[PlannedStage, ...]:
     """
     Materialize participating model stages for an artifact.
@@ -145,10 +158,13 @@ def _plan_stages(
     return tuple(
         _plan_stage(
             artifact_id,
+            model.name,
+            realization,
             stage,
             resolver,
             project_root,
             artifact_dir,
+            product_resolver,
         )
         for stage in participating
     )
@@ -156,10 +172,13 @@ def _plan_stages(
 
 def _plan_stage(
     artifact_id: str,
+    model_name: str,
+    realization: str,
     stage: StageSpec,
     resolver: Resolver,
     project_root: Path,
     artifact_dir: Path,
+    product_resolver: ProductResolver,
 ) -> PlannedStage:
     """
     Materialize one declarative stage.
@@ -177,8 +196,11 @@ def _plan_stage(
     )
 
     products = _plan_stage_products(
-        stage,
-        artifact_dir,
+        artifact_id=artifact_id,
+        model_name=model_name,
+        realization=realization,
+        stage=stage,
+        product_resolver=product_resolver,
     )
 
     return PlannedStage(
@@ -318,29 +340,31 @@ def _plan_input(
 
 
 def _plan_stage_products(
+    *,
+    artifact_id: str,
+    model_name: str,
+    realization: str,
     stage: StageSpec,
-    artifact_dir: Path,
+    product_resolver: ProductResolver,
 ) -> tuple[PlannedProduct, ...]:
     """
     Materialize persistent product locations for one stage.
 
-    Product paths declared by StageSpec are relative to their producing
-    stage.
-
-    The current artifact layout stores intermediate-stage products in a
-    directory named for the stage while final package products remain
-    directly in the artifact directory.
-
-    Filesystem layout policy will move to the product resolver as the
-    architecture migration progresses.
+    Product paths declared by ProductSpec are relative to their
+    producing stage. ProductResolver owns the canonical filesystem
+    hierarchy containing those stage-relative paths.
     """
-
-    stage_dir = artifact_dir if stage.name == "package" else artifact_dir / stage.name
 
     return tuple(
         PlannedProduct(
             spec=product,
-            path=(stage_dir / product.path),
+            path=product_resolver.product_path(
+                artifact=artifact_id,
+                model=model_name,
+                realization=realization,
+                stage=stage,
+                product=product,
+            ),
         )
         for product in stage.products
     )
