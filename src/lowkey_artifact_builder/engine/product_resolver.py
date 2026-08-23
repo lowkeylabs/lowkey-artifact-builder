@@ -124,6 +124,16 @@ class ProductResolver:
         Resolve a logical product reference to its canonical filesystem path.
         """
 
+        if ref.stage != stage.name:
+            raise ValueError(
+                f"ProductRef stage {ref.stage!r} does not match StageSpec {stage.name!r}."
+            )
+
+        if ref.product != product.name:
+            raise ValueError(
+                f"ProductRef product {ref.product!r} does not match ProductSpec {product.name!r}."
+            )
+
         return self.product_path(
             artifact=ref.artifact,
             model=ref.model,

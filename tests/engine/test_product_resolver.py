@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from lowkey_artifact_builder.engine.product_resolver import ProductResolver
 from lowkey_artifact_builder.model.specs import (
     ProductRef,
@@ -127,3 +129,75 @@ def test_product_resolver_resolves_product_reference(
         stage=stage,
         product=product,
     ) == (tmp_path / "artifacts" / "nydeli" / "artwork" / "default" / "30-vector" / "colors.svg")
+
+
+def test_product_resolver_rejects_mismatched_stage(
+    tmp_path: Path,
+) -> None:
+    resolver = ProductResolver(
+        project_root=tmp_path,
+    )
+
+    ref = ProductRef(
+        artifact="nydeli",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="colors",
+    )
+
+    stage = StageSpec(
+        id=20,
+        name="raster",
+    )
+
+    product = ProductSpec(
+        name="colors",
+        path="colors.svg",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="stage",
+    ):
+        resolver.resolve(
+            ref,
+            stage=stage,
+            product=product,
+        )
+
+
+def test_product_resolver_rejects_mismatched_product(
+    tmp_path: Path,
+) -> None:
+    resolver = ProductResolver(
+        project_root=tmp_path,
+    )
+
+    ref = ProductRef(
+        artifact="nydeli",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="colors",
+    )
+
+    stage = StageSpec(
+        id=30,
+        name="vector",
+    )
+
+    product = ProductSpec(
+        name="geometry",
+        path="geometry.svg",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="product",
+    ):
+        resolver.resolve(
+            ref,
+            stage=stage,
+            product=product,
+        )
