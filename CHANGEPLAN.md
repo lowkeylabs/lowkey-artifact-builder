@@ -15,6 +15,14 @@ before selecting the next change.
 
 ---
 
+# Status
+
+- Phase 1 — Complete
+- Phase 2 — Complete
+- Phase 3 — Next
+
+---
+
 # Approach
 
 The existing artwork model is working and serves as the primary regression
@@ -277,8 +285,3 @@ Before beginning each change:
 The repository, `ARCHITECTURE.md`, and `CHANGEPLAN.md` should together provide
 enough context to determine the next incremental change without relying on
 conversation history.
-
-# Status
-
-- Phase 1 - Complete
-- Phase 2 - Complete
