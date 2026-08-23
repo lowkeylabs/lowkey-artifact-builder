@@ -61,6 +61,9 @@ def create_build_plan(
     Configuration is resolved once for the artifact. The resulting
     Resolver is retained by the BuildPlan and later supplied unchanged
     to every StageContext created during execution.
+
+    The current single-realization configuration is represented
+    explicitly by the realization named "default".
     """
 
     root = project_root if project_root is not None else Path.cwd()
@@ -94,21 +97,21 @@ def create_build_plan(
         artifact_id,
     )
 
-    realization = "default"
+    realization_name = "default"
 
     stages = _plan_stages(
         artifact_id,
         model,
-        realization,
+        realization_name,
         resolver,
         root,
-        artifact_dir,
         product_resolver,
     )
 
     return BuildPlan(
         artifact_id=artifact_id,
         model=model,
+        realization_name=realization_name,
         resolver=resolver,
         project_root=root,
         artifact_dir=artifact_dir,
@@ -124,14 +127,13 @@ def create_build_plan(
 def _plan_stages(
     artifact_id: str,
     model: ModelSpec,
-    realization: str,
+    realization_name: str,
     resolver: Resolver,
     project_root: Path,
-    artifact_dir: Path,
     product_resolver: ProductResolver,
 ) -> tuple[PlannedStage, ...]:
     """
-    Materialize participating model stages for an artifact.
+    Materialize participating model stages for one artifact realization.
 
     Stage parameter values are intentionally not copied into the plan.
     StageSpec declares which parameters a stage normally consumes, and
@@ -159,11 +161,10 @@ def _plan_stages(
         _plan_stage(
             artifact_id,
             model.name,
-            realization,
+            realization_name,
             stage,
             resolver,
             project_root,
-            artifact_dir,
             product_resolver,
         )
         for stage in participating
@@ -173,19 +174,22 @@ def _plan_stages(
 def _plan_stage(
     artifact_id: str,
     model_name: str,
-    realization: str,
+    realization_name: str,
     stage: StageSpec,
     resolver: Resolver,
     project_root: Path,
-    artifact_dir: Path,
     product_resolver: ProductResolver,
 ) -> PlannedStage:
     """
-    Materialize one declarative stage.
+    Materialize one declarative stage for an artifact realization.
 
     Filesystem inputs and products are resolved to concrete paths.
     Configuration parameter values remain in the artifact Resolver.
     """
+
+    artifact_dir = product_resolver.artifact_dir(
+        artifact_id,
+    )
 
     inputs = _plan_stage_inputs(
         artifact_id,
@@ -198,7 +202,7 @@ def _plan_stage(
     products = _plan_stage_products(
         artifact_id=artifact_id,
         model_name=model_name,
-        realization=realization,
+        realization_name=realization_name,
         stage=stage,
         product_resolver=product_resolver,
     )
@@ -343,7 +347,7 @@ def _plan_stage_products(
     *,
     artifact_id: str,
     model_name: str,
-    realization: str,
+    realization_name: str,
     stage: StageSpec,
     product_resolver: ProductResolver,
 ) -> tuple[PlannedProduct, ...]:
@@ -361,7 +365,7 @@ def _plan_stage_products(
             path=product_resolver.product_path(
                 artifact=artifact_id,
                 model=model_name,
-                realization=realization,
+                realization=realization_name,
                 stage=stage,
                 product=product,
             ),

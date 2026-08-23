@@ -268,6 +268,8 @@ class BuildPlan:
 
     model: ModelSpec
 
+    realization_name: str
+
     resolver: Resolver
 
     project_root: Path

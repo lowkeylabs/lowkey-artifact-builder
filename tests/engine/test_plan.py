@@ -240,3 +240,138 @@ def test_create_build_plan_rejects_unknown_model(
             "example",
             project_root=tmp_path,
         )
+
+
+# =========================================================
+# Realization identity
+# =========================================================
+
+
+def test_build_plan_has_default_realization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    A planned artifact has an explicit realization identity.
+
+    Until artifact configuration supports named realizations, the
+    existing single-realization behavior is represented by the
+    realization named "default".
+    """
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    assert plan.realization_name == "default"
+
+
+def test_default_realization_owns_planned_products(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Planned products are stored beneath the BuildPlan realization.
+
+    This characterizes the relationship between realization identity
+    and canonical product storage without yet introducing configurable
+    realization names.
+    """
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    realization_directory = plan.artifact_dir / plan.model_name / plan.realization_name
+
+    assert plan.realization_name == "default"
+
+    for stage in plan.stages:
+        stage_directory = realization_directory / f"{stage.spec.id:02d}-{stage.name}"
+
+        for product in stage.products:
+            assert product.path == (stage_directory / product.spec.path)
+
+
+def test_variant_identity_is_distinct_from_realization_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Selecting a named variant does not rename the realization.
+
+    A variant is a reusable model-scoped parameter preset. A realization
+    is one configured invocation of that model. Multiple realizations may
+    eventually use the same variant, so their identities must not be
+    conflated.
+    """
+
+    from lowkey_artifact_builder.model import (
+        ModelSpec,
+        VariantSpec,
+    )
+
+    model = ModelSpec(
+        name="example-model",
+        title="Example Model",
+        variants=(
+            VariantSpec(
+                name="default",
+            ),
+            VariantSpec(
+                name="ridged",
+                parameters={
+                    "ridge": True,
+                },
+            ),
+        ),
+    )
+
+    class StubRegistry:
+        def get_model(
+            self,
+            name: str,
+        ) -> ModelSpec:
+            assert name == "example-model"
+
+            return model
+
+    class Resolver:
+        def __call__(
+            self,
+            name: str,
+        ):
+            values = {
+                "model": "example-model",
+                "variant": "ridged",
+            }
+
+            return values[name]
+
+        def source(
+            self,
+            name: str,
+        ) -> str:
+            return "test"
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_resolver",
+        lambda artifact_id, project_root: Resolver(),
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.build_model_registry",
+        lambda: StubRegistry(),
+    )
+
+    plan = create_build_plan(
+        "example",
+        project_root=tmp_path,
+    )
+
+    assert plan.resolver("variant") == "ridged"
+    assert plan.realization_name == "default"
