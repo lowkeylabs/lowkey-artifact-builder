@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from lowkey_artifact_builder.config import write_artifact_config
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     BuildPlanError,
@@ -648,3 +649,147 @@ def test_default_build_plan_preserves_legacy_realization_selection(
 
     assert plan.realization_name == "default"
     assert plan.resolver("realization") == "default"
+
+
+def test_create_build_plan_uses_configured_named_realization(
+    tmp_path: Path,
+) -> None:
+    """
+    Build planning integrates with artifact realization configuration.
+
+    Selecting a named realization resolves its model, variant, and
+    parameter overrides through the real configuration subsystem and
+    uses the realization identity for canonical product placement.
+    """
+
+    (tmp_path / "workspace.toml").write_text(
+        """
+[parameters]
+artwork_size = 80.0
+artwork_raise = 1.0
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    write_artifact_config(
+        "example",
+        {
+            "realizations": {
+                "ornament": {
+                    "model": "artwork",
+                    "variant": "default",
+                    "source": "source.png",
+                    "parameters": {
+                        "artwork_size": 100.0,
+                        "artwork_raise": 1.5,
+                    },
+                },
+                "coaster": {
+                    "model": "artwork",
+                    "variant": "default",
+                    "source": "source.png",
+                    "parameters": {
+                        "artwork_size": 90.0,
+                        "artwork_raise": 0.8,
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        "example",
+        realization="ornament",
+        project_root=tmp_path,
+    )
+
+    assert plan.artifact_id == "example"
+    assert plan.model_name == "artwork"
+    assert plan.realization_name == "ornament"
+
+    assert plan.resolver("realization") == "ornament"
+    assert plan.resolver("model") == "artwork"
+    assert plan.resolver("variant") == "default"
+
+    assert plan.resolver("artwork_size") == 100.0
+    assert plan.resolver("artwork_raise") == 1.5
+
+    realization_directory = tmp_path / "artifacts" / "example" / "artwork" / "ornament"
+
+    assert plan.stages
+
+    for stage in plan.stages:
+        for product in stage.products:
+            assert product.path.is_relative_to(realization_directory)
+
+
+def test_named_realizations_produce_distinct_build_plans(
+    tmp_path: Path,
+) -> None:
+    """
+    Two realizations of the same artifact may use the same model while
+    retaining independent configuration and product namespaces.
+    """
+
+    (tmp_path / "workspace.toml").write_text(
+        """
+[parameters]
+artwork_raise = 1.0
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    write_artifact_config(
+        "example",
+        {
+            "realizations": {
+                "ornament": {
+                    "model": "artwork",
+                    "variant": "default",
+                    "source": "source.png",
+                    "parameters": {
+                        "artwork_size": 100.0,
+                    },
+                },
+                "coaster": {
+                    "model": "artwork",
+                    "variant": "default",
+                    "source": "source.png",
+                    "parameters": {
+                        "artwork_size": 90.0,
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    ornament = create_build_plan(
+        "example",
+        realization="ornament",
+        project_root=tmp_path,
+    )
+
+    coaster = create_build_plan(
+        "example",
+        realization="coaster",
+        project_root=tmp_path,
+    )
+
+    assert ornament.model_name == coaster.model_name == "artwork"
+
+    assert ornament.realization_name == "ornament"
+    assert coaster.realization_name == "coaster"
+
+    assert ornament.resolver("artwork_size") == 100.0
+    assert coaster.resolver("artwork_size") == 90.0
+
+    ornament_products = {product.path for stage in ornament.stages for product in stage.products}
+
+    coaster_products = {product.path for stage in coaster.stages for product in stage.products}
+
+    assert ornament_products
+    assert coaster_products
+
+    assert ornament_products.isdisjoint(coaster_products)
