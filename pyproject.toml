@@ -47,6 +47,7 @@ dependencies = [
     "click>=8.2",
     "numpy>=2.5.2",
     "pillow>=12.3.0",
+    "pyright[nodejs]>=1.1.411",
     "rich>=14.0",
     "scipy>=1.18.0",
     "tomlkit>=0.14",

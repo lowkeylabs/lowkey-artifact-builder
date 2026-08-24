@@ -1,7 +1,18 @@
-.PHONY: test coverage lint format typecheck check pre-commit clean
+.PHONY: test coverage lint format typecheck check pre-commit clean check-setup setup
 
 test:
 	uv run pytest
+
+check-setup:
+	uv run scripts/check_dependencies.py
+
+
+setup:
+	sudo apt install openscad
+	sudo apt install inkscape
+	sudo apt install nodejs
+	sudo apt install npm
+
 
 coverage:
 	uv run pytest --cov=lowkey_artifact_builder --cov-report=term-missing
