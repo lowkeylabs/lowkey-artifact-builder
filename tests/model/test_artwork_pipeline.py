@@ -588,3 +588,175 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
     object_ids = [object_element.get("id") for object_element in objects]
 
     assert [item.get("objectid") for item in build_items] == object_ids
+
+
+def test_artwork_pipeline_executes_named_realizations_independently(
+    tmp_path: Path,
+) -> None:
+    """
+    Two named realizations of one artifact execute independently.
+
+    Both realizations may consume the same source artwork while using
+    different resolved parameters and distinct persistent product
+    namespaces.
+    """
+
+    _write_workspace(tmp_path)
+
+    source = tmp_path / "source.png"
+
+    _write_source(source)
+
+    write_artifact_config(
+        "example",
+        {
+            "realizations": {
+                "ornament": {
+                    "model": "artwork",
+                    "variant": "default",
+                    "source": "source.png",
+                    "parameters": {
+                        "artwork_size": 20.0,
+                        "artwork_raise": 1.0,
+                    },
+                },
+                "coaster": {
+                    "model": "artwork",
+                    "variant": "default",
+                    "source": "source.png",
+                    "parameters": {
+                        "artwork_size": 24.0,
+                        "artwork_raise": 1.5,
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    ornament = create_build_plan(
+        "example",
+        realization="ornament",
+        project_root=tmp_path,
+    )
+
+    coaster = create_build_plan(
+        "example",
+        realization="coaster",
+        project_root=tmp_path,
+    )
+
+    assert ornament.realization_name == "ornament"
+    assert coaster.realization_name == "coaster"
+
+    assert ornament.resolver("source") == "source.png"
+    assert coaster.resolver("source") == "source.png"
+
+    assert ornament.resolver("artwork_size") == 20.0
+    assert coaster.resolver("artwork_size") == 24.0
+
+    assert ornament.resolver("artwork_raise") == 1.0
+    assert coaster.resolver("artwork_raise") == 1.5
+
+    execute_build(ornament)
+    execute_build(coaster)
+
+    ornament_directory = tmp_path / "artifacts" / "example" / "artwork" / "ornament"
+
+    coaster_directory = tmp_path / "artifacts" / "example" / "artwork" / "coaster"
+
+    # -----------------------------------------------------
+    # Declared products
+    # -----------------------------------------------------
+
+    ornament_trace = ornament_directory / "10-prepare" / "trace.svg"
+
+    coaster_trace = coaster_directory / "10-prepare" / "trace.svg"
+
+    assert ornament_trace.is_file()
+    assert coaster_trace.is_file()
+
+    assert ornament_trace != coaster_trace
+
+    # -----------------------------------------------------
+    # Dynamic raster products
+    # -----------------------------------------------------
+
+    ornament_raster_directory = ornament_directory / "20-raster"
+
+    coaster_raster_directory = coaster_directory / "20-raster"
+
+    ornament_raster_manifest = _read_manifest(ornament_raster_directory / "products.json")
+
+    coaster_raster_manifest = _read_manifest(coaster_raster_directory / "products.json")
+
+    ornament_raster_products = ornament_raster_manifest["products"]
+
+    coaster_raster_products = coaster_raster_manifest["products"]
+
+    assert ornament_raster_products
+    assert coaster_raster_products
+
+    assert [product["name"] for product in ornament_raster_products] == [
+        product["name"] for product in coaster_raster_products
+    ]
+
+    ornament_raster_paths = {
+        ornament_raster_directory / product["path"] for product in ornament_raster_products
+    }
+
+    coaster_raster_paths = {
+        coaster_raster_directory / product["path"] for product in coaster_raster_products
+    }
+
+    assert all(path.is_file() for path in ornament_raster_paths)
+
+    assert all(path.is_file() for path in coaster_raster_paths)
+
+    assert ornament_raster_paths.isdisjoint(coaster_raster_paths)
+
+    # -----------------------------------------------------
+    # Dynamic extrusion products
+    # -----------------------------------------------------
+
+    ornament_extrude_directory = ornament_directory / "40-extrude"
+
+    coaster_extrude_directory = coaster_directory / "40-extrude"
+
+    ornament_extrude_manifest = _read_manifest(ornament_extrude_directory / "products.json")
+
+    coaster_extrude_manifest = _read_manifest(coaster_extrude_directory / "products.json")
+
+    ornament_extrude_products = ornament_extrude_manifest["products"]
+
+    coaster_extrude_products = coaster_extrude_manifest["products"]
+
+    ornament_stls = {
+        ornament_extrude_directory / product["path"] for product in ornament_extrude_products
+    }
+
+    coaster_stls = {
+        coaster_extrude_directory / product["path"] for product in coaster_extrude_products
+    }
+
+    assert all(path.is_file() for path in ornament_stls)
+
+    assert all(path.is_file() for path in coaster_stls)
+
+    assert ornament_stls.isdisjoint(coaster_stls)
+
+    # -----------------------------------------------------
+    # Final artifacts
+    # -----------------------------------------------------
+
+    ornament_artifact = ornament_directory / "50-package" / "artifact.3mf"
+
+    coaster_artifact = coaster_directory / "50-package" / "artifact.3mf"
+
+    assert ornament_artifact.is_file()
+    assert coaster_artifact.is_file()
+
+    assert ornament_artifact.stat().st_size > 0
+    assert coaster_artifact.stat().st_size > 0
+
+    assert ornament_artifact != coaster_artifact
