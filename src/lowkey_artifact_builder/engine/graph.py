@@ -333,8 +333,9 @@ def build_defined_graph(
     stages, products, and stage dependencies known to the artifact
     builder. It contains no artifact- or realization-specific state.
 
-    Graph construction validates dependency targets and rejects cyclic
-    stage dependencies before returning the completed graph.
+    Graph construction validates definition identities and dependency
+    targets and rejects cyclic stage dependencies before returning the
+    completed graph.
     """
 
     models = tuple(_build_defined_model(model) for model in registry.all_models())
