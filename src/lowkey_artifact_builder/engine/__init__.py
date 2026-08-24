@@ -27,6 +27,9 @@ from .build import (
 from .context import (
     create_stage_context,
 )
+from .operation import (
+    execute_artifact_stage,
+)
 from .plan import (
     BuildPlanError,
     create_build_plan,
@@ -65,4 +68,5 @@ __all__ = [
     "execute_builds",
     "execute_stage",
     "validate_stage_inputs",
+    "execute_artifact_stage",
 ]
