@@ -22,12 +22,11 @@ from lowkey_artifact_builder.cli.display import (
     display_model_workplans,
     display_models,
 )
-from lowkey_artifact_builder.cli.setup import (
-    setup_artifact,
-)
 from lowkey_artifact_builder.config import (
+    ConfigError,
+    configure_artifact,
     get_resolver,
-    update_artifact_config,
+    load_artifact_config,
 )
 from lowkey_artifact_builder.model import (
     build_model_registry,
@@ -42,6 +41,16 @@ from lowkey_artifact_builder.model import (
 @click.argument(
     "artifact_ids",
     nargs=-1,
+)
+@click.option(
+    "--input-artwork-file",
+    type=click.Path(
+        path_type=Path,
+        exists=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    help="Artwork file used as artifact input.",
 )
 @click.option(
     "--list-models",
@@ -60,6 +69,7 @@ from lowkey_artifact_builder.model import (
 )
 def cli(
     artifact_ids: tuple[str, ...],
+    input_artwork_file: Path | None,
     list_models: bool,
     dump: bool,
     workplan: bool,
@@ -78,6 +88,9 @@ def cli(
         if artifact_ids:
             raise click.UsageError("--list-models cannot be used with artifact IDs.")
 
+        if input_artwork_file is not None:
+            raise click.UsageError("--input-artwork-file cannot be used with --list-models.")
+
         if dump and workplan:
             raise click.UsageError("--dump and --workplan cannot be used together.")
 
@@ -88,14 +101,12 @@ def cli(
             display_model_workplans(
                 models,
             )
-
             return
 
         display_models(
             models,
             dump=dump,
         )
-
         return
 
     # =====================================================
@@ -105,77 +116,85 @@ def cli(
     if workplan:
         raise click.UsageError("--workplan currently requires --list-models.")
 
+    if not artifact_ids:
+        raise click.UsageError("Artifact configuration requires an artifact ID.")
+
+    if len(artifact_ids) != 1:
+        raise click.UsageError("Artifact configuration requires exactly one artifact ID.")
+
+    artifact_id = artifact_ids[0]
+    project_root = Path.cwd()
+
     # =====================================================
     # Artifact configuration
     # =====================================================
 
-    if artifact_ids:
-        if len(artifact_ids) != 1:
-            raise click.UsageError("Artifact configuration requires exactly one artifact ID.")
-
-        artifact_id = artifact_ids[0]
-        project_root = Path.cwd()
-
-        registry = build_model_registry()
-
-        # -------------------------------------------------
-        # Configuration dump
-        # -------------------------------------------------
-
-        if dump:
-            resolver = get_resolver(
+    if input_artwork_file is not None:
+        try:
+            configure_artifact(
                 artifact_id,
+                input_files={
+                    "artwork": input_artwork_file,
+                },
                 project_root=project_root,
             )
 
-            model_name = resolver("model")
+        except ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
 
-            model = registry.get_model(model_name)
+    # =====================================================
+    # Artifact display
+    # =====================================================
 
-            display_artifact_config(
-                artifact_id,
-                model,
-                resolver,
-            )
+    _display_artifact(
+        artifact_id,
+        project_root=project_root,
+    )
 
-            return
 
-        # -------------------------------------------------
-        # Interactive configuration
-        # -------------------------------------------------
+# =========================================================
+# Artifact display
+# =========================================================
 
-        setup = setup_artifact(
+
+def _display_artifact(
+    artifact_id: str,
+    *,
+    project_root: Path,
+) -> None:
+    """
+    Display an artifact's resolved configuration.
+
+    The artifact must already be defined.
+    """
+
+    existing = load_artifact_config(
+        artifact_id,
+        project_root=project_root,
+    )
+
+    if not existing:
+        raise click.ClickException(f"Artifact {artifact_id!r} is not defined.")
+
+    try:
+        resolver = get_resolver(
             artifact_id,
-            registry,
             project_root=project_root,
         )
 
-        values = dict(setup.values)
+        model_name = resolver("model")
 
-        values["model"] = setup.model
+        registry = build_model_registry()
+        model = registry.get_model(model_name)
 
-        update_artifact_config(
-            artifact_id,
-            values,
-            project_root=project_root,
-        )
+    except (ConfigError, KeyError) as exc:
+        raise click.ClickException(str(exc)) from exc
 
-        return
-
-    # =====================================================
-    # Configuration dump
-    # =====================================================
-
-    if dump:
-        click.echo("Configuration dump is not yet implemented.")
-
-        return
-
-    # =====================================================
-    # Configuration summary
-    # =====================================================
-
-    click.echo("Configuration management is not yet implemented.")
+    display_artifact_config(
+        artifact_id,
+        model,
+        resolver,
+    )
 
 
 if __name__ == "__main__":

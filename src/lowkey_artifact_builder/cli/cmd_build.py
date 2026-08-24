@@ -2,10 +2,6 @@
 Build command.
 
 Builds configured artifacts from their declared model workflows.
-
-The build command resolves artifact configuration, constructs the
-artifact's execution plan, and either displays that plan or executes
-it.
 """
 # File: src/lowkey_artifact_builder/cli/cmd_build.py
 # Copyright 2026 LowKeyLabs LLC
@@ -23,8 +19,8 @@ from lowkey_artifact_builder.cli.display import (
 from lowkey_artifact_builder.engine import (
     BuildError,
     BuildPlanError,
-    create_build_plan,
-    execute_build,
+    create_build_plans,
+    execute_builds,
 )
 
 # =========================================================
@@ -40,7 +36,7 @@ from lowkey_artifact_builder.engine import (
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="Display the build plan without performing any work.",
+    help="Display build plans without performing any work.",
 )
 def cli(
     artifact_ids: tuple[str, ...],
@@ -52,46 +48,26 @@ def cli(
     Positional arguments are artifact IDs.
     """
 
-    # =====================================================
-    # Argument validation
-    # =====================================================
-
     if not artifact_ids:
         raise click.UsageError("At least one artifact ID is required.")
 
     project_root = Path.cwd()
 
-    # =====================================================
-    # Artifact builds
-    # =====================================================
-
-    for index, artifact_id in enumerate(artifact_ids):
-        if index:
-            click.echo()
-
+    for artifact_id in artifact_ids:
         try:
-            plan = create_build_plan(
+            plans = create_build_plans(
                 artifact_id,
                 project_root=project_root,
             )
 
-            # ---------------------------------------------
-            # Dry run
-            # ---------------------------------------------
-
             if dry_run:
-                display_build_plan(
-                    plan,
-                )
+                for plan in plans:
+                    display_build_plan(plan)
 
                 continue
 
-            # ---------------------------------------------
-            # Build
-            # ---------------------------------------------
-
-            execute_build(
-                plan,
+            execute_builds(
+                plans,
             )
 
         except (

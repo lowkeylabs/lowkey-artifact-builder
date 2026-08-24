@@ -13,6 +13,9 @@ this package rather than directly from config.py.
 
 from __future__ import annotations
 
+from lowkey_artifact_builder.config.artifact import (
+    configure_artifact,
+)
 from lowkey_artifact_builder.config.config import (
     ConfigError,
     Derivation,
@@ -37,4 +40,5 @@ __all__ = [
     "load_artifact_config",
     "update_artifact_config",
     "write_artifact_config",
+    "configure_artifact",
 ]
