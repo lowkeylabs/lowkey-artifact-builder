@@ -10,6 +10,9 @@ may be inspected and validated without modifying filesystem products.
 Execution owns artifact workspace creation, external input
 materialization, stage dispatch, execution contexts, and verification
 of declared products.
+
+Independent stage execution uses the same resolved StageContext and
+model-specific stage implementation boundary as graph-driven builds.
 """
 # File: src/lowkey_artifact_builder/engine/__init__.py
 # Copyright 2026 LowKeyLabs LLC
@@ -33,6 +36,10 @@ from .specs import (
     StageContext,
     StageContextError,
 )
+from .stage import (
+    StageExecutionError,
+    execute_stage,
+)
 
 __all__ = [
     "BuildError",
@@ -43,8 +50,10 @@ __all__ = [
     "PlannedStage",
     "StageContext",
     "StageContextError",
+    "StageExecutionError",
     "create_build_plan",
     "create_build_plans",
     "execute_build",
     "execute_builds",
+    "execute_stage",
 ]

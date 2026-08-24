@@ -30,20 +30,18 @@ from __future__ import annotations
 
 import os
 import shutil
-from collections.abc import Iterable, Iterator
-from contextlib import contextmanager
+from collections.abc import Iterable
 from pathlib import Path
 
-from .bootstrap import build_stage_registry
-from .registry import (
-    StageImplementationNotFoundError,
-    StageRegistry,
-)
 from .specs import (
     BuildPlan,
     PlannedInput,
     PlannedStage,
     StageContext,
+)
+from .stage import (
+    StageExecutionError,
+    execute_stage,
 )
 
 # =========================================================
@@ -74,23 +72,18 @@ def execute_build(
     External filesystem inputs are then materialized into their
     artifact-owned locations.
 
-    A stage implementation registry is constructed once for the build.
-
     Stages execute in planned order. Before each stage executes, the
     engine constructs its StageContext using the same artifact-specific
-    Resolver retained by BuildPlan and changes the process working
-    directory to the stage working directory.
+    Resolver retained by BuildPlan.
 
-    The previous working directory is restored after stage execution,
-    including when execution fails.
+    Stage implementation dispatch, working-directory management,
+    implementation execution, and declared-product verification are
+    delegated to the common independent stage execution boundary.
 
-    After a stage completes, all of its declared products must exist.
-    Failure to prepare the workspace, materialize an input, locate an
-    implementation, execute a stage, or produce its declared products
-    stops the build immediately.
+    Failure to prepare the workspace, materialize an input, construct
+    an execution context, execute a stage, or produce its declared
+    products stops the build immediately.
     """
-
-    registry = build_stage_registry()
 
     _prepare_workspace(plan)
 
@@ -102,12 +95,13 @@ def execute_build(
             stage,
         )
 
-        _execute_stage(
-            context,
-            registry,
-        )
+        try:
+            execute_stage(
+                context,
+            )
 
-        _verify_products(context)
+        except StageExecutionError as exc:
+            raise BuildError(str(exc)) from exc
 
 
 def execute_builds(
@@ -560,121 +554,6 @@ def _stage_working_directory(
     common = Path(os.path.commonpath(parents))
 
     return common
-
-
-@contextmanager
-def _working_directory(
-    path: Path,
-) -> Iterator[None]:
-    """
-    Temporarily change the process working directory.
-
-    The previous working directory is restored regardless of whether
-    stage execution succeeds or raises an exception.
-    """
-
-    previous = Path.cwd()
-
-    try:
-        os.chdir(path)
-
-        yield
-
-    finally:
-        os.chdir(previous)
-
-
-# =========================================================
-# Stage execution
-# =========================================================
-
-
-def _execute_stage(
-    context: StageContext,
-    registry: StageRegistry,
-) -> None:
-    """
-    Execute one model-specific stage.
-
-    The executable implementation is obtained from the completed stage
-    registry using the model and stage names carried by StageContext.
-
-    The generic build engine does not know which models, features, or
-    plugins supplied the implementation.
-    """
-
-    try:
-        implementation = registry.get(
-            context.model_name,
-            context.stage_name,
-        )
-
-    except StageImplementationNotFoundError as exc:
-        raise BuildError(
-            f"No implementation is registered "
-            f"for model "
-            f"{context.model_name!r}, "
-            f"stage "
-            f"{context.stage_name!r}."
-        ) from exc
-
-    try:
-        with _working_directory(context.working_dir):
-            implementation(context)
-
-    except BuildError:
-        raise
-
-    except Exception as exc:
-        raise BuildError(
-            f"Stage "
-            f"{context.stage_name!r} "
-            f"failed for artifact "
-            f"{context.artifact_id!r} "
-            f"using model "
-            f"{context.model_name!r}: "
-            f"{exc}"
-        ) from exc
-
-
-# =========================================================
-# Product verification
-# =========================================================
-
-
-def _verify_products(
-    context: StageContext,
-) -> None:
-    """
-    Verify that every declared stage product exists.
-
-    Product contents and semantics are model-specific and are not
-    interpreted by the generic build engine.
-    """
-
-    missing = [
-        (
-            name,
-            path,
-        )
-        for name, path in context.outputs.items()
-        if not path.exists()
-    ]
-
-    if not missing:
-        return
-
-    details = ", ".join(f"{name!r} ({path})" for name, path in missing)
-
-    raise BuildError(
-        f"Stage "
-        f"{context.stage_name!r} "
-        f"for artifact "
-        f"{context.artifact_id!r} "
-        f"did not produce declared product"
-        f"{'s' if len(missing) != 1 else ''}: "
-        f"{details}."
-    )
 
 
 __all__ = [

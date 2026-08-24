@@ -11,7 +11,6 @@ handling, and declared product verification.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -989,7 +988,7 @@ def test_execute_build_rejects_unregistered_stage(
     )
 
     monkeypatch.setattr(
-        "lowkey_artifact_builder.engine.build.build_stage_registry",
+        "lowkey_artifact_builder.engine.stage.build_stage_registry",
         lambda: StageRegistry(),
     )
 
@@ -1021,16 +1020,14 @@ def _create_source(
 
 def _install_stage_implementation(
     monkeypatch: pytest.MonkeyPatch,
-    implementation: Callable[
-        [StageContext],
-        None,
-    ],
+    implementation,
 ) -> None:
     """
-    Install one test implementation for every artwork model stage.
+    Install one implementation for every artwork stage.
 
-    Tests replace engine bootstrap with an isolated registry rather
-    than patching private stage-dispatch behavior.
+    Stage implementation discovery belongs to the independent stage
+    execution boundary, so tests replace the registry constructed by
+    engine.stage rather than engine.build.
     """
 
     registry = StageRegistry()
@@ -1049,7 +1046,7 @@ def _install_stage_implementation(
         )
 
     monkeypatch.setattr(
-        "lowkey_artifact_builder.engine.build.build_stage_registry",
+        "lowkey_artifact_builder.engine.stage.build_stage_registry",
         lambda: registry,
     )
 
