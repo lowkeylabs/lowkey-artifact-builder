@@ -28,11 +28,13 @@ contents.
 
 from __future__ import annotations
 
-import os
 import shutil
 from collections.abc import Iterable
 from pathlib import Path
 
+from .context import (
+    _create_resolved_stage_context,
+)
 from .specs import (
     BuildPlan,
     PlannedInput,
@@ -350,24 +352,12 @@ def _create_stage_context(
     Construct the execution context for one planned stage.
 
     The artifact-specific Resolver retained by BuildPlan is supplied
-    directly to StageContext. Parameter values are not copied into a
-    separate stage-local mapping.
+    directly to StageContext.
 
-    Inputs contain both:
-
-        explicitly declared filesystem inputs
-            These use their declarative input names and refer to
-            artifact-owned materialized resources.
-
-        products from direct dependency stages
-            These use qualified names of the form
-            '<stage>.<product>'.
-
-    Outputs contain the current stage's declared products keyed by their
-    declarative product names.
-
-    Model-specific implementations do not resolve project or artifact
-    filesystem layout themselves.
+    Graph-driven execution resolves its inputs and outputs from the
+    already-resolved BuildPlan, then delegates final StageContext
+    construction and working-directory semantics to the common context
+    construction boundary shared with independent stage execution.
     """
 
     inputs = _collect_stage_inputs(
@@ -377,18 +367,12 @@ def _create_stage_context(
 
     outputs = {product.name: product.path for product in stage.products}
 
-    working_dir = _stage_working_directory(
-        plan,
-        stage,
-    )
-
-    return StageContext(
+    return _create_resolved_stage_context(
         artifact_id=plan.artifact_id,
         model_name=plan.model_name,
         stage_name=stage.name,
         project_root=plan.project_root,
         artifact_dir=plan.artifact_dir,
-        working_dir=working_dir,
         resolver=plan.resolver,
         inputs=inputs,
         outputs=outputs,
@@ -522,38 +506,6 @@ def _add_stage_input(
         )
 
     inputs[name] = path
-
-
-# =========================================================
-# Stage working directories
-# =========================================================
-
-
-def _stage_working_directory(
-    plan: BuildPlan,
-    stage: PlannedStage,
-) -> Path:
-    """
-    Determine the working directory for a stage.
-
-    A stage with declared products executes from the common parent
-    directory containing those products.
-
-    A stage without declared products executes from the artifact
-    working directory.
-
-    Working-directory selection is an engine concern. Stage
-    implementations should not change directories themselves.
-    """
-
-    if not stage.products:
-        return plan.artifact_dir
-
-    parents = [product.path.parent for product in stage.products]
-
-    common = Path(os.path.commonpath(parents))
-
-    return common
 
 
 __all__ = [
