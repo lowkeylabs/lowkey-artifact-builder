@@ -10,6 +10,10 @@ resolved StageContext. This module does not perform build planning,
 dependency traversal, configuration resolution, filesystem input
 materialization, or StageContext construction.
 
+Stage input readiness may be validated independently before execution.
+Validation is read-only and does not materialize inputs or realize
+dependency products.
+
 A stage executes exactly once using the model and stage identity carried
 by its StageContext.
 """
@@ -46,9 +50,84 @@ class StageExecutionError(RuntimeError):
     """
 
 
+class StageInputError(StageExecutionError):
+    """
+    Raised when a stage's resolved filesystem inputs are not ready.
+
+    Input validation occurs before model-specific execution and does not
+    attempt to create, materialize, or realize missing resources.
+    """
+
+
 # =========================================================
 # Public interface
 # =========================================================
+
+
+def validate_stage_inputs(
+    context: StageContext,
+) -> None:
+    """
+    Verify that every resolved stage input is ready for execution.
+
+    Every path in context.inputs must exist and must identify a regular
+    file.
+
+    Validation operates only on the resolved StageContext. It does not
+    distinguish between materialized external inputs and dependency
+    products because both are execution-facing filesystem inputs by the
+    time StageContext is constructed.
+
+    Validation is read-only. It does not create directories, materialize
+    external inputs, realize dependency products, execute prerequisite
+    stages, or execute the requested stage.
+
+    Raises StageInputError when one or more inputs are missing or are not
+    regular files.
+    """
+
+    invalid: list[
+        tuple[
+            str,
+            Path,
+            str,
+        ]
+    ] = []
+
+    for name, path in context.inputs.items():
+        if not path.exists():
+            invalid.append(
+                (
+                    name,
+                    path,
+                    "does not exist",
+                )
+            )
+
+            continue
+
+        if not path.is_file():
+            invalid.append(
+                (
+                    name,
+                    path,
+                    "is not a regular file",
+                )
+            )
+
+    if not invalid:
+        return
+
+    details = ", ".join(f"{name!r} ({path}: {reason})" for name, path, reason in invalid)
+
+    raise StageInputError(
+        f"Stage "
+        f"{context.stage_name!r} "
+        f"for artifact "
+        f"{context.artifact_id!r} "
+        f"has invalid input(s): "
+        f"{details}."
+    )
 
 
 def execute_stage(
@@ -69,8 +148,11 @@ def execute_stage(
 
     This function executes exactly the supplied stage. It does not
     inspect model dependencies, execute prerequisite stages, perform
-    build planning, materialize external inputs, or construct another
-    StageContext.
+    build planning, materialize external inputs, validate input
+    readiness, or construct another StageContext.
+
+    Call validate_stage_inputs() explicitly when input readiness must be
+    established before independent execution.
     """
 
     registry = build_stage_registry()
@@ -216,5 +298,7 @@ def _verify_products(
 
 __all__ = [
     "StageExecutionError",
+    "StageInputError",
     "execute_stage",
+    "validate_stage_inputs",
 ]

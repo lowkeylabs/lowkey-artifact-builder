@@ -13,6 +13,7 @@ of declared products.
 
 Independent stage execution uses the same resolved StageContext and
 model-specific stage implementation boundary as graph-driven builds.
+Stage input readiness may be validated independently before execution.
 """
 # File: src/lowkey_artifact_builder/engine/__init__.py
 # Copyright 2026 LowKeyLabs LLC
@@ -41,7 +42,9 @@ from .specs import (
 )
 from .stage import (
     StageExecutionError,
+    StageInputError,
     execute_stage,
+    validate_stage_inputs,
 )
 
 __all__ = [
@@ -54,10 +57,12 @@ __all__ = [
     "StageContext",
     "StageContextError",
     "StageExecutionError",
+    "StageInputError",
     "create_build_plan",
     "create_build_plans",
     "create_stage_context",
     "execute_build",
     "execute_builds",
     "execute_stage",
+    "validate_stage_inputs",
 ]
