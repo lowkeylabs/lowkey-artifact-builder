@@ -23,6 +23,8 @@ Effective configured parameter precedence is:
 
     realization
         >
+    artifact
+        >
     workspace
         >
     variant
@@ -364,15 +366,24 @@ def get_resolver(
 
     An artifact may instead declare explicit realizations:
 
+        source = "source.png"
+
+        [parameters]
+        shared_parameter = "value"
+
         [realizations.small]
         model = "artwork"
         variant = "default"
 
         [realizations.small.parameters]
-        ...
+        realization_parameter = "value"
 
-    For an existing realization, the model is read from its
-    configuration.
+    Artifact-scoped configurable values are inherited by every explicit
+    realization. Realization-specific configurable values override
+    inherited artifact values.
+
+    Model and variant identity are selected by the realization itself
+    and are not inherited as ordinary artifact parameters.
 
     During initial artifact setup, configuration may not yet contain a
     model. In that case setup may supply the selected model explicitly:
@@ -395,11 +406,14 @@ def get_resolver(
             <
         workspace
             <
+        artifact
+            <
         realization
 
     For legacy artifact configuration, the implicit "default"
-    realization is the artifact configuration itself, preserving the
-    existing artifact-level precedence behavior.
+    realization is the artifact configuration itself. It therefore
+    retains the existing artifact-level precedence behavior without
+    introducing a separate realization override scope.
 
     The current working directory is used as the project root unless
     project_root is explicitly supplied.
@@ -447,6 +461,8 @@ def get_resolver(
         realization_name,
     )
 
+    explicit_realizations = "realizations" in artifact_document
+
     configured_model = _artifact_model(
         realization_document,
     )
@@ -465,11 +481,17 @@ def get_resolver(
     # Model configuration
     # -----------------------------------------------------
 
-    model_parameters = _load_model_parameters(model_name)
+    model_parameters = _load_model_parameters(
+        model_name,
+    )
 
-    derivations = _load_model_derivations(model_name)
+    derivations = _load_model_derivations(
+        model_name,
+    )
 
-    model_spec = build_model_registry().get_model(model_name)
+    model_spec = build_model_registry().get_model(
+        model_name,
+    )
 
     variant = _resolve_variant(
         model_spec,
@@ -488,16 +510,27 @@ def get_resolver(
     )
 
     # -----------------------------------------------------
-    # Realization parameters
+    # Artifact and realization parameters
     #
-    # For legacy configuration, realization_document is the
-    # artifact document itself. This preserves existing artifact
-    # parameter behavior.
+    # Explicit named realizations inherit configurable values
+    # declared at artifact scope. Their own configurable values
+    # then override those inherited values.
+    #
+    # Legacy configuration already uses the artifact document as
+    # its implicit default realization, so it must be merged only
+    # once.
     # -----------------------------------------------------
 
-    realization_parameters = _artifact_parameters(
-        realization_document,
+    artifact_parameters = _artifact_parameters(
+        artifact_document,
     )
+
+    if explicit_realizations:
+        realization_parameters = _artifact_parameters(
+            realization_document,
+        )
+    else:
+        realization_parameters = {}
 
     # -----------------------------------------------------
     # Merge configured values
@@ -537,13 +570,17 @@ def get_resolver(
     _merge(
         values,
         provenance,
-        realization_parameters,
-        source=(
-            "artifact"
-            if realization_name == "default" and "realizations" not in artifact_document
-            else f"realization {realization_name!r}"
-        ),
+        artifact_parameters,
+        source="artifact",
     )
+
+    if explicit_realizations:
+        _merge(
+            values,
+            provenance,
+            realization_parameters,
+            source=f"realization {realization_name!r}",
+        )
 
     # -----------------------------------------------------
     # Artifact and realization identity
@@ -553,19 +590,13 @@ def get_resolver(
     provenance["artifact_id"] = "artifact"
 
     values["realization"] = realization_name
-    provenance["realization"] = (
-        "implicit default"
-        if realization_name == "default" and "realizations" not in artifact_document
-        else "artifact"
-    )
+    provenance["realization"] = "artifact" if explicit_realizations else "implicit default"
 
     values["model"] = model_name
 
     if configured_model is not None:
         provenance["model"] = (
-            "artifact"
-            if realization_name == "default" and "realizations" not in artifact_document
-            else f"realization {realization_name!r}"
+            f"realization {realization_name!r}" if explicit_realizations else "artifact"
         )
     else:
         provenance["model"] = "setup"
@@ -574,9 +605,7 @@ def get_resolver(
 
     if variant_name is not None:
         provenance["variant"] = (
-            "artifact"
-            if realization_name == "default" and "realizations" not in artifact_document
-            else f"realization {realization_name!r}"
+            f"realization {realization_name!r}" if explicit_realizations else "artifact"
         )
     else:
         provenance["variant"] = "default"

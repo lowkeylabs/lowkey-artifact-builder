@@ -566,3 +566,98 @@ def test_realizations_are_not_exposed_as_resolved_parameters(
         match="Unknown configuration value 'realizations'",
     ):
         resolver("realizations")
+
+
+def test_named_realization_inherits_artifact_configuration(
+    tmp_path: Path,
+) -> None:
+    """
+    A named realization inherits configuration declared at artifact scope.
+
+    Artifact-scoped values describe choices shared by the artifact's
+    realizations and do not need to be repeated in every realization.
+    """
+
+    _write_workspace(
+        tmp_path,
+    )
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "ornament": {
+                    "model": "artwork",
+                    "variant": "default",
+                },
+                "coaster": {
+                    "model": "artwork",
+                    "variant": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    ornament = get_resolver(
+        "example",
+        realization="ornament",
+        project_root=tmp_path,
+    )
+
+    coaster = get_resolver(
+        "example",
+        realization="coaster",
+        project_root=tmp_path,
+    )
+
+    assert ornament("source") == "source.png"
+    assert coaster("source") == "source.png"
+
+    assert ornament.source("source") == "artifact"
+    assert coaster.source("source") == "artifact"
+
+
+def test_realization_configuration_overrides_artifact_configuration(
+    tmp_path: Path,
+) -> None:
+    """
+    Realization configuration has higher precedence than artifact
+    configuration inherited by that realization.
+    """
+
+    _write_workspace(
+        tmp_path,
+    )
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "shared.png",
+            "artwork_size": 80.0,
+            "realizations": {
+                "ornament": {
+                    "model": "artwork",
+                    "variant": "default",
+                    "source": "ornament.png",
+                    "parameters": {
+                        "artwork_size": 100.0,
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        realization="ornament",
+        project_root=tmp_path,
+    )
+
+    assert resolver("source") == "ornament.png"
+    assert resolver.source("source") == "realization 'ornament'"
+
+    assert resolver("artwork_size") == 100.0
+    assert resolver.source("artwork_size") == "realization 'ornament'"
