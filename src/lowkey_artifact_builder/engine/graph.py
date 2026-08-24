@@ -1,8 +1,8 @@
 """
 Complete defined product graph.
 
-The defined graph represents the complete set of models, stages,
-dependencies, and products known to the artifact builder.
+The defined graph represents the complete set of models, variants,
+stages, dependencies, and products known to the artifact builder.
 
 It is derived from the model registry independently of any configured
 artifact or realization. Artifact-specific product selection and
@@ -21,6 +21,7 @@ from lowkey_artifact_builder.model import (
     ModelSpec,
     ProductSpec,
     StageSpec,
+    VariantSpec,
 )
 
 # =========================================================
@@ -32,6 +33,36 @@ class DefinedGraphError(RuntimeError):
     """
     Raised when registered model definitions cannot form a valid graph.
     """
+
+
+# =========================================================
+# Defined variants
+# =========================================================
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class DefinedVariant:
+    """
+    One model-scoped variant in the complete defined graph.
+
+    The variant retains its declarative VariantSpec as the authoritative
+    model definition.
+    """
+
+    spec: VariantSpec
+
+    @property
+    def name(
+        self,
+    ) -> str:
+        """
+        Return the model-scoped variant name.
+        """
+
+        return self.spec.name
 
 
 # =========================================================
@@ -97,10 +128,11 @@ class DefinedModel:
     """
     One model in the complete defined graph.
 
-    Stages preserve their declarative model order.
+    Variants and stages preserve their declarative model order.
     """
 
     spec: ModelSpec
+    variants: tuple[DefinedVariant, ...]
     stages: tuple[DefinedStage, ...]
 
     @property
@@ -144,7 +176,8 @@ class DefinedGraph:
     """
     Complete graph of registered model definitions.
 
-    Models and stages preserve registry and model declaration order.
+    Models, variants, and stages preserve registry and model declaration
+    order.
     """
 
     _models: tuple[DefinedModel, ...]
@@ -199,6 +232,37 @@ def _validate_stage_dependencies(
             raise DefinedGraphError(
                 f"Stage {stage.name!r} in model {model.name!r} "
                 f"depends on unknown stage {dependency!r}."
+            )
+
+
+def _validate_product_identities(
+    model: ModelSpec,
+) -> None:
+    """
+    Validate product identities defined by a model.
+
+    A definition-level product identity consists of the model name,
+    producing stage name, and product name. Each such identity must be
+    unique within the Defined Graph.
+    """
+
+    identities: set[tuple[str, str, str]] = set()
+
+    for stage in model.stages:
+        for product in stage.products:
+            identity = (
+                model.name,
+                stage.name,
+                product.name,
+            )
+
+            if identity in identities:
+                product_identity = f"{model.name}/{stage.name}/{product.name}"
+
+                raise DefinedGraphError(f"Duplicate product identity {product_identity!r}")
+
+            identities.add(
+                identity,
             )
 
 
@@ -263,14 +327,14 @@ def build_defined_graph(
     registry: ModelRegistry,
 ) -> DefinedGraph:
     """
-    Construct the complete defined graph from a model registry.
+    Construct and validate the complete Defined Graph.
 
-    Graph construction currently preserves the registered declarative
-    definitions without adding artifact- or realization-specific state.
+    The graph contains the registered models, model-scoped variants,
+    stages, products, and stage dependencies known to the artifact
+    builder. It contains no artifact- or realization-specific state.
 
-    Whole-graph validation is intentionally separate from this initial
-    representation and will be added as Phase 6 graph invariants are
-    introduced.
+    Graph construction validates dependency targets and rejects cyclic
+    stage dependencies before returning the completed graph.
     """
 
     models = tuple(_build_defined_model(model) for model in registry.all_models())
@@ -300,8 +364,19 @@ def _build_defined_model(
             stage_names,
         )
 
+    _validate_product_identities(
+        model,
+    )
+
     _validate_acyclic(
         model,
+    )
+
+    variants = tuple(
+        DefinedVariant(
+            spec=variant,
+        )
+        for variant in model.variants
     )
 
     stages = tuple(
@@ -313,6 +388,7 @@ def _build_defined_model(
 
     return DefinedModel(
         spec=model,
+        variants=variants,
         stages=stages,
     )
 
@@ -327,5 +403,6 @@ __all__ = [
     "DefinedGraphError",
     "DefinedModel",
     "DefinedStage",
+    "DefinedVariant",
     "build_defined_graph",
 ]

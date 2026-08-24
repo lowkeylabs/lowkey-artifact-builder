@@ -16,7 +16,9 @@ from lowkey_artifact_builder.engine.graph import (
 from lowkey_artifact_builder.model import (
     ModelRegistry,
     ModelSpec,
+    ProductSpec,
     StageSpec,
+    VariantSpec,
     build_model_registry,
 )
 
@@ -294,3 +296,123 @@ def test_defined_graph_accepts_branching_dependencies() -> None:
         "left",
         "right",
     )
+
+
+def test_defined_graph_contains_artwork_variants() -> None:
+    """
+    The defined graph contains every variant declared by the artwork model.
+    """
+
+    registry = build_model_registry()
+
+    graph = build_defined_graph(
+        registry,
+    )
+
+    artwork = graph.model(
+        "artwork",
+    )
+
+    assert tuple(variant.name for variant in artwork.variants) == tuple(
+        variant.name for variant in registry.get_model("artwork").variants
+    )
+
+
+def test_defined_graph_preserves_model_variants() -> None:
+    """
+    The defined graph preserves model-scoped variants and their presets.
+    """
+
+    registry = ModelRegistry()
+
+    registry.register_model(
+        ModelSpec(
+            name="example",
+            title="Example",
+            description="Example model.",
+            variants=(
+                VariantSpec(
+                    name="small",
+                    parameters={
+                        "diameter": 90.0,
+                    },
+                ),
+                VariantSpec(
+                    name="large",
+                    parameters={
+                        "diameter": 100.0,
+                    },
+                ),
+            ),
+            stages=(
+                StageSpec(
+                    id=10,
+                    name="build",
+                ),
+            ),
+            defined_in=__name__,
+        )
+    )
+
+    graph = build_defined_graph(
+        registry,
+    )
+
+    example = graph.model(
+        "example",
+    )
+
+    assert tuple(variant.name for variant in example.variants) == (
+        "default",
+        "small",
+        "large",
+    )
+
+    assert example.variants[0].spec.parameters == {}
+    assert example.variants[1].spec.parameters == {
+        "diameter": 90.0,
+    }
+    assert example.variants[2].spec.parameters == {
+        "diameter": 100.0,
+    }
+
+
+def test_defined_graph_rejects_duplicate_product_identity() -> None:
+    """
+    A stage cannot define multiple products with the same identity.
+    """
+
+    registry = ModelRegistry()
+
+    registry.register_model(
+        ModelSpec(
+            name="example",
+            title="Example",
+            description="Example model.",
+            stages=(
+                StageSpec(
+                    id=10,
+                    name="build",
+                    products=(
+                        ProductSpec(
+                            name="artifact",
+                            path="first.3mf",
+                        ),
+                        ProductSpec(
+                            name="artifact",
+                            path="second.3mf",
+                        ),
+                    ),
+                ),
+            ),
+            defined_in=__name__,
+        )
+    )
+
+    with pytest.raises(
+        DefinedGraphError,
+        match=("Duplicate product identity 'example/build/artifact'"),
+    ):
+        build_defined_graph(
+            registry,
+        )

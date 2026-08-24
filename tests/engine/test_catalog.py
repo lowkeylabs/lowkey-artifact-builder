@@ -183,3 +183,72 @@ def test_product_catalog_distinguishes_same_name_across_stages() -> None:
     assert raster.stage_name == "raster"
     assert vector.stage_name == "vector"
     assert extrude.stage_name == "extrude"
+
+
+def test_catalog_products_identify_their_producers() -> None:
+    """
+    Every catalog product identifies its producing model and stage.
+    """
+
+    registry = build_model_registry()
+
+    graph = build_defined_graph(
+        registry,
+    )
+
+    catalog = build_product_catalog(
+        graph,
+    )
+
+    for product in catalog.products:
+        model = graph.model(
+            product.model_name,
+        )
+
+        stage = model.stage(
+            product.stage_name,
+        )
+
+        assert product.spec in stage.products
+
+
+def test_product_catalog_contains_every_defined_product_once() -> None:
+    """
+    The catalog contains every Defined Graph product exactly once.
+    """
+
+    registry = build_model_registry()
+
+    graph = build_defined_graph(
+        registry,
+    )
+
+    catalog = build_product_catalog(
+        graph,
+    )
+
+    defined_products = tuple(
+        (
+            model_name,
+            stage.name,
+            product.name,
+        )
+        for model_name in graph.models
+        for stage in graph.model(model_name).stages
+        for product in stage.products
+    )
+
+    catalog_products = tuple(
+        (
+            product.model_name,
+            product.stage_name,
+            product.product_name,
+        )
+        for product in catalog.products
+    )
+
+    assert catalog_products == defined_products
+    assert len(catalog_products) == len(
+        set(catalog_products)
+    )
+
