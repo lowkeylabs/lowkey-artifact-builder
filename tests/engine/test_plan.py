@@ -16,6 +16,12 @@ from lowkey_artifact_builder.engine import (
     BuildPlanError,
     create_build_plan,
 )
+from lowkey_artifact_builder.model import (
+    ModelSpec,
+    ProductSpec,
+    StageSpec,
+    VariantSpec,
+)
 
 # =========================================================
 # Build planning
@@ -217,9 +223,12 @@ def test_create_build_plan_rejects_unknown_model(
             self,
             name: str,
         ):
-            assert name == "model"
+            values = {
+                "model": "does-not-exist",
+                "realization": "default",
+            }
 
-            return "does-not-exist"
+            return values[name]
 
         def source(
             self,
@@ -229,7 +238,7 @@ def test_create_build_plan_rejects_unknown_model(
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_resolver",
-        lambda artifact_id, project_root: Resolver(),
+        lambda artifact_id, *, realization=None, project_root: Resolver(),
     )
 
     with pytest.raises(
@@ -306,8 +315,7 @@ def test_variant_identity_is_distinct_from_realization_identity(
 
     A variant is a reusable model-scoped parameter preset. A realization
     is one configured invocation of that model. Multiple realizations may
-    eventually use the same variant, so their identities must not be
-    conflated.
+    use the same variant, so their identities must not be conflated.
     """
 
     from lowkey_artifact_builder.model import (
@@ -348,6 +356,7 @@ def test_variant_identity_is_distinct_from_realization_identity(
             values = {
                 "model": "example-model",
                 "variant": "ridged",
+                "realization": "default",
             }
 
             return values[name]
@@ -360,7 +369,7 @@ def test_variant_identity_is_distinct_from_realization_identity(
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_resolver",
-        lambda artifact_id, project_root: Resolver(),
+        lambda artifact_id, *, realization=None, project_root: Resolver(),
     )
 
     monkeypatch.setattr(
@@ -375,3 +384,267 @@ def test_variant_identity_is_distinct_from_realization_identity(
 
     assert plan.resolver("variant") == "ridged"
     assert plan.realization_name == "default"
+
+
+def test_create_build_plan_selects_named_realization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Build planning selects the explicitly requested artifact realization.
+
+    The resulting BuildPlan retains that realization identity and uses
+    the resolver belonging to the selected realization.
+    """
+
+    model = ModelSpec(
+        name="example-model",
+        title="Example Model",
+        variants=(
+            VariantSpec(
+                name="default",
+            ),
+            VariantSpec(
+                name="ridged",
+                parameters={
+                    "ridge": True,
+                    "ridge_width": 3.0,
+                    "ridge_raise": 1.0,
+                },
+            ),
+        ),
+    )
+
+    class StubRegistry:
+        def get_model(
+            self,
+            name: str,
+        ) -> ModelSpec:
+            assert name == model.name
+
+            return model
+
+    class Resolver:
+        def __call__(
+            self,
+            name: str,
+        ):
+            values = {
+                "model": model.name,
+                "variant": "ridged",
+                "realization": "ornament",
+                "ridge": True,
+                "ridge_width": 2.0,
+                "ridge_raise": 0.75,
+            }
+
+            return values[name]
+
+        def source(
+            self,
+            name: str,
+        ) -> str:
+            return "test"
+
+    requested: list[str | None] = []
+
+    def fake_get_resolver(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+    ) -> Resolver:
+        assert artifact_id == "example"
+
+        requested.append(realization)
+
+        return Resolver()
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_resolver",
+        fake_get_resolver,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.build_model_registry",
+        lambda: StubRegistry(),
+    )
+
+    plan = create_build_plan(
+        "example",
+        realization="ornament",
+        project_root=tmp_path,
+    )
+
+    assert requested == ["ornament"]
+
+    assert plan.realization_name == "ornament"
+
+    assert plan.resolver("realization") == "ornament"
+    assert plan.resolver("model") == model.name
+    assert plan.resolver("variant") == "ridged"
+
+    assert plan.resolver("ridge") is True
+    assert plan.resolver("ridge_width") == 2.0
+    assert plan.resolver("ridge_raise") == 0.75
+
+
+def test_named_realization_owns_planned_products(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Products planned for a named realization are stored beneath that
+    realization's canonical product hierarchy.
+    """
+
+    model = ModelSpec(
+        name="example-model",
+        title="Example Model",
+        stages=(
+            StageSpec(
+                id=10,
+                name="prepare",
+                products=(
+                    ProductSpec(
+                        name="trace",
+                        path="trace.svg",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    class StubRegistry:
+        def get_model(
+            self,
+            name: str,
+        ) -> ModelSpec:
+            assert name == model.name
+
+            return model
+
+    class Resolver:
+        def __call__(
+            self,
+            name: str,
+        ):
+            values = {
+                "model": model.name,
+                "variant": "default",
+                "realization": "ornament",
+            }
+
+            return values[name]
+
+        def source(
+            self,
+            name: str,
+        ) -> str:
+            return "test"
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_resolver",
+        lambda artifact_id, *, realization=None, project_root: Resolver(),
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.build_model_registry",
+        lambda: StubRegistry(),
+    )
+
+    plan = create_build_plan(
+        "example",
+        realization="ornament",
+        project_root=tmp_path,
+    )
+
+    assert plan.realization_name == "ornament"
+
+    assert plan.stages[0].products[0].path == (
+        tmp_path
+        / "artifacts"
+        / "example"
+        / "example-model"
+        / "ornament"
+        / "10-prepare"
+        / "trace.svg"
+    )
+
+
+def test_default_build_plan_preserves_legacy_realization_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Planning without an explicit realization preserves the existing
+    implicit-default behavior.
+
+    The planner delegates realization selection to configuration rather
+    than manufacturing realization identity independently.
+    """
+
+    model = ModelSpec(
+        name="example-model",
+        title="Example Model",
+    )
+
+    class StubRegistry:
+        def get_model(
+            self,
+            name: str,
+        ) -> ModelSpec:
+            assert name == model.name
+
+            return model
+
+    class Resolver:
+        def __call__(
+            self,
+            name: str,
+        ):
+            values = {
+                "model": model.name,
+                "variant": "default",
+                "realization": "default",
+            }
+
+            return values[name]
+
+        def source(
+            self,
+            name: str,
+        ) -> str:
+            return "test"
+
+    requested: list[str | None] = []
+
+    def fake_get_resolver(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+    ) -> Resolver:
+        requested.append(realization)
+
+        return Resolver()
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_resolver",
+        fake_get_resolver,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.build_model_registry",
+        lambda: StubRegistry(),
+    )
+
+    plan = create_build_plan(
+        "example",
+        project_root=tmp_path,
+    )
+
+    assert requested == [None]
+
+    assert plan.realization_name == "default"
+    assert plan.resolver("realization") == "default"

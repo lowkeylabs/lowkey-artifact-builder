@@ -18,11 +18,16 @@ def test_resolver() -> Resolver:
     """
     Construct the standard artifact configuration resolver used by
     engine tests.
+
+    The resolver represents legacy single-realization artifact
+    configuration, which resolves to the implicit realization named
+    "default".
     """
 
     return Resolver(
         values={
             "model": "artwork",
+            "realization": "default",
             "source": "source.png",
             "artwork_colors": [
                 "white",
@@ -36,6 +41,7 @@ def test_resolver() -> Resolver:
         },
         provenance={
             "model": "test",
+            "realization": "test",
             "source": "test",
             "artwork_colors": "test",
             "artwork_pixels": "test",
@@ -56,15 +62,30 @@ def artwork_plan(
 ]:
     """
     Return a factory for standard artwork build plans.
+
+    The standard plan exercises the legacy implicit-default realization
+    while honoring the realization-aware get_resolver() interface.
     """
 
     def create(
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> BuildPlan:
+        def fake_get_resolver(
+            artifact_id: str,
+            *,
+            realization: str | None = None,
+            project_root: Path,
+        ) -> Resolver:
+            assert artifact_id == "example"
+            assert realization is None
+            assert project_root == tmp_path
+
+            return test_resolver
+
         monkeypatch.setattr(
             "lowkey_artifact_builder.engine.plan.get_resolver",
-            lambda artifact_id, project_root: test_resolver,
+            fake_get_resolver,
         )
 
         return create_build_plan(

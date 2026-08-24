@@ -1,13 +1,13 @@
 """
 Artifact build planning.
 
-This module converts configured artifacts and declarative model
-definitions into concrete BuildPlan instances.
+This module converts configured artifact realizations and declarative
+model definitions into concrete BuildPlan instances.
 
-Planning resolves artifact configuration and filesystem locations but
+Planning resolves realization configuration and filesystem locations but
 does not modify filesystem products or materialize external inputs.
 
-The artifact-specific Resolver created during planning is retained by
+The realization-specific Resolver created during planning is retained by
 the BuildPlan and is the authoritative configuration source throughout
 execution.
 """
@@ -53,23 +53,26 @@ class BuildPlanError(RuntimeError):
 def create_build_plan(
     artifact_id: str,
     *,
+    realization: str | None = None,
     project_root: Path | None = None,
 ) -> BuildPlan:
     """
-    Construct the build plan for one configured artifact.
+    Construct the build plan for one configured artifact realization.
 
-    Configuration is resolved once for the artifact. The resulting
-    Resolver is retained by the BuildPlan and later supplied unchanged
-    to every StageContext created during execution.
+    Configuration is resolved once for the selected realization. The
+    resulting Resolver is retained by the BuildPlan and later supplied
+    unchanged to every StageContext created during execution.
 
-    The current single-realization configuration is represented
-    explicitly by the realization named "default".
+    When realization is omitted, configuration resolution determines
+    the realization. Legacy single-realization artifact configuration
+    resolves to the implicit realization named "default".
     """
 
     root = project_root if project_root is not None else Path.cwd()
 
     resolver = get_resolver(
         artifact_id,
+        realization=realization,
         project_root=root,
     )
 
@@ -80,6 +83,14 @@ def create_build_plan(
         str,
     ):
         raise BuildPlanError("Artifact model must resolve to a string.")
+
+    realization_name = resolver("realization")
+
+    if not isinstance(
+        realization_name,
+        str,
+    ):
+        raise BuildPlanError("Artifact realization must resolve to a string.")
 
     registry = build_model_registry()
 
@@ -96,8 +107,6 @@ def create_build_plan(
     artifact_dir = product_resolver.artifact_dir(
         artifact_id,
     )
-
-    realization_name = "default"
 
     stages = _plan_stages(
         artifact_id,
@@ -137,7 +146,7 @@ def _plan_stages(
 
     Stage parameter values are intentionally not copied into the plan.
     StageSpec declares which parameters a stage normally consumes, and
-    the BuildPlan retains the authoritative artifact Resolver.
+    the BuildPlan retains the authoritative realization Resolver.
     """
 
     participating = tuple(
@@ -184,7 +193,7 @@ def _plan_stage(
     Materialize one declarative stage for an artifact realization.
 
     Filesystem inputs and products are resolved to concrete paths.
-    Configuration parameter values remain in the artifact Resolver.
+    Configuration parameter values remain in the realization Resolver.
     """
 
     artifact_dir = product_resolver.artifact_dir(
