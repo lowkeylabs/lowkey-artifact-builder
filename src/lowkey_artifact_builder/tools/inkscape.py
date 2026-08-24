@@ -8,6 +8,9 @@ It contains no artifact-model or build-stage behavior. Higher-level
 subsystems use these operations to perform tracing, SVG manipulation,
 rendering, and other Inkscape-backed operations.
 """
+# File: src/lowkey_artifact_builder/tools/inkscape.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

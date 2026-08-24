@@ -7,6 +7,9 @@ These tests establish only the declarative specification boundary.
 Configuration resolution, realization selection, planning, and filesystem
 placement belong to later Phase 5 changes.
 """
+# File: tests/model/test_variants.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

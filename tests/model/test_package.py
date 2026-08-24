@@ -9,6 +9,9 @@ StageContext. In particular, it must not reconstruct artifact storage
 paths from the artifact identifier or from knowledge of the canonical
 workspace hierarchy.
 """
+# File: tests/model/test_package.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

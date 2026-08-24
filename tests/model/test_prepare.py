@@ -8,6 +8,9 @@ The prepare stage must consume only the paths supplied through
 StageContext. Its persistent products must be written exactly to the
 declared trace and envelope output paths.
 """
+# File: tests/model/test_prepare.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

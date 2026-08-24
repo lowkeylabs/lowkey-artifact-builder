@@ -7,6 +7,9 @@ provenance tracking, reference color data, and model-derived values.
 Application code should normally import configuration services from
 this package rather than directly from config.py.
 """
+# File: src/lowkey_artifact_builder/config/__init__.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

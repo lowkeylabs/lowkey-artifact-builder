@@ -17,6 +17,9 @@ the artwork.
 The artwork model has no underlying base. Its final 3MF contains only
 the generated artwork components.
 """
+# File: src/lowkey_artifact_builder/model/models/artwork/__init__.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

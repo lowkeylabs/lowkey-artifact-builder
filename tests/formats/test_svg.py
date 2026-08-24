@@ -1,6 +1,9 @@
 """
 Tests for SVG format utilities.
 """
+# File: tests/formats/test_svg.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

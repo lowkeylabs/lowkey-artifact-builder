@@ -16,6 +16,9 @@ stages.
 
 Small disconnected islands are removed using a physical-area threshold.
 """
+# File: src/lowkey_artifact_builder/model/models/artwork/stages/raster.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

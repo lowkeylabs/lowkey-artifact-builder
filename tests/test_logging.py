@@ -1,4 +1,7 @@
 """Tests for lowkey-artifact-builder logging."""
+# File: tests/test_logging.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 import logging
 

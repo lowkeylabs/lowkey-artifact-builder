@@ -7,6 +7,9 @@ modules.
 Domain-specific presentation belongs in the corresponding display
 module rather than here.
 """
+# File: src/lowkey_artifact_builder/cli/display/common.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

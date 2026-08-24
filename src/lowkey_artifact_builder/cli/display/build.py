@@ -4,6 +4,9 @@ Build plan display.
 This module contains CLI presentation for concrete artifact build
 plans.
 """
+# File: src/lowkey_artifact_builder/cli/display/build.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

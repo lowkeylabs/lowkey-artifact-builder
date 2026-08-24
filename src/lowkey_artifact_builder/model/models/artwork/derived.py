@@ -9,6 +9,9 @@ from any resolved configuration scope.
 
 Explicitly configured values take precedence over derivations.
 """
+# File: src/lowkey_artifact_builder/model/models/artwork/derived.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

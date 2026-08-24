@@ -8,6 +8,9 @@ The vector stage must consume only the paths supplied through
 StageContext. Dynamic SVG products are stage-local products whose
 locations are determined by the declared vector manifest.
 """
+# File: tests/model/test_vector.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

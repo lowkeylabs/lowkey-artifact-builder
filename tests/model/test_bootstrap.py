@@ -1,6 +1,9 @@
 """
 Tests for model subsystem bootstrap and discovery.
 """
+# File: tests/model/test_bootstrap.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from lowkey_artifact_builder.model.bootstrap import (
     build_model_registry,

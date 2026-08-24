@@ -4,6 +4,9 @@ Tests for the public artifact build engine interface.
 These tests verify the public engine package surface and StageContext
 behavior shared by model stage implementations.
 """
+# File: tests/engine/test_engine.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

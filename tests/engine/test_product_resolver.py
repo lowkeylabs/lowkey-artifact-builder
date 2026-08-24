@@ -1,6 +1,9 @@
 """
 Tests for logical product filesystem resolution.
 """
+# File: tests/engine/test_product_resolver.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

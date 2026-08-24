@@ -9,6 +9,9 @@ These tests establish realization configuration semantics only.
 Planning, filesystem placement, and execution belong to later Phase 5
 changes.
 """
+# File: tests/config/test_realizations.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

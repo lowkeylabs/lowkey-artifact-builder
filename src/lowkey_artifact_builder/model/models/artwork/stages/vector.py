@@ -20,6 +20,9 @@ Filesystem layout, dependency resolution, and configuration resolution
 are responsibilities of the build engine. This implementation consumes
 only the paths and values supplied through StageContext.
 """
+# File: src/lowkey_artifact_builder/model/models/artwork/stages/vector.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

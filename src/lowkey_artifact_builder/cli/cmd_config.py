@@ -7,6 +7,9 @@ Positional arguments to this command are reserved for artifact IDs.
 Additional configuration operations are exposed through command-line
 options.
 """
+# File: src/lowkey_artifact_builder/cli/cmd_config.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

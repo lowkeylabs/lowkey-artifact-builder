@@ -1,6 +1,9 @@
 """
 Tests for the OpenSCAD tool interface.
 """
+# File: tests/tools/test_openscad.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from pathlib import Path
 from subprocess import CompletedProcess

@@ -9,6 +9,9 @@ It contains no artifact-model or build-stage behavior. Higher-level
 subsystems use these operations to inspect and manipulate SVG documents
 without depending directly on XML representation details.
 """
+# File: src/lowkey_artifact_builder/formats/svg.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

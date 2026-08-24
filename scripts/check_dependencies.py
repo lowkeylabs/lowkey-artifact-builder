@@ -2,6 +2,9 @@
 """
 Verify external tools required to develop and test lowkey-artifact-builder.
 """
+# File: scripts/check_dependencies.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

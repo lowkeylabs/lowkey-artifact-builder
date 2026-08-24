@@ -1,6 +1,9 @@
 """
 Shared fixtures for artifact build engine tests.
 """
+# File: tests/engine/conftest.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

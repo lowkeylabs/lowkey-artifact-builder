@@ -7,6 +7,9 @@ produced by the artifact build system.
 Format modules understand the structure and representation of a file
 format but do not contain artifact-model or build-stage behavior.
 """
+# File: src/lowkey_artifact_builder/formats/__init__.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from lowkey_artifact_builder.formats.svg import (
     SVGError,

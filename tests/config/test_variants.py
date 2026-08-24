@@ -7,6 +7,9 @@ These tests establish how variant selection participates in artifact
 configuration resolution. Realization identity, realization naming,
 filesystem placement, and planning belong to later Phase 5 changes.
 """
+# File: tests/config/test_variants.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

@@ -64,6 +64,9 @@ Execution, artifact configuration, configuration resolution, filesystem
 path resolution, feature interpretation, dependency resolution, stage
 validity, and artifact materialization belong to other subsystems.
 """
+# File: src/lowkey_artifact_builder/model/specs.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

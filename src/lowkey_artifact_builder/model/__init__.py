@@ -8,6 +8,9 @@ Models describe what may be built. The model subsystem also provides
 the small bootstrap interface used to register model definitions and
 their stage implementations with the build engine.
 """
+# File: src/lowkey_artifact_builder/model/__init__.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from lowkey_artifact_builder.model.bootstrap import (
     build_model_registry,

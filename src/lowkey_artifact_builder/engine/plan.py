@@ -11,6 +11,9 @@ The realization-specific Resolver created during planning is retained by
 the BuildPlan and is the authoritative configuration source throughout
 execution.
 """
+# File: src/lowkey_artifact_builder/engine/plan.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

@@ -4,6 +4,9 @@ Logical product filesystem resolution.
 This module centralizes the mapping from logical artifact, model, and
 realization identities to canonical filesystem locations.
 """
+# File: src/lowkey_artifact_builder/engine/product_resolver.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

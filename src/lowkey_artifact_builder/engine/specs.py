@@ -19,6 +19,9 @@ authority for resolved configuration. Model stages declare the
 parameters they normally consume through StageSpec, but all stages have
 access to the complete artifact configuration through the Resolver.
 """
+# File: src/lowkey_artifact_builder/engine/specs.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

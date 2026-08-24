@@ -1,6 +1,9 @@
 """
 Tests for model specifications.
 """
+# File: tests/model/test_specs.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from dataclasses import FrozenInstanceError
 

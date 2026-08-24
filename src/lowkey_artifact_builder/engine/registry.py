@@ -15,6 +15,9 @@ same interface without changing the build engine.
 The registry does not construct models, resolve configuration, resolve
 filesystem paths, execute stages, or discover plugins.
 """
+# File: src/lowkey_artifact_builder/engine/registry.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

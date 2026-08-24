@@ -17,6 +17,9 @@ Semantic artwork color names assigned during rasterization are
 preserved through the pipeline and used to construct meaningful 3MF
 object names.
 """
+# File: src/lowkey_artifact_builder/model/models/artwork/stages/package.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

@@ -5,6 +5,9 @@ These tests verify workspace creation, external input materialization,
 stage execution order, execution contexts, stage dispatch, failure
 handling, and declared product verification.
 """
+# File: tests/engine/test_build.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

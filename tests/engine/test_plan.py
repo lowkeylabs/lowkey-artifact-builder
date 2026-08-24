@@ -4,6 +4,9 @@ Tests for artifact build planning.
 These tests verify construction of concrete build plans from configured
 artifacts and declarative model specifications.
 """
+# File: tests/engine/test_plan.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

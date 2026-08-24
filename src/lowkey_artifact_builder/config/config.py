@@ -69,6 +69,9 @@ Artifact TOML files are read and written with tomlkit so that comments,
 ordering, whitespace, and other presentation details survive interactive
 configuration updates.
 """
+# File: src/lowkey_artifact_builder/config/config.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

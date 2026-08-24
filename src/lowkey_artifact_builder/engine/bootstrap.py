@@ -14,6 +14,9 @@ Those concerns belong to the model subsystem.
 Future model or feature plugin discovery may therefore evolve entirely
 within the model subsystem while preserving this bootstrap interface.
 """
+# File: src/lowkey_artifact_builder/engine/bootstrap.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

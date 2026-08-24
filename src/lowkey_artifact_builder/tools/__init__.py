@@ -8,6 +8,9 @@ Tool modules are intentionally independent of artifact models and build
 stages. They provide reusable operations that higher-level subsystems
 may use without embedding application-specific invocation details.
 """
+# File: src/lowkey_artifact_builder/tools/__init__.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from .inkscape import (
     InkscapeError,

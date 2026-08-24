@@ -22,6 +22,9 @@ Filesystem layout and configuration resolution are responsibilities of
 the build engine. This implementation consumes only the inputs,
 parameters, and outputs supplied through StageContext.
 """
+# File: src/lowkey_artifact_builder/model/models/artwork/stages/prepare.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

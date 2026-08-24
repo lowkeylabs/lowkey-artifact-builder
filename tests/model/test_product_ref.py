@@ -1,6 +1,9 @@
 """
 Tests for logical product references.
 """
+# File: tests/model/test_product_ref.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

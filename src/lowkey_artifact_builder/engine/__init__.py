@@ -11,6 +11,9 @@ Execution owns artifact workspace creation, external input
 materialization, stage dispatch, execution contexts, and verification
 of declared products.
 """
+# File: src/lowkey_artifact_builder/engine/__init__.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from .build import (
     BuildError,

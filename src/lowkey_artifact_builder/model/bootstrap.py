@@ -12,6 +12,9 @@ Future plugin discovery may extend the model implementation package
 without requiring the build engine to know which models, features, or
 plugins exist.
 """
+# File: src/lowkey_artifact_builder/model/bootstrap.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

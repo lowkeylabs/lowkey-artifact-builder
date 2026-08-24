@@ -1,6 +1,9 @@
 """
 Tests for the model registry.
 """
+# File: tests/model/test_registry.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 import pytest
 

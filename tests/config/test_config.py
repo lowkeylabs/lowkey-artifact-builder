@@ -1,6 +1,9 @@
 """
 Tests for artifact configuration loading, persistence, and resolution.
 """
+# File: tests/config/test_config.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

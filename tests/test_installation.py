@@ -1,4 +1,7 @@
 """Tests for package installation and metadata."""
+# File: tests/test_installation.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from importlib.metadata import version
 

@@ -7,6 +7,9 @@ The build command resolves artifact configuration, constructs the
 artifact's execution plan, and either displays that plan or executes
 it.
 """
+# File: src/lowkey_artifact_builder/cli/cmd_build.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

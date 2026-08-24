@@ -27,6 +27,9 @@ It provides:
 This module contains no artifact-model, file-format, build-engine,
 printer, or filament-specific behavior.
 """
+# File: src/lowkey_artifact_builder/colors.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

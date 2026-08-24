@@ -4,6 +4,9 @@ Artifact configuration display.
 This module contains CLI presentation for resolved artifact
 configuration.
 """
+# File: src/lowkey_artifact_builder/cli/display/config.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

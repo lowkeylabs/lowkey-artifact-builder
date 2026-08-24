@@ -4,6 +4,9 @@ Model display helpers.
 This module owns human-readable terminal presentation for registered
 artifact models and their declared workplans.
 """
+# File: src/lowkey_artifact_builder/cli/display/models.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

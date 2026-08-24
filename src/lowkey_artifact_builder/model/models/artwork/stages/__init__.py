@@ -16,6 +16,9 @@ construct artifact filesystem paths themselves.
 Future artwork features and plugins may contribute additional stage
 implementations through the same registration interface.
 """
+# File: src/lowkey_artifact_builder/model/models/artwork/stages/__init__.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 
