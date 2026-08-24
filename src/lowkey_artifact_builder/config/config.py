@@ -9,21 +9,32 @@ Configuration is resolved through increasingly specific scopes:
     model/models/<model>/parameters.toml
         Model-specific parameter defaults.
 
+    model-defined variant
+        Reusable model-scoped parameter presets.
+
     workspace.toml
         Optional project-level parameter overrides.
 
-    artifacts/<artifact_id>/artifact.toml
-        Artifact-specific configuration and parameter overrides.
+    artifact realization
+        One configured invocation of a model, selecting a model,
+        variant, and optional parameter overrides.
 
 Effective configured parameter precedence is:
 
-    artifact
+    realization
         >
     workspace
+        >
+    variant
         >
     model
         >
     system
+
+Legacy artifact configuration without explicit realizations is treated
+as a single implicit realization named "default". Its artifact-level
+configuration occupies the realization scope, preserving existing
+configuration behavior.
 
 Models may additionally define derived values in derived.py.
 
@@ -32,9 +43,10 @@ always takes precedence over a derivation of the same name.
 
 The Resolver presents configured and derived values through a single
 interface while retaining provenance information for configuration
-inspection and diagnostics.
+inspection and diagnostics. It also exposes artifact, realization,
+model, and variant identity.
 
-The system configuration may also contain reference data such as the
+The system configuration may contain reference data such as the
 [colors] catalog. Reference data does not participate in normal
 parameter resolution.
 
@@ -43,8 +55,13 @@ Artifact configuration is stored at:
 
     artifacts/<artifact_id>/artifact.toml
 
-Artifact configuration is intentionally sparse. Only artifact-specific
-choices and overrides need to be persisted.
+An artifact may use the legacy single-realization form or declare
+explicit named realizations. Realization names are artifact-scoped.
+Each realization selects a model, may select one of that model's
+variants, and may provide realization-specific parameter overrides.
+
+Artifact TOML files are intentionally sparse. Only artifact-specific
+realization choices and parameter overrides need to be persisted.
 
 Artifact TOML files are read and written with tomlkit so that comments,
 ordering, whitespace, and other presentation details survive interactive
@@ -325,18 +342,39 @@ def get_resolver(
     artifact_id: str,
     *,
     model: str | None = None,
+    realization: str | None = None,
     project_root: Path | str | None = None,
 ) -> Resolver:
     """
-    Construct the resolver for an artifact.
+    Construct the resolver for one artifact realization.
 
     artifact_id is always required.
 
-    For an existing artifact, the model is read from:
+    An artifact may use either the legacy single-realization
+    configuration form or explicit named realizations.
 
-        artifacts/<artifact_id>/artifact.toml
+    A legacy artifact implicitly defines exactly one realization named
+    "default":
 
-    During initial artifact setup, artifact.toml may not yet contain a
+        model = "artwork"
+        variant = "default"
+
+        [parameters]
+        ...
+
+    An artifact may instead declare explicit realizations:
+
+        [realizations.small]
+        model = "artwork"
+        variant = "default"
+
+        [realizations.small.parameters]
+        ...
+
+    For an existing realization, the model is read from its
+    configuration.
+
+    During initial artifact setup, configuration may not yet contain a
     model. In that case setup may supply the selected model explicitly:
 
         get_resolver(
@@ -344,7 +382,7 @@ def get_resolver(
             model="artwork",
         )
 
-    An artifact may select one of the variants declared by its model.
+    A realization may select one of the variants declared by its model.
     When no variant is configured, the model's default variant is used.
 
     Configuration precedence is:
@@ -357,7 +395,11 @@ def get_resolver(
             <
         workspace
             <
-        artifact
+        realization
+
+    For legacy artifact configuration, the implicit "default"
+    realization is the artifact configuration itself, preserving the
+    existing artifact-level precedence behavior.
 
     The current working directory is used as the project root unless
     project_root is explicitly supplied.
@@ -381,11 +423,13 @@ def get_resolver(
     colors = _colors_from_document(system_document)
 
     # -----------------------------------------------------
-    # Artifact configuration
+    # Artifact and realization configuration
     #
-    # Inspect this before model parameters are loaded because
-    # an existing artifact normally identifies its model and
-    # selected variant.
+    # Inspect these before model parameters are loaded because
+    # the selected realization identifies its model and variant.
+    #
+    # Legacy artifact configuration is normalized to an
+    # implicit realization named "default".
     # -----------------------------------------------------
 
     artifact_document = load_artifact_config(
@@ -393,7 +437,19 @@ def get_resolver(
         project_root=root,
     )
 
-    configured_model = _artifact_model(artifact_document)
+    realization_name = _resolve_realization_name(
+        artifact_document,
+        realization,
+    )
+
+    realization_document = _realization_document(
+        artifact_document,
+        realization_name,
+    )
+
+    configured_model = _artifact_model(
+        realization_document,
+    )
 
     model_name = _resolve_model_name(
         artifact_id,
@@ -402,7 +458,7 @@ def get_resolver(
     )
 
     variant_name = _artifact_variant(
-        artifact_document,
+        realization_document,
     )
 
     # -----------------------------------------------------
@@ -432,10 +488,16 @@ def get_resolver(
     )
 
     # -----------------------------------------------------
-    # Artifact parameters
+    # Realization parameters
+    #
+    # For legacy configuration, realization_document is the
+    # artifact document itself. This preserves existing artifact
+    # parameter behavior.
     # -----------------------------------------------------
 
-    artifact_parameters = _artifact_parameters(artifact_document)
+    realization_parameters = _artifact_parameters(
+        realization_document,
+    )
 
     # -----------------------------------------------------
     # Merge configured values
@@ -475,28 +537,47 @@ def get_resolver(
     _merge(
         values,
         provenance,
-        artifact_parameters,
-        source="artifact",
+        realization_parameters,
+        source=(
+            "artifact"
+            if realization_name == "default" and "realizations" not in artifact_document
+            else f"realization {realization_name!r}"
+        ),
     )
 
     # -----------------------------------------------------
-    # Artifact identity
+    # Artifact and realization identity
     # -----------------------------------------------------
 
     values["artifact_id"] = artifact_id
     provenance["artifact_id"] = "artifact"
 
+    values["realization"] = realization_name
+    provenance["realization"] = (
+        "implicit default"
+        if realization_name == "default" and "realizations" not in artifact_document
+        else "artifact"
+    )
+
     values["model"] = model_name
 
     if configured_model is not None:
-        provenance["model"] = "artifact"
+        provenance["model"] = (
+            "artifact"
+            if realization_name == "default" and "realizations" not in artifact_document
+            else f"realization {realization_name!r}"
+        )
     else:
         provenance["model"] = "setup"
 
     values["variant"] = variant.name
 
     if variant_name is not None:
-        provenance["variant"] = "artifact"
+        provenance["variant"] = (
+            "artifact"
+            if realization_name == "default" and "realizations" not in artifact_document
+            else f"realization {realization_name!r}"
+        )
     else:
         provenance["variant"] = "default"
 
@@ -746,6 +827,77 @@ def _validate_artifact_document(
     ):
         raise ConfigError("The [parameters] section in artifact.toml must be a TOML table.")
 
+    realizations = document.get("realizations")
+
+    if realizations is not None:
+        if not isinstance(
+            realizations,
+            Mapping,
+        ):
+            raise ConfigError("The [realizations] section in artifact.toml must be a TOML table.")
+
+        for name, realization in realizations.items():
+            if (
+                not isinstance(
+                    name,
+                    str,
+                )
+                or not name.strip()
+            ):
+                raise ConfigError("Realization names must be non-empty strings.")
+
+            if not isinstance(
+                realization,
+                Mapping,
+            ):
+                raise ConfigError(f"Realization {name!r} must be a TOML table.")
+
+            _validate_realization_document(
+                name,
+                realization,
+            )
+
+
+def _validate_realization_document(
+    name: str,
+    document: Mapping[str, Any],
+) -> None:
+    """
+    Validate one realization configuration.
+    """
+
+    model = document.get("model")
+
+    if model is not None:
+        if not isinstance(
+            model,
+            str,
+        ):
+            raise ConfigError(f"Realization {name!r} model must be a string.")
+
+        if not model.strip():
+            raise ConfigError(f"Realization {name!r} model cannot be empty.")
+
+    variant = document.get("variant")
+
+    if variant is not None:
+        if not isinstance(
+            variant,
+            str,
+        ):
+            raise ConfigError(f"Realization {name!r} variant must be a string.")
+
+        if not variant.strip():
+            raise ConfigError(f"Realization {name!r} variant cannot be empty.")
+
+    parameters = document.get("parameters")
+
+    if parameters is not None and not isinstance(
+        parameters,
+        Mapping,
+    ):
+        raise ConfigError(f"The [parameters] section in realization {name!r} must be a TOML table.")
+
 
 # =========================================================
 # Artifact TOML
@@ -861,6 +1013,101 @@ def _write_artifact_document_atomic(
                 pass
 
         raise ConfigError(f"Unable to write artifact configuration {path}: {exc}") from exc
+
+
+# =========================================================
+# Realization resolution
+# =========================================================
+
+
+def _resolve_realization_name(
+    artifact_document: Mapping[str, Any],
+    requested_realization: str | None,
+) -> str:
+    """
+    Resolve the realization selected for an artifact.
+
+    Artifacts using the legacy single-model configuration implicitly
+    contain exactly one realization named "default".
+
+    Artifacts declaring [realizations] expose exactly the realization
+    names declared in that table.
+    """
+
+    if requested_realization is not None:
+        requested_realization = requested_realization.strip()
+
+        if not requested_realization:
+            raise ConfigError("Requested realization cannot be empty.")
+
+    realizations = artifact_document.get("realizations")
+
+    if realizations is None:
+        realization_name = requested_realization if requested_realization is not None else "default"
+
+        if realization_name != "default":
+            raise ConfigError(f"unknown realization {realization_name!r}.")
+
+        return "default"
+
+    if not isinstance(
+        realizations,
+        Mapping,
+    ):
+        raise ConfigError("The [realizations] section in artifact.toml must be a TOML table.")
+
+    if requested_realization is None:
+        if "default" in realizations:
+            return "default"
+
+        raise ConfigError("Artifact defines explicit realizations; a realization must be selected.")
+
+    if requested_realization not in realizations:
+        raise ConfigError(f"unknown realization {requested_realization!r}.")
+
+    return requested_realization
+
+
+def _realization_document(
+    artifact_document: Mapping[str, Any],
+    realization_name: str,
+) -> Mapping[str, Any]:
+    """
+    Return the configuration document for one realization.
+
+    Legacy artifact configuration is treated as an implicit realization
+    named "default".
+
+    Explicit realization configuration is read from the artifact's
+    [realizations] table.
+    """
+
+    realizations = artifact_document.get("realizations")
+
+    if realizations is None:
+        if realization_name != "default":
+            raise ConfigError(f"unknown realization {realization_name!r}.")
+
+        return artifact_document
+
+    if not isinstance(
+        realizations,
+        Mapping,
+    ):
+        raise ConfigError("The [realizations] section in artifact.toml must be a TOML table.")
+
+    realization = realizations.get(realization_name)
+
+    if realization is None:
+        raise ConfigError(f"unknown realization {realization_name!r}.")
+
+    if not isinstance(
+        realization,
+        Mapping,
+    ):
+        raise ConfigError(f"Realization {realization_name!r} must be a TOML table.")
+
+    return realization
 
 
 # =========================================================
@@ -1210,6 +1457,7 @@ def _artifact_parameters(
             "model",
             "variant",
             "parameters",
+            "realizations",
         }:
             continue
 
