@@ -14,6 +14,7 @@ options.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -21,6 +22,9 @@ from lowkey_artifact_builder.cli.display import (
     display_artifact_config,
     display_model_workplans,
     display_models,
+)
+from lowkey_artifact_builder.cli.setup import (
+    setup_artifact,
 )
 from lowkey_artifact_builder.config import (
     ConfigError,
@@ -43,16 +47,6 @@ from lowkey_artifact_builder.model import (
     nargs=-1,
 )
 @click.option(
-    "--input-artwork-file",
-    type=click.Path(
-        path_type=Path,
-        exists=True,
-        dir_okay=False,
-        readable=True,
-    ),
-    help="Artwork file used as artifact input.",
-)
-@click.option(
     "--list-models",
     is_flag=True,
     help="List available artifact models.",
@@ -69,7 +63,6 @@ from lowkey_artifact_builder.model import (
 )
 def cli(
     artifact_ids: tuple[str, ...],
-    input_artwork_file: Path | None,
     list_models: bool,
     dump: bool,
     workplan: bool,
@@ -87,9 +80,6 @@ def cli(
     if list_models:
         if artifact_ids:
             raise click.UsageError("--list-models cannot be used with artifact IDs.")
-
-        if input_artwork_file is not None:
-            raise click.UsageError("--input-artwork-file cannot be used with --list-models.")
 
         if dump and workplan:
             raise click.UsageError("--dump and --workplan cannot be used together.")
@@ -126,21 +116,63 @@ def cli(
     project_root = Path.cwd()
 
     # =====================================================
-    # Artifact configuration
+    # Configuration dump
     # =====================================================
 
-    if input_artwork_file is not None:
-        try:
-            configure_artifact(
-                artifact_id,
-                input_files={
-                    "artwork": input_artwork_file,
-                },
-                project_root=project_root,
-            )
+    if dump:
+        _display_artifact(
+            artifact_id,
+            project_root=project_root,
+        )
+        return
 
-        except ConfigError as exc:
-            raise click.ClickException(str(exc)) from exc
+    # =====================================================
+    # Existing artifact
+    # =====================================================
+
+    existing = load_artifact_config(
+        artifact_id,
+        project_root=project_root,
+    )
+
+    if existing:
+        _display_artifact(
+            artifact_id,
+            project_root=project_root,
+        )
+        return
+
+    # =====================================================
+    # Interactive configuration
+    # =====================================================
+
+    registry = build_model_registry()
+
+    setup = setup_artifact(
+        artifact_id,
+        registry,
+        project_root=project_root,
+    )
+
+    values = dict(setup.values)
+
+    input_files = _extract_input_files(
+        values,
+        project_root=project_root,
+    )
+
+    values["model"] = setup.model
+
+    try:
+        configure_artifact(
+            artifact_id,
+            values=values,
+            input_files=input_files,
+            project_root=project_root,
+        )
+
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     # =====================================================
     # Artifact display
@@ -150,6 +182,48 @@ def cli(
         artifact_id,
         project_root=project_root,
     )
+
+
+# =========================================================
+# Setup translation
+# =========================================================
+
+
+def _extract_input_files(
+    values: dict[str, Any],
+    *,
+    project_root: Path,
+) -> dict[str, Path]:
+    """
+    Extract external inputs collected by interactive setup.
+
+    Setup collects model parameter values but does not persist them or
+    materialize external files.
+
+    External source parameters are translated here into semantic input
+    roles understood by the high-level artifact configuration API.
+
+    Extracted source parameters are removed from values so external
+    filesystem paths are not persisted directly by the CLI.
+    """
+
+    input_files: dict[str, Path] = {}
+
+    source = values.pop(
+        "source",
+        None,
+    )
+
+    if source is not None:
+        if not isinstance(
+            source,
+            str,
+        ):
+            raise click.ClickException("Artifact source must be a path string.")
+
+        input_files["artwork"] = project_root / source
+
+    return input_files
 
 
 # =========================================================
@@ -187,7 +261,10 @@ def _display_artifact(
         registry = build_model_registry()
         model = registry.get_model(model_name)
 
-    except (ConfigError, KeyError) as exc:
+    except (
+        ConfigError,
+        KeyError,
+    ) as exc:
         raise click.ClickException(str(exc)) from exc
 
     display_artifact_config(
