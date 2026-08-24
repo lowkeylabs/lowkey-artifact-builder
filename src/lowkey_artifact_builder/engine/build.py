@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import os
 import shutil
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -105,6 +105,20 @@ def execute_build(
         )
 
         _verify_products(context)
+
+
+def execute_builds(
+    plans: Iterable[BuildPlan],
+) -> None:
+    """
+    Execute multiple build plans in iteration order.
+
+    Each plan is executed through the existing single-build execution
+    boundary. Execution stops immediately if any build fails.
+    """
+
+    for plan in plans:
+        execute_build(plan)
 
 
 # =========================================================
@@ -663,4 +677,5 @@ def _verify_products(
 __all__ = [
     "BuildError",
     "execute_build",
+    "execute_builds",
 ]

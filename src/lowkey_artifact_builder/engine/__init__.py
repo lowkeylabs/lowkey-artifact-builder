@@ -15,6 +15,7 @@ of declared products.
 from .build import (
     BuildError,
     execute_build,
+    execute_builds,
 )
 from .plan import (
     BuildPlanError,
@@ -42,4 +43,5 @@ __all__ = [
     "create_build_plan",
     "create_build_plans",
     "execute_build",
+    "execute_builds",
 ]

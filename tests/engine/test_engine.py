@@ -24,6 +24,7 @@ from lowkey_artifact_builder.engine import (
     create_build_plan,
     create_build_plans,
     execute_build,
+    execute_builds,
 )
 
 # =========================================================
@@ -48,6 +49,7 @@ def test_engine_public_interface() -> None:
     assert callable(create_build_plan)
     assert callable(create_build_plans)
     assert callable(execute_build)
+    assert callable(execute_builds)
 
 
 # =========================================================

@@ -15,8 +15,10 @@ import pytest
 
 from lowkey_artifact_builder.engine import (
     BuildError,
+    BuildPlan,
     StageContext,
     execute_build,
+    execute_builds,
 )
 from lowkey_artifact_builder.engine.registry import StageRegistry
 
@@ -884,3 +886,129 @@ def _create_declared_outputs(
         assert path.parent.is_dir()
 
         path.touch()
+
+
+# =========================================================
+# Multiple build execution
+# =========================================================
+
+
+def test_execute_builds_executes_plans_in_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Multiple build plans execute sequentially in supplied order.
+
+    Multi-build execution is orchestration over the existing
+    single-plan execution boundary.
+    """
+
+    first = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    second = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    third = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    observed: list[BuildPlan] = []
+
+    def fake_execute_build(
+        plan: BuildPlan,
+    ) -> None:
+        observed.append(plan)
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.build.execute_build",
+        fake_execute_build,
+    )
+
+    execute_builds(
+        (
+            first,
+            second,
+            third,
+        )
+    )
+
+    assert observed == [
+        first,
+        second,
+        third,
+    ]
+
+
+def test_execute_builds_accepts_empty_iterable() -> None:
+    """
+    Executing an empty collection of build plans is a successful no-op.
+    """
+
+    execute_builds(())
+
+
+def test_execute_builds_stops_after_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Multi-build execution stops when one build fails.
+
+    Later plans are not executed after execute_build raises BuildError.
+    """
+
+    first = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    second = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    third = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    observed: list[BuildPlan] = []
+
+    def fake_execute_build(
+        plan: BuildPlan,
+    ) -> None:
+        observed.append(plan)
+
+        if plan is second:
+            raise BuildError("second build failed")
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.build.execute_build",
+        fake_execute_build,
+    )
+
+    with pytest.raises(
+        BuildError,
+        match="second build failed",
+    ):
+        execute_builds(
+            (
+                first,
+                second,
+                third,
+            )
+        )
+
+    assert observed == [
+        first,
+        second,
+    ]
