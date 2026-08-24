@@ -24,6 +24,7 @@ from lowkey_artifact_builder.engine import (
     execute_builds,
 )
 from lowkey_artifact_builder.engine.registry import StageRegistry
+from lowkey_artifact_builder.model import ProductRef
 
 # =========================================================
 # Build workspace
@@ -249,6 +250,184 @@ def test_execute_build_runs_stages_in_plan_order(
         "extrude",
         "package",
     ]
+
+
+# =========================================================
+# Product-targeted execution
+# =========================================================
+
+
+def test_execute_build_runs_only_target_dependency_closure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Product-targeted execution runs only stages required by the target.
+
+    Targeting vector/manifest executes prepare, raster, and vector.
+    Downstream extrude and package stages do not execute.
+    """
+
+    _create_source(tmp_path)
+
+    target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="manifest",
+    )
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+        targets=(target,),
+    )
+
+    executed: list[str] = []
+
+    def implementation(
+        context: StageContext,
+    ) -> None:
+        executed.append(
+            context.stage_name,
+        )
+
+        _create_declared_outputs(
+            context,
+        )
+
+    _install_stage_implementation(
+        monkeypatch,
+        implementation,
+    )
+
+    execute_build(
+        plan,
+    )
+
+    assert executed == [
+        "prepare",
+        "raster",
+        "vector",
+    ]
+
+
+def test_execute_build_target_does_not_create_downstream_workspace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Product-targeted execution creates no workspace for omitted stages.
+
+    Workspace materialization follows the realized BuildPlan rather than
+    the complete Defined Graph.
+    """
+
+    _create_source(tmp_path)
+
+    target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="manifest",
+    )
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+        targets=(target,),
+    )
+
+    def implementation(
+        context: StageContext,
+    ) -> None:
+        _create_declared_outputs(
+            context,
+        )
+
+    _install_stage_implementation(
+        monkeypatch,
+        implementation,
+    )
+
+    execute_build(
+        plan,
+    )
+
+    realization_dir = plan.artifact_dir / "artwork" / "default"
+
+    assert (realization_dir / "10-prepare").is_dir()
+
+    assert (realization_dir / "20-raster").is_dir()
+
+    assert (realization_dir / "30-vector").is_dir()
+
+    assert not (realization_dir / "40-extrude").exists()
+
+    assert not (realization_dir / "50-package").exists()
+
+
+def test_execute_build_target_creates_target_and_dependency_products(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Product-targeted execution produces the selected dependency closure.
+
+    Required upstream products and the requested target product exist
+    after execution, while products of omitted downstream stages do not.
+    """
+
+    _create_source(tmp_path)
+
+    target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="manifest",
+    )
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+        targets=(target,),
+    )
+
+    def implementation(
+        context: StageContext,
+    ) -> None:
+        _create_declared_outputs(
+            context,
+        )
+
+    _install_stage_implementation(
+        monkeypatch,
+        implementation,
+    )
+
+    execute_build(
+        plan,
+    )
+
+    realization_dir = plan.artifact_dir / "artwork" / "default"
+
+    assert (realization_dir / "10-prepare" / "trace.svg").is_file()
+
+    assert (realization_dir / "10-prepare" / "envelope.svg").is_file()
+
+    assert (realization_dir / "20-raster" / "products.json").is_file()
+
+    assert (realization_dir / "30-vector" / "products.json").is_file()
+
+    assert not (realization_dir / "40-extrude" / "products.json").exists()
+
+    assert not (realization_dir / "50-package" / "artifact.3mf").exists()
 
 
 # =========================================================

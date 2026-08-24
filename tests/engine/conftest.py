@@ -13,7 +13,13 @@ from pathlib import Path
 import pytest
 
 from lowkey_artifact_builder.config import Resolver
-from lowkey_artifact_builder.engine import BuildPlan, create_build_plan
+from lowkey_artifact_builder.engine import (
+    BuildPlan,
+    create_build_plan,
+)
+from lowkey_artifact_builder.model import (
+    ProductRef,
+)
 
 
 @pytest.fixture
@@ -60,7 +66,11 @@ def test_resolver() -> Resolver:
 def artwork_plan(
     test_resolver: Resolver,
 ) -> Callable[
-    [Path, pytest.MonkeyPatch],
+    [
+        Path,
+        pytest.MonkeyPatch,
+        tuple[ProductRef, ...] | None,
+    ],
     BuildPlan,
 ]:
     """
@@ -68,11 +78,16 @@ def artwork_plan(
 
     The standard plan exercises the legacy implicit-default realization
     while honoring the realization-aware get_resolver() interface.
+
+    Optional product targets allow tests to construct Phase 7 targeted
+    plans while preserving complete-build behavior when targets are
+    omitted.
     """
 
     def create(
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
+        targets: tuple[ProductRef, ...] | None = None,
     ) -> BuildPlan:
         def fake_get_resolver(
             artifact_id: str,
@@ -93,6 +108,7 @@ def artwork_plan(
 
         return create_build_plan(
             "example",
+            targets=targets,
             project_root=tmp_path,
         )
 

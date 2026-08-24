@@ -23,6 +23,7 @@ from lowkey_artifact_builder.engine import (
 )
 from lowkey_artifact_builder.model import (
     ModelSpec,
+    ProductRef,
     ProductSpec,
     StageSpec,
     VariantSpec,
@@ -900,3 +901,503 @@ artwork_raise = 1.0
     assert plan.realization_name == "default"
 
     assert plan.resolver("source") == "source.png"
+
+
+# =========================================================
+# Product-targeted planning
+# =========================================================
+
+
+def test_create_build_plan_without_targets_is_complete_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Planning without product targets preserves complete-build behavior.
+
+    Phase 7 product targeting must not change the existing default
+    behavior of planning every participating stage.
+    """
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    assert plan.targets is None
+    assert plan.targeted is False
+
+    assert tuple(stage.name for stage in plan.stages) == (
+        "prepare",
+        "raster",
+        "vector",
+        "extrude",
+        "package",
+    )
+
+
+def test_create_build_plan_targets_vector_product(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Targeting a vector product plans only its dependency closure.
+
+    Downstream extrude and package stages are excluded.
+    """
+
+    target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="manifest",
+    )
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+        targets=(target,),
+    )
+
+    assert plan.targets == (target,)
+
+    assert plan.targeted is True
+
+    assert tuple(stage.name for stage in plan.stages) == (
+        "prepare",
+        "raster",
+        "vector",
+    )
+
+
+def test_create_build_plan_targets_intermediate_product(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Any catalog product may serve as the endpoint of a build plan.
+    """
+
+    target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="default",
+        stage="raster",
+        product="manifest",
+    )
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+        targets=(target,),
+    )
+
+    assert tuple(stage.name for stage in plan.stages) == (
+        "prepare",
+        "raster",
+    )
+
+
+def test_create_build_plan_targets_final_product(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Targeting the final artifact preserves the complete dependency chain.
+    """
+
+    target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="default",
+        stage="package",
+        product="artifact",
+    )
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+        targets=(target,),
+    )
+
+    assert plan.targets == (target,)
+
+    assert tuple(stage.name for stage in plan.stages) == (
+        "prepare",
+        "raster",
+        "vector",
+        "extrude",
+        "package",
+    )
+
+
+def test_create_build_plan_supports_multiple_targets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Multiple requested products produce the union of their dependencies.
+    """
+
+    raster = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="default",
+        stage="raster",
+        product="manifest",
+    )
+
+    vector = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="manifest",
+    )
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+        targets=(
+            raster,
+            vector,
+        ),
+    )
+
+    assert plan.targets == (
+        raster,
+        vector,
+    )
+
+    assert tuple(stage.name for stage in plan.stages) == (
+        "prepare",
+        "raster",
+        "vector",
+    )
+
+
+def test_create_build_plan_rejects_empty_target_set(
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit targeted planning requires at least one target product.
+    """
+
+    with pytest.raises(
+        BuildPlanError,
+        match="at least one product",
+    ):
+        create_build_plan(
+            "example",
+            targets=(),
+            project_root=tmp_path,
+        )
+
+
+def test_create_build_plan_rejects_unknown_target_product(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    A requested product must exist in the Product Catalog.
+    """
+
+    target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="missing",
+    )
+
+    with pytest.raises(
+        BuildPlanError,
+        match=("Unknown target product 'artwork/vector/missing'"),
+    ):
+        artwork_plan(
+            tmp_path,
+            monkeypatch,
+            targets=(target,),
+        )
+
+
+def test_create_build_plan_rejects_target_for_other_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Product targets must belong to the artifact being planned.
+    """
+
+    target = ProductRef(
+        artifact="other",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="manifest",
+    )
+
+    with pytest.raises(
+        BuildPlanError,
+        match="does not match configured artifact",
+    ):
+        artwork_plan(
+            tmp_path,
+            monkeypatch,
+            targets=(target,),
+        )
+
+
+def test_create_build_plan_rejects_target_for_other_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Product targets must belong to the configured model.
+    """
+
+    target = ProductRef(
+        artifact="example",
+        model="other",
+        realization="default",
+        stage="vector",
+        product="manifest",
+    )
+
+    with pytest.raises(
+        BuildPlanError,
+        match="does not match configured model",
+    ):
+        artwork_plan(
+            tmp_path,
+            monkeypatch,
+            targets=(target,),
+        )
+
+
+def test_create_build_plan_rejects_target_for_other_realization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Product targets must belong to the selected realization.
+    """
+
+    target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="other",
+        stage="vector",
+        product="manifest",
+    )
+
+    with pytest.raises(
+        BuildPlanError,
+        match="does not match configured realization",
+    ):
+        artwork_plan(
+            tmp_path,
+            monkeypatch,
+            targets=(target,),
+        )
+
+
+# =========================================================
+# Product-targeted multi-realization planning
+# =========================================================
+
+
+def test_create_build_plans_routes_targets_to_realizations(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-level targeted planning routes products to their realization.
+
+    Only realizations containing requested products produce BuildPlans.
+    """
+
+    (tmp_path / "workspace.toml").write_text(
+        """
+[parameters]
+artwork_raise = 1.0
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "ornament": {
+                    "model": "artwork",
+                    "variant": "default",
+                    "parameters": {
+                        "artwork_size": 100.0,
+                    },
+                },
+                "coaster": {
+                    "model": "artwork",
+                    "variant": "default",
+                    "parameters": {
+                        "artwork_size": 90.0,
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    ornament_target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="ornament",
+        stage="vector",
+        product="manifest",
+    )
+
+    plans = create_build_plans(
+        "example",
+        targets=(ornament_target,),
+        project_root=tmp_path,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    assert plan.realization_name == "ornament"
+
+    assert plan.targets == (ornament_target,)
+
+    assert tuple(stage.name for stage in plan.stages) == (
+        "prepare",
+        "raster",
+        "vector",
+    )
+
+
+def test_create_build_plans_routes_independent_target_closures(
+    tmp_path: Path,
+) -> None:
+    """
+    Each realization receives only its own requested dependency closure.
+    """
+
+    (tmp_path / "workspace.toml").write_text(
+        """
+[parameters]
+artwork_raise = 1.0
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "ornament": {
+                    "model": "artwork",
+                    "variant": "default",
+                    "parameters": {
+                        "artwork_size": 100.0,
+                    },
+                },
+                "coaster": {
+                    "model": "artwork",
+                    "variant": "default",
+                    "parameters": {
+                        "artwork_size": 90.0,
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    ornament_target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="ornament",
+        stage="vector",
+        product="manifest",
+    )
+
+    coaster_target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="coaster",
+        stage="package",
+        product="artifact",
+    )
+
+    plans = create_build_plans(
+        "example",
+        targets=(
+            ornament_target,
+            coaster_target,
+        ),
+        project_root=tmp_path,
+    )
+
+    assert tuple(plan.realization_name for plan in plans) == (
+        "ornament",
+        "coaster",
+    )
+
+    ornament, coaster = plans
+
+    assert ornament.targets == (ornament_target,)
+
+    assert tuple(stage.name for stage in ornament.stages) == (
+        "prepare",
+        "raster",
+        "vector",
+    )
+
+    assert coaster.targets == (coaster_target,)
+
+    assert tuple(stage.name for stage in coaster.stages) == (
+        "prepare",
+        "raster",
+        "vector",
+        "extrude",
+        "package",
+    )
+
+
+def test_create_build_plans_rejects_target_for_other_artifact(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-level targeted planning rejects foreign artifact targets.
+    """
+
+    target = ProductRef(
+        artifact="other",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="manifest",
+    )
+
+    with pytest.raises(
+        BuildPlanError,
+        match="does not match configured artifact",
+    ):
+        create_build_plans(
+            "example",
+            targets=(target,),
+            project_root=tmp_path,
+        )

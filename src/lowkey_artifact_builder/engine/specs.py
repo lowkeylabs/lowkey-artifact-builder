@@ -9,10 +9,16 @@ execution contexts. They are distinct from declarative model
 specifications, which describe what may be built independently of any
 particular artifact.
 
-Planning constructs BuildPlan instances from configured artifacts and
-their declarative models. Execution consumes those plans, materializes
-external filesystem inputs into the artifact workspace, and constructs
-StageContext instances for individual stage invocations.
+Planning constructs BuildPlan instances from configured artifacts,
+requested products, and their declarative models. Execution consumes
+those plans, materializes external filesystem inputs into the artifact
+workspace, and constructs StageContext instances for individual stage
+invocations.
+
+A BuildPlan may represent either a normal complete realization build or
+an explicitly product-targeted build. Product-targeted plans retain the
+logical ProductRef targets that caused their stage dependency closure to
+be selected.
 
 The artifact-specific configuration Resolver is the single runtime
 authority for resolved configuration. Model stages declare the
@@ -35,6 +41,7 @@ from lowkey_artifact_builder.config import (
 from lowkey_artifact_builder.model import (
     InputSpec,
     ModelSpec,
+    ProductRef,
     ProductSpec,
     StageSpec,
 )
@@ -244,16 +251,27 @@ class PlannedStage:
 )
 class BuildPlan:
     """
-    Concrete execution plan for one configured artifact.
+    Concrete execution plan for one configured artifact realization.
 
     A BuildPlan contains everything needed to describe and execute the
-    work for an artifact.
+    work for one artifact realization.
 
     The resolver is the artifact-specific configuration authority
     created during planning. It contains the complete effective
     configuration view for the artifact, including configured values,
     derived values, provenance, and shared reference configuration such
     as the color catalog.
+
+    Targets records the logical products explicitly requested for a
+    product-targeted build.
+
+    When targets is None, the plan represents the normal complete build
+    of all stages participating in the configured realization.
+
+    When targets contains ProductRef values, stages contains only the
+    producers of those products and the transitive dependency closure
+    required to produce them. ProductRef remains a logical identity and
+    contains no filesystem location.
 
     Stage parameter declarations remain on StageSpec and describe which
     configuration values a stage normally consumes. Parameter values
@@ -264,7 +282,8 @@ class BuildPlan:
     or materializing external inputs.
 
     Execution consumes the completed plan without creating another
-    configuration resolver or resolving filesystem locations again.
+    configuration resolver, recomputing target dependency closure, or
+    resolving filesystem locations again.
     """
 
     artifact_id: str
@@ -281,6 +300,8 @@ class BuildPlan:
 
     stages: tuple[PlannedStage, ...]
 
+    targets: tuple[ProductRef, ...] | None = None
+
     @property
     def model_name(
         self,
@@ -290,6 +311,16 @@ class BuildPlan:
         """
 
         return self.model.name
+
+    @property
+    def targeted(
+        self,
+    ) -> bool:
+        """
+        Return whether this is an explicitly product-targeted build.
+        """
+
+        return self.targets is not None
 
 
 # =========================================================
@@ -407,6 +438,11 @@ class StageContext:
 
         except KeyError as exc:
             raise StageContextError(f"Stage {self.stage_name!r} has no output {name!r}.") from exc
+
+
+# =========================================================
+# Exports
+# =========================================================
 
 
 __all__ = [

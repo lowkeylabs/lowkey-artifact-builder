@@ -1,11 +1,20 @@
 """
 Artifact build planning.
 
-This module converts configured artifact realizations and declarative
-model definitions into concrete BuildPlan instances.
+This module converts configured artifact realizations, declarative model
+definitions, and optional requested products into concrete BuildPlan
+instances.
 
 Planning resolves realization configuration and filesystem locations but
 does not modify filesystem products or materialize external inputs.
+
+When products are explicitly requested, planning constructs a
+Realization Graph and materializes only the stages required by those
+products and their transitive dependencies.
+
+When no products are explicitly requested, all participating model
+stages are planned. This preserves the normal complete-artifact build
+behavior.
 
 The realization-specific Resolver created during planning is retained by
 the BuildPlan and is the authoritative configuration source throughout
@@ -24,7 +33,19 @@ from lowkey_artifact_builder.config import (
     get_realization_names,
     get_resolver,
 )
-from lowkey_artifact_builder.engine.product_resolver import ProductResolver
+from lowkey_artifact_builder.engine.catalog import (
+    build_product_catalog,
+)
+from lowkey_artifact_builder.engine.graph import (
+    build_defined_graph,
+)
+from lowkey_artifact_builder.engine.product_resolver import (
+    ProductResolver,
+)
+from lowkey_artifact_builder.engine.realization_graph import (
+    RealizationGraphError,
+    build_realization_graph,
+)
 from lowkey_artifact_builder.engine.specs import (
     BuildPlan,
     PlannedInput,
@@ -34,6 +55,7 @@ from lowkey_artifact_builder.engine.specs import (
 from lowkey_artifact_builder.model import (
     ModelNotFoundError,
     ModelSpec,
+    ProductRef,
     StageSpec,
     build_model_registry,
 )
@@ -58,6 +80,7 @@ def create_build_plan(
     artifact_id: str,
     *,
     realization: str | None = None,
+    targets: tuple[ProductRef, ...] | None = None,
     project_root: Path | None = None,
 ) -> BuildPlan:
     """
@@ -70,7 +93,16 @@ def create_build_plan(
     When realization is omitted, configuration resolution determines
     the realization. Legacy single-realization artifact configuration
     resolves to the implicit realization named "default".
+
+    When targets are supplied, only stages required to produce those
+    products and their transitive dependencies are planned.
+
+    When targets are omitted, every participating model stage is
+    planned, preserving complete-artifact build behavior.
     """
+
+    if targets == ():
+        raise BuildPlanError("Targeted build requires at least one product.")
 
     root = project_root if project_root is not None else Path.cwd()
 
@@ -99,7 +131,9 @@ def create_build_plan(
     registry = build_model_registry()
 
     try:
-        model = registry.get_model(model_name)
+        model = registry.get_model(
+            model_name,
+        )
 
     except ModelNotFoundError as exc:
         raise BuildPlanError(f"unknown model {model_name!r}") from exc
@@ -112,10 +146,20 @@ def create_build_plan(
         artifact_id,
     )
 
+    selected_stages = _select_stages(
+        artifact_id=artifact_id,
+        model=model,
+        realization_name=realization_name,
+        resolver=resolver,
+        registry=registry,
+        targets=targets,
+    )
+
     stages = _plan_stages(
         artifact_id,
         model,
         realization_name,
+        selected_stages,
         resolver,
         root,
         product_resolver,
@@ -129,12 +173,14 @@ def create_build_plan(
         project_root=root,
         artifact_dir=artifact_dir,
         stages=stages,
+        targets=targets,
     )
 
 
 def create_build_plans(
     artifact_id: str,
     *,
+    targets: tuple[ProductRef, ...] | None = None,
     project_root: Path | None = None,
 ) -> tuple[BuildPlan, ...]:
     """
@@ -146,9 +192,16 @@ def create_build_plans(
     Legacy single-realization artifact configuration produces exactly
     one plan for the implicit realization named "default".
 
-    Individual realization planning remains owned by
-    create_build_plan().
+    When targets are omitted, every realization receives its normal
+    complete-artifact build plan.
+
+    When targets are supplied, each target is routed to the realization
+    identified by its ProductRef. A realization with no requested
+    targets is omitted from the returned plans.
     """
+
+    if targets == ():
+        raise BuildPlanError("Targeted build requires at least one product.")
 
     root = project_root if project_root is not None else Path.cwd()
 
@@ -157,14 +210,180 @@ def create_build_plans(
         project_root=root,
     )
 
+    if targets is None:
+        return tuple(
+            create_build_plan(
+                artifact_id,
+                realization=realization_name,
+                project_root=root,
+            )
+            for realization_name in realization_names
+        )
+
+    _validate_target_artifact(
+        artifact_id,
+        targets,
+    )
+
     return tuple(
         create_build_plan(
             artifact_id,
             realization=realization_name,
+            targets=realization_targets,
             project_root=root,
         )
         for realization_name in realization_names
+        if (
+            realization_targets := tuple(
+                target for target in targets if target.realization == realization_name
+            )
+        )
     )
+
+
+# =========================================================
+# Stage selection
+# =========================================================
+
+
+def _select_stages(
+    *,
+    artifact_id: str,
+    model: ModelSpec,
+    realization_name: str,
+    resolver: Resolver,
+    registry,
+    targets: tuple[ProductRef, ...] | None,
+) -> tuple[StageSpec, ...]:
+    """
+    Select model stages required for one build plan.
+
+    Without explicit targets, every feature-participating stage is
+    selected.
+
+    With explicit targets, a Realization Graph determines the target
+    producers and their transitive dependency closure. Every required
+    stage must also participate under the resolved feature
+    configuration.
+    """
+
+    if targets is None:
+        return tuple(
+            stage
+            for stage in model.stages
+            if _stage_participates(
+                stage,
+                resolver,
+            )
+        )
+
+    if not targets:
+        raise BuildPlanError("Targeted build requires at least one product.")
+
+    _validate_targets(
+        artifact_id=artifact_id,
+        model_name=model.name,
+        realization_name=realization_name,
+        targets=targets,
+    )
+
+    defined_graph = build_defined_graph(
+        registry,
+    )
+
+    catalog = build_product_catalog(
+        defined_graph,
+    )
+
+    try:
+        realization_graph = build_realization_graph(
+            defined_graph,
+            catalog,
+            targets=targets,
+        )
+
+    except RealizationGraphError as exc:
+        raise BuildPlanError(str(exc)) from exc
+
+    stages = tuple(stage.spec for stage in realization_graph.stages)
+
+    _validate_required_stage_participation(
+        stages,
+        resolver,
+    )
+
+    return stages
+
+
+def _validate_targets(
+    *,
+    artifact_id: str,
+    model_name: str,
+    realization_name: str,
+    targets: tuple[ProductRef, ...],
+) -> None:
+    """
+    Validate targets against the configured artifact realization.
+    """
+
+    for target in targets:
+        if target.artifact != artifact_id:
+            raise BuildPlanError(
+                f"Target artifact {target.artifact!r} "
+                f"does not match configured artifact "
+                f"{artifact_id!r}."
+            )
+
+        if target.model != model_name:
+            raise BuildPlanError(
+                f"Target model {target.model!r} does not match configured model {model_name!r}."
+            )
+
+        if target.realization != realization_name:
+            raise BuildPlanError(
+                f"Target realization {target.realization!r} "
+                f"does not match configured realization "
+                f"{realization_name!r}."
+            )
+
+
+def _validate_target_artifact(
+    artifact_id: str,
+    targets: tuple[ProductRef, ...],
+) -> None:
+    """
+    Validate that all multi-realization targets belong to the artifact.
+    """
+
+    for target in targets:
+        if target.artifact != artifact_id:
+            raise BuildPlanError(
+                f"Target artifact {target.artifact!r} "
+                f"does not match configured artifact "
+                f"{artifact_id!r}."
+            )
+
+
+def _validate_required_stage_participation(
+    stages: tuple[StageSpec, ...],
+    resolver: Resolver,
+) -> None:
+    """
+    Validate that every stage required by a target participates.
+
+    A target dependency closure is structural. Feature configuration
+    may disable a structurally required stage. Such a target cannot be
+    built and therefore fails planning explicitly.
+    """
+
+    for stage in stages:
+        if _stage_participates(
+            stage,
+            resolver,
+        ):
+            continue
+
+        raise BuildPlanError(f"Target requires non-participating stage {stage.name!r}.")
 
 
 # =========================================================
@@ -176,33 +395,27 @@ def _plan_stages(
     artifact_id: str,
     model: ModelSpec,
     realization_name: str,
+    selected_stages: tuple[StageSpec, ...],
     resolver: Resolver,
     project_root: Path,
     product_resolver: ProductResolver,
 ) -> tuple[PlannedStage, ...]:
     """
-    Materialize participating model stages for one artifact realization.
+    Materialize selected model stages for one artifact realization.
 
     Stage parameter values are intentionally not copied into the plan.
     StageSpec declares which parameters a stage normally consumes, and
     the BuildPlan retains the authoritative realization Resolver.
+
+    Every dependency of a selected stage must also be selected.
     """
 
-    participating = tuple(
-        stage
-        for stage in model.stages
-        if _stage_participates(
-            stage,
-            resolver,
-        )
-    )
+    selected_names = {stage.name for stage in selected_stages}
 
-    participating_names = {stage.name for stage in participating}
-
-    for stage in participating:
+    for stage in selected_stages:
         _validate_stage_dependencies(
             stage,
-            participating_names,
+            selected_names,
         )
 
     return tuple(
@@ -215,7 +428,7 @@ def _plan_stages(
             project_root,
             product_resolver,
         )
-        for stage in participating
+        for stage in selected_stages
     )
 
 
@@ -297,8 +510,7 @@ def _validate_stage_dependencies(
     participating_names: set[str],
 ) -> None:
     """
-    Validate that all dependencies of a participating stage also
-    participate.
+    Validate that all dependencies of a selected stage also participate.
     """
 
     missing = tuple(
@@ -359,7 +571,9 @@ def _plan_input(
     Materialize one external filesystem input.
     """
 
-    value = resolver(input_spec.parameter)
+    value = resolver(
+        input_spec.parameter,
+    )
 
     if not isinstance(
         value,
@@ -372,7 +586,9 @@ def _plan_input(
             "must resolve to a string path."
         )
 
-    source_path = Path(value)
+    source_path = Path(
+        value,
+    )
 
     if not source_path.is_absolute():
         source_path = project_root / source_path
@@ -430,4 +646,5 @@ def _plan_stage_products(
 __all__ = [
     "BuildPlanError",
     "create_build_plan",
+    "create_build_plans",
 ]
