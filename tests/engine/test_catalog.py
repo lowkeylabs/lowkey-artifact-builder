@@ -248,7 +248,4 @@ def test_product_catalog_contains_every_defined_product_once() -> None:
     )
 
     assert catalog_products == defined_products
-    assert len(catalog_products) == len(
-        set(catalog_products)
-    )
-
+    assert len(catalog_products) == len(set(catalog_products))
