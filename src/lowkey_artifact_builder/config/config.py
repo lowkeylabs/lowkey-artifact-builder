@@ -618,6 +618,44 @@ def get_resolver(
     )
 
 
+def get_realization_names(
+    artifact_id: str,
+    *,
+    project_root: Path | str | None = None,
+) -> tuple[str, ...]:
+    """
+    Return the realizations configured for one artifact.
+
+    Legacy single-realization artifact configuration exposes exactly
+    one implicit realization named "default".
+
+    Artifacts declaring explicit realizations return those realization
+    names in artifact.toml declaration order.
+    """
+
+    _validate_artifact_id(artifact_id)
+
+    root = _project_root(project_root)
+
+    artifact_document = load_artifact_config(
+        artifact_id,
+        project_root=root,
+    )
+
+    realizations = artifact_document.get("realizations")
+
+    if realizations is None:
+        return ("default",)
+
+    if not isinstance(
+        realizations,
+        Mapping,
+    ):
+        raise ConfigError("The [realizations] section in artifact.toml must be a TOML table.")
+
+    return tuple(realizations)
+
+
 # =========================================================
 # Artifact configuration persistence
 # =========================================================
@@ -1606,6 +1644,7 @@ __all__ = [
     "Derivations",
     "Resolver",
     "artifact_config_path",
+    "get_realization_names",
     "get_resolver",
     "load_artifact_config",
     "update_artifact_config",

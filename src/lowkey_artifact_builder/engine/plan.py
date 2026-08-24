@@ -18,6 +18,7 @@ from pathlib import Path
 
 from lowkey_artifact_builder.config import (
     Resolver,
+    get_realization_names,
     get_resolver,
 )
 from lowkey_artifact_builder.engine.product_resolver import ProductResolver
@@ -125,6 +126,41 @@ def create_build_plan(
         project_root=root,
         artifact_dir=artifact_dir,
         stages=stages,
+    )
+
+
+def create_build_plans(
+    artifact_id: str,
+    *,
+    project_root: Path | None = None,
+) -> tuple[BuildPlan, ...]:
+    """
+    Construct build plans for every realization of one artifact.
+
+    Explicitly configured realizations are planned in artifact.toml
+    declaration order.
+
+    Legacy single-realization artifact configuration produces exactly
+    one plan for the implicit realization named "default".
+
+    Individual realization planning remains owned by
+    create_build_plan().
+    """
+
+    root = project_root if project_root is not None else Path.cwd()
+
+    realization_names = get_realization_names(
+        artifact_id,
+        project_root=root,
+    )
+
+    return tuple(
+        create_build_plan(
+            artifact_id,
+            realization=realization_name,
+            project_root=root,
+        )
+        for realization_name in realization_names
     )
 
 

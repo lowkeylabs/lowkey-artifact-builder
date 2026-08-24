@@ -19,6 +19,7 @@ from .build import (
 from .plan import (
     BuildPlanError,
     create_build_plan,
+    create_build_plans,
 )
 from .specs import (
     BuildPlan,
@@ -39,5 +40,6 @@ __all__ = [
     "StageContext",
     "StageContextError",
     "create_build_plan",
+    "create_build_plans",
     "execute_build",
 ]

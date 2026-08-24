@@ -16,6 +16,7 @@ from lowkey_artifact_builder.engine import (
     BuildPlan,
     BuildPlanError,
     create_build_plan,
+    create_build_plans,
 )
 from lowkey_artifact_builder.model import (
     ModelSpec,
@@ -793,3 +794,106 @@ artwork_raise = 1.0
     assert coaster_products
 
     assert ornament_products.isdisjoint(coaster_products)
+
+
+def test_create_build_plans_plans_all_named_realizations(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-level planning produces one BuildPlan for every explicitly
+    configured realization.
+    """
+
+    (tmp_path / "workspace.toml").write_text(
+        """
+[parameters]
+artwork_raise = 1.0
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "ornament": {
+                    "model": "artwork",
+                    "variant": "default",
+                    "parameters": {
+                        "artwork_size": 100.0,
+                    },
+                },
+                "coaster": {
+                    "model": "artwork",
+                    "variant": "default",
+                    "parameters": {
+                        "artwork_size": 90.0,
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plans = create_build_plans(
+        "example",
+        project_root=tmp_path,
+    )
+
+    assert tuple(plan.realization_name for plan in plans) == (
+        "ornament",
+        "coaster",
+    )
+
+    assert all(plan.artifact_id == "example" for plan in plans)
+
+    assert all(plan.model_name == "artwork" for plan in plans)
+
+    assert plans[0].resolver("source") == "source.png"
+    assert plans[1].resolver("source") == "source.png"
+
+    assert plans[0].resolver("artwork_size") == 100.0
+    assert plans[1].resolver("artwork_size") == 90.0
+
+
+def test_create_build_plans_preserves_implicit_default_realization(
+    tmp_path: Path,
+) -> None:
+    """
+    Legacy single-realization artifacts produce exactly one default
+    BuildPlan through artifact-level planning.
+    """
+
+    (tmp_path / "workspace.toml").write_text(
+        """
+[parameters]
+artwork_size = 20.0
+artwork_raise = 1.0
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    write_artifact_config(
+        "example",
+        {
+            "model": "artwork",
+            "source": "source.png",
+        },
+        project_root=tmp_path,
+    )
+
+    plans = create_build_plans(
+        "example",
+        project_root=tmp_path,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    assert plan.artifact_id == "example"
+    assert plan.model_name == "artwork"
+    assert plan.realization_name == "default"
+
+    assert plan.resolver("source") == "source.png"

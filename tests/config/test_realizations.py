@@ -18,6 +18,7 @@ import pytest
 
 from lowkey_artifact_builder.config import (
     ConfigError,
+    get_realization_names,
     get_resolver,
     write_artifact_config,
 )
@@ -661,3 +662,61 @@ def test_realization_configuration_overrides_artifact_configuration(
 
     assert resolver("artwork_size") == 100.0
     assert resolver.source("artwork_size") == "realization 'ornament'"
+
+
+def test_get_realization_names_preserves_declaration_order(
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit realization names are returned in artifact.toml
+    declaration order.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "realizations": {
+                "ornament": {
+                    "model": "artwork",
+                },
+                "coaster": {
+                    "model": "artwork",
+                },
+                "keychain": {
+                    "model": "artwork",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    assert get_realization_names(
+        "example",
+        project_root=tmp_path,
+    ) == (
+        "ornament",
+        "coaster",
+        "keychain",
+    )
+
+
+def test_get_realization_names_returns_implicit_default(
+    tmp_path: Path,
+) -> None:
+    """
+    Legacy artifact configuration exposes its implicit default
+    realization through realization discovery.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "model": "artwork",
+        },
+        project_root=tmp_path,
+    )
+
+    assert get_realization_names(
+        "example",
+        project_root=tmp_path,
+    ) == ("default",)
