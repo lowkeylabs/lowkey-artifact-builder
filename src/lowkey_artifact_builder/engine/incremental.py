@@ -131,6 +131,9 @@ def execute_incremental_build(
     A build.started event is emitted before incremental product-state
     resolution begins.
 
+    Any failure after build execution begins emits build.failed before
+    the original exception propagates.
+
     Required fingerprints are calculated once before execution planning.
     This provides one coherent build-context snapshot for both execution
     planning and subsequently persisted completion metadata.
@@ -144,9 +147,8 @@ def execute_incremental_build(
 
     Required stages emit stage.started immediately before execution.
 
-    If stage execution fails, a stage.failed event is emitted and the
-    original exception propagates immediately without observing or
-    executing later stages.
+    If stage execution fails, stage.failed is emitted before the enclosing
+    build.failed event.
 
     Completion metadata is persisted only after the supplied stage
     executor returns successfully. A stage.completed event is emitted
@@ -179,6 +181,56 @@ def execute_incremental_build(
             event_sink=event_sink,
         )
 
+        required_stage_names = {
+            planned_execution.stage_name for planned_execution in execution_plan.required_stages
+        }
+
+        for stage in build_plan.stages:
+            if stage.name not in required_stage_names:
+                _emit_stage_event(
+                    event_sink,
+                    build_plan=build_plan,
+                    stage=stage,
+                    kind="stage.skipped",
+                )
+
+                continue
+
+            _emit_stage_event(
+                event_sink,
+                build_plan=build_plan,
+                stage=stage,
+                kind="stage.started",
+            )
+
+            try:
+                execute_stage(
+                    stage,
+                )
+            except Exception:
+                _emit_stage_event(
+                    event_sink,
+                    build_plan=build_plan,
+                    stage=stage,
+                    kind="stage.failed",
+                )
+
+                raise
+
+            if stage.products:
+                _write_successful_completion(
+                    build_plan=build_plan,
+                    stage=stage,
+                    fingerprint=fingerprints[stage.name],
+                )
+
+            _emit_stage_event(
+                event_sink,
+                build_plan=build_plan,
+                stage=stage,
+                kind="stage.completed",
+            )
+
     except Exception:
         _emit_build_event(
             event_sink,
@@ -187,62 +239,6 @@ def execute_incremental_build(
         )
 
         raise
-
-    required_stage_names = {
-        planned_execution.stage_name for planned_execution in execution_plan.required_stages
-    }
-
-    for stage in build_plan.stages:
-        if stage.name not in required_stage_names:
-            _emit_stage_event(
-                event_sink,
-                build_plan=build_plan,
-                stage=stage,
-                kind="stage.skipped",
-            )
-
-            continue
-
-        _emit_stage_event(
-            event_sink,
-            build_plan=build_plan,
-            stage=stage,
-            kind="stage.started",
-        )
-
-        try:
-            execute_stage(
-                stage,
-            )
-        except Exception:
-            _emit_stage_event(
-                event_sink,
-                build_plan=build_plan,
-                stage=stage,
-                kind="stage.failed",
-            )
-
-            _emit_build_event(
-                event_sink,
-                build_plan=build_plan,
-                kind="build.failed",
-            )
-
-            raise
-
-        if stage.products:
-            _write_successful_completion(
-                build_plan=build_plan,
-                stage=stage,
-                fingerprint=fingerprints[stage.name],
-            )
-
-        _emit_stage_event(
-            event_sink,
-            build_plan=build_plan,
-            stage=stage,
-            kind="stage.completed",
-        )
 
     _emit_build_event(
         event_sink,
