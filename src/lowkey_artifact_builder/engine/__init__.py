@@ -27,6 +27,9 @@ completion metadata without claiming freshness.
 Product-state evaluation converts normalized persistent-product evidence
 into semantic state independently of evidence gathering.
 
+Persistent product freshness is proven by matching explicit fingerprint
+evidence rather than inferred from filesystem presence or timestamps.
+
 Execution planning policy determines whether realized stages require
 execution from the persistent state of their declared products.
 
@@ -66,6 +69,10 @@ from .execution import (
     PlannedStageExecution,
     stage_requires_execution,
 )
+from .freshness import (
+    ProductFingerprint,
+    product_is_fresh,
+)
 from .plan import (
     BuildPlanError,
     create_build_plan,
@@ -103,6 +110,7 @@ __all__ = [
     "PlannedStage",
     "PlannedStageExecution",
     "ProductEvidence",
+    "ProductFingerprint",
     "ProductState",
     "ProductStateEvent",
     "StageCompletion",
@@ -121,6 +129,7 @@ __all__ = [
     "execute_builds",
     "execute_stage",
     "gather_product_evidence",
+    "product_is_fresh",
     "read_stage_completion",
     "stage_requires_execution",
     "validate_stage_inputs",
