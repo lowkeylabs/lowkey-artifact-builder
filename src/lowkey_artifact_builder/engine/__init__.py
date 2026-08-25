@@ -14,6 +14,9 @@ of declared products.
 Independent stage execution uses the same resolved StageContext and
 model-specific stage implementation boundary as graph-driven builds.
 Stage input readiness may be validated independently before execution.
+
+Structured execution events provide an optional, presentation-independent
+observation boundary for build and stage execution.
 """
 # File: src/lowkey_artifact_builder/engine/__init__.py
 # Copyright 2026 LowKeyLabs LLC
@@ -27,6 +30,11 @@ from .build import (
 )
 from .context import (
     create_stage_context,
+)
+from .events import (
+    EventSink,
+    ExecutionEvent,
+    emit_event,
 )
 from .plan import (
     BuildPlanError,
@@ -55,9 +63,12 @@ __all__ = [
     "BuildError",
     "BuildPlan",
     "BuildPlanError",
+    "EventSink",
+    "ExecutionEvent",
     "PlannedInput",
     "PlannedProduct",
     "PlannedStage",
+    "ProductState",
     "StageContext",
     "StageContextError",
     "StageExecutionError",
@@ -65,10 +76,10 @@ __all__ = [
     "create_build_plan",
     "create_build_plans",
     "create_stage_context",
+    "emit_event",
     "execute_artifact_stage",
     "execute_build",
     "execute_builds",
     "execute_stage",
     "validate_stage_inputs",
-    "ProductState",
 ]
