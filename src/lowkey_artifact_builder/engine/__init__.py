@@ -32,10 +32,11 @@ into semantic state independently of evidence gathering.
 Persistent product freshness is proven by matching explicit fingerprint
 evidence rather than inferred from filesystem presence or timestamps.
 Build-context fingerprints are generated deterministically from operation
-identity, relevant parameters, and upstream input fingerprints.
+identity, relevant parameters, external input contents, and upstream
+dependency fingerprints.
 
 Build-plan fingerprint resolution derives required stage provenance from
-resolved stage parameters and dependency fingerprints.
+resolved stage parameters, external inputs, and dependency fingerprints.
 
 Execution product-state resolution adapts realized build-plan stages and
 products to persistent product-state evaluation.
@@ -44,8 +45,9 @@ Execution planning combines realized build plans with resolved persistent
 product states while remaining independent of direct filesystem inspection,
 evidence gathering, and execution.
 
-Persistent-state-aware execution planning composes execution product-state
-resolution with execution-plan construction.
+Persistent-state-aware incremental planning composes required fingerprint
+generation, product-state resolution, and execution-plan construction into
+a BuildPlan-only planning boundary.
 
 Execution plans preserve the complete realized workflow while identifying
 the subset of stages that must execute for the current build context.
@@ -100,6 +102,9 @@ from .freshness import (
     ProductFingerprint,
     create_product_fingerprint,
     product_is_fresh,
+)
+from .incremental import (
+    plan_incremental_execution,
 )
 from .plan import (
     BuildPlanError,
@@ -167,6 +172,7 @@ __all__ = [
     "execute_stage",
     "gather_product_evidence",
     "plan_execution",
+    "plan_incremental_execution",
     "product_is_fresh",
     "read_stage_completion",
     "stage_requires_execution",
