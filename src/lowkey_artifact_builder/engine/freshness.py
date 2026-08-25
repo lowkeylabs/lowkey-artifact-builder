@@ -4,13 +4,15 @@ Persistent product freshness.
 Freshness determines whether a valid completed persistent product
 represents the current build context.
 
-This module defines fingerprint representation and pure freshness
-comparison only. It does not calculate fingerprints, inspect the
-filesystem, gather product evidence, persist completion metadata,
-construct execution plans, emit execution events, or execute stages.
+This module defines fingerprint representation, deterministic
+build-context fingerprint generation, and pure freshness comparison.
 
-Fingerprint calculation and persistence are introduced by later
-Phase 9 slices.
+It does not inspect the filesystem, gather product evidence, persist
+completion metadata, construct execution plans, emit execution events,
+or execute stages.
+
+Fingerprint persistence and integration with product-state evaluation
+are introduced by later Phase 9 slices.
 """
 # File: src/lowkey_artifact_builder/engine/freshness.py
 # Copyright 2026 LowKeyLabs LLC
@@ -18,6 +20,8 @@ Phase 9 slices.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 
 # =========================================================
@@ -43,6 +47,63 @@ class ProductFingerprint:
 
     algorithm: str
     value: str
+
+
+# =========================================================
+# Fingerprint generation
+# =========================================================
+
+
+def create_product_fingerprint(
+    *,
+    parameters: dict[str, object],
+    inputs: dict[str, str],
+    operation: str,
+) -> ProductFingerprint:
+    """
+    Create a deterministic fingerprint for one product build context.
+
+    The build context consists of three distinct semantic namespaces:
+
+    operation
+        Identity of the operation responsible for producing the product.
+
+    parameters
+        Resolved parameter values relevant to the operation.
+
+    inputs
+        Logical input identities mapped to their fingerprints.
+
+    Mappings are serialized with deterministic key ordering while
+    sequence ordering remains significant.
+
+    Values must be JSON serializable. Unsupported values fail rather
+    than being converted through unstable string representations.
+    """
+
+    payload = {
+        "inputs": inputs,
+        "operation": operation,
+        "parameters": parameters,
+    }
+
+    serialized = json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+    digest = hashlib.sha256(
+        serialized.encode(
+            "utf-8",
+        )
+    ).hexdigest()
+
+    return ProductFingerprint(
+        algorithm="sha256",
+        value=digest,
+    )
 
 
 # =========================================================
@@ -80,5 +141,6 @@ def product_is_fresh(
 
 __all__ = [
     "ProductFingerprint",
+    "create_product_fingerprint",
     "product_is_fresh",
 ]

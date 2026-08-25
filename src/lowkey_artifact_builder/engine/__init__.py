@@ -29,6 +29,8 @@ into semantic state independently of evidence gathering.
 
 Persistent product freshness is proven by matching explicit fingerprint
 evidence rather than inferred from filesystem presence or timestamps.
+Build-context fingerprints are generated deterministically from operation
+identity, relevant parameters, and upstream input fingerprints.
 
 Execution planning policy determines whether realized stages require
 execution from the persistent state of their declared products.
@@ -71,6 +73,7 @@ from .execution import (
 )
 from .freshness import (
     ProductFingerprint,
+    create_product_fingerprint,
     product_is_fresh,
 )
 from .plan import (
@@ -121,6 +124,7 @@ __all__ = [
     "completion_path",
     "create_build_plan",
     "create_build_plans",
+    "create_product_fingerprint",
     "create_stage_context",
     "emit_event",
     "evaluate_product_state",
