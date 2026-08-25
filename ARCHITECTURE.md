@@ -303,6 +303,72 @@ Orchestration determines what should execute.
 
 The stage implementation determines how one stage executes.
 
+## 3.9 Execution is observable but presentation-independent
+
+Execution must be observable without coupling engine semantics to a
+particular user interface, logging configuration, or execution model.
+
+The engine may emit structured execution events describing significant
+execution facts and decisions. Examples include build, stage, and product
+lifecycle transitions; product-state evaluations; skipped work; completed
+work; and execution failures.
+
+Execution events are semantic data. They are not formatted log messages
+or terminal output.
+
+Consumers may use the same event stream for different purposes, including:
+
+- command-line progress and tracing;
+- interactive progress displays;
+- graphical user interfaces;
+- tests and diagnostics;
+- API or MCP integrations; and
+- persistent execution records.
+
+The following principles apply:
+
+- Engine behavior must not depend on CLI verbosity or presentation policy.
+- Engine code must not require a terminal, Click, a progress-widget
+  implementation, or another presentation framework.
+- Execution events must use stable semantic identities for artifacts,
+  models, realizations, stages, products, and other declared objects when
+  those identities are relevant to the event.
+- Event payloads must describe execution facts rather than preformatted
+  presentation strings.
+- Observing execution must be optional. Execution without an observer must
+  retain the same semantic behavior.
+- An observer must not determine whether required work executes or alter
+  dependency, product-state, or resumability decisions.
+- Diagnostic logging and structured execution events are separate
+  mechanisms. Logging may record implementation diagnostics that do not
+  belong in the semantic execution-event contract.
+- The execution engine remains synchronous unless concurrency is introduced
+  explicitly by another architectural decision.
+- A caller may execute the synchronous engine in a worker thread or process
+  and transport events to another thread or process for presentation.
+  Supporting such consumers does not require the engine itself to become
+  concurrent.
+- The observation mechanism must not imply parallel stage execution or
+  change the ordering guarantees of the build plan.
+
+Presentation layers decide how much of the available execution information
+to expose. For example, a CLI may provide progressively more detailed views
+for normal, verbose, debug, or trace operation without those presentation
+levels becoming part of the engine contract.
+
+This separation permits a single execution to support both simple output
+and richer progress views. A progress consumer may know the complete build
+plan before execution begins, represent its required stages and products,
+and update that representation as execution events report state transitions
+and completed work.
+
+Product-state and resumability logic should participate in this observation
+model. When the engine determines that a product is absent, incomplete,
+invalid, stale, or current, or decides that a stage should execute or be
+skipped, those decisions may be exposed as structured execution events
+without changing the underlying decision semantics.
+
+
 ---
 
 # 4. Terminology
@@ -2106,6 +2172,7 @@ Responsible for:
 * validating execution results;
 * recording products;
 * recording completion state.
+* reporting structured execution events.
 
 ---
 
@@ -2296,6 +2363,15 @@ Model implementations do not construct global artifact filesystem paths.
 
 Architectural flexibility must not require users to manually configure the
 dependency graph for routine workflows.
+
+---
+
+## Invariant 25 — Observable, presentation-independent execution
+
+Engine operations may emit structured semantic execution events.
+
+Execution semantics must not depend upon logging configuration, CLI
+verbosity, progress rendering, threading, or user-interface policy.
 
 ---
 

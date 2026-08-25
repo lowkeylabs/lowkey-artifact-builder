@@ -211,20 +211,78 @@ models or declarative graphs.
 
 ## Phase 9 — Product State and Resumability
 
-Make execution depend upon product state.
+Make execution depend upon product state and make those execution decisions
+observable through a presentation-independent event contract.
 
-* Define and implement appropriate states such as:
+### Product state
 
-  * `ABSENT`
-  * `INCOMPLETE`
-  * `INVALID`
-  * `STALE`
-  * `CURRENT`
-* Use manifests and completion metadata where appropriate.
-* Detect interrupted stages.
-* Reuse current products.
-* Rebuild stale products and their affected dependents.
-* Add restart and partial-build tests.
+- Define and implement appropriate states such as:
+  - `ABSENT`
+  - `INCOMPLETE`
+  - `INVALID`
+  - `STALE`
+  - `CURRENT`
+- Define precise semantics for each state before integrating state evaluation
+  into execution.
+- Use manifests and completion metadata where appropriate.
+- Detect interrupted stages.
+- Reuse current products.
+- Rebuild stale products and their affected dependents.
+- Add restart and partial-build tests.
+
+### Execution observability
+
+Establish a minimal structured execution-event contract before product-state
+and resumability decisions become embedded throughout the engine.
+
+- Represent significant execution facts and decisions as structured semantic
+  events rather than formatted output.
+- Support observation of build, stage, product-state, and execution lifecycle
+  transitions where useful.
+- Keep execution events independent of CLI verbosity, logging configuration,
+  terminal rendering, progress widgets, and other presentation policy.
+- Make observation optional so execution without an observer retains identical
+  semantics.
+- Ensure observers cannot control dependency resolution, product-state
+  evaluation, resumability, or execution decisions.
+- Keep diagnostic logging separate from the structured execution-event
+  contract.
+- Preserve synchronous engine execution; callers may run the engine in a
+  worker thread or process and transport events to another execution context
+  when required by a user interface.
+- Do not imply parallel stage execution merely to support asynchronous
+  presentation or progress updates.
+- Add tests for event semantics and ordering without coupling engine tests to
+  formatted CLI output.
+
+The event contract should provide a common foundation for future:
+
+- command-line progress and `-v` / `-vv` / `-vvv` tracing;
+- interactive progress displays;
+- graphical interfaces;
+- API and MCP integrations;
+- testing and diagnostics; and
+- persistent execution records.
+
+### Incremental implementation order
+
+Prefer the following sequence:
+
+1. define and test product-state semantics;
+2. establish and test the minimal structured execution-event contract;
+3. define completion and product metadata;
+4. implement product-state evaluation;
+5. expose important state evaluations through execution events;
+6. integrate product state into planning and execution decisions;
+7. expose stage execution, skipping, completion, and failure decisions through
+   execution events;
+8. implement resumability and affected-dependent rebuilding;
+9. add restart, partial-build, and unchanged-build acceptance tests;
+10. add richer CLI tracing and progress presentation after the underlying
+    semantic contracts are stable.
+
+Do not make CLI verbosity levels, terminal formatting, widget behavior, or
+threading policy part of the engine execution contract.
 
 ---
 
@@ -270,6 +328,7 @@ Throughout the migration:
 * maintain end-to-end artwork regression coverage;
 * run the complete project quality suite after each completed step;
 * update documentation and CLI output when user-visible behavior changes;
+* keep structured execution events semantic and presentation-independent;
 * avoid compatibility layers that unnecessarily preserve obsolete internal
   architecture;
 * remove obsolete code and tests once their replacements are established.
