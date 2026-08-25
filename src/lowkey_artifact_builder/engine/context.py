@@ -20,6 +20,7 @@ execute the requested stage or any dependency.
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
 
 from lowkey_artifact_builder.config import (
@@ -51,6 +52,7 @@ def create_stage_context(
     stage_name: str,
     realization: str | None = None,
     project_root: Path | None = None,
+    input_paths: Mapping[str, Path] | None = None,
 ) -> StageContext:
     """
     Construct the execution context for one declared artifact stage.
@@ -64,6 +66,10 @@ def create_stage_context(
     locations. Direct dependency products are exposed using qualified
     names of the form '<stage>.<product>'. Outputs use their declarative
     product names and canonical product locations.
+
+    Explicit input paths may replace the physical location of any
+    filesystem input already declared by the resolved stage context.
+    They cannot introduce new semantic inputs.
 
     This function performs resolution only. It does not create the
     workspace, materialize external inputs, check whether filesystem
@@ -134,6 +140,13 @@ def create_stage_context(
         project_root=root,
         artifact_dir=artifact_dir,
         product_resolver=product_resolver,
+    )
+
+    inputs = _apply_input_paths(
+        artifact_id=artifact_id,
+        stage=stage,
+        inputs=inputs,
+        input_paths=input_paths,
     )
 
     outputs = _stage_outputs(
@@ -242,7 +255,7 @@ def _stage_inputs(
     product_resolver: ProductResolver,
 ) -> dict[str, Path]:
     """
-    Resolve all filesystem inputs exposed to one stage.
+    Resolve the canonical filesystem inputs exposed to one stage.
 
     Explicit inputs use their declarative names.
 
@@ -251,6 +264,10 @@ def _stage_inputs(
 
     Only direct dependencies are exposed. Transitive dependency
     traversal remains a planning concern.
+
+    The returned mapping defines the authoritative semantic input
+    namespace. Independent execution may subsequently replace physical
+    paths for names in this mapping, but cannot introduce new inputs.
     """
 
     inputs: dict[str, Path] = {}
@@ -274,6 +291,44 @@ def _stage_inputs(
     )
 
     return inputs
+
+
+def _apply_input_paths(
+    *,
+    artifact_id: str,
+    stage: StageSpec,
+    inputs: dict[str, Path],
+    input_paths: Mapping[str, Path] | None,
+) -> dict[str, Path]:
+    """
+    Apply explicit physical path bindings to resolved stage inputs.
+
+    Explicit bindings may replace only input names already present in
+    the resolved stage input namespace. They cannot introduce new
+    semantic inputs.
+
+    The original resolved input mapping is not modified.
+    """
+
+    if input_paths is None:
+        return inputs
+
+    resolved = dict(
+        inputs,
+    )
+
+    for name, path in input_paths.items():
+        if name not in resolved:
+            raise StageContextError(
+                f"Cannot construct context for stage "
+                f"{stage.name!r} "
+                f"of artifact {artifact_id!r}: "
+                f"unknown input {name!r}."
+            )
+
+        resolved[name] = path
+
+    return resolved
 
 
 def _add_explicit_inputs(

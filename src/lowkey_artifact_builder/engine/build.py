@@ -29,7 +29,7 @@ contents.
 from __future__ import annotations
 
 import shutil
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from .context import (
@@ -130,13 +130,18 @@ def execute_artifact_stage(
     stage_name: str,
     realization: str | None = None,
     project_root: Path | None = None,
+    input_paths: Mapping[str, Path] | None = None,
 ) -> None:
     """
     Execute exactly one configured artifact stage independently.
 
     Independent stage execution resolves the requested StageContext,
-    validates that all required filesystem inputs already exist, and
+    including any explicit physical bindings for declared filesystem
+    inputs, validates that all resolved inputs already exist, and
     executes exactly the requested stage.
+
+    Explicit input bindings may replace only inputs declared by the
+    resolved stage context. They do not introduce new semantic inputs.
 
     Missing dependency products are not realized automatically and
     prerequisite stages are not executed.
@@ -151,6 +156,7 @@ def execute_artifact_stage(
             stage_name=stage_name,
             realization=realization,
             project_root=project_root,
+            input_paths=input_paths,
         )
 
     except (

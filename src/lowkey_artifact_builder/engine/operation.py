@@ -15,6 +15,7 @@ execute prerequisite stages.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 from .context import (
@@ -36,14 +37,18 @@ def execute_artifact_stage(
     stage_name: str,
     realization: str | None = None,
     project_root: Path | None = None,
+    input_paths: Mapping[str, Path] | None = None,
 ) -> None:
     """
     Execute exactly one configured artifact stage independently.
 
     The requested artifact, realization, and stage are first resolved
-    into a StageContext. Every resolved filesystem input must already
-    exist and be ready for execution. The resolved stage is then
-    dispatched through the common stage execution boundary.
+    into a StageContext. Explicit input paths may replace the physical
+    locations of inputs declared by that resolved context.
+
+    Every resolved filesystem input must already exist and be ready for
+    execution. The resolved stage is then dispatched through the common
+    stage execution boundary.
 
     This operation does not construct a BuildPlan, traverse stage
     dependencies, materialize external inputs, realize missing
@@ -58,6 +63,7 @@ def execute_artifact_stage(
         stage_name=stage_name,
         realization=realization,
         project_root=project_root,
+        input_paths=input_paths,
     )
 
     validate_stage_inputs(

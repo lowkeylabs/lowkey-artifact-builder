@@ -1223,3 +1223,44 @@ def test_execute_artifact_stage_translates_stage_failure(
             "example",
             stage_name="vector",
         )
+
+
+def test_execute_artifact_stage_forwards_explicit_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    The public build boundary preserves explicit stage input bindings.
+    """
+
+    received = None
+
+    def execute(
+        artifact_id: str,
+        *,
+        stage_name: str,
+        realization: str | None = None,
+        project_root: Path | None = None,
+        input_paths=None,
+    ) -> None:
+        nonlocal received
+
+        received = input_paths
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.build._execute_artifact_stage",
+        execute,
+    )
+
+    explicit = {
+        "raster.manifest": (tmp_path / "products.json"),
+    }
+
+    execute_artifact_stage(
+        "example",
+        stage_name="vector",
+        project_root=tmp_path,
+        input_paths=explicit,
+    )
+
+    assert received == explicit

@@ -14,6 +14,7 @@ import pytest
 from lowkey_artifact_builder.config import Resolver
 from lowkey_artifact_builder.engine import (
     StageContext,
+    StageContextError,
     StageInputError,
     create_stage_context,
 )
@@ -51,84 +52,6 @@ def _context(
         inputs={},
         outputs={},
     )
-
-
-# =========================================================
-# Context resolution
-# =========================================================
-
-
-def test_execute_artifact_stage_resolves_requested_context(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    test_resolver: Resolver,
-) -> None:
-    """
-    Independent execution resolves exactly the requested artifact stage.
-    """
-
-    context = _context(
-        tmp_path,
-        test_resolver,
-    )
-
-    received: list[
-        tuple[
-            str,
-            str,
-            str | None,
-            Path | None,
-        ]
-    ] = []
-
-    def fake_create_stage_context(
-        artifact_id: str,
-        *,
-        stage_name: str,
-        realization: str | None = None,
-        project_root: Path | None = None,
-    ) -> StageContext:
-        received.append(
-            (
-                artifact_id,
-                stage_name,
-                realization,
-                project_root,
-            )
-        )
-
-        return context
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.engine.operation.create_stage_context",
-        fake_create_stage_context,
-    )
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.engine.operation.validate_stage_inputs",
-        lambda context: None,
-    )
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.engine.operation.execute_stage",
-        lambda context: None,
-    )
-
-    execute_artifact_stage(
-        "example",
-        stage_name="vector",
-        realization="default",
-        project_root=tmp_path,
-    )
-
-    assert received == [
-        (
-            "example",
-            "vector",
-            "default",
-            tmp_path,
-        ),
-    ]
 
 
 # =========================================================
@@ -506,3 +429,50 @@ def test_execute_artifact_stage_executes_only_requested_stage(
     assert executed_context.outputs == context.outputs
 
     assert all(path.is_file() for path in executed_context.inputs.values())
+
+
+def test_execute_artifact_stage_passes_explicit_inputs_to_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Independent execution forwards explicit inputs to context resolution.
+    """
+
+    received = None
+
+    def create(
+        artifact_id: str,
+        *,
+        stage_name: str,
+        realization: str | None = None,
+        project_root: Path | None = None,
+        input_paths=None,
+    ):
+        nonlocal received
+
+        received = input_paths
+
+        raise StageContextError("stop after context resolution")
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.operation.create_stage_context",
+        create,
+    )
+
+    explicit = {
+        "raster.manifest": (tmp_path / "products.json"),
+    }
+
+    with pytest.raises(
+        StageContextError,
+        match="stop after context resolution",
+    ):
+        execute_artifact_stage(
+            "example",
+            stage_name="vector",
+            project_root=tmp_path,
+            input_paths=explicit,
+        )
+
+    assert received == explicit

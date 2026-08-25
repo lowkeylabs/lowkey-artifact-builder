@@ -611,3 +611,160 @@ def test_create_stage_context_translates_configuration_error(
             stage_name="vector",
             project_root=tmp_path,
         )
+
+
+# =========================================================
+# Explicit input bindings
+# =========================================================
+
+
+def test_create_stage_context_uses_explicit_source_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    test_resolver: Resolver,
+) -> None:
+    """
+    An explicit source input overrides the configured source location.
+    """
+
+    explicit = tmp_path / "external" / "portrait.png"
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.context.get_resolver",
+        lambda *args, **kwargs: test_resolver,
+    )
+
+    context = create_stage_context(
+        "example",
+        stage_name="prepare",
+        project_root=tmp_path,
+        input_paths={
+            "source": explicit,
+        },
+    )
+
+    assert context.inputs["source"] == explicit
+
+
+def test_create_stage_context_uses_explicit_dependency_product(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    test_resolver: Resolver,
+) -> None:
+    """
+    An explicit dependency product overrides its canonical product path.
+    """
+
+    explicit = tmp_path / "external" / "raster-products.json"
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.context.get_resolver",
+        lambda *args, **kwargs: test_resolver,
+    )
+
+    context = create_stage_context(
+        "example",
+        stage_name="vector",
+        project_root=tmp_path,
+        input_paths={
+            "raster.manifest": explicit,
+        },
+    )
+
+    assert context.inputs["raster.manifest"] == explicit
+
+
+def test_create_stage_context_preserves_unoverridden_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    test_resolver: Resolver,
+) -> None:
+    """
+    Explicit bindings replace only the named stage inputs.
+    """
+
+    explicit = tmp_path / "external" / "trace.svg"
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.context.get_resolver",
+        lambda *args, **kwargs: test_resolver,
+    )
+
+    baseline = create_stage_context(
+        "example",
+        stage_name="raster",
+        project_root=tmp_path,
+    )
+
+    context = create_stage_context(
+        "example",
+        stage_name="raster",
+        project_root=tmp_path,
+        input_paths={
+            "prepare.trace": explicit,
+        },
+    )
+
+    assert context.inputs["prepare.trace"] == explicit
+
+    for name, path in baseline.inputs.items():
+        if name == "prepare.trace":
+            continue
+
+        assert context.inputs[name] == path
+
+
+def test_create_stage_context_rejects_unknown_explicit_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    test_resolver: Resolver,
+) -> None:
+    """
+    Explicit bindings cannot introduce inputs undeclared by the stage.
+    """
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.context.get_resolver",
+        lambda *args, **kwargs: test_resolver,
+    )
+
+    with pytest.raises(
+        StageContextError,
+        match="unknown input",
+    ):
+        create_stage_context(
+            "example",
+            stage_name="vector",
+            project_root=tmp_path,
+            input_paths={
+                "missing.product": (tmp_path / "missing.json"),
+            },
+        )
+
+
+def test_create_stage_context_rejects_source_input_for_stage_without_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    test_resolver: Resolver,
+) -> None:
+    """
+    Source bindings are valid only when the requested stage declares source.
+    """
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.context.get_resolver",
+        lambda *args, **kwargs: test_resolver,
+    )
+
+    with pytest.raises(
+        StageContextError,
+        match="unknown input",
+    ):
+        create_stage_context(
+            "example",
+            stage_name="vector",
+            project_root=tmp_path,
+            input_paths={
+                "source": (tmp_path / "portrait.png"),
+            },
+        )
