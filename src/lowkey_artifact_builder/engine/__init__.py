@@ -21,6 +21,9 @@ observation boundary for build and stage execution.
 Persistent completion metadata records successfully completed stage
 realizations and their declared products.
 
+Product evidence gathering inspects persistent materializations and
+completion metadata without claiming freshness.
+
 Product-state evaluation converts normalized persistent-product evidence
 into semantic state independently of evidence gathering.
 
@@ -54,6 +57,9 @@ from .events import (
     ExecutionEvent,
     ProductStateEvent,
     emit_event,
+)
+from .evidence import (
+    gather_product_evidence,
 )
 from .execution import (
     ExecutionPlan,
@@ -114,6 +120,7 @@ __all__ = [
     "execute_build",
     "execute_builds",
     "execute_stage",
+    "gather_product_evidence",
     "read_stage_completion",
     "stage_requires_execution",
     "validate_stage_inputs",
