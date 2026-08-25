@@ -11,6 +11,12 @@ required by the current build context, and delegates persistent evidence
 gathering and ProductState evaluation to the persistent product-state
 resolver.
 
+Expected completion identity is derived from the authoritative BuildPlan
+and realized PlannedStage and supplied to persistent evidence resolution.
+Completion metadata therefore cannot prove reuse unless it belongs to the
+artifact, model, realization, and stage whose persistent products are being
+evaluated.
+
 This module provides orchestration only. It does not gather filesystem
 evidence directly, evaluate ProductState directly, construct execution
 plans, emit execution events, resolve artifact configuration, or execute
@@ -93,6 +99,11 @@ def create_execution_state_resolver(
     The required build-context fingerprint is resolved independently for
     each requested stage.
 
+    Expected completion identity is derived from the supplied BuildPlan
+    and requested PlannedStage. Persistent completion metadata must
+    identify the same artifact, model, realization, and stage before it
+    can prove successful completion for the requested product.
+
     Persistent evidence gathering and semantic ProductState evaluation
     are delegated to create_product_state_resolver.
     """
@@ -126,6 +137,10 @@ def create_execution_state_resolver(
 
         persistent_resolver = create_product_state_resolver(
             working_dir=working_dir,
+            artifact_id=build_plan.artifact_id,
+            model_name=build_plan.model_name,
+            realization=build_plan.realization_name,
+            stage_name=stage.name,
             required_fingerprints=(
                 {
                     product_name: fingerprint,
@@ -240,7 +255,8 @@ def _relative_product_path(
 
     except ValueError as exc:
         raise ValueError(
-            f"Product {product.name!r} at {product.path} "
+            f"Product {product.name!r} at "
+            f"{product.path} "
             f"is not contained by stage working directory "
             f"{working_dir}"
         ) from exc

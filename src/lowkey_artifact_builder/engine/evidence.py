@@ -6,9 +6,11 @@ the completion metadata of its producing stage.
 
 Filesystem evidence establishes materialization and baseline validity.
 Completion metadata establishes whether the producing stage recorded the
-logical product as successfully produced. Persisted fingerprint provenance
-is compared with the fingerprint required by the current build context to
-establish freshness.
+logical product as successfully produced and whether that completion
+belongs to the expected artifact, model, realization, and stage.
+
+Persisted fingerprint provenance is compared with the fingerprint required
+by the current build context to establish freshness.
 
 Product-state resolution composes evidence gathering with semantic state
 evaluation while preserving the separation between those concerns.
@@ -26,6 +28,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .completion import (
+    StageCompletion,
     read_stage_completion,
 )
 from .freshness import (
@@ -63,6 +66,10 @@ def gather_product_evidence(
     product_name: str,
     product_path: Path,
     required_fingerprint: ProductFingerprint | None = None,
+    artifact_id: str | None = None,
+    model_name: str | None = None,
+    realization: str | None = None,
+    stage_name: str | None = None,
 ) -> ProductEvidence:
     """
     Gather persistent evidence for one declared product.
@@ -76,12 +83,19 @@ def gather_product_evidence(
     Completion evidence applies only when valid stage completion metadata
     explicitly lists the requested logical product.
 
+    When expected completion identity is supplied, the completion record
+    must also belong to the expected artifact, model, realization, and
+    stage. A structurally valid completion record belonging to some other
+    producer therefore cannot prove successful completion for this
+    product.
+
     Freshness requires a valid materialization, applicable completion
     evidence, and matching recorded and required fingerprints. Missing
     provenance never proves freshness.
 
     Invalid completion metadata is allowed to propagate as ValueError so
-    corrupt metadata remains distinguishable from absent metadata.
+    corrupt metadata remains distinguishable from absent or inapplicable
+    metadata.
     """
 
     path = working_dir / product_path
@@ -93,9 +107,21 @@ def gather_product_evidence(
         working_dir,
     )
 
-    completion_exists = completion is not None and product_name in completion.products
+    completion_applies = completion is not None and _completion_identity_matches(
+        completion,
+        artifact_id=artifact_id,
+        model_name=model_name,
+        realization=realization,
+        stage_name=stage_name,
+    )
 
-    recorded_fingerprint = completion.fingerprint if completion is not None else None
+    completion_exists = (
+        completion_applies and completion is not None and product_name in completion.products
+    )
+
+    recorded_fingerprint = (
+        completion.fingerprint if completion is not None and completion_exists else None
+    )
 
     fresh = (
         valid
@@ -115,6 +141,45 @@ def gather_product_evidence(
 
 
 # =========================================================
+# Completion identity
+# =========================================================
+
+
+def _completion_identity_matches(
+    completion: StageCompletion,
+    *,
+    artifact_id: str | None,
+    model_name: str | None,
+    realization: str | None,
+    stage_name: str | None,
+) -> bool:
+    """
+    Return whether completion metadata belongs to the expected producer.
+
+    None means that the caller did not constrain that identity field.
+    This preserves the lower-level evidence API for callers that do not
+    possess realized build-plan identity while allowing execution-state
+    resolution to enforce the complete producer identity.
+
+    Every supplied identity field must match.
+    """
+
+    if artifact_id is not None and completion.artifact_id != artifact_id:
+        return False
+
+    if model_name is not None and completion.model_name != model_name:
+        return False
+
+    if realization is not None and completion.realization != realization:
+        return False
+
+    if stage_name is not None and completion.stage_name != stage_name:
+        return False
+
+    return True
+
+
+# =========================================================
 # Product-state resolver
 # =========================================================
 
@@ -123,6 +188,10 @@ def create_product_state_resolver(
     *,
     working_dir: Path,
     required_fingerprints: dict[str, ProductFingerprint],
+    artifact_id: str | None = None,
+    model_name: str | None = None,
+    realization: str | None = None,
+    stage_name: str | None = None,
 ) -> PersistentProductStateResolver:
     """
     Create a resolver for persistent products in one stage working directory.
@@ -130,6 +199,10 @@ def create_product_state_resolver(
     The resolver gathers normalized evidence for each requested product,
     supplies the fingerprint required by the current build context when
     available, and converts that evidence into semantic ProductState.
+
+    When expected completion identity is supplied, persistent completion
+    metadata must identify the same artifact, model, realization, and
+    stage before it can establish successful completion.
 
     Missing required fingerprint provenance cannot prove freshness and
     therefore cannot produce CURRENT state.
@@ -150,6 +223,10 @@ def create_product_state_resolver(
             required_fingerprint=required_fingerprints.get(
                 product_name,
             ),
+            artifact_id=artifact_id,
+            model_name=model_name,
+            realization=realization,
+            stage_name=stage_name,
         )
 
         return evaluate_product_state(

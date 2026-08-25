@@ -9,9 +9,12 @@ the declared product path, obtains the fingerprint required by the current
 build context, and delegates persistent state evaluation to the evidence
 layer.
 
+Persistent completion evidence belongs to one realized artifact, model,
+realization, and stage. Completion metadata whose identity does not match
+the realized producer cannot prove that its products are current.
+
 These tests exercise execution-planning orchestration only. They do not
-execute stages, emit execution events, or modify build products except
-where persistent evidence is required by the test.
+execute stages or emit execution events.
 """
 # File: tests/engine/test_execution_state_resolver.py
 # Copyright 2026 LowKeyLabs LLC
@@ -66,18 +69,23 @@ def _first_product_stage(
 
 
 def _stage_working_dir(
-    build_plan: BuildPlan,
     stage: PlannedStage,
 ) -> Path:
     """
     Return the expected working directory for one realized stage.
-
-    Build-plan products already carry their realized filesystem locations,
-    so use the parent of the first declared product as the authoritative
-    stage working directory.
     """
 
-    return stage.products[0].path.parent
+    assert stage.products
+
+    parents = {product.path.parent for product in stage.products}
+
+    assert len(parents) == 1
+
+    return next(
+        iter(
+            parents,
+        )
+    )
 
 
 def _completion(
@@ -85,18 +93,90 @@ def _completion(
     stage: PlannedStage,
     *,
     fingerprint: ProductFingerprint | None,
+    artifact_id: str | None = None,
+    model_name: str | None = None,
+    realization: str | None = None,
+    stage_name: str | None = None,
+    products: tuple[str, ...] | None = None,
 ) -> StageCompletion:
     """
-    Create completion metadata matching one realized stage.
+    Create completion metadata for one realized stage.
+
+    Individual identity fields may be overridden to construct valid
+    completion records belonging to a different realization context.
     """
 
     return StageCompletion(
-        artifact_id=build_plan.artifact_id,
-        model_name=build_plan.model_name,
-        realization=build_plan.realization_name,
-        stage_name=stage.name,
-        products=tuple(product.name for product in stage.products),
+        artifact_id=(build_plan.artifact_id if artifact_id is None else artifact_id),
+        model_name=(build_plan.model_name if model_name is None else model_name),
+        realization=(build_plan.realization_name if realization is None else realization),
+        stage_name=(stage.name if stage_name is None else stage_name),
+        products=(
+            tuple(product.name for product in stage.products) if products is None else products
+        ),
         fingerprint=fingerprint,
+    )
+
+
+def _materialize_stage_product(
+    stage: PlannedStage,
+) -> None:
+    """
+    Materialize the first persistent product of one stage.
+    """
+
+    product = stage.products[0]
+
+    product.path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    product.path.write_text(
+        "product",
+        encoding="utf-8",
+    )
+
+
+def _resolve_with_completion(
+    *,
+    build_plan: BuildPlan,
+    stage: PlannedStage,
+    completion: StageCompletion,
+    required_fingerprint: ProductFingerprint,
+) -> ProductState:
+    """
+    Persist representative evidence and resolve the first stage product.
+    """
+
+    product = stage.products[0]
+
+    working_dir = _stage_working_dir(
+        stage,
+    )
+
+    working_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    _materialize_stage_product(
+        stage,
+    )
+
+    write_stage_completion(
+        working_dir,
+        completion,
+    )
+
+    resolve = create_execution_state_resolver(
+        build_plan,
+        required_fingerprint=lambda candidate: (required_fingerprint),
+    )
+
+    return resolve(
+        stage,
+        product.name,
     )
 
 
@@ -126,7 +206,9 @@ def test_execution_state_resolver_returns_callable(
         ),
     )
 
-    assert callable(resolve)
+    assert callable(
+        resolve,
+    )
 
 
 # =========================================================
@@ -151,6 +233,7 @@ def test_missing_product_resolves_absent(
     stage = _first_product_stage(
         build_plan,
     )
+
     product = stage.products[0]
 
     resolve = create_execution_state_resolver(
@@ -186,53 +269,23 @@ def test_current_product_resolves_current(
     stage = _first_product_stage(
         build_plan,
     )
-    product = stage.products[0]
 
     fingerprint = _fingerprint(
         stage.name,
     )
 
-    working_dir = _stage_working_dir(
-        build_plan,
-        stage,
-    )
-    working_dir.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    product.path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-    product.path.write_text(
-        "product",
-        encoding="utf-8",
-    )
-
-    write_stage_completion(
-        working_dir,
-        _completion(
+    state = _resolve_with_completion(
+        build_plan=build_plan,
+        stage=stage,
+        completion=_completion(
             build_plan,
             stage,
             fingerprint=fingerprint,
         ),
+        required_fingerprint=fingerprint,
     )
 
-    resolve = create_execution_state_resolver(
-        build_plan,
-        required_fingerprint=lambda candidate: _fingerprint(
-            candidate.name,
-        ),
-    )
-
-    assert (
-        resolve(
-            stage,
-            product.name,
-        )
-        is ProductState.CURRENT
-    )
+    assert state is ProductState.CURRENT
 
 
 def test_changed_required_fingerprint_resolves_stale(
@@ -252,51 +305,23 @@ def test_changed_required_fingerprint_resolves_stale(
     stage = _first_product_stage(
         build_plan,
     )
-    product = stage.products[0]
 
-    working_dir = _stage_working_dir(
-        build_plan,
-        stage,
-    )
-    working_dir.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    product.path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-    product.path.write_text(
-        "product",
-        encoding="utf-8",
-    )
-
-    write_stage_completion(
-        working_dir,
-        _completion(
+    state = _resolve_with_completion(
+        build_plan=build_plan,
+        stage=stage,
+        completion=_completion(
             build_plan,
             stage,
             fingerprint=_fingerprint(
                 "recorded",
             ),
         ),
-    )
-
-    resolve = create_execution_state_resolver(
-        build_plan,
-        required_fingerprint=lambda stage: _fingerprint(
+        required_fingerprint=_fingerprint(
             "required",
         ),
     )
 
-    assert (
-        resolve(
-            stage,
-            product.name,
-        )
-        is ProductState.STALE
-    )
+    assert state is ProductState.STALE
 
 
 def test_product_without_completion_resolves_incomplete(
@@ -316,15 +341,11 @@ def test_product_without_completion_resolves_incomplete(
     stage = _first_product_stage(
         build_plan,
     )
+
     product = stage.products[0]
 
-    product.path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-    product.path.write_text(
-        "product",
-        encoding="utf-8",
+    _materialize_stage_product(
+        stage,
     )
 
     resolve = create_execution_state_resolver(
@@ -341,6 +362,195 @@ def test_product_without_completion_resolves_incomplete(
         )
         is ProductState.INCOMPLETE
     )
+
+
+# =========================================================
+# Completion identity
+# =========================================================
+
+
+def test_matching_completion_identity_resolves_current(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Completion belonging to the realized producer can prove CURRENT.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    stage = _first_product_stage(
+        build_plan,
+    )
+
+    fingerprint = _fingerprint(
+        stage.name,
+    )
+
+    state = _resolve_with_completion(
+        build_plan=build_plan,
+        stage=stage,
+        completion=_completion(
+            build_plan,
+            stage,
+            fingerprint=fingerprint,
+        ),
+        required_fingerprint=fingerprint,
+    )
+
+    assert state is ProductState.CURRENT
+
+
+def test_wrong_completion_artifact_identity_cannot_prove_current(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Completion belonging to another artifact cannot prove CURRENT.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    stage = _first_product_stage(
+        build_plan,
+    )
+
+    fingerprint = _fingerprint(
+        stage.name,
+    )
+
+    state = _resolve_with_completion(
+        build_plan=build_plan,
+        stage=stage,
+        completion=_completion(
+            build_plan,
+            stage,
+            artifact_id="other-artifact",
+            fingerprint=fingerprint,
+        ),
+        required_fingerprint=fingerprint,
+    )
+
+    assert state is not ProductState.CURRENT
+
+
+def test_wrong_completion_model_identity_cannot_prove_current(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Completion belonging to another model cannot prove CURRENT.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    stage = _first_product_stage(
+        build_plan,
+    )
+
+    fingerprint = _fingerprint(
+        stage.name,
+    )
+
+    state = _resolve_with_completion(
+        build_plan=build_plan,
+        stage=stage,
+        completion=_completion(
+            build_plan,
+            stage,
+            model_name="other-model",
+            fingerprint=fingerprint,
+        ),
+        required_fingerprint=fingerprint,
+    )
+
+    assert state is not ProductState.CURRENT
+
+
+def test_wrong_completion_realization_identity_cannot_prove_current(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Completion belonging to another realization cannot prove CURRENT.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    stage = _first_product_stage(
+        build_plan,
+    )
+
+    fingerprint = _fingerprint(
+        stage.name,
+    )
+
+    state = _resolve_with_completion(
+        build_plan=build_plan,
+        stage=stage,
+        completion=_completion(
+            build_plan,
+            stage,
+            realization="other-realization",
+            fingerprint=fingerprint,
+        ),
+        required_fingerprint=fingerprint,
+    )
+
+    assert state is not ProductState.CURRENT
+
+
+def test_wrong_completion_stage_identity_cannot_prove_current(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Completion belonging to another stage cannot prove CURRENT.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    stage = _first_product_stage(
+        build_plan,
+    )
+
+    fingerprint = _fingerprint(
+        stage.name,
+    )
+
+    state = _resolve_with_completion(
+        build_plan=build_plan,
+        stage=stage,
+        completion=_completion(
+            build_plan,
+            stage,
+            stage_name="other-stage",
+            fingerprint=fingerprint,
+        ),
+        required_fingerprint=fingerprint,
+    )
+
+    assert state is not ProductState.CURRENT
 
 
 # =========================================================
@@ -445,6 +655,7 @@ def test_required_fingerprint_is_resolved_for_stage(
     stage = _first_product_stage(
         build_plan,
     )
+
     product = stage.products[0]
 
     calls: list[PlannedStage] = []
@@ -492,28 +703,24 @@ def test_missing_required_fingerprint_cannot_prove_current(
     stage = _first_product_stage(
         build_plan,
     )
-    product = stage.products[0]
 
     fingerprint = _fingerprint(
         stage.name,
     )
 
+    product = stage.products[0]
+
     working_dir = _stage_working_dir(
-        build_plan,
         stage,
     )
+
     working_dir.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    product.path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-    product.path.write_text(
-        "product",
-        encoding="utf-8",
+    _materialize_stage_product(
+        stage,
     )
 
     write_stage_completion(
