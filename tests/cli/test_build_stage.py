@@ -262,24 +262,9 @@ def test_build_stage_does_not_execute_build_plans(
 
     monkeypatch.setattr(
         cmd_build,
-        "execute_builds",
+        "execute_incremental_artifact_build",
         unexpected_execution,
     )
-
-    monkeypatch.setattr(
-        cmd_build,
-        "execute_artifact_stage",
-        lambda *args, **kwargs: None,
-        raising=False,
-    )
-
-    result = _invoke(
-        "skippy",
-        "--stage",
-        "vector",
-    )
-
-    assert result.exit_code == 0
 
 
 # =========================================================

@@ -72,8 +72,8 @@ def test_build_creates_plans_for_artifact(
 
     monkeypatch.setattr(
         cmd_build,
-        "execute_builds",
-        lambda actual_plans: None,
+        "execute_incremental_artifact_build",
+        lambda plan, *, event_sink=None: None,
     )
 
     result = _invoke(
@@ -96,7 +96,7 @@ def test_build_executes_all_artifact_plans(
         object(),
     )
 
-    executed: list[tuple[object, ...]] = []
+    executed: list[object] = []
 
     monkeypatch.setattr(
         cmd_build,
@@ -105,13 +105,15 @@ def test_build_executes_all_artifact_plans(
     )
 
     def execute(
-        actual_plans,
+        plan: object,
+        *,
+        event_sink=None,
     ) -> None:
-        executed.append(tuple(actual_plans))
+        executed.append(plan)
 
     monkeypatch.setattr(
         cmd_build,
-        "execute_builds",
+        "execute_incremental_artifact_build",
         execute,
     )
 
@@ -120,7 +122,10 @@ def test_build_executes_all_artifact_plans(
     )
 
     assert result.exit_code == 0
-    assert executed == [plans]
+    assert executed == [
+        plans[0],
+        plans[1],
+    ]
 
 
 def test_build_passes_project_root(
@@ -151,8 +156,8 @@ def test_build_passes_project_root(
 
     monkeypatch.setattr(
         cmd_build,
-        "execute_builds",
-        lambda plans: None,
+        "execute_incremental_artifact_build",
+        lambda plan, *, event_sink=None: None,
     )
 
     result = _invoke(
@@ -197,10 +202,17 @@ def test_build_dry_run_displays_all_plans(
         displayed.append,
     )
 
+    def unexpected_execution(
+        plan: object,
+        *,
+        event_sink=None,
+    ) -> None:
+        raise AssertionError("dry run entered incremental execution")
+
     monkeypatch.setattr(
         cmd_build,
-        "execute_builds",
-        lambda plans: None,
+        "execute_incremental_artifact_build",
+        unexpected_execution,
     )
 
     result = _invoke(
@@ -241,10 +253,17 @@ def test_build_dry_run_does_not_execute(
         lambda plan: None,
     )
 
+    def execute(
+        plan: object,
+        *,
+        event_sink=None,
+    ) -> None:
+        executed.append(plan)
+
     monkeypatch.setattr(
         cmd_build,
-        "execute_builds",
-        lambda actual_plans: executed.append(actual_plans),
+        "execute_incremental_artifact_build",
+        execute,
     )
 
     result = _invoke(
@@ -271,9 +290,17 @@ def test_build_multiple_artifacts_in_argument_order(
     planned: list[str] = []
     executed: list[str] = []
 
+    skippy = object()
+    scooby = object()
+
     plans_by_artifact = {
-        "skippy": (object(),),
-        "scooby": (object(),),
+        "skippy": (skippy,),
+        "scooby": (scooby,),
+    }
+
+    artifact_by_plan = {
+        id(skippy): "skippy",
+        id(scooby): "scooby",
     }
 
     def create_plans(
@@ -285,14 +312,16 @@ def test_build_multiple_artifacts_in_argument_order(
         return plans_by_artifact[artifact_id]
 
     def execute(
-        plans,
+        plan: object,
+        *,
+        event_sink=None,
     ) -> None:
-        for artifact_id, expected in plans_by_artifact.items():
-            if plans is expected:
-                executed.append(artifact_id)
-                return
+        try:
+            artifact_id = artifact_by_plan[id(plan)]
+        except KeyError as exc:
+            raise AssertionError("unexpected build plan") from exc
 
-        raise AssertionError("unexpected build plans")
+        executed.append(artifact_id)
 
     monkeypatch.setattr(
         cmd_build,
@@ -302,7 +331,7 @@ def test_build_multiple_artifacts_in_argument_order(
 
     monkeypatch.setattr(
         cmd_build,
-        "execute_builds",
+        "execute_incremental_artifact_build",
         execute,
     )
 
@@ -348,7 +377,7 @@ def test_build_multiple_artifacts_dry_run_in_argument_order(
     monkeypatch.setattr(
         cmd_build,
         "create_build_plans",
-        lambda artifact_id, *, project_root: (plans_by_artifact[artifact_id]),
+        lambda artifact_id, *, project_root: plans_by_artifact[artifact_id],
     )
 
     monkeypatch.setattr(
@@ -357,10 +386,17 @@ def test_build_multiple_artifacts_dry_run_in_argument_order(
         displayed.append,
     )
 
+    def unexpected_execution(
+        plan: object,
+        *,
+        event_sink=None,
+    ) -> None:
+        raise AssertionError("dry run entered incremental execution")
+
     monkeypatch.setattr(
         cmd_build,
-        "execute_builds",
-        lambda plans: None,
+        "execute_incremental_artifact_build",
+        unexpected_execution,
     )
 
     result = _invoke(
@@ -415,7 +451,7 @@ def test_build_execution_error_is_reported(
     monkeypatch,
 ) -> None:
     """
-    Build execution errors are presented as Click command errors.
+    Incremental build execution errors are presented as Click command errors.
     """
 
     plans = (object(),)
@@ -427,13 +463,15 @@ def test_build_execution_error_is_reported(
     )
 
     def execute(
-        actual_plans,
+        plan: object,
+        *,
+        event_sink=None,
     ) -> None:
         raise cmd_build.BuildError("cannot execute build")
 
     monkeypatch.setattr(
         cmd_build,
-        "execute_builds",
+        "execute_incremental_artifact_build",
         execute,
     )
 
