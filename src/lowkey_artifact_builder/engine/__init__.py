@@ -19,10 +19,12 @@ Structured execution events provide an optional, presentation-independent
 observation boundary for build and stage execution.
 
 Persistent completion metadata records successfully completed stage
-realizations and their declared products.
+realizations, their declared products, and optional build-context
+fingerprint provenance.
 
-Product evidence gathering inspects persistent materializations and
-completion metadata without claiming freshness.
+Product evidence gathering combines filesystem materialization, completion
+metadata, and fingerprint provenance into normalized persistent-product
+evidence.
 
 Product-state evaluation converts normalized persistent-product evidence
 into semantic state independently of evidence gathering.

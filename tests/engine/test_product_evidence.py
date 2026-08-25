@@ -4,9 +4,12 @@ Tests for persistent product evidence gathering.
 Product evidence gathering inspects one expected persistent product and
 the completion metadata of its producing stage.
 
-These tests establish filesystem and completion evidence independently
-of freshness evaluation, execution-plan construction, dependency
-invalidation, event emission, and stage execution.
+Freshness is established only when valid completion metadata records a
+fingerprint matching the fingerprint required by the current build
+context.
+
+These tests keep evidence gathering separate from semantic ProductState
+evaluation, execution planning, and stage execution.
 """
 # File: tests/engine/test_product_evidence.py
 # Copyright 2026 LowKeyLabs LLC
@@ -19,7 +22,10 @@ from pathlib import Path
 import pytest
 
 from lowkey_artifact_builder.engine import (
+    ProductEvidence,
+    ProductFingerprint,
     StageCompletion,
+    completion_path,
     gather_product_evidence,
     write_stage_completion,
 )
@@ -29,159 +35,119 @@ from lowkey_artifact_builder.engine import (
 # =========================================================
 
 
-def _working_dir(
-    tmp_path: Path,
-) -> Path:
+def _fingerprint(
+    value: str = "abc123",
+) -> ProductFingerprint:
     """
-    Create a representative stage working directory.
-    """
-
-    path = tmp_path / "artifacts" / "example" / "artwork" / "default" / "30-vector"
-
-    path.mkdir(
-        parents=True,
-    )
-
-    return path
-
-
-def _completion(
-    *products: str,
-) -> StageCompletion:
-    """
-    Create representative completion metadata.
+    Create representative product provenance.
     """
 
-    return StageCompletion(
-        artifact_id="example",
-        model_name="artwork",
-        realization="default",
-        stage_name="vector",
-        products=products,
+    return ProductFingerprint(
+        algorithm="sha256",
+        value=value,
     )
 
 
-def _write_product(
+def _write_completion(
     working_dir: Path,
-    relative_path: str = "layers.svg",
-) -> Path:
+    *,
+    products: tuple[str, ...] = ("layers",),
+    fingerprint: ProductFingerprint | None = None,
+) -> None:
     """
-    Create a representative persistent product.
+    Write representative completion metadata.
     """
 
-    path = working_dir / relative_path
-
-    path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
+    write_stage_completion(
+        working_dir,
+        StageCompletion(
+            artifact_id="example",
+            model_name="artwork",
+            realization="default",
+            stage_name="vector",
+            products=products,
+            fingerprint=fingerprint,
+        ),
     )
 
-    path.write_text(
-        "<svg/>",
-        encoding="utf-8",
-    )
 
-    return path
+def _gather(
+    working_dir: Path,
+    *,
+    required_fingerprint: ProductFingerprint | None = None,
+) -> ProductEvidence:
+    """
+    Gather evidence for the representative layers product.
+    """
+
+    return gather_product_evidence(
+        working_dir=working_dir,
+        product_name="layers",
+        product_path=Path(
+            "layers.svg",
+        ),
+        required_fingerprint=required_fingerprint,
+    )
 
 
 # =========================================================
-# Absent products
+# Materialization evidence
 # =========================================================
 
 
-def test_missing_product_without_completion_is_absent_evidence(
+def test_missing_product_is_absent(
     tmp_path: Path,
 ) -> None:
     """
-    Missing materialization and missing completion metadata indicate absence.
+    A missing persistent product has neither existence nor validity.
     """
 
-    working_dir = _working_dir(
+    evidence = _gather(
         tmp_path,
-    )
-
-    evidence = gather_product_evidence(
-        working_dir=working_dir,
-        product_name="layers",
-        product_path=Path("layers.svg"),
+        required_fingerprint=_fingerprint(),
     )
 
     assert not evidence.exists
-    assert not evidence.completion_exists
-
-
-def test_absent_evidence_does_not_claim_validity(
-    tmp_path: Path,
-) -> None:
-    """
-    A missing product is not reported as valid.
-    """
-
-    working_dir = _working_dir(
-        tmp_path,
-    )
-
-    evidence = gather_product_evidence(
-        working_dir=working_dir,
-        product_name="layers",
-        product_path=Path("layers.svg"),
-    )
-
     assert not evidence.valid
 
 
-# =========================================================
-# Incomplete products
-# =========================================================
-
-
-def test_existing_product_without_completion_is_incomplete_evidence(
+def test_existing_regular_file_is_valid(
     tmp_path: Path,
 ) -> None:
     """
-    Materialization without completion metadata records unfinished work.
+    A regular file at the expected product path is baseline valid.
     """
 
-    working_dir = _working_dir(
+    (tmp_path / "layers.svg").write_text(
+        "product",
+        encoding="utf-8",
+    )
+
+    evidence = _gather(
         tmp_path,
-    )
-
-    _write_product(
-        working_dir,
-    )
-
-    evidence = gather_product_evidence(
-        working_dir=working_dir,
-        product_name="layers",
-        product_path=Path("layers.svg"),
+        required_fingerprint=_fingerprint(),
     )
 
     assert evidence.exists
-    assert not evidence.completion_exists
+    assert evidence.valid
 
 
-def test_existing_product_without_completion_may_be_valid(
+def test_existing_directory_is_not_valid_product(
     tmp_path: Path,
 ) -> None:
     """
-    Physical validity is independent of successful completion evidence.
+    Filesystem existence alone does not establish product validity.
     """
 
-    working_dir = _working_dir(
+    (tmp_path / "layers.svg").mkdir()
+
+    evidence = _gather(
         tmp_path,
+        required_fingerprint=_fingerprint(),
     )
 
-    _write_product(
-        working_dir,
-    )
-
-    evidence = gather_product_evidence(
-        working_dir=working_dir,
-        product_name="layers",
-        product_path=Path("layers.svg"),
-    )
-
-    assert evidence.valid
+    assert evidence.exists
+    assert not evidence.valid
 
 
 # =========================================================
@@ -189,184 +155,383 @@ def test_existing_product_without_completion_may_be_valid(
 # =========================================================
 
 
+def test_missing_completion_is_not_completion_evidence(
+    tmp_path: Path,
+) -> None:
+    """
+    A materialized product without completion metadata is incomplete.
+    """
+
+    (tmp_path / "layers.svg").write_text(
+        "product",
+        encoding="utf-8",
+    )
+
+    evidence = _gather(
+        tmp_path,
+        required_fingerprint=_fingerprint(),
+    )
+
+    assert not evidence.completion_exists
+
+
 def test_completion_listing_product_is_completion_evidence(
     tmp_path: Path,
 ) -> None:
     """
-    Completion metadata applies when it explicitly lists the product.
+    Completion metadata applies when it lists the requested product.
     """
 
-    working_dir = _working_dir(
+    (tmp_path / "layers.svg").write_text(
+        "product",
+        encoding="utf-8",
+    )
+
+    _write_completion(
         tmp_path,
+        fingerprint=_fingerprint(),
     )
 
-    _write_product(
-        working_dir,
+    evidence = _gather(
+        tmp_path,
+        required_fingerprint=_fingerprint(),
     )
 
-    write_stage_completion(
-        working_dir,
-        _completion(
-            "layers",
-        ),
-    )
-
-    evidence = gather_product_evidence(
-        working_dir=working_dir,
-        product_name="layers",
-        product_path=Path("layers.svg"),
-    )
-
-    assert evidence.exists
     assert evidence.completion_exists
-    assert evidence.valid
 
 
 def test_completion_not_listing_product_is_not_completion_evidence(
     tmp_path: Path,
 ) -> None:
     """
-    Stage completion does not prove completion of an unlisted product.
+    Stage completion does not imply completion for an unlisted product.
     """
 
-    working_dir = _working_dir(
+    (tmp_path / "layers.svg").write_text(
+        "product",
+        encoding="utf-8",
+    )
+
+    _write_completion(
         tmp_path,
+        products=("manifest",),
+        fingerprint=_fingerprint(),
     )
 
-    _write_product(
-        working_dir,
+    evidence = _gather(
+        tmp_path,
+        required_fingerprint=_fingerprint(),
     )
 
-    write_stage_completion(
-        working_dir,
-        _completion(
-            "manifest",
-        ),
-    )
-
-    evidence = gather_product_evidence(
-        working_dir=working_dir,
-        product_name="layers",
-        product_path=Path("layers.svg"),
-    )
-
-    assert evidence.exists
     assert not evidence.completion_exists
-    assert evidence.valid
 
 
-def test_completion_listing_missing_product_preserves_completion_evidence(
+# =========================================================
+# Freshness evidence
+# =========================================================
+
+
+def test_matching_completion_fingerprint_is_fresh(
     tmp_path: Path,
 ) -> None:
     """
-    Completion metadata may claim a product whose materialization is missing.
-
-    State evaluation will classify this combination as INVALID.
+    Matching recorded and required fingerprints prove freshness.
     """
 
-    working_dir = _working_dir(
-        tmp_path,
+    (tmp_path / "layers.svg").write_text(
+        "product",
+        encoding="utf-8",
     )
 
-    write_stage_completion(
-        working_dir,
-        _completion(
-            "layers",
+    fingerprint = _fingerprint(
+        "same",
+    )
+
+    _write_completion(
+        tmp_path,
+        fingerprint=fingerprint,
+    )
+
+    evidence = _gather(
+        tmp_path,
+        required_fingerprint=fingerprint,
+    )
+
+    assert evidence.fresh
+
+
+def test_different_completion_fingerprint_is_not_fresh(
+    tmp_path: Path,
+) -> None:
+    """
+    Changed build context makes a completed product stale.
+    """
+
+    (tmp_path / "layers.svg").write_text(
+        "product",
+        encoding="utf-8",
+    )
+
+    _write_completion(
+        tmp_path,
+        fingerprint=_fingerprint(
+            "old",
         ),
     )
 
-    evidence = gather_product_evidence(
-        working_dir=working_dir,
-        product_name="layers",
-        product_path=Path("layers.svg"),
+    evidence = _gather(
+        tmp_path,
+        required_fingerprint=_fingerprint(
+            "new",
+        ),
+    )
+
+    assert not evidence.fresh
+
+
+def test_missing_recorded_fingerprint_is_not_fresh(
+    tmp_path: Path,
+) -> None:
+    """
+    Legacy completion metadata cannot prove freshness.
+    """
+
+    (tmp_path / "layers.svg").write_text(
+        "product",
+        encoding="utf-8",
+    )
+
+    _write_completion(
+        tmp_path,
+        fingerprint=None,
+    )
+
+    evidence = _gather(
+        tmp_path,
+        required_fingerprint=_fingerprint(),
+    )
+
+    assert not evidence.fresh
+
+
+def test_missing_required_fingerprint_is_not_fresh(
+    tmp_path: Path,
+) -> None:
+    """
+    Freshness cannot be established without the current build context.
+    """
+
+    (tmp_path / "layers.svg").write_text(
+        "product",
+        encoding="utf-8",
+    )
+
+    _write_completion(
+        tmp_path,
+        fingerprint=_fingerprint(),
+    )
+
+    evidence = _gather(
+        tmp_path,
+        required_fingerprint=None,
+    )
+
+    assert not evidence.fresh
+
+
+def test_missing_both_fingerprints_is_not_fresh(
+    tmp_path: Path,
+) -> None:
+    """
+    Absence of provenance never implies freshness.
+    """
+
+    (tmp_path / "layers.svg").write_text(
+        "product",
+        encoding="utf-8",
+    )
+
+    _write_completion(
+        tmp_path,
+        fingerprint=None,
+    )
+
+    evidence = _gather(
+        tmp_path,
+        required_fingerprint=None,
+    )
+
+    assert not evidence.fresh
+
+
+def test_matching_fingerprint_without_completion_for_product_is_not_fresh(
+    tmp_path: Path,
+) -> None:
+    """
+    Stage provenance cannot establish freshness for an unlisted product.
+    """
+
+    (tmp_path / "layers.svg").write_text(
+        "product",
+        encoding="utf-8",
+    )
+
+    fingerprint = _fingerprint()
+
+    _write_completion(
+        tmp_path,
+        products=("manifest",),
+        fingerprint=fingerprint,
+    )
+
+    evidence = _gather(
+        tmp_path,
+        required_fingerprint=fingerprint,
+    )
+
+    assert not evidence.completion_exists
+    assert not evidence.fresh
+
+
+def test_matching_fingerprint_for_invalid_product_is_not_fresh(
+    tmp_path: Path,
+) -> None:
+    """
+    Provenance cannot make an invalid materialization fresh.
+    """
+
+    (tmp_path / "layers.svg").mkdir()
+
+    fingerprint = _fingerprint()
+
+    _write_completion(
+        tmp_path,
+        fingerprint=fingerprint,
+    )
+
+    evidence = _gather(
+        tmp_path,
+        required_fingerprint=fingerprint,
+    )
+
+    assert evidence.exists
+    assert not evidence.valid
+    assert evidence.completion_exists
+    assert not evidence.fresh
+
+
+def test_matching_fingerprint_for_missing_product_is_not_fresh(
+    tmp_path: Path,
+) -> None:
+    """
+    Provenance cannot make an absent materialization fresh.
+    """
+
+    fingerprint = _fingerprint()
+
+    _write_completion(
+        tmp_path,
+        fingerprint=fingerprint,
+    )
+
+    evidence = _gather(
+        tmp_path,
+        required_fingerprint=fingerprint,
     )
 
     assert not evidence.exists
-    assert evidence.completion_exists
     assert not evidence.valid
+    assert evidence.completion_exists
+    assert not evidence.fresh
 
 
 # =========================================================
-# Physical validity
+# Complete evidence
 # =========================================================
 
 
-def test_regular_file_is_valid_materialization(
+def test_current_product_evidence(
     tmp_path: Path,
 ) -> None:
     """
-    A regular persistent product file satisfies baseline validity.
+    A valid completed product with matching provenance is fully current.
     """
 
-    working_dir = _working_dir(
+    (tmp_path / "layers.svg").write_text(
+        "product",
+        encoding="utf-8",
+    )
+
+    fingerprint = _fingerprint()
+
+    _write_completion(
         tmp_path,
+        fingerprint=fingerprint,
     )
 
-    _write_product(
-        working_dir,
+    assert _gather(
+        tmp_path,
+        required_fingerprint=fingerprint,
+    ) == ProductEvidence(
+        exists=True,
+        completion_exists=True,
+        valid=True,
+        fresh=True,
     )
 
-    evidence = gather_product_evidence(
-        working_dir=working_dir,
-        product_name="layers",
-        product_path=Path("layers.svg"),
-    )
 
-    assert evidence.valid
-
-
-def test_directory_at_product_path_is_invalid_materialization(
+def test_stale_product_evidence(
     tmp_path: Path,
 ) -> None:
     """
-    A directory does not satisfy a declared persistent file product.
+    A valid completed product with changed provenance is stale evidence.
     """
 
-    working_dir = _working_dir(
-        tmp_path,
+    (tmp_path / "layers.svg").write_text(
+        "product",
+        encoding="utf-8",
     )
 
-    (working_dir / "layers.svg").mkdir()
-
-    write_stage_completion(
-        working_dir,
-        _completion(
-            "layers",
+    _write_completion(
+        tmp_path,
+        fingerprint=_fingerprint(
+            "old",
         ),
     )
 
-    evidence = gather_product_evidence(
-        working_dir=working_dir,
-        product_name="layers",
-        product_path=Path("layers.svg"),
+    assert _gather(
+        tmp_path,
+        required_fingerprint=_fingerprint(
+            "new",
+        ),
+    ) == ProductEvidence(
+        exists=True,
+        completion_exists=True,
+        valid=True,
+        fresh=False,
     )
 
-    assert evidence.exists
-    assert evidence.completion_exists
-    assert not evidence.valid
-
 
 # =========================================================
-# Completion corruption
+# Invalid completion metadata
 # =========================================================
 
 
-def test_corrupt_completion_metadata_is_invalid_evidence(
+def test_corrupt_completion_metadata_is_not_treated_as_absent(
     tmp_path: Path,
 ) -> None:
     """
-    Corrupt completion metadata is not silently treated as absent.
+    Corrupt persistent metadata remains distinguishable from absence.
     """
 
-    working_dir = _working_dir(
+    (tmp_path / "layers.svg").write_text(
+        "product",
+        encoding="utf-8",
+    )
+
+    completion_path(
         tmp_path,
-    )
-
-    _write_product(
-        working_dir,
-    )
-
-    (working_dir / ".completion.json").write_text(
+    ).write_text(
         "{not valid json",
         encoding="utf-8",
     )
@@ -374,44 +539,7 @@ def test_corrupt_completion_metadata_is_invalid_evidence(
     with pytest.raises(
         ValueError,
     ):
-        gather_product_evidence(
-            working_dir=working_dir,
-            product_name="layers",
-            product_path=Path("layers.svg"),
+        _gather(
+            tmp_path,
+            required_fingerprint=_fingerprint(),
         )
-
-
-# =========================================================
-# Freshness boundary
-# =========================================================
-
-
-def test_gathered_evidence_does_not_claim_freshness(
-    tmp_path: Path,
-) -> None:
-    """
-    Filesystem and completion evidence alone cannot prove freshness.
-    """
-
-    working_dir = _working_dir(
-        tmp_path,
-    )
-
-    _write_product(
-        working_dir,
-    )
-
-    write_stage_completion(
-        working_dir,
-        _completion(
-            "layers",
-        ),
-    )
-
-    evidence = gather_product_evidence(
-        working_dir=working_dir,
-        product_name="layers",
-        product_path=Path("layers.svg"),
-    )
-
-    assert not evidence.fresh
