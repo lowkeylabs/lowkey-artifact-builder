@@ -199,6 +199,11 @@ def execute_incremental_artifact_build(
             stage,
         )
 
+        context.working_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
         execute_stage(
             context,
         )
