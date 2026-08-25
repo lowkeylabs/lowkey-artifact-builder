@@ -128,7 +128,10 @@ def execute_incremental_build(
     """
     Execute only stages required by the current persistent build state.
 
-    Required fingerprints are calculated once before execution begins.
+    A build.started event is emitted before incremental product-state
+    resolution begins.
+
+    Required fingerprints are calculated once before execution planning.
     This provides one coherent build-context snapshot for both execution
     planning and subsequently persisted completion metadata.
 
@@ -149,14 +152,21 @@ def execute_incremental_build(
     executor returns successfully. A stage.completed event is emitted
     only after successful completion metadata has been persisted.
 
-    A failed stage therefore receives no successful completion record or
-    stage.completed event.
+    A build.completed event is emitted after all realized stages have
+    been successfully processed, including builds requiring no stage
+    execution.
 
     Observation is optional and does not participate in execution
     decisions.
 
     Return the ExecutionPlan used for this execution.
     """
+
+    _emit_build_event(
+        event_sink,
+        build_plan=build_plan,
+        kind="build.started",
+    )
 
     fingerprints = create_required_fingerprints(
         build_plan,
@@ -217,6 +227,12 @@ def execute_incremental_build(
             stage=stage,
             kind="stage.completed",
         )
+
+    _emit_build_event(
+        event_sink,
+        build_plan=build_plan,
+        kind="build.completed",
+    )
 
     return execution_plan
 
@@ -317,6 +333,27 @@ def _emit_stage_event(
             model_name=build_plan.model_name,
             realization=build_plan.realization_name,
             stage_name=stage.name,
+        ),
+    )
+
+
+def _emit_build_event(
+    event_sink: EventSink | None,
+    *,
+    build_plan: BuildPlan,
+    kind: str,
+) -> None:
+    """
+    Emit one semantic build lifecycle event.
+    """
+
+    emit_event(
+        event_sink,
+        ExecutionEvent(
+            kind=kind,
+            artifact_id=build_plan.artifact_id,
+            model_name=build_plan.model_name,
+            realization=build_plan.realization_name,
         ),
     )
 
