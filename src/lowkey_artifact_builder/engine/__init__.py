@@ -20,6 +20,9 @@ observation boundary for build and stage execution.
 
 Persistent completion metadata records successfully completed stage
 realizations and their declared products.
+
+Product-state evaluation converts normalized persistent-product evidence
+into semantic state independently of evidence gathering.
 """
 # File: src/lowkey_artifact_builder/engine/__init__.py
 # Copyright 2026 LowKeyLabs LLC
@@ -65,7 +68,9 @@ from .stage import (
     validate_stage_inputs,
 )
 from .state import (
+    ProductEvidence,
     ProductState,
+    evaluate_product_state,
 )
 
 __all__ = [
@@ -77,6 +82,7 @@ __all__ = [
     "PlannedInput",
     "PlannedProduct",
     "PlannedStage",
+    "ProductEvidence",
     "ProductState",
     "StageCompletion",
     "StageContext",
@@ -88,6 +94,7 @@ __all__ = [
     "create_build_plans",
     "create_stage_context",
     "emit_event",
+    "evaluate_product_state",
     "execute_artifact_stage",
     "execute_build",
     "execute_builds",

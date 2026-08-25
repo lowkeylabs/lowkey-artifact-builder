@@ -5,9 +5,10 @@ Product state describes whether a declared persistent product is
 available for reuse or requires production for the current build
 context.
 
-State evaluation is intentionally separate from the state vocabulary.
-Filesystem inspection, completion metadata, dependency evaluation, and
-configuration currency are introduced by later Phase 9 slices.
+State evaluation operates on explicit normalized evidence. Filesystem
+inspection, completion metadata, dependency evaluation, and configuration
+currency are responsible for producing that evidence in later Phase 9
+slices.
 """
 # File: src/lowkey_artifact_builder/engine/state.py
 # Copyright 2026 LowKeyLabs LLC
@@ -15,6 +16,7 @@ configuration currency are introduced by later Phase 9 slices.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 
 # =========================================================
@@ -85,10 +87,84 @@ class ProductState(StrEnum):
 
 
 # =========================================================
+# Product evidence
+# =========================================================
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class ProductEvidence:
+    """
+    Normalized evidence used to determine persistent product state.
+
+    exists
+        The expected persistent product materialization exists.
+
+    completion_exists
+        Successful completion metadata exists for the producing stage.
+
+    valid
+        The existing completed product satisfies its validity checks.
+
+    fresh
+        The existing valid completed product corresponds to the current
+        inputs, dependencies, configuration, and operation versions.
+
+    Evidence gathering is intentionally separate from state evaluation.
+    """
+
+    exists: bool
+    completion_exists: bool
+    valid: bool
+    fresh: bool
+
+
+# =========================================================
+# State evaluation
+# =========================================================
+
+
+def evaluate_product_state(
+    evidence: ProductEvidence,
+) -> ProductState:
+    """
+    Determine persistent product state from normalized evidence.
+
+    Completion evidence establishes the boundary between work that never
+    successfully completed and work that claims successful completion.
+
+    Validity is meaningful only after successful completion is recorded,
+    and freshness is meaningful only for an existing valid completed
+    product.
+    """
+
+    if not evidence.completion_exists:
+        if evidence.exists:
+            return ProductState.INCOMPLETE
+
+        return ProductState.ABSENT
+
+    if not evidence.exists:
+        return ProductState.INVALID
+
+    if not evidence.valid:
+        return ProductState.INVALID
+
+    if not evidence.fresh:
+        return ProductState.STALE
+
+    return ProductState.CURRENT
+
+
+# =========================================================
 # Exports
 # =========================================================
 
 
 __all__ = [
+    "ProductEvidence",
     "ProductState",
+    "evaluate_product_state",
 ]
