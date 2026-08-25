@@ -217,6 +217,47 @@ class Resolver:
 
         return value
 
+    def with_values(
+        self,
+        values: Mapping[str, Any],
+        *,
+        provenance: str,
+    ) -> Resolver:
+        """
+        Return a resolver with explicit values overlaid on this resolver.
+
+        The original resolver is not modified.
+
+        Existing configured values, derivations, and colors remain
+        available. Values supplied by the overlay take precedence over
+        both configured and derived values.
+
+        The supplied provenance identifies the source of every overlaid
+        value.
+        """
+
+        resolved_values = dict(
+            self._values,
+        )
+
+        resolved_values.update(
+            values,
+        )
+
+        resolved_provenance = dict(
+            self._provenance,
+        )
+
+        for name in values:
+            resolved_provenance[name] = provenance
+
+        return Resolver(
+            values=resolved_values,
+            provenance=resolved_provenance,
+            derivations=self._derivations,
+            colors=self._colors,
+        )
+
     # =====================================================
     # Parameter introspection
     # =====================================================

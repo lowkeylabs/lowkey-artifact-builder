@@ -448,8 +448,13 @@ def test_execute_artifact_stage_passes_explicit_inputs_to_context(
         realization: str | None = None,
         project_root: Path | None = None,
         input_paths=None,
+        parameter_values=None,
+        output_paths=None,
     ):
         nonlocal received
+
+        assert parameter_values is None
+        assert output_paths is None
 
         received = input_paths
 
@@ -476,3 +481,61 @@ def test_execute_artifact_stage_passes_explicit_inputs_to_context(
         )
 
     assert received == explicit
+
+
+def test_execute_artifact_stage_passes_parameter_and_output_bindings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Independent execution forwards parameter and output bindings.
+    """
+
+    received_parameters = None
+    received_outputs = None
+
+    def create(
+        artifact_id: str,
+        *,
+        stage_name: str,
+        realization: str | None = None,
+        project_root: Path | None = None,
+        input_paths=None,
+        parameter_values=None,
+        output_paths=None,
+    ):
+        nonlocal received_parameters
+        nonlocal received_outputs
+
+        received_parameters = parameter_values
+        received_outputs = output_paths
+
+        raise StageContextError("stop after context resolution")
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.operation.create_stage_context",
+        create,
+    )
+
+    parameters = {
+        "artwork_size": 90.0,
+    }
+
+    outputs = {
+        "manifest": (tmp_path / "products.json"),
+    }
+
+    with pytest.raises(
+        StageContextError,
+        match="stop after context resolution",
+    ):
+        execute_artifact_stage(
+            "example",
+            stage_name="vector",
+            project_root=tmp_path,
+            parameter_values=parameters,
+            output_paths=outputs,
+        )
+
+    assert received_parameters == parameters
+    assert received_outputs == outputs

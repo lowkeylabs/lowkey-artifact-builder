@@ -768,3 +768,261 @@ def test_create_stage_context_rejects_source_input_for_stage_without_source(
                 "source": (tmp_path / "portrait.png"),
             },
         )
+
+
+# =========================================================
+# Explicit parameter values
+# =========================================================
+
+
+def test_create_stage_context_uses_explicit_parameter_value(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    test_resolver: Resolver,
+) -> None:
+    """
+    An explicit stage parameter overrides its resolved artifact value.
+    """
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.context.get_resolver",
+        lambda *args, **kwargs: test_resolver,
+    )
+
+    context = create_stage_context(
+        "example",
+        stage_name="vector",
+        project_root=tmp_path,
+        parameter_values={
+            "artwork_size": 90.0,
+        },
+    )
+
+    assert context.resolver("artwork_size") == 90.0
+
+
+def test_create_stage_context_preserves_unoverridden_parameters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    test_resolver: Resolver,
+) -> None:
+    """
+    Explicit parameter values replace only the named stage parameters.
+    """
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.context.get_resolver",
+        lambda *args, **kwargs: test_resolver,
+    )
+
+    context = create_stage_context(
+        "example",
+        stage_name="raster",
+        project_root=tmp_path,
+        parameter_values={
+            "artwork_size": 90.0,
+        },
+    )
+
+    assert context.resolver("artwork_size") == 90.0
+
+    assert context.resolver("artwork_pixels") == test_resolver("artwork_pixels")
+
+    assert context.resolver("artwork_colors") == test_resolver("artwork_colors")
+
+
+def test_create_stage_context_rejects_unknown_explicit_parameter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    test_resolver: Resolver,
+) -> None:
+    """
+    Explicit parameter values cannot introduce undeclared stage parameters.
+    """
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.context.get_resolver",
+        lambda *args, **kwargs: test_resolver,
+    )
+
+    with pytest.raises(
+        StageContextError,
+        match="unknown parameter",
+    ):
+        create_stage_context(
+            "example",
+            stage_name="vector",
+            project_root=tmp_path,
+            parameter_values={
+                "artwork_raise": 2.0,
+            },
+        )
+
+
+def test_create_stage_context_parameter_override_does_not_mutate_resolver(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    test_resolver: Resolver,
+) -> None:
+    """
+    Independent parameter overrides do not mutate artifact configuration.
+    """
+
+    original = test_resolver(
+        "artwork_size",
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.context.get_resolver",
+        lambda *args, **kwargs: test_resolver,
+    )
+
+    context = create_stage_context(
+        "example",
+        stage_name="vector",
+        project_root=tmp_path,
+        parameter_values={
+            "artwork_size": 90.0,
+        },
+    )
+
+    assert context.resolver("artwork_size") == 90.0
+    assert test_resolver("artwork_size") == original
+    assert context.resolver is not test_resolver
+
+
+# =========================================================
+# Explicit output bindings
+# =========================================================
+
+
+def test_create_stage_context_uses_explicit_output_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    test_resolver: Resolver,
+) -> None:
+    """
+    An explicit output path overrides a declared product location.
+    """
+
+    explicit = tmp_path / "external" / "vector-products.json"
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.context.get_resolver",
+        lambda *args, **kwargs: test_resolver,
+    )
+
+    context = create_stage_context(
+        "example",
+        stage_name="vector",
+        project_root=tmp_path,
+        output_paths={
+            "manifest": explicit,
+        },
+    )
+
+    assert context.outputs["manifest"] == explicit
+
+
+def test_create_stage_context_preserves_unoverridden_outputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    test_resolver: Resolver,
+) -> None:
+    """
+    Explicit output bindings replace only named stage products.
+    """
+
+    explicit = tmp_path / "external" / "trace.svg"
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.context.get_resolver",
+        lambda *args, **kwargs: test_resolver,
+    )
+
+    baseline = create_stage_context(
+        "example",
+        stage_name="prepare",
+        project_root=tmp_path,
+    )
+
+    context = create_stage_context(
+        "example",
+        stage_name="prepare",
+        project_root=tmp_path,
+        output_paths={
+            "trace": explicit,
+        },
+    )
+
+    assert context.outputs["trace"] == explicit
+
+    assert context.outputs["envelope"] == baseline.outputs["envelope"]
+
+
+def test_create_stage_context_rejects_unknown_explicit_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    test_resolver: Resolver,
+) -> None:
+    """
+    Explicit output bindings cannot introduce undeclared products.
+    """
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.context.get_resolver",
+        lambda *args, **kwargs: test_resolver,
+    )
+
+    with pytest.raises(
+        StageContextError,
+        match="unknown output",
+    ):
+        create_stage_context(
+            "example",
+            stage_name="vector",
+            project_root=tmp_path,
+            output_paths={
+                "missing": (tmp_path / "missing.json"),
+            },
+        )
+
+
+def test_create_stage_context_combines_explicit_bindings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    test_resolver: Resolver,
+) -> None:
+    """
+    Input, parameter, and output overrides coexist in one context.
+    """
+
+    explicit_input = tmp_path / "external" / "raster-products.json"
+
+    explicit_output = tmp_path / "external" / "vector-products.json"
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.context.get_resolver",
+        lambda *args, **kwargs: test_resolver,
+    )
+
+    context = create_stage_context(
+        "example",
+        stage_name="vector",
+        project_root=tmp_path,
+        input_paths={
+            "raster.manifest": explicit_input,
+        },
+        parameter_values={
+            "artwork_size": 90.0,
+        },
+        output_paths={
+            "manifest": explicit_output,
+        },
+    )
+
+    assert context.inputs["raster.manifest"] == explicit_input
+
+    assert context.resolver("artwork_size") == 90.0
+
+    assert context.outputs["manifest"] == explicit_output

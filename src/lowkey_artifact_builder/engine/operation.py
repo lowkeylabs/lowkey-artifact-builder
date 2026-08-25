@@ -38,13 +38,15 @@ def execute_artifact_stage(
     realization: str | None = None,
     project_root: Path | None = None,
     input_paths: Mapping[str, Path] | None = None,
+    parameter_values: Mapping[str, object] | None = None,
+    output_paths: Mapping[str, Path] | None = None,
 ) -> None:
     """
     Execute exactly one configured artifact stage independently.
 
     The requested artifact, realization, and stage are first resolved
-    into a StageContext. Explicit input paths may replace the physical
-    locations of inputs declared by that resolved context.
+    into a StageContext. Explicit bindings may replace declared input
+    paths, stage parameter values, and output paths.
 
     Every resolved filesystem input must already exist and be ready for
     execution. The resolved stage is then dispatched through the common
@@ -53,9 +55,6 @@ def execute_artifact_stage(
     This operation does not construct a BuildPlan, traverse stage
     dependencies, materialize external inputs, realize missing
     dependency products, or execute prerequisite stages.
-
-    Missing inputs therefore cause validation to fail rather than
-    causing additional stages to run.
     """
 
     context = create_stage_context(
@@ -64,6 +63,8 @@ def execute_artifact_stage(
         realization=realization,
         project_root=project_root,
         input_paths=input_paths,
+        parameter_values=parameter_values,
+        output_paths=output_paths,
     )
 
     validate_stage_inputs(

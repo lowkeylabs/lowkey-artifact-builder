@@ -131,17 +131,19 @@ def execute_artifact_stage(
     realization: str | None = None,
     project_root: Path | None = None,
     input_paths: Mapping[str, Path] | None = None,
+    parameter_values: Mapping[str, object] | None = None,
+    output_paths: Mapping[str, Path] | None = None,
 ) -> None:
     """
     Execute exactly one configured artifact stage independently.
 
     Independent stage execution resolves the requested StageContext,
-    including any explicit physical bindings for declared filesystem
-    inputs, validates that all resolved inputs already exist, and
-    executes exactly the requested stage.
+    including explicit bindings for declared filesystem inputs,
+    parameters, and outputs, validates that all resolved inputs already
+    exist, and executes exactly the requested stage.
 
-    Explicit input bindings may replace only inputs declared by the
-    resolved stage context. They do not introduce new semantic inputs.
+    Explicit bindings cannot introduce semantic inputs, parameters, or
+    products not declared by the requested stage.
 
     Missing dependency products are not realized automatically and
     prerequisite stages are not executed.
@@ -157,6 +159,8 @@ def execute_artifact_stage(
             realization=realization,
             project_root=project_root,
             input_paths=input_paths,
+            parameter_values=parameter_values,
+            output_paths=output_paths,
         )
 
     except (

@@ -25,6 +25,7 @@ from pathlib import Path
 
 from lowkey_artifact_builder.config import (
     ConfigError,
+    Resolver,
     get_resolver,
 )
 from lowkey_artifact_builder.engine.product_resolver import (
@@ -53,12 +54,15 @@ def create_stage_context(
     realization: str | None = None,
     project_root: Path | None = None,
     input_paths: Mapping[str, Path] | None = None,
+    parameter_values: Mapping[str, object] | None = None,
+    output_paths: Mapping[str, Path] | None = None,
 ) -> StageContext:
     """
     Construct the execution context for one declared artifact stage.
 
     Configuration is resolved for the requested artifact realization.
-    The resulting Resolver is retained unchanged by StageContext.
+    Explicit parameter values may override parameters declared by the
+    requested stage without modifying artifact configuration.
 
     The requested stage is resolved from the configured model.
 
@@ -67,9 +71,9 @@ def create_stage_context(
     names of the form '<stage>.<product>'. Outputs use their declarative
     product names and canonical product locations.
 
-    Explicit input paths may replace the physical location of any
-    filesystem input already declared by the resolved stage context.
-    They cannot introduce new semantic inputs.
+    Explicit input and output paths may replace the physical locations
+    of filesystem inputs and products already declared by the resolved
+    stage context. They cannot introduce new semantic inputs or outputs.
 
     This function performs resolution only. It does not create the
     workspace, materialize external inputs, check whether filesystem
@@ -123,6 +127,13 @@ def create_stage_context(
         stage_name,
     )
 
+    resolver = _apply_parameter_values(
+        artifact_id=artifact_id,
+        stage=stage,
+        resolver=resolver,
+        parameter_values=parameter_values,
+    )
+
     product_resolver = ProductResolver(
         project_root=root,
     )
@@ -155,6 +166,13 @@ def create_stage_context(
         realization_name=realization_name,
         stage=stage,
         product_resolver=product_resolver,
+    )
+
+    outputs = _apply_output_paths(
+        artifact_id=artifact_id,
+        stage=stage,
+        outputs=outputs,
+        output_paths=output_paths,
     )
 
     return _create_resolved_stage_context(
@@ -293,6 +311,44 @@ def _stage_inputs(
     return inputs
 
 
+def _apply_parameter_values(
+    *,
+    artifact_id: str,
+    stage: StageSpec,
+    resolver: Resolver,
+    parameter_values: Mapping[str, object] | None,
+) -> Resolver:
+    """
+    Apply explicit values for parameters declared by one stage.
+
+    Explicit values may replace only parameters named by the stage
+    specification. They cannot introduce new stage parameters.
+
+    The original artifact resolver is not modified.
+    """
+
+    if parameter_values is None:
+        return resolver
+
+    declared = set(
+        stage.parameters,
+    )
+
+    for name in parameter_values:
+        if name not in declared:
+            raise StageContextError(
+                f"Cannot construct context for stage "
+                f"{stage.name!r} "
+                f"of artifact {artifact_id!r}: "
+                f"unknown parameter {name!r}."
+            )
+
+    return resolver.with_values(
+        parameter_values,
+        provenance="independent stage execution",
+    )
+
+
 def _apply_input_paths(
     *,
     artifact_id: str,
@@ -324,6 +380,44 @@ def _apply_input_paths(
                 f"{stage.name!r} "
                 f"of artifact {artifact_id!r}: "
                 f"unknown input {name!r}."
+            )
+
+        resolved[name] = path
+
+    return resolved
+
+
+def _apply_output_paths(
+    *,
+    artifact_id: str,
+    stage: StageSpec,
+    outputs: dict[str, Path],
+    output_paths: Mapping[str, Path] | None,
+) -> dict[str, Path]:
+    """
+    Apply explicit physical path bindings to resolved stage outputs.
+
+    Explicit bindings may replace only product names already present in
+    the resolved stage output namespace. They cannot introduce new
+    semantic outputs.
+
+    The original resolved output mapping is not modified.
+    """
+
+    if output_paths is None:
+        return outputs
+
+    resolved = dict(
+        outputs,
+    )
+
+    for name, path in output_paths.items():
+        if name not in resolved:
+            raise StageContextError(
+                f"Cannot construct context for stage "
+                f"{stage.name!r} "
+                f"of artifact {artifact_id!r}: "
+                f"unknown output {name!r}."
             )
 
         resolved[name] = path

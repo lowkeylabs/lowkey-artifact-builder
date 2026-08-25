@@ -1242,8 +1242,13 @@ def test_execute_artifact_stage_forwards_explicit_inputs(
         realization: str | None = None,
         project_root: Path | None = None,
         input_paths=None,
+        parameter_values=None,
+        output_paths=None,
     ) -> None:
         nonlocal received
+
+        assert parameter_values is None
+        assert output_paths is None
 
         received = input_paths
 
@@ -1264,3 +1269,55 @@ def test_execute_artifact_stage_forwards_explicit_inputs(
     )
 
     assert received == explicit
+
+
+def test_execute_artifact_stage_forwards_parameter_and_output_bindings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    The build boundary preserves parameter and output bindings.
+    """
+
+    received_parameters = None
+    received_outputs = None
+
+    def execute(
+        artifact_id: str,
+        *,
+        stage_name: str,
+        realization: str | None = None,
+        project_root: Path | None = None,
+        input_paths=None,
+        parameter_values=None,
+        output_paths=None,
+    ) -> None:
+        nonlocal received_parameters
+        nonlocal received_outputs
+
+        received_parameters = parameter_values
+        received_outputs = output_paths
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.build._execute_artifact_stage",
+        execute,
+    )
+
+    parameters = {
+        "artwork_size": 90.0,
+    }
+
+    outputs = {
+        "manifest": (tmp_path / "products.json"),
+    }
+
+    execute_artifact_stage(
+        "example",
+        stage_name="vector",
+        project_root=tmp_path,
+        parameter_values=parameters,
+        output_paths=outputs,
+    )
+
+    assert received_parameters == parameters
+    assert received_outputs == outputs
