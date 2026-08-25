@@ -317,3 +317,165 @@ def test_product_state_observer_return_value_does_not_change_execution(
     assert tuple(
         executed,
     ) == tuple(stage.name for stage in build_plan.stages if stage.products)
+
+
+# =========================================================
+# Product-state event ordering
+# =========================================================
+
+
+def test_product_state_events_precede_stage_started_events(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Product-state decisions are observed before required stage execution.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    events: list[ExecutionEvent] = []
+
+    execute_incremental_build(
+        build_plan,
+        execute_stage=_materialize_stage_products,
+        event_sink=events.append,
+    )
+
+    state_indexes = tuple(
+        index
+        for index, event in enumerate(events)
+        if isinstance(
+            event,
+            ProductStateEvent,
+        )
+    )
+
+    started_indexes = tuple(
+        index
+        for index, event in enumerate(events)
+        if (
+            isinstance(event, ExecutionEvent)
+            and not isinstance(event, ProductStateEvent)
+            and event.kind == "stage.started"
+        )
+    )
+
+    assert state_indexes
+    assert started_indexes
+
+    assert max(state_indexes) < min(started_indexes)
+
+
+def test_product_state_events_precede_stage_skipped_events(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Product-state decisions are observed before reusable stages are skipped.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    execute_incremental_build(
+        build_plan,
+        execute_stage=_materialize_stage_products,
+    )
+
+    events: list[ExecutionEvent] = []
+
+    execute_incremental_build(
+        build_plan,
+        execute_stage=_materialize_stage_products,
+        event_sink=events.append,
+    )
+
+    state_indexes = tuple(
+        index
+        for index, event in enumerate(events)
+        if isinstance(
+            event,
+            ProductStateEvent,
+        )
+    )
+
+    skipped_indexes = tuple(
+        index
+        for index, event in enumerate(events)
+        if (
+            isinstance(event, ExecutionEvent)
+            and not isinstance(event, ProductStateEvent)
+            and event.kind == "stage.skipped"
+        )
+    )
+
+    assert state_indexes
+    assert skipped_indexes
+
+    assert max(state_indexes) < min(skipped_indexes)
+
+
+def test_product_state_events_preserve_realized_product_order(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Product-state observations preserve realized stage and product order.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    events: list[ExecutionEvent] = []
+
+    execute_incremental_build(
+        build_plan,
+        execute_stage=_materialize_stage_products,
+        event_sink=events.append,
+    )
+
+    observed = tuple(
+        (
+            event.stage_name,
+            event.product_name,
+        )
+        for event in events
+        if isinstance(
+            event,
+            ProductStateEvent,
+        )
+    )
+
+    expected = tuple(
+        (
+            stage.name,
+            product.name,
+        )
+        for stage in build_plan.stages
+        for product in stage.products
+    )
+
+    assert observed == expected
