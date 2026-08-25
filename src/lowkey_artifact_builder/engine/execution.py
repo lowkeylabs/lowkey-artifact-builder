@@ -5,15 +5,17 @@ Execution planning determines whether realized stages require execution
 for the current build context.
 
 This module contains pure execution-decision policy, execution-plan
-representation, and composition of realized build plans with resolved
-persistent product states.
+representation, composition of realized build plans with resolved
+persistent product states, and the high-level composition boundary that
+constructs execution plans from persistent state.
 
-It does not inspect the filesystem, gather product evidence, evaluate
-product freshness, emit execution events, construct stage contexts, or
-execute stages.
+It does not inspect the filesystem directly, gather product evidence
+directly, evaluate product freshness directly, emit execution events,
+construct stage contexts, or execute stages.
 
-Higher-level Phase 9 planning may gather persistent evidence and resolve
-product states before supplying them to this execution-planning boundary.
+Persistent-state-aware planning delegates product-state resolution to the
+execution-state boundary and then applies the same pure execution-plan
+construction used by callers supplying their own ProductState resolver.
 """
 # File: src/lowkey_artifact_builder/engine/execution.py
 # Copyright 2026 LowKeyLabs LLC
@@ -24,6 +26,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from .execution_state import (
+    RequiredFingerprintResolver,
+    create_execution_state_resolver,
+)
 from .specs import (
     BuildPlan,
     PlannedStage,
@@ -205,6 +211,42 @@ def create_execution_plan(
 
 
 # =========================================================
+# Persistent-state-aware planning
+# =========================================================
+
+
+def plan_execution(
+    build_plan: BuildPlan,
+    *,
+    required_fingerprint: RequiredFingerprintResolver,
+) -> ExecutionPlan:
+    """
+    Construct an execution plan from current persistent product state.
+
+    Product-state resolution is adapted from the realized BuildPlan through
+    create_execution_state_resolver. The resulting resolver gathers and
+    evaluates persistent state using the established evidence and freshness
+    boundaries.
+
+    Execution-plan construction remains delegated to create_execution_plan
+    so stage execution policy has a single implementation.
+
+    This operation performs persistent-state inspection but does not execute
+    stages or modify build products.
+    """
+
+    product_state = create_execution_state_resolver(
+        build_plan,
+        required_fingerprint=required_fingerprint,
+    )
+
+    return create_execution_plan(
+        build_plan,
+        product_state=product_state,
+    )
+
+
+# =========================================================
 # Exports
 # =========================================================
 
@@ -214,5 +256,6 @@ __all__ = [
     "PlannedStageExecution",
     "ProductStateResolver",
     "create_execution_plan",
+    "plan_execution",
     "stage_requires_execution",
 ]

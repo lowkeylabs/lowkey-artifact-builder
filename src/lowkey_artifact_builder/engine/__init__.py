@@ -34,9 +34,15 @@ evidence rather than inferred from filesystem presence or timestamps.
 Build-context fingerprints are generated deterministically from operation
 identity, relevant parameters, and upstream input fingerprints.
 
+Execution product-state resolution adapts realized build-plan stages and
+products to persistent product-state evaluation.
+
 Execution planning combines realized build plans with resolved persistent
-product states while remaining independent of filesystem inspection,
+product states while remaining independent of direct filesystem inspection,
 evidence gathering, and execution.
+
+Persistent-state-aware execution planning composes execution product-state
+resolution with execution-plan construction.
 
 Execution plans preserve the complete realized workflow while identifying
 the subset of stages that must execute for the current build context.
@@ -76,6 +82,7 @@ from .execution import (
     PlannedStageExecution,
     ProductStateResolver,
     create_execution_plan,
+    plan_execution,
     stage_requires_execution,
 )
 from .execution_state import (
@@ -120,6 +127,8 @@ __all__ = [
     "EventSink",
     "ExecutionEvent",
     "ExecutionPlan",
+    "ExecutionProductStateResolver",
+    "PersistentProductStateResolver",
     "PlannedInput",
     "PlannedProduct",
     "PlannedStage",
@@ -129,7 +138,7 @@ __all__ = [
     "ProductState",
     "ProductStateEvent",
     "ProductStateResolver",
-    "PersistentProductStateResolver",
+    "RequiredFingerprintResolver",
     "StageCompletion",
     "StageContext",
     "StageContextError",
@@ -139,9 +148,10 @@ __all__ = [
     "create_build_plan",
     "create_build_plans",
     "create_execution_plan",
+    "create_execution_state_resolver",
     "create_product_fingerprint",
-    "create_stage_context",
     "create_product_state_resolver",
+    "create_stage_context",
     "emit_event",
     "evaluate_product_state",
     "execute_artifact_stage",
@@ -149,12 +159,10 @@ __all__ = [
     "execute_builds",
     "execute_stage",
     "gather_product_evidence",
+    "plan_execution",
     "product_is_fresh",
     "read_stage_completion",
     "stage_requires_execution",
     "validate_stage_inputs",
     "write_stage_completion",
-    "ExecutionProductStateResolver",
-    "RequiredFingerprintResolver",
-    "create_execution_state_resolver",
 ]
