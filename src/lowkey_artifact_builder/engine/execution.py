@@ -4,13 +4,16 @@ Execution planning policy.
 Execution planning determines whether realized stages require execution
 for the current build context.
 
-This module contains pure execution-decision policy and execution-plan
-representation. It does not inspect the filesystem, gather product
-evidence, evaluate product freshness, emit execution events, construct
-stage contexts, or execute stages.
+This module contains pure execution-decision policy, execution-plan
+representation, and composition of realized build plans with resolved
+persistent product states.
 
-Higher-level Phase 9 planning will combine persistent product-state
-evaluation with these policies to construct concrete execution plans.
+It does not inspect the filesystem, gather product evidence, evaluate
+product freshness, emit execution events, construct stage contexts, or
+execute stages.
+
+Higher-level Phase 9 planning may gather persistent evidence and resolve
+product states before supplying them to this execution-planning boundary.
 """
 # File: src/lowkey_artifact_builder/engine/execution.py
 # Copyright 2026 LowKeyLabs LLC
@@ -18,11 +21,30 @@ evaluation with these policies to construct concrete execution plans.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
+from .specs import (
+    BuildPlan,
+    PlannedStage,
+)
 from .state import (
     ProductState,
 )
+
+# =========================================================
+# Product-state resolution
+# =========================================================
+
+
+type ProductStateResolver = Callable[
+    [
+        PlannedStage,
+        str,
+    ],
+    ProductState,
+]
+
 
 # =========================================================
 # Stage execution decisions
@@ -65,8 +87,10 @@ class PlannedStageExecution:
     """
     Execution decision for one realized stage.
 
+    stage_name identifies the realized stage.
+
     product_states contains the evaluated persistent state of the stage's
-    declared products.
+    declared products in declaration order.
 
     requires_execution is derived from those states so the execution
     decision cannot contradict the underlying product-state evidence.
@@ -125,6 +149,62 @@ class ExecutionPlan:
 
 
 # =========================================================
+# Execution-plan construction
+# =========================================================
+
+
+def create_execution_plan(
+    build_plan: BuildPlan,
+    *,
+    product_state: ProductStateResolver,
+) -> ExecutionPlan:
+    """
+    Construct execution decisions for one realized build plan.
+
+    Persistent product state is resolved independently for every declared
+    product of every realized stage.
+
+    Product states remain ordered consistently with the stage's declared
+    products. Stage execution policy is derived from those states by
+    PlannedStageExecution.
+
+    The resulting execution plan retains the identity and ordered stage
+    structure of the realized build plan without retaining the BuildPlan
+    or PlannedStage objects themselves.
+
+    This operation is pure with respect to execution planning. The supplied
+    product-state resolver owns whatever mechanism determines ProductState.
+    """
+
+    stages: list[PlannedStageExecution] = []
+
+    for stage in build_plan.stages:
+        product_states = tuple(
+            product_state(
+                stage,
+                product.name,
+            )
+            for product in stage.products
+        )
+
+        stages.append(
+            PlannedStageExecution(
+                stage_name=stage.name,
+                product_states=product_states,
+            )
+        )
+
+    return ExecutionPlan(
+        artifact_id=build_plan.artifact_id,
+        model_name=build_plan.model_name,
+        realization=build_plan.realization_name,
+        stages=tuple(
+            stages,
+        ),
+    )
+
+
+# =========================================================
 # Exports
 # =========================================================
 
@@ -132,5 +212,7 @@ class ExecutionPlan:
 __all__ = [
     "ExecutionPlan",
     "PlannedStageExecution",
+    "ProductStateResolver",
+    "create_execution_plan",
     "stage_requires_execution",
 ]

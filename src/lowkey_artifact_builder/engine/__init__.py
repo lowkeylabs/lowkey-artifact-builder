@@ -34,8 +34,9 @@ evidence rather than inferred from filesystem presence or timestamps.
 Build-context fingerprints are generated deterministically from operation
 identity, relevant parameters, and upstream input fingerprints.
 
-Execution planning policy determines whether realized stages require
-execution from the persistent state of their declared products.
+Execution planning combines realized build plans with resolved persistent
+product states while remaining independent of filesystem inspection,
+evidence gathering, and execution.
 
 Execution plans preserve the complete realized workflow while identifying
 the subset of stages that must execute for the current build context.
@@ -71,6 +72,8 @@ from .evidence import (
 from .execution import (
     ExecutionPlan,
     PlannedStageExecution,
+    ProductStateResolver,
+    create_execution_plan,
     stage_requires_execution,
 )
 from .freshness import (
@@ -118,6 +121,7 @@ __all__ = [
     "ProductFingerprint",
     "ProductState",
     "ProductStateEvent",
+    "ProductStateResolver",
     "StageCompletion",
     "StageContext",
     "StageContextError",
@@ -126,6 +130,7 @@ __all__ = [
     "completion_path",
     "create_build_plan",
     "create_build_plans",
+    "create_execution_plan",
     "create_product_fingerprint",
     "create_stage_context",
     "emit_event",
