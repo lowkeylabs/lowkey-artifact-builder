@@ -20,6 +20,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+import pytest
 from PIL import Image
 
 from lowkey_artifact_builder.config import write_artifact_config
@@ -31,6 +32,11 @@ from lowkey_artifact_builder.formats.threemf import (
     CORE_NS,
     load_stl,
 )
+
+# Mark all tests in this suite as slow
+
+pytestmark = pytest.mark.slow
+
 
 # =========================================================
 # Test support

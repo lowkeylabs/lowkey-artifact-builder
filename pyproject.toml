@@ -146,6 +146,9 @@ addopts = "-ra"
 testpaths = [
     "tests",
 ]
+markers = [
+    "slow: tests that execute the real artifact production pipeline",
+]
 pythonpath = [
     "src",
 ]

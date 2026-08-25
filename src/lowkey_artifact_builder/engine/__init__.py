@@ -47,6 +47,9 @@ from .stage import (
     execute_stage,
     validate_stage_inputs,
 )
+from .state import (
+    ProductState,
+)
 
 __all__ = [
     "BuildError",
@@ -67,4 +70,5 @@ __all__ = [
     "execute_builds",
     "execute_stage",
     "validate_stage_inputs",
+    "ProductState",
 ]

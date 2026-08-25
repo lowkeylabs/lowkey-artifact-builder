@@ -3,16 +3,17 @@
 test:
 	uv run pytest
 
+test-fast:
+	uv run pytest -m "not slow" -v
+
 check-setup:
 	uv run scripts/check_dependencies.py
-
 
 setup:
 	sudo apt install openscad
 	sudo apt install inkscape
 	sudo apt install nodejs
 	sudo apt install npm
-
 
 coverage:
 	uv run pytest --cov=lowkey_artifact_builder --cov-report=term-missing
@@ -27,10 +28,13 @@ format:
 typecheck:
 	uv run pyright
 
-check: lint typecheck test
-
 pre-commit:
 	uv run pre-commit run --all-files
+
+check: lint typecheck pre-commit test-fast
+
+check-full: lint typecheck pre-commit test
+
 
 clean:
 	rm -rf .pytest_cache .ruff_cache .coverage htmlcov dist build

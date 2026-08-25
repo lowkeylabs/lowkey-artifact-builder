@@ -11,6 +11,7 @@ import shutil
 import zipfile
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from lowkey_artifact_builder.cli._main import cli
@@ -23,6 +24,7 @@ from lowkey_artifact_builder.engine import (
 # =========================================================
 
 
+@pytest.mark.slow
 def test_png_builds_complete_3mf(
     tmp_path: Path,
     monkeypatch,
