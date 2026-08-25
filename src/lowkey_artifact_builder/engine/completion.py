@@ -4,9 +4,14 @@ Persistent stage completion metadata.
 Completion metadata records that one stage execution successfully produced
 and validated its declared persistent products.
 
-The completion record is intentionally small. Product-state evaluation,
-freshness fingerprints, dependency hashes, configuration currency, and
-execution integration are introduced by later Phase 9 slices.
+Schema version 1 records stage identity and produced products.
+
+Schema version 2 additionally records the fingerprint of the build context
+under which those products were produced. Version 1 records remain readable
+and are interpreted conservatively as having no fingerprint provenance.
+
+Product-state evaluation, dependency invalidation, execution planning, and
+execution integration are handled separately.
 """
 # File: src/lowkey_artifact_builder/engine/completion.py
 # Copyright 2026 LowKeyLabs LLC
@@ -19,13 +24,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from .freshness import (
+    ProductFingerprint,
+)
+
 # =========================================================
 # Constants
 # =========================================================
 
 
 _COMPLETION_FILENAME = ".completion.json"
-_COMPLETION_SCHEMA_VERSION = 1
+_COMPLETION_SCHEMA_VERSION = 2
+_SUPPORTED_COMPLETION_SCHEMA_VERSIONS = {
+    1,
+    2,
+}
 
 
 # =========================================================
@@ -43,6 +56,10 @@ class StageCompletion:
 
     products contains the logical product identities successfully produced
     and validated by the stage.
+
+    fingerprint records the build context under which the stage products
+    were produced. None represents completion metadata without sufficient
+    provenance to prove freshness.
     """
 
     artifact_id: str
@@ -50,6 +67,7 @@ class StageCompletion:
     realization: str
     stage_name: str
     products: tuple[str, ...]
+    fingerprint: ProductFingerprint | None = None
 
 
 # =========================================================
@@ -84,10 +102,23 @@ def write_stage_completion(
 
     The stage working directory must already exist. Workspace creation is
     owned by execution rather than completion persistence.
+
+    New completion records are always written using the current completion
+    schema.
     """
 
     if not working_dir.is_dir():
         raise FileNotFoundError(f"Stage working directory does not exist: {working_dir}")
+
+    fingerprint: dict[str, str] | None
+
+    if completion.fingerprint is None:
+        fingerprint = None
+    else:
+        fingerprint = {
+            "algorithm": completion.fingerprint.algorithm,
+            "value": completion.fingerprint.value,
+        }
 
     data = {
         "schema_version": _COMPLETION_SCHEMA_VERSION,
@@ -98,6 +129,7 @@ def write_stage_completion(
         "products": list(
             completion.products,
         ),
+        "fingerprint": fingerprint,
     }
 
     completion_path(
@@ -120,7 +152,11 @@ def read_stage_completion(
 
     Return None when no completion record exists.
 
-    Raise ValueError when a record exists but cannot be interpreted as the
+    Schema version 1 records are accepted with fingerprint=None.
+
+    Schema version 2 records restore their persisted fingerprint provenance.
+
+    Raise ValueError when a record exists but cannot be interpreted as a
     supported completion schema.
     """
 
@@ -159,7 +195,7 @@ def read_stage_completion(
         "schema_version",
     )
 
-    if schema_version != _COMPLETION_SCHEMA_VERSION:
+    if schema_version not in _SUPPORTED_COMPLETION_SCHEMA_VERSIONS:
         raise ValueError(f"Unsupported stage completion schema {schema_version!r} in {path}")
 
     artifact_id = _required_string(
@@ -191,12 +227,21 @@ def read_stage_completion(
         path,
     )
 
+    if schema_version == 1:
+        fingerprint = None
+    else:
+        fingerprint = _optional_fingerprint(
+            data,
+            path,
+        )
+
     return StageCompletion(
         artifact_id=artifact_id,
         model_name=model_name,
         realization=realization,
         stage_name=stage_name,
         products=products,
+        fingerprint=fingerprint,
     )
 
 
@@ -266,6 +311,63 @@ def _required_products(
 
     return tuple(
         products,
+    )
+
+
+def _optional_fingerprint(
+    data: dict[str, object],
+    path: Path,
+) -> ProductFingerprint | None:
+    """
+    Read optional schema-version-2 fingerprint provenance.
+
+    None explicitly represents missing provenance. Any non-None value must
+    contain non-empty algorithm and value strings.
+    """
+
+    value = data.get(
+        "fingerprint",
+    )
+
+    if value is None:
+        return None
+
+    if not isinstance(
+        value,
+        dict,
+    ):
+        raise ValueError(f"Invalid 'fingerprint' in stage completion metadata: {path}")
+
+    fingerprint_data = cast(
+        dict[str, object],
+        value,
+    )
+
+    algorithm = fingerprint_data.get(
+        "algorithm",
+    )
+
+    fingerprint_value = fingerprint_data.get(
+        "value",
+    )
+
+    if (
+        not isinstance(
+            algorithm,
+            str,
+        )
+        or not algorithm
+        or not isinstance(
+            fingerprint_value,
+            str,
+        )
+        or not fingerprint_value
+    ):
+        raise ValueError(f"Invalid 'fingerprint' in stage completion metadata: {path}")
+
+    return ProductFingerprint(
+        algorithm=algorithm,
+        value=fingerprint_value,
     )
 
 
