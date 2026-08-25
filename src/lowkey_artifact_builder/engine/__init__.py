@@ -17,6 +17,9 @@ Stage input readiness may be validated independently before execution.
 
 Structured execution events provide an optional, presentation-independent
 observation boundary for build and stage execution.
+
+Persistent completion metadata records successfully completed stage
+realizations and their declared products.
 """
 # File: src/lowkey_artifact_builder/engine/__init__.py
 # Copyright 2026 LowKeyLabs LLC
@@ -27,6 +30,12 @@ from .build import (
     execute_artifact_stage,
     execute_build,
     execute_builds,
+)
+from .completion import (
+    StageCompletion,
+    completion_path,
+    read_stage_completion,
+    write_stage_completion,
 )
 from .context import (
     create_stage_context,
@@ -69,10 +78,12 @@ __all__ = [
     "PlannedProduct",
     "PlannedStage",
     "ProductState",
+    "StageCompletion",
     "StageContext",
     "StageContextError",
     "StageExecutionError",
     "StageInputError",
+    "completion_path",
     "create_build_plan",
     "create_build_plans",
     "create_stage_context",
@@ -81,5 +92,7 @@ __all__ = [
     "execute_build",
     "execute_builds",
     "execute_stage",
+    "read_stage_completion",
     "validate_stage_inputs",
+    "write_stage_completion",
 ]
