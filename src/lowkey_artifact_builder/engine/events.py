@@ -8,9 +8,9 @@ concurrency.
 Observation is optional. Event sinks receive immutable execution events
 and cannot influence execution through their return values.
 
-This module establishes only the common observation contract. Concrete
-build, stage, product-state, and execution lifecycle instrumentation is
-introduced separately.
+The common event contract may be specialized by typed semantic events.
+Concrete build and stage lifecycle instrumentation is introduced
+separately.
 """
 # File: src/lowkey_artifact_builder/engine/events.py
 # Copyright 2026 LowKeyLabs LLC
@@ -19,7 +19,9 @@ introduced separately.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from .state import ProductState
 
 # =========================================================
 # Execution events
@@ -29,6 +31,7 @@ from dataclasses import dataclass
 @dataclass(
     frozen=True,
     slots=True,
+    kw_only=True,
 )
 class ExecutionEvent:
     """
@@ -50,6 +53,32 @@ class ExecutionEvent:
     stage_name: str | None = None
     product_name: str | None = None
     message: str | None = None
+
+
+# =========================================================
+# Product-state events
+# =========================================================
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+    kw_only=True,
+)
+class ProductStateEvent(ExecutionEvent):
+    """
+    Structured observation of one persistent product-state decision.
+
+    Product state is carried as typed semantic data rather than encoded
+    into a message or another presentation-oriented field.
+    """
+
+    state: ProductState
+
+    kind: str = field(
+        default="product.state",
+        init=False,
+    )
 
 
 # =========================================================
@@ -90,5 +119,6 @@ def emit_event(
 __all__ = [
     "EventSink",
     "ExecutionEvent",
+    "ProductStateEvent",
     "emit_event",
 ]

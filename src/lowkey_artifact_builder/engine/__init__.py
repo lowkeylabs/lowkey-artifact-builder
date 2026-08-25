@@ -46,6 +46,7 @@ from .context import (
 from .events import (
     EventSink,
     ExecutionEvent,
+    ProductStateEvent,
     emit_event,
 )
 from .plan import (
@@ -84,6 +85,7 @@ __all__ = [
     "PlannedStage",
     "ProductEvidence",
     "ProductState",
+    "ProductStateEvent",
     "StageCompletion",
     "StageContext",
     "StageContextError",
