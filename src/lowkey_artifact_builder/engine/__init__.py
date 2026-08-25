@@ -26,6 +26,9 @@ into semantic state independently of evidence gathering.
 
 Execution planning policy determines whether realized stages require
 execution from the persistent state of their declared products.
+
+Execution plans preserve the complete realized workflow while identifying
+the subset of stages that must execute for the current build context.
 """
 # File: src/lowkey_artifact_builder/engine/__init__.py
 # Copyright 2026 LowKeyLabs LLC
@@ -53,6 +56,8 @@ from .events import (
     emit_event,
 )
 from .execution import (
+    ExecutionPlan,
+    PlannedStageExecution,
     stage_requires_execution,
 )
 from .plan import (
@@ -86,9 +91,11 @@ __all__ = [
     "BuildPlanError",
     "EventSink",
     "ExecutionEvent",
+    "ExecutionPlan",
     "PlannedInput",
     "PlannedProduct",
     "PlannedStage",
+    "PlannedStageExecution",
     "ProductEvidence",
     "ProductState",
     "ProductStateEvent",
