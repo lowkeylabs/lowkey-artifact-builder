@@ -168,15 +168,25 @@ def execute_incremental_build(
         kind="build.started",
     )
 
-    fingerprints = create_required_fingerprints(
-        build_plan,
-    )
+    try:
+        fingerprints = create_required_fingerprints(
+            build_plan,
+        )
 
-    execution_plan = _create_incremental_execution_plan(
-        build_plan=build_plan,
-        fingerprints=fingerprints,
-        event_sink=event_sink,
-    )
+        execution_plan = _create_incremental_execution_plan(
+            build_plan=build_plan,
+            fingerprints=fingerprints,
+            event_sink=event_sink,
+        )
+
+    except Exception:
+        _emit_build_event(
+            event_sink,
+            build_plan=build_plan,
+            kind="build.failed",
+        )
+
+        raise
 
     required_stage_names = {
         planned_execution.stage_name for planned_execution in execution_plan.required_stages
