@@ -16,6 +16,8 @@ from lowkey_artifact_builder.engine import (
     StageContext,
     StageInputError,
     create_stage_context,
+)
+from lowkey_artifact_builder.engine.operation import (
     execute_artifact_stage,
 )
 

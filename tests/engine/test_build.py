@@ -19,10 +19,14 @@ from lowkey_artifact_builder.engine import (
     BuildError,
     BuildPlan,
     StageContext,
+    execute_artifact_stage,
     execute_build,
     execute_builds,
 )
 from lowkey_artifact_builder.engine.registry import StageRegistry
+from lowkey_artifact_builder.engine.stage import (
+    StageInputError,
+)
 from lowkey_artifact_builder.model import ProductRef
 
 # =========================================================
@@ -1191,3 +1195,31 @@ def test_execute_builds_stops_after_failure(
         first,
         second,
     ]
+
+
+def test_execute_artifact_stage_translates_stage_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Independent stage failures cross the build boundary as BuildError.
+    """
+
+    def fail(
+        *args,
+        **kwargs,
+    ) -> None:
+        raise StageInputError("required input is missing")
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.build._execute_artifact_stage",
+        fail,
+    )
+
+    with pytest.raises(
+        BuildError,
+        match="required input is missing",
+    ):
+        execute_artifact_stage(
+            "example",
+            stage_name="vector",
+        )

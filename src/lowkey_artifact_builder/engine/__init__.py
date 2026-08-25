@@ -21,14 +21,12 @@ Stage input readiness may be validated independently before execution.
 
 from .build import (
     BuildError,
+    execute_artifact_stage,
     execute_build,
     execute_builds,
 )
 from .context import (
     create_stage_context,
-)
-from .operation import (
-    execute_artifact_stage,
 )
 from .plan import (
     BuildPlanError,
@@ -64,9 +62,9 @@ __all__ = [
     "create_build_plan",
     "create_build_plans",
     "create_stage_context",
+    "execute_artifact_stage",
     "execute_build",
     "execute_builds",
     "execute_stage",
     "validate_stage_inputs",
-    "execute_artifact_stage",
 ]

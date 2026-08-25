@@ -11,7 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from lowkey_artifact_builder.config import Resolver
+from lowkey_artifact_builder.config import (
+    ConfigError,
+    Resolver,
+)
 from lowkey_artifact_builder.engine import (
     StageContext,
     StageContextError,
@@ -578,3 +581,33 @@ def test_independent_context_matches_planned_context_for_every_stage(
         assert independent_context.resolver is planned_context.resolver
         assert independent_context.inputs == planned_context.inputs
         assert independent_context.outputs == planned_context.outputs
+
+
+def test_create_stage_context_translates_configuration_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Configuration failures are reported as stage context failures.
+    """
+
+    def fail(
+        *args,
+        **kwargs,
+    ):
+        raise ConfigError("artifact configuration is invalid")
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.context.get_resolver",
+        fail,
+    )
+
+    with pytest.raises(
+        StageContextError,
+        match="artifact configuration is invalid",
+    ):
+        create_stage_context(
+            "example",
+            stage_name="vector",
+            project_root=tmp_path,
+        )

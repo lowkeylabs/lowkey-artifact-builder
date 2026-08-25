@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 
 from lowkey_artifact_builder.config import (
+    ConfigError,
     get_resolver,
 )
 from lowkey_artifact_builder.engine.product_resolver import (
@@ -71,11 +72,15 @@ def create_stage_context(
 
     root = project_root if project_root is not None else Path.cwd()
 
-    resolver = get_resolver(
-        artifact_id,
-        realization=realization,
-        project_root=root,
-    )
+    try:
+        resolver = get_resolver(
+            artifact_id,
+            realization=realization,
+            project_root=root,
+        )
+
+    except ConfigError as exc:
+        raise StageContextError(str(exc)) from exc
 
     model_name = resolver(
         "model",

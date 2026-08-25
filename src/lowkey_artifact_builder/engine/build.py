@@ -35,11 +35,15 @@ from pathlib import Path
 from .context import (
     _create_resolved_stage_context,
 )
+from .operation import (
+    execute_artifact_stage as _execute_artifact_stage,
+)
 from .specs import (
     BuildPlan,
     PlannedInput,
     PlannedStage,
     StageContext,
+    StageContextError,
 )
 from .stage import (
     StageExecutionError,
@@ -118,6 +122,42 @@ def execute_builds(
 
     for plan in plans:
         execute_build(plan)
+
+
+def execute_artifact_stage(
+    artifact_id: str,
+    *,
+    stage_name: str,
+    realization: str | None = None,
+    project_root: Path | None = None,
+) -> None:
+    """
+    Execute exactly one configured artifact stage independently.
+
+    Independent stage execution resolves the requested StageContext,
+    validates that all required filesystem inputs already exist, and
+    executes exactly the requested stage.
+
+    Missing dependency products are not realized automatically and
+    prerequisite stages are not executed.
+
+    Stage resolution, readiness, and execution failures are translated
+    to the common BuildError boundary exposed to build-command callers.
+    """
+
+    try:
+        _execute_artifact_stage(
+            artifact_id,
+            stage_name=stage_name,
+            realization=realization,
+            project_root=project_root,
+        )
+
+    except (
+        StageContextError,
+        StageExecutionError,
+    ) as exc:
+        raise BuildError(str(exc)) from exc
 
 
 # =========================================================
@@ -512,4 +552,5 @@ __all__ = [
     "BuildError",
     "execute_build",
     "execute_builds",
+    "execute_artifact_stage",
 ]
