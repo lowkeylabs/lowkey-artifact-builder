@@ -10,13 +10,18 @@ BuildPlan. Only stages whose persistent products cannot be reused are
 executed. Successful execution records completion metadata using the
 fingerprint required by the current build context.
 
+Incremental execution may optionally expose semantic stage lifecycle
+observations through the engine event contract. Observation does not
+participate in execution decisions.
+
 Incremental artifact execution connects that orchestration to the
 established planned StageContext construction and stage-dispatch
 boundaries.
 
-This module coordinates existing planning, execution, and persistence
-boundaries. It does not implement model-specific stage behavior, gather
-product evidence directly, or evaluate ProductState directly.
+This module coordinates existing planning, execution, persistence, and
+observation boundaries. It does not implement model-specific stage
+behavior, gather product evidence directly, or evaluate ProductState
+directly.
 """
 # File: src/lowkey_artifact_builder/engine/incremental.py
 # Copyright 2026 LowKeyLabs LLC
@@ -33,6 +38,11 @@ from .completion import (
 )
 from .context import (
     create_planned_stage_context,
+)
+from .events import (
+    EventSink,
+    ExecutionEvent,
+    emit_event,
 )
 from .execution import (
     ExecutionPlan,
@@ -111,6 +121,7 @@ def execute_incremental_build(
     build_plan: BuildPlan,
     *,
     execute_stage: IncrementalStageExecutor,
+    event_sink: EventSink | None = None,
 ) -> ExecutionPlan:
     """
     Execute only stages required by the current persistent build state.
@@ -121,10 +132,19 @@ def execute_incremental_build(
 
     Required stages execute in realized build-plan order.
 
+    A stage.started event is emitted immediately before a required stage
+    is executed.
+
     Completion metadata is persisted only after the supplied stage
-    executor returns successfully. A failed stage therefore receives no
-    successful completion record from this operation, and the failure
-    propagates immediately without executing later stages.
+    executor returns successfully. A stage.completed event is emitted
+    only after successful completion metadata has been persisted.
+
+    A failed stage therefore receives no successful completion record or
+    stage.completed event, and the failure propagates immediately without
+    executing later stages.
+
+    Observation is optional and does not participate in execution
+    decisions.
 
     Return the ExecutionPlan used for this execution.
     """
@@ -150,6 +170,13 @@ def execute_incremental_build(
                 f"is unavailable from the build plan"
             ) from exc
 
+        _emit_stage_event(
+            event_sink,
+            build_plan=build_plan,
+            stage=stage,
+            kind="stage.started",
+        )
+
         execute_stage(
             stage,
         )
@@ -161,6 +188,13 @@ def execute_incremental_build(
                 fingerprint=fingerprints[stage.name],
             )
 
+        _emit_stage_event(
+            event_sink,
+            build_plan=build_plan,
+            stage=stage,
+            kind="stage.completed",
+        )
+
     return execution_plan
 
 
@@ -171,6 +205,8 @@ def execute_incremental_build(
 
 def execute_incremental_artifact_build(
     build_plan: BuildPlan,
+    *,
+    event_sink: EventSink | None = None,
 ) -> ExecutionPlan:
     """
     Execute an incremental build through the engine dispatch boundary.
@@ -189,6 +225,9 @@ def execute_incremental_artifact_build(
     Completion persistence remains owned by execute_incremental_build, so
     successful engine dispatch records the required build-context
     fingerprint while failed dispatch records no successful completion.
+
+    Structured lifecycle observation is forwarded to incremental
+    execution.
     """
 
     def execute_planned_stage(
@@ -211,6 +250,7 @@ def execute_incremental_artifact_build(
     return execute_incremental_build(
         build_plan,
         execute_stage=execute_planned_stage,
+        event_sink=event_sink,
     )
 
 
@@ -227,6 +267,34 @@ def execute_stage(
 
     dispatch_stage(
         context,
+    )
+
+
+# =========================================================
+# Execution events
+# =========================================================
+
+
+def _emit_stage_event(
+    event_sink: EventSink | None,
+    *,
+    build_plan: BuildPlan,
+    stage: PlannedStage,
+    kind: str,
+) -> None:
+    """
+    Emit one semantic stage lifecycle event.
+    """
+
+    emit_event(
+        event_sink,
+        ExecutionEvent(
+            kind=kind,
+            artifact_id=build_plan.artifact_id,
+            model_name=build_plan.model_name,
+            realization=build_plan.realization_name,
+            stage_name=stage.name,
+        ),
     )
 
 
