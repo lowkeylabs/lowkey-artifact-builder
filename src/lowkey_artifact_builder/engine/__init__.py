@@ -67,6 +67,8 @@ from .events import (
     emit_event,
 )
 from .evidence import (
+    PersistentProductStateResolver,
+    create_product_state_resolver,
     gather_product_evidence,
 )
 from .execution import (
@@ -122,6 +124,7 @@ __all__ = [
     "ProductState",
     "ProductStateEvent",
     "ProductStateResolver",
+    "PersistentProductStateResolver",
     "StageCompletion",
     "StageContext",
     "StageContextError",
@@ -133,6 +136,7 @@ __all__ = [
     "create_execution_plan",
     "create_product_fingerprint",
     "create_stage_context",
+    "create_product_state_resolver",
     "emit_event",
     "evaluate_product_state",
     "execute_artifact_stage",

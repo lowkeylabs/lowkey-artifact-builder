@@ -1,5 +1,5 @@
 """
-Persistent product evidence gathering.
+Persistent product evidence gathering and state resolution.
 
 Product evidence gathering inspects one expected persistent product and
 the completion metadata of its producing stage.
@@ -10,9 +10,11 @@ logical product as successfully produced. Persisted fingerprint provenance
 is compared with the fingerprint required by the current build context to
 establish freshness.
 
-This module gathers normalized ProductEvidence only. It does not evaluate
-ProductState, construct execution plans, emit execution events, or execute
-stages.
+Product-state resolution composes evidence gathering with semantic state
+evaluation while preserving the separation between those concerns.
+
+This module does not construct execution plans, emit execution events, or
+execute stages.
 """
 # File: src/lowkey_artifact_builder/engine/evidence.py
 # Copyright 2026 LowKeyLabs LLC
@@ -20,6 +22,7 @@ stages.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from .completion import (
@@ -31,7 +34,23 @@ from .freshness import (
 )
 from .state import (
     ProductEvidence,
+    ProductState,
+    evaluate_product_state,
 )
+
+# =========================================================
+# Product-state resolution
+# =========================================================
+
+
+type PersistentProductStateResolver = Callable[
+    [
+        str,
+        Path,
+    ],
+    ProductState,
+]
+
 
 # =========================================================
 # Product evidence gathering
@@ -96,10 +115,57 @@ def gather_product_evidence(
 
 
 # =========================================================
+# Product-state resolver
+# =========================================================
+
+
+def create_product_state_resolver(
+    *,
+    working_dir: Path,
+    required_fingerprints: dict[str, ProductFingerprint],
+) -> PersistentProductStateResolver:
+    """
+    Create a resolver for persistent products in one stage working directory.
+
+    The resolver gathers normalized evidence for each requested product,
+    supplies the fingerprint required by the current build context when
+    available, and converts that evidence into semantic ProductState.
+
+    Missing required fingerprint provenance cannot prove freshness and
+    therefore cannot produce CURRENT state.
+
+    Filesystem inspection and completion metadata interpretation remain
+    delegated to gather_product_evidence. Semantic classification remains
+    delegated to evaluate_product_state.
+    """
+
+    def resolve(
+        product_name: str,
+        product_path: Path,
+    ) -> ProductState:
+        evidence = gather_product_evidence(
+            working_dir=working_dir,
+            product_name=product_name,
+            product_path=product_path,
+            required_fingerprint=required_fingerprints.get(
+                product_name,
+            ),
+        )
+
+        return evaluate_product_state(
+            evidence,
+        )
+
+    return resolve
+
+
+# =========================================================
 # Exports
 # =========================================================
 
 
 __all__ = [
+    "PersistentProductStateResolver",
+    "create_product_state_resolver",
     "gather_product_evidence",
 ]
