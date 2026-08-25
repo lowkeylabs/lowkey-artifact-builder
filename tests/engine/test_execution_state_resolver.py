@@ -744,3 +744,124 @@ def test_missing_required_fingerprint_cannot_prove_current(
         )
         is ProductState.STALE
     )
+
+
+# =========================================================
+# Completion product identity
+# =========================================================
+
+
+def test_completion_missing_requested_product_cannot_prove_current(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Completion not recording the requested product cannot prove CURRENT.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    stage = _first_product_stage(
+        build_plan,
+    )
+
+    fingerprint = _fingerprint(
+        stage.name,
+    )
+
+    state = _resolve_with_completion(
+        build_plan=build_plan,
+        stage=stage,
+        completion=_completion(
+            build_plan,
+            stage,
+            products=("not-the-requested-product",),
+            fingerprint=fingerprint,
+        ),
+        required_fingerprint=fingerprint,
+    )
+
+    assert state is ProductState.INCOMPLETE
+
+
+def test_completion_with_requested_product_among_others_can_prove_current(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Completion may record multiple products when the requested one is present.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    stage = _first_product_stage(
+        build_plan,
+    )
+
+    product = stage.products[0]
+
+    fingerprint = _fingerprint(
+        stage.name,
+    )
+
+    state = _resolve_with_completion(
+        build_plan=build_plan,
+        stage=stage,
+        completion=_completion(
+            build_plan,
+            stage,
+            products=(
+                product.name,
+                "another-product",
+            ),
+            fingerprint=fingerprint,
+        ),
+        required_fingerprint=fingerprint,
+    )
+
+    assert state is ProductState.CURRENT
+
+
+def test_empty_completion_product_set_cannot_prove_current(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Completion recording no products cannot prove persistent-product reuse.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    stage = _first_product_stage(
+        build_plan,
+    )
+
+    fingerprint = _fingerprint(
+        stage.name,
+    )
+
+    state = _resolve_with_completion(
+        build_plan=build_plan,
+        stage=stage,
+        completion=_completion(
+            build_plan,
+            stage,
+            products=(),
+            fingerprint=fingerprint,
+        ),
+        required_fingerprint=fingerprint,
+    )
+
+    assert state is ProductState.INCOMPLETE
