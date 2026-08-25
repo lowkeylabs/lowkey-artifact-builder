@@ -1,17 +1,24 @@
 """
-Independent stage context construction.
+Stage context construction.
 
-This module resolves the execution context for one declared model stage
-without constructing a BuildPlan or traversing stage dependencies.
+This module constructs execution contexts for declared model stages.
 
-Independent context construction uses the same artifact configuration,
+Independent stage context construction resolves artifact configuration,
 model definitions, artifact-owned external input locations, canonical
-product locations, and working-directory semantics as graph-driven
-build execution.
+product locations, and working-directory semantics without constructing
+a BuildPlan.
+
+Planned stage context construction adapts an already-realized BuildPlan
+and one of its PlannedStage instances directly to StageContext. The
+BuildPlan remains authoritative for resolved configuration, filesystem
+locations, realization identity, and realized dependency structure.
+
+Both paths converge on the same resolved StageContext construction
+boundary.
 
 Construction is side-effect free. It does not create directories,
 materialize external inputs, validate prerequisite file existence, or
-execute the requested stage or any dependency.
+execute stages.
 """
 # File: src/lowkey_artifact_builder/engine/context.py
 # Copyright 2026 LowKeyLabs LLC
@@ -32,6 +39,8 @@ from lowkey_artifact_builder.engine.product_resolver import (
     ProductResolver,
 )
 from lowkey_artifact_builder.engine.specs import (
+    BuildPlan,
+    PlannedStage,
     StageContext,
     StageContextError,
 )
@@ -185,6 +194,157 @@ def create_stage_context(
         inputs=inputs,
         outputs=outputs,
     )
+
+
+def create_planned_stage_context(
+    build_plan: BuildPlan,
+    stage: PlannedStage,
+) -> StageContext:
+    """
+    Construct StageContext from one stage of an existing BuildPlan.
+
+    The supplied BuildPlan is authoritative. Configuration is not
+    resolved again and canonical product paths are not recomputed.
+
+    Explicit stage inputs use their already-realized artifact-owned
+    PlannedInput paths.
+
+    Products from direct dependency stages are exposed using qualified
+    names of the form '<stage>.<product>' and their already-realized
+    PlannedProduct paths.
+
+    Outputs use the already-realized product paths belonging to the
+    supplied PlannedStage.
+
+    The supplied stage must be the exact PlannedStage instance belonging
+    to the supplied BuildPlan. A structurally equal stage from another
+    plan is not accepted.
+
+    Construction is side-effect free.
+    """
+
+    _validate_planned_stage(
+        build_plan=build_plan,
+        stage=stage,
+    )
+
+    inputs = _planned_stage_inputs(
+        build_plan=build_plan,
+        stage=stage,
+    )
+
+    outputs = {product.name: product.path for product in stage.products}
+
+    return _create_resolved_stage_context(
+        artifact_id=build_plan.artifact_id,
+        model_name=build_plan.model_name,
+        stage_name=stage.name,
+        project_root=build_plan.project_root,
+        artifact_dir=build_plan.artifact_dir,
+        resolver=build_plan.resolver,
+        inputs=inputs,
+        outputs=outputs,
+    )
+
+
+# =========================================================
+# Planned context construction
+# =========================================================
+
+
+def _validate_planned_stage(
+    *,
+    build_plan: BuildPlan,
+    stage: PlannedStage,
+) -> None:
+    """
+    Validate that a PlannedStage belongs to the supplied BuildPlan.
+
+    Identity rather than value equality is required because two plans may
+    describe equivalent stage structure while belonging to different
+    artifact workspaces or realizations.
+    """
+
+    if not any(candidate is stage for candidate in build_plan.stages):
+        raise StageContextError(
+            f"Stage {stage.name!r} does not belong to "
+            f"build plan for artifact {build_plan.artifact_id!r}."
+        )
+
+
+def _planned_stage_inputs(
+    *,
+    build_plan: BuildPlan,
+    stage: PlannedStage,
+) -> dict[str, Path]:
+    """
+    Construct execution-facing inputs from an already-realized plan.
+
+    Explicit inputs use their PlannedInput paths.
+
+    Persistent products from direct dependency stages use qualified
+    semantic names. Transitive dependencies are intentionally excluded.
+    """
+
+    inputs: dict[str, Path] = {}
+
+    for planned_input in stage.inputs:
+        _add_planned_input(
+            build_plan=build_plan,
+            stage=stage,
+            inputs=inputs,
+            name=planned_input.name,
+            path=planned_input.path,
+        )
+
+    stages = {candidate.name: candidate for candidate in build_plan.stages}
+
+    for dependency_name in stage.dependencies:
+        try:
+            dependency = stages[dependency_name]
+
+        except KeyError as exc:
+            raise StageContextError(
+                f"Cannot construct context for stage "
+                f"{stage.name!r} "
+                f"of artifact {build_plan.artifact_id!r}: "
+                f"dependency {dependency_name!r} "
+                "is not present in the build plan."
+            ) from exc
+
+        for product in dependency.products:
+            _add_planned_input(
+                build_plan=build_plan,
+                stage=stage,
+                inputs=inputs,
+                name=f"{dependency.name}.{product.name}",
+                path=product.path,
+            )
+
+    return inputs
+
+
+def _add_planned_input(
+    *,
+    build_plan: BuildPlan,
+    stage: PlannedStage,
+    inputs: dict[str, Path],
+    name: str,
+    path: Path,
+) -> None:
+    """
+    Add one execution-facing input from an existing BuildPlan.
+    """
+
+    if name in inputs:
+        raise StageContextError(
+            f"Cannot construct context for stage "
+            f"{stage.name!r} "
+            f"of artifact {build_plan.artifact_id!r}: "
+            f"duplicate input name {name!r}."
+        )
+
+    inputs[name] = path
 
 
 # =========================================================
@@ -591,7 +751,7 @@ def _stage_working_directory(
     outputs: dict[str, Path],
 ) -> Path:
     """
-    Determine the working directory for independent stage execution.
+    Determine the working directory for stage execution.
 
     A stage with declared products executes from the common parent
     directory containing those products.
@@ -618,5 +778,6 @@ def _stage_working_directory(
 
 
 __all__ = [
+    "create_planned_stage_context",
     "create_stage_context",
 ]

@@ -10,6 +10,10 @@ BuildPlan. Only stages whose persistent products cannot be reused are
 executed. Successful execution records completion metadata using the
 fingerprint required by the current build context.
 
+Incremental artifact execution connects that orchestration to the
+established planned StageContext construction and stage-dispatch
+boundaries.
+
 This module coordinates existing planning, execution, and persistence
 boundaries. It does not implement model-specific stage behavior, gather
 product evidence directly, or evaluate ProductState directly.
@@ -27,6 +31,9 @@ from .completion import (
     StageCompletion,
     write_stage_completion,
 )
+from .context import (
+    create_planned_stage_context,
+)
 from .execution import (
     ExecutionPlan,
     create_execution_plan,
@@ -43,6 +50,10 @@ from .freshness import (
 from .specs import (
     BuildPlan,
     PlannedStage,
+    StageContext,
+)
+from .stage import (
+    execute_stage as dispatch_stage,
 )
 
 # =========================================================
@@ -154,6 +165,67 @@ def execute_incremental_build(
 
 
 # =========================================================
+# Engine-integrated incremental execution
+# =========================================================
+
+
+def execute_incremental_artifact_build(
+    build_plan: BuildPlan,
+) -> ExecutionPlan:
+    """
+    Execute an incremental build through the engine dispatch boundary.
+
+    Persistent-state-aware planning determines which realized stages
+    require execution.
+
+    Each required PlannedStage is adapted directly to the established
+    engine execution boundary using the same BuildPlan and PlannedStage
+    already participating in incremental planning.
+
+    This preserves the realized plan as the authoritative execution
+    description and avoids independently re-resolving artifact
+    configuration while dispatching the plan.
+
+    Completion persistence remains owned by execute_incremental_build, so
+    successful engine dispatch records the required build-context
+    fingerprint while failed dispatch records no successful completion.
+    """
+
+    def execute_planned_stage(
+        stage: PlannedStage,
+    ) -> None:
+        context = create_planned_stage_context(
+            build_plan,
+            stage,
+        )
+
+        execute_stage(
+            context,
+        )
+
+    return execute_incremental_build(
+        build_plan,
+        execute_stage=execute_planned_stage,
+    )
+
+
+def execute_stage(
+    context: StageContext,
+) -> None:
+    """
+    Dispatch one resolved StageContext.
+
+    This module-level boundary keeps engine dispatch replaceable for
+    orchestration tests while delegating production behavior to the
+    established stage executor.
+    """
+
+    dispatch_stage(
+        context,
+    )
+
+
+# =========================================================
 # Execution-plan composition
 # =========================================================
 
@@ -253,6 +325,7 @@ def _stage_working_dir(
 
 __all__ = [
     "IncrementalStageExecutor",
+    "execute_incremental_artifact_build",
     "execute_incremental_build",
     "plan_incremental_execution",
 ]

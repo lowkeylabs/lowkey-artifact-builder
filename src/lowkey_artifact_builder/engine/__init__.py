@@ -69,6 +69,7 @@ from .completion import (
     write_stage_completion,
 )
 from .context import (
+    create_planned_stage_context,
     create_stage_context,
 )
 from .events import (
@@ -105,6 +106,7 @@ from .freshness import (
 )
 from .incremental import (
     IncrementalStageExecutor,
+    execute_incremental_artifact_build,
     execute_incremental_build,
     plan_incremental_execution,
 )
@@ -162,6 +164,7 @@ __all__ = [
     "create_build_plans",
     "create_execution_plan",
     "create_execution_state_resolver",
+    "create_planned_stage_context",
     "create_product_fingerprint",
     "create_product_state_resolver",
     "create_required_fingerprints",
@@ -175,6 +178,7 @@ __all__ = [
     "gather_product_evidence",
     "plan_execution",
     "plan_incremental_execution",
+    "execute_incremental_artifact_build",
     "IncrementalStageExecutor",
     "execute_incremental_build",
     "product_is_fresh",
