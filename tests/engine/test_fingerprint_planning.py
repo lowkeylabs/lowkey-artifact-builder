@@ -3,13 +3,15 @@ Tests for build-plan fingerprint resolution.
 
 Build-plan fingerprint resolution derives the fingerprint required by each
 realized stage from that stage's operation identity, resolved parameters,
-and required fingerprints of its realized dependency stages.
+external input contents, and required fingerprints of its realized
+dependency stages.
 
 Stage parameters are declared by StageSpec and resolved through the
 BuildPlan's authoritative realization Resolver.
 
-External filesystem input content provenance is intentionally outside this
-slice and is introduced separately.
+Tests focused on parameter and dependency provenance materialize stable
+external input content so external-input provenance remains constant while
+the behavior under test varies.
 """
 # File: tests/engine/test_fingerprint_planning.py
 # Copyright 2026 LowKeyLabs LLC
@@ -24,6 +26,7 @@ import pytest
 
 from lowkey_artifact_builder.engine import (
     BuildPlan,
+    PlannedStage,
     ProductFingerprint,
     create_required_fingerprints,
 )
@@ -48,7 +51,7 @@ def _fingerprint_values(
 
 def _parameter_stage(
     build_plan: BuildPlan,
-):
+) -> PlannedStage:
     """
     Return the first realized stage declaring at least one parameter.
     """
@@ -62,7 +65,7 @@ def _parameter_stage(
 
 def _dependency_stage(
     build_plan: BuildPlan,
-):
+) -> PlannedStage:
     """
     Return the first realized stage declaring at least one dependency.
     """
@@ -99,6 +102,32 @@ def _descendant_stage_names(
     )
 
 
+def _materialize_external_inputs(
+    build_plan: BuildPlan,
+) -> None:
+    """
+    Materialize deterministic content for all declared external inputs.
+
+    Build-plan fingerprint construction includes external input contents,
+    so tests exercising parameter and dependency provenance must provide
+    those required inputs.
+
+    Identical content is used for every plan so workspace location cannot
+    affect provenance.
+    """
+
+    for stage in build_plan.stages:
+        for planned_input in stage.inputs:
+            planned_input.path.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            planned_input.path.write_bytes(
+                b"fingerprint-planning-test-input",
+            )
+
+
 # =========================================================
 # Required fingerprint construction
 # =========================================================
@@ -116,6 +145,10 @@ def test_required_fingerprints_include_every_realized_stage(
     build_plan = artwork_plan(
         tmp_path,
         monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
     )
 
     fingerprints = create_required_fingerprints(
@@ -141,6 +174,10 @@ def test_required_fingerprints_use_sha256(
         monkeypatch,
     )
 
+    _materialize_external_inputs(
+        build_plan,
+    )
+
     fingerprints = create_required_fingerprints(
         build_plan,
     )
@@ -160,6 +197,10 @@ def test_required_fingerprints_are_deterministic(
     build_plan = artwork_plan(
         tmp_path,
         monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
     )
 
     first = create_required_fingerprints(
@@ -185,6 +226,10 @@ def test_required_fingerprints_preserve_stage_order(
     build_plan = artwork_plan(
         tmp_path,
         monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
     )
 
     fingerprints = create_required_fingerprints(
@@ -213,6 +258,10 @@ def test_stage_fingerprint_depends_on_declared_resolved_parameters(
     build_plan = artwork_plan(
         tmp_path,
         monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
     )
 
     stage = _parameter_stage(
@@ -270,6 +319,10 @@ def test_stage_fingerprint_ignores_undeclared_parameter(
         monkeypatch,
     )
 
+    _materialize_external_inputs(
+        build_plan,
+    )
+
     stage = _parameter_stage(
         build_plan,
     )
@@ -322,6 +375,10 @@ def test_dependency_stage_has_required_fingerprint(
         monkeypatch,
     )
 
+    _materialize_external_inputs(
+        build_plan,
+    )
+
     stage = _dependency_stage(
         build_plan,
     )
@@ -345,6 +402,10 @@ def test_changed_stage_parameter_propagates_to_descendants(
     build_plan = artwork_plan(
         tmp_path,
         monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
     )
 
     stage = _parameter_stage(
@@ -413,6 +474,10 @@ def test_dependency_fingerprints_distinguish_stage_contexts(
         monkeypatch,
     )
 
+    _materialize_external_inputs(
+        build_plan,
+    )
+
     fingerprints = create_required_fingerprints(
         build_plan,
     )
@@ -421,7 +486,9 @@ def test_dependency_fingerprints_distinguish_stage_contexts(
 
     assert len(
         set(values),
-    ) == len(values)
+    ) == len(
+        values,
+    )
 
 
 # =========================================================
@@ -446,6 +513,14 @@ def test_required_fingerprints_do_not_depend_on_workspace_location(
     second_plan = artwork_plan(
         tmp_path / "second",
         monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        first_plan,
+    )
+
+    _materialize_external_inputs(
+        second_plan,
     )
 
     first = create_required_fingerprints(

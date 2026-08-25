@@ -2,24 +2,29 @@
 Build-plan fingerprint resolution.
 
 Build-plan fingerprint resolution derives the fingerprint required by each
-realized stage from its operation identity, resolved parameter values, and
-the required fingerprints of its realized dependency stages.
+realized stage from its operation identity, resolved parameter values,
+external input contents, and the required fingerprints of its realized
+dependency stages.
 
 Stage parameters are declared by StageSpec and resolved through the
 BuildPlan's authoritative realization Resolver.
 
+External filesystem inputs contribute content fingerprints rather than
+filesystem paths or timestamps, so equivalent content has equivalent
+provenance across workspaces.
+
 Dependency fingerprints propagate required build context through the
 realized stage graph without inspecting persistent products or completion
 metadata.
-
-External filesystem input content provenance is intentionally outside this
-module's current responsibility and is introduced separately.
 """
 # File: src/lowkey_artifact_builder/engine/fingerprint_plan.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
+
+import hashlib
+from pathlib import Path
 
 from .freshness import (
     ProductFingerprint,
@@ -29,6 +34,14 @@ from .specs import (
     BuildPlan,
     PlannedStage,
 )
+
+# =========================================================
+# Constants
+# =========================================================
+
+
+_CONTENT_FINGERPRINT_ALGORITHM = "sha256"
+
 
 # =========================================================
 # Required fingerprint construction
@@ -55,13 +68,12 @@ def create_required_fingerprints(
         resolved through the BuildPlan's authoritative Resolver.
 
     inputs
-        Required fingerprints of declared dependency stages.
+        Content fingerprints of declared external filesystem inputs and
+        required fingerprints of declared dependency stages.
 
-    Filesystem destinations do not participate in fingerprint generation,
-    so equivalent build contexts remain portable across workspaces.
-
-    External filesystem input content is not yet represented in the
-    fingerprint. That provenance is introduced separately.
+    Filesystem destinations and timestamps do not participate in
+    fingerprint generation, so equivalent build contexts remain portable
+    across workspaces.
     """
 
     fingerprints: dict[str, ProductFingerprint] = {}
@@ -99,6 +111,12 @@ def _create_stage_fingerprint(
     inputs = _resolve_dependency_fingerprints(
         stage=stage,
         fingerprints=fingerprints,
+    )
+
+    inputs.update(
+        _resolve_external_input_fingerprints(
+            stage=stage,
+        )
     )
 
     return create_product_fingerprint(
@@ -147,8 +165,8 @@ def _resolve_dependency_fingerprints(
     """
     Resolve required fingerprints of one stage's dependencies.
 
-    Dependency identity and complete fingerprint identity are represented
-    deterministically in the input namespace.
+    Dependency identities occupy an explicit namespace so they cannot
+    collide with logical external-input identities.
 
     Missing dependency fingerprints indicate that the realized BuildPlan
     is not ordered consistently with its dependency graph and therefore
@@ -167,9 +185,87 @@ def _resolve_dependency_fingerprints(
                 f"is unavailable"
             ) from exc
 
-        inputs[dependency] = f"{fingerprint.algorithm}:{fingerprint.value}"
+        inputs[f"dependency:{dependency}"] = _format_fingerprint(
+            fingerprint,
+        )
 
     return inputs
+
+
+# =========================================================
+# External input resolution
+# =========================================================
+
+
+def _resolve_external_input_fingerprints(
+    *,
+    stage: PlannedStage,
+) -> dict[str, str]:
+    """
+    Resolve content fingerprints of one stage's external inputs.
+
+    External inputs are identified by their logical input names rather
+    than filesystem paths. Their contents are hashed directly so moving
+    equivalent input data between workspaces does not change provenance.
+
+    Missing or unreadable input files fail rather than producing synthetic
+    provenance.
+    """
+
+    return {
+        f"external:{planned_input.name}": _format_fingerprint(
+            _fingerprint_file(
+                planned_input.path,
+            )
+        )
+        for planned_input in stage.inputs
+    }
+
+
+def _fingerprint_file(
+    path: Path,
+) -> ProductFingerprint:
+    """
+    Create a deterministic content fingerprint for one external file.
+
+    File contents are streamed into SHA-256 so fingerprint calculation does
+    not require loading the complete input into memory.
+
+    Filesystem metadata such as path, modification time, ownership, and
+    permissions does not participate in the fingerprint.
+    """
+
+    digest = hashlib.sha256()
+
+    with path.open(
+        "rb",
+    ) as stream:
+        while chunk := stream.read(
+            1024 * 1024,
+        ):
+            digest.update(
+                chunk,
+            )
+
+    return ProductFingerprint(
+        algorithm=_CONTENT_FINGERPRINT_ALGORITHM,
+        value=digest.hexdigest(),
+    )
+
+
+# =========================================================
+# Fingerprint representation
+# =========================================================
+
+
+def _format_fingerprint(
+    fingerprint: ProductFingerprint,
+) -> str:
+    """
+    Return the stable serialized identity of one fingerprint.
+    """
+
+    return f"{fingerprint.algorithm}:{fingerprint.value}"
 
 
 # =========================================================
