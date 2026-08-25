@@ -24,8 +24,8 @@ before selecting the next change.
 - Phase 5 — Complete
 - Phase 6 — Complete
 - Phase 7 — Complete
-- Phase 8 — Started
-- Phase 9 — Not started
+- Phase 8 — Complete
+- Phase 9 — Started
 - Phase 10 — Not started
 - Phase 11 — Not started
 ---
