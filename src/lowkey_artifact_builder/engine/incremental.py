@@ -212,6 +212,12 @@ def execute_incremental_build(
                 kind="stage.failed",
             )
 
+            _emit_build_event(
+                event_sink,
+                build_plan=build_plan,
+                kind="build.failed",
+            )
+
             raise
 
         if stage.products:
