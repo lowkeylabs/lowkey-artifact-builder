@@ -99,16 +99,25 @@ def emit_event(
     """
     Deliver one execution event to an optional observer.
 
-    Observation is a side channel only. The observer's return value is
-    deliberately ignored and cannot participate in execution decisions.
+    Event observation is best-effort and does not participate in the
+    engine operation being observed.
+
+    A missing sink is a no-op. Exceptions raised by a sink are suppressed
+    so observer failure cannot alter planning, execution, persistence, or
+    build results.
+
+    Failed delivery is attempted only once.
     """
 
     if sink is None:
         return
 
-    sink(
-        event,
-    )
+    try:
+        sink(
+            event,
+        )
+    except Exception:
+        return
 
 
 # =========================================================
