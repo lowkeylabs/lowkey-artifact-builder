@@ -23,6 +23,9 @@ realizations and their declared products.
 
 Product-state evaluation converts normalized persistent-product evidence
 into semantic state independently of evidence gathering.
+
+Execution planning policy determines whether realized stages require
+execution from the persistent state of their declared products.
 """
 # File: src/lowkey_artifact_builder/engine/__init__.py
 # Copyright 2026 LowKeyLabs LLC
@@ -48,6 +51,9 @@ from .events import (
     ExecutionEvent,
     ProductStateEvent,
     emit_event,
+)
+from .execution import (
+    stage_requires_execution,
 )
 from .plan import (
     BuildPlanError,
@@ -102,6 +108,7 @@ __all__ = [
     "execute_builds",
     "execute_stage",
     "read_stage_completion",
+    "stage_requires_execution",
     "validate_stage_inputs",
     "write_stage_completion",
 ]
