@@ -146,14 +146,31 @@ def _display_execution_event(
     event: ExecutionEvent,
 ) -> None:
     """
-    Consume one semantic execution event.
+    Present one semantic incremental execution event.
 
-    Detailed CLI presentation is intentionally deferred. This boundary
-    allows normal artifact builds to observe incremental execution
-    without embedding presentation policy in the engine.
+    Build events identify the realized artifact build. Stage events
+    identify whether a stage is executing, completed successfully, or
+    reused from persistent state.
     """
 
-    return
+    if event.kind == "build.started":
+        click.echo(f"Building {event.artifact_id} ({event.model_name}/{event.realization})")
+        return
+
+    if event.kind == "build.completed":
+        click.echo(f"Build completed: {event.artifact_id}")
+        return
+
+    if event.kind == "stage.started":
+        click.echo(f"Stage started: {event.stage_name}")
+        return
+
+    if event.kind == "stage.completed":
+        click.echo(f"Stage completed: {event.stage_name}")
+        return
+
+    if event.kind == "stage.skipped":
+        click.echo(f"Stage skipped: {event.stage_name}")
 
 
 # =========================================================
