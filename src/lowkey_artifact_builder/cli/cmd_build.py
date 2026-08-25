@@ -149,8 +149,8 @@ def _display_execution_event(
     Present one semantic incremental execution event.
 
     Build events identify the realized artifact build. Stage events
-    identify whether a stage is executing, completed successfully, or
-    reused from persistent state.
+    identify whether a stage is executing, completed successfully,
+    reused from persistent state, or failed.
     """
 
     if event.kind == "build.started":
@@ -159,6 +159,10 @@ def _display_execution_event(
 
     if event.kind == "build.completed":
         click.echo(f"Build completed: {event.artifact_id}")
+        return
+
+    if event.kind == "build.failed":
+        click.echo(f"Build failed: {event.artifact_id}")
         return
 
     if event.kind == "stage.started":
@@ -171,6 +175,10 @@ def _display_execution_event(
 
     if event.kind == "stage.skipped":
         click.echo(f"Stage skipped: {event.stage_name}")
+        return
+
+    if event.kind == "stage.failed":
+        click.echo(f"Stage failed: {event.stage_name}")
 
 
 # =========================================================

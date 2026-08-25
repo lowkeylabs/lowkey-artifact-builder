@@ -160,3 +160,39 @@ def test_stage_skipped_is_displayed() -> None:
 
     assert "raster" in output
     assert "skipped" in output.lower()
+
+
+# =========================================================
+# Failure events
+# =========================================================
+
+
+def test_stage_failed_is_displayed() -> None:
+    """
+    Stage failure identifies the stage that failed.
+    """
+
+    output = _display(
+        _event(
+            "stage.failed",
+            stage_name="raster",
+        )
+    )
+
+    assert "raster" in output
+    assert "failed" in output.lower()
+
+
+def test_build_failed_is_displayed() -> None:
+    """
+    Build failure identifies the artifact whose build failed.
+    """
+
+    output = _display(
+        _event(
+            "build.failed",
+        )
+    )
+
+    assert "skippy" in output
+    assert "failed" in output.lower()
