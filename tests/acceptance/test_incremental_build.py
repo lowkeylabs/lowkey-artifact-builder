@@ -374,3 +374,91 @@ def test_changed_artwork_rebuild_reconverges(
         )
         == ()
     )
+
+
+# =========================================================
+# Real incremental convergence
+# =========================================================
+
+
+@pytest.mark.slow
+def test_second_incremental_build_preserves_final_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Reusing a completed realization preserves the existing final 3MF.
+    """
+
+    project_root = tmp_path
+
+    _configure_artifact(
+        project_root=project_root,
+        monkeypatch=monkeypatch,
+    )
+
+    plan = _create_plan(
+        project_root,
+    )
+
+    execute_incremental_artifact_build(
+        plan,
+    )
+
+    output = _artifact_output(
+        plan,
+    )
+
+    assert output.is_file()
+
+    original = output.read_bytes()
+
+    second = execute_incremental_artifact_build(
+        plan,
+    )
+
+    assert second.required_stages == ()
+
+    assert output.is_file()
+    assert output.read_bytes() == original
+
+
+@pytest.mark.slow
+def test_second_incremental_build_preserves_product_mtimes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Reusable persistent products are not rewritten by an unchanged build.
+    """
+
+    project_root = tmp_path
+
+    _configure_artifact(
+        project_root=project_root,
+        monkeypatch=monkeypatch,
+    )
+
+    plan = _create_plan(
+        project_root,
+    )
+
+    execute_incremental_artifact_build(
+        plan,
+    )
+
+    products = tuple(product for stage in plan.stages for product in stage.products)
+
+    assert products
+
+    before = {product.path: product.path.stat().st_mtime_ns for product in products}
+
+    second = execute_incremental_artifact_build(
+        plan,
+    )
+
+    assert second.required_stages == ()
+
+    after = {product.path: product.path.stat().st_mtime_ns for product in products}
+
+    assert after == before
