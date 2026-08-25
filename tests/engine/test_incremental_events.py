@@ -322,3 +322,259 @@ def test_incremental_build_without_event_sink_preserves_execution(
     ) == _persistent_stage_names(
         build_plan,
     )
+
+
+# =========================================================
+# Failed stage lifecycle
+# =========================================================
+
+
+def test_incremental_build_emits_failed_event_after_stage_failure(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A failed required stage emits stage.failed after stage.started.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    failing_stage = next(stage for stage in build_plan.stages if stage.products)
+
+    events: list[ExecutionEvent] = []
+
+    class ExpectedError(Exception):
+        """
+        Expected stage execution failure.
+        """
+
+    def execute(
+        stage: PlannedStage,
+    ) -> None:
+        if stage.name == failing_stage.name:
+            raise ExpectedError("expected failure")
+
+        _materialize_stage_products(
+            stage,
+        )
+
+    with pytest.raises(
+        ExpectedError,
+        match="expected failure",
+    ):
+        execute_incremental_build(
+            build_plan,
+            execute_stage=execute,
+            event_sink=events.append,
+        )
+
+    lifecycle = tuple(
+        (
+            event.kind,
+            event.stage_name,
+        )
+        for event in events
+        if event.kind
+        in {
+            "stage.started",
+            "stage.completed",
+            "stage.failed",
+        }
+    )
+
+    assert lifecycle == (
+        (
+            "stage.started",
+            failing_stage.name,
+        ),
+        (
+            "stage.failed",
+            failing_stage.name,
+        ),
+    )
+
+
+def test_failed_stage_does_not_emit_completed_event(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Failed execution never emits successful stage completion.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    failing_stage = next(stage for stage in build_plan.stages if stage.products)
+
+    events: list[ExecutionEvent] = []
+
+    class ExpectedError(Exception):
+        """
+        Expected stage execution failure.
+        """
+
+    def execute(
+        stage: PlannedStage,
+    ) -> None:
+        if stage.name == failing_stage.name:
+            raise ExpectedError
+
+        _materialize_stage_products(
+            stage,
+        )
+
+    with pytest.raises(
+        ExpectedError,
+    ):
+        execute_incremental_build(
+            build_plan,
+            execute_stage=execute,
+            event_sink=events.append,
+        )
+
+    assert not any(
+        event.kind == "stage.completed" and event.stage_name == failing_stage.name
+        for event in events
+    )
+
+
+def test_failed_stage_event_includes_realized_identity(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Failure observation identifies the realized stage that failed.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    failing_stage = next(stage for stage in build_plan.stages if stage.products)
+
+    events: list[ExecutionEvent] = []
+
+    class ExpectedError(Exception):
+        """
+        Expected stage execution failure.
+        """
+
+    def execute(
+        stage: PlannedStage,
+    ) -> None:
+        if stage.name == failing_stage.name:
+            raise ExpectedError
+
+        _materialize_stage_products(
+            stage,
+        )
+
+    with pytest.raises(
+        ExpectedError,
+    ):
+        execute_incremental_build(
+            build_plan,
+            execute_stage=execute,
+            event_sink=events.append,
+        )
+
+    failed = tuple(event for event in events if event.kind == "stage.failed")
+
+    assert len(failed) == 1
+
+    event = failed[0]
+
+    assert event.artifact_id == build_plan.artifact_id
+    assert event.model_name == build_plan.model_name
+    assert event.realization == build_plan.realization_name
+    assert event.stage_name == failing_stage.name
+
+
+def test_incremental_failure_stops_later_stage_events(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    No lifecycle events are emitted for stages after a failed stage.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    persistent = tuple(stage for stage in build_plan.stages if stage.products)
+
+    assert len(persistent) >= 2
+
+    failing_stage = persistent[0]
+
+    later_names = {stage.name for stage in persistent[1:]}
+
+    events: list[ExecutionEvent] = []
+
+    class ExpectedError(Exception):
+        """
+        Expected stage execution failure.
+        """
+
+    def execute(
+        stage: PlannedStage,
+    ) -> None:
+        if stage.name == failing_stage.name:
+            raise ExpectedError
+
+        _materialize_stage_products(
+            stage,
+        )
+
+    with pytest.raises(
+        ExpectedError,
+    ):
+        execute_incremental_build(
+            build_plan,
+            execute_stage=execute,
+            event_sink=events.append,
+        )
+
+    observed_stage_names = {
+        event.stage_name
+        for event in events
+        if event.kind
+        in {
+            "stage.started",
+            "stage.completed",
+            "stage.failed",
+        }
+    }
+
+    assert observed_stage_names.isdisjoint(
+        later_names,
+    )

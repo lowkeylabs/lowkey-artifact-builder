@@ -135,13 +135,16 @@ def execute_incremental_build(
     A stage.started event is emitted immediately before a required stage
     is executed.
 
+    If stage execution fails, a stage.failed event is emitted and the
+    original exception propagates immediately without executing later
+    stages.
+
     Completion metadata is persisted only after the supplied stage
     executor returns successfully. A stage.completed event is emitted
     only after successful completion metadata has been persisted.
 
     A failed stage therefore receives no successful completion record or
-    stage.completed event, and the failure propagates immediately without
-    executing later stages.
+    stage.completed event.
 
     Observation is optional and does not participate in execution
     decisions.
@@ -177,9 +180,19 @@ def execute_incremental_build(
             kind="stage.started",
         )
 
-        execute_stage(
-            stage,
-        )
+        try:
+            execute_stage(
+                stage,
+            )
+        except Exception:
+            _emit_stage_event(
+                event_sink,
+                build_plan=build_plan,
+                stage=stage,
+                kind="stage.failed",
+            )
+
+            raise
 
         if stage.products:
             _write_successful_completion(
