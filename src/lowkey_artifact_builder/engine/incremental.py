@@ -10,9 +10,9 @@ BuildPlan. Only stages whose persistent products cannot be reused are
 executed. Successful execution records completion metadata using the
 fingerprint required by the current build context.
 
-Incremental execution may optionally expose semantic stage lifecycle
-observations through the engine event contract. Observation does not
-participate in execution decisions.
+Incremental execution may optionally expose semantic product-state and
+stage lifecycle observations through the engine event contract.
+Observation does not participate in execution decisions.
 
 Incremental artifact execution connects that orchestration to the
 established planned StageContext construction and stage-dispatch
@@ -42,6 +42,7 @@ from .context import (
 from .events import (
     EventSink,
     ExecutionEvent,
+    ProductStateEvent,
     emit_event,
 )
 from .execution import (
@@ -49,6 +50,7 @@ from .execution import (
     create_execution_plan,
 )
 from .execution_state import (
+    ProductState,
     create_execution_state_resolver,
 )
 from .fingerprint_plan import (
@@ -130,6 +132,9 @@ def execute_incremental_build(
     This provides one coherent build-context snapshot for both execution
     planning and subsequently persisted completion metadata.
 
+    Product-state observations are emitted while the execution plan is
+    constructed.
+
     Realized stages are observed in build-plan order.
 
     Reusable stages emit a stage.skipped event and are not executed.
@@ -160,6 +165,7 @@ def execute_incremental_build(
     execution_plan = _create_incremental_execution_plan(
         build_plan=build_plan,
         fingerprints=fingerprints,
+        event_sink=event_sink,
     )
 
     required_stage_names = {
@@ -243,8 +249,8 @@ def execute_incremental_artifact_build(
     successful engine dispatch records the required build-context
     fingerprint while failed dispatch records no successful completion.
 
-    Structured lifecycle observation is forwarded to incremental
-    execution.
+    Structured product-state and lifecycle observation is forwarded to
+    incremental execution.
     """
 
     def execute_planned_stage(
@@ -315,6 +321,31 @@ def _emit_stage_event(
     )
 
 
+def _emit_product_state_event(
+    event_sink: EventSink | None,
+    *,
+    build_plan: BuildPlan,
+    stage: PlannedStage,
+    product_name: str,
+    state: ProductState,
+) -> None:
+    """
+    Emit one semantic persistent product-state observation.
+    """
+
+    emit_event(
+        event_sink,
+        ProductStateEvent(
+            artifact_id=build_plan.artifact_id,
+            model_name=build_plan.model_name,
+            realization=build_plan.realization_name,
+            stage_name=stage.name,
+            product_name=product_name,
+            state=state,
+        ),
+    )
+
+
 # =========================================================
 # Execution-plan composition
 # =========================================================
@@ -324,9 +355,14 @@ def _create_incremental_execution_plan(
     *,
     build_plan: BuildPlan,
     fingerprints: dict[str, ProductFingerprint],
+    event_sink: EventSink | None = None,
 ) -> ExecutionPlan:
     """
     Construct an execution plan using precomputed required fingerprints.
+
+    When an event sink is supplied, each persistent product-state
+    resolution is exposed through a ProductStateEvent without changing
+    the resolved state or execution decision.
     """
 
     def required_fingerprint(
@@ -339,14 +375,33 @@ def _create_incremental_execution_plan(
                 f"Required fingerprint for stage {stage.name!r} is unavailable"
             ) from exc
 
-    product_state = create_execution_state_resolver(
+    resolve_product_state = create_execution_state_resolver(
         build_plan,
         required_fingerprint=required_fingerprint,
     )
 
+    def observed_product_state(
+        stage: PlannedStage,
+        product_name: str,
+    ) -> ProductState:
+        state = resolve_product_state(
+            stage,
+            product_name,
+        )
+
+        _emit_product_state_event(
+            event_sink,
+            build_plan=build_plan,
+            stage=stage,
+            product_name=product_name,
+            state=state,
+        )
+
+        return state
+
     return create_execution_plan(
         build_plan,
-        product_state=product_state,
+        product_state=observed_product_state,
     )
 
 
