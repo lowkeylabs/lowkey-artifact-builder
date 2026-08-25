@@ -78,6 +78,11 @@ from .execution import (
     create_execution_plan,
     stage_requires_execution,
 )
+from .execution_state import (
+    ExecutionProductStateResolver,
+    RequiredFingerprintResolver,
+    create_execution_state_resolver,
+)
 from .freshness import (
     ProductFingerprint,
     create_product_fingerprint,
@@ -149,4 +154,7 @@ __all__ = [
     "stage_requires_execution",
     "validate_stage_inputs",
     "write_stage_completion",
+    "ExecutionProductStateResolver",
+    "RequiredFingerprintResolver",
+    "create_execution_state_resolver",
 ]
