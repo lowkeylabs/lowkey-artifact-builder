@@ -1,8 +1,11 @@
 """
 Build command.
 
-Builds configured artifacts from their declared model workflows or
-executes one explicitly requested artifact stage independently.
+Builds configured artifacts from their declared model workflows.
+
+A configured artifact may also execute exactly one declared stage
+independently, with optional explicit input, parameter, and output
+bindings.
 """
 # File: src/lowkey_artifact_builder/cli/cmd_build.py
 # Copyright 2026 LowKeyLabs LLC
@@ -14,6 +17,11 @@ from pathlib import Path
 
 import click
 
+from lowkey_artifact_builder.cli.bindings import (
+    BindingError,
+    parse_parameter_bindings,
+    parse_path_bindings,
+)
 from lowkey_artifact_builder.cli.display import (
     display_build_plan,
 )
@@ -37,14 +45,36 @@ from lowkey_artifact_builder.engine import (
 )
 @click.option(
     "--stage",
-    "stage_name",
-    metavar="STAGE",
-    help="Execute exactly one stage independently.",
+    type=str,
+    default=None,
+    help="Execute exactly one declared stage independently.",
 )
 @click.option(
     "--realization",
-    metavar="REALIZATION",
+    type=str,
+    default=None,
     help="Select the realization for independent stage execution.",
+)
+@click.option(
+    "--input",
+    "input_bindings",
+    metavar="NAME=PATH",
+    multiple=True,
+    help="Bind a declared stage input to a filesystem path.",
+)
+@click.option(
+    "--parameter",
+    "parameter_bindings",
+    metavar="NAME=VALUE",
+    multiple=True,
+    help="Bind a declared stage parameter to an explicit value.",
+)
+@click.option(
+    "--output",
+    "output_bindings",
+    metavar="NAME=PATH",
+    multiple=True,
+    help="Bind a declared stage output to a filesystem path.",
 )
 @click.option(
     "--dry-run",
@@ -53,8 +83,11 @@ from lowkey_artifact_builder.engine import (
 )
 def cli(
     artifact_ids: tuple[str, ...],
-    stage_name: str | None,
+    stage: str | None,
     realization: str | None,
+    input_bindings: tuple[str, ...],
+    parameter_bindings: tuple[str, ...],
+    output_bindings: tuple[str, ...],
     dry_run: bool,
 ) -> None:
     """
@@ -62,83 +95,62 @@ def cli(
 
     Positional arguments are artifact IDs.
 
-    When --stage is supplied, exactly one stage of exactly one artifact
-    is executed independently. Required stage inputs must already exist.
+    Without --stage, the complete configured artifact workflow is
+    planned and executed.
+
+    With --stage, exactly one declared stage is executed independently.
+    Explicit input, parameter, and output bindings apply only to this
+    independent stage execution mode.
     """
 
     if not artifact_ids:
         raise click.UsageError("At least one artifact ID is required.")
 
-    if stage_name is not None:
+    if stage is not None:
         _execute_stage(
             artifact_ids,
-            stage_name=stage_name,
+            stage_name=stage,
             realization=realization,
+            input_bindings=input_bindings,
+            parameter_bindings=parameter_bindings,
+            output_bindings=output_bindings,
             dry_run=dry_run,
-            project_root=Path.cwd(),
         )
-
         return
 
     if realization is not None:
         raise click.UsageError("--realization requires --stage.")
 
-    _execute_builds(
+    if input_bindings:
+        raise click.UsageError("--input requires --stage.")
+
+    if parameter_bindings:
+        raise click.UsageError("--parameter requires --stage.")
+
+    if output_bindings:
+        raise click.UsageError("--output requires --stage.")
+
+    _execute_build(
         artifact_ids,
         dry_run=dry_run,
-        project_root=Path.cwd(),
     )
 
 
 # =========================================================
-# Independent stage execution
+# Graph-driven build
 # =========================================================
 
 
-def _execute_stage(
-    artifact_ids: tuple[str, ...],
-    *,
-    stage_name: str,
-    realization: str | None,
-    dry_run: bool,
-    project_root: Path,
-) -> None:
-    """
-    Execute one explicitly requested artifact stage.
-    """
-
-    if len(artifact_ids) != 1:
-        raise click.UsageError("Explicit stage execution requires a single artifact.")
-
-    if dry_run:
-        raise click.UsageError("--dry-run cannot be used with --stage.")
-
-    try:
-        execute_artifact_stage(
-            artifact_ids[0],
-            stage_name=stage_name,
-            realization=realization,
-            project_root=project_root,
-        )
-
-    except BuildError as exc:
-        raise click.ClickException(str(exc)) from exc
-
-
-# =========================================================
-# Graph-driven build execution
-# =========================================================
-
-
-def _execute_builds(
+def _execute_build(
     artifact_ids: tuple[str, ...],
     *,
     dry_run: bool,
-    project_root: Path,
 ) -> None:
     """
     Execute normal graph-driven artifact builds.
     """
+
+    project_root = Path.cwd()
 
     for artifact_id in artifact_ids:
         try:
@@ -164,6 +176,70 @@ def _execute_builds(
             BuildError,
         ) as exc:
             raise click.ClickException(str(exc)) from exc
+
+
+# =========================================================
+# Independent stage execution
+# =========================================================
+
+
+def _execute_stage(
+    artifact_ids: tuple[str, ...],
+    *,
+    stage_name: str,
+    realization: str | None,
+    input_bindings: tuple[str, ...],
+    parameter_bindings: tuple[str, ...],
+    output_bindings: tuple[str, ...],
+    dry_run: bool,
+) -> None:
+    """
+    Execute exactly one declared artifact stage independently.
+
+    Command-line bindings are translated into the typed mappings
+    consumed by the engine. Stage-specific semantic validation remains
+    the responsibility of the engine.
+    """
+
+    if len(artifact_ids) != 1:
+        raise click.UsageError("Independent stage execution requires a single artifact.")
+
+    if dry_run:
+        raise click.UsageError("--dry-run is not supported with --stage.")
+
+    artifact_id = artifact_ids[0]
+    project_root = Path.cwd()
+
+    try:
+        input_paths = parse_path_bindings(
+            input_bindings,
+            project_root=project_root,
+        )
+
+        parameter_values = parse_parameter_bindings(
+            parameter_bindings,
+        )
+
+        output_paths = parse_path_bindings(
+            output_bindings,
+            project_root=project_root,
+        )
+
+        execute_artifact_stage(
+            artifact_id,
+            stage_name=stage_name,
+            realization=realization,
+            project_root=project_root,
+            input_paths=input_paths or None,
+            parameter_values=parameter_values or None,
+            output_paths=output_paths or None,
+        )
+
+    except (
+        BindingError,
+        BuildError,
+    ) as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 if __name__ == "__main__":

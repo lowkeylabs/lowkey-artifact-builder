@@ -65,7 +65,14 @@ def test_build_stage_executes_requested_stage(
         stage_name: str,
         realization: str | None = None,
         project_root: Path | None = None,
+        input_paths=None,
+        parameter_values=None,
+        output_paths=None,
     ) -> None:
+        assert input_paths is None
+        assert parameter_values is None
+        assert output_paths is None
+
         executed.append(
             (
                 artifact_id,
@@ -115,7 +122,14 @@ def test_build_stage_passes_project_root(
         stage_name: str,
         realization: str | None = None,
         project_root: Path | None = None,
+        input_paths=None,
+        parameter_values=None,
+        output_paths=None,
     ) -> None:
+        assert input_paths is None
+        assert parameter_values is None
+        assert output_paths is None
+
         roots.append(
             project_root,
         )
@@ -159,7 +173,14 @@ def test_build_stage_passes_realization(
         stage_name: str,
         realization: str | None = None,
         project_root: Path | None = None,
+        input_paths=None,
+        parameter_values=None,
+        output_paths=None,
     ) -> None:
+        assert input_paths is None
+        assert parameter_values is None
+        assert output_paths is None
+
         realizations.append(
             realization,
         )
@@ -334,6 +355,54 @@ def test_build_realization_requires_stage() -> None:
     assert "realization" in result.output.lower()
 
 
+def test_build_input_requires_stage() -> None:
+    """
+    Explicit input bindings belong to independent stage execution.
+    """
+
+    result = _invoke(
+        "skippy",
+        "--input",
+        "source=source.png",
+    )
+
+    assert result.exit_code != 0
+    assert "input" in result.output.lower()
+    assert "stage" in result.output.lower()
+
+
+def test_build_parameter_requires_stage() -> None:
+    """
+    Explicit parameter bindings belong to independent stage execution.
+    """
+
+    result = _invoke(
+        "skippy",
+        "--parameter",
+        "artwork_size=90",
+    )
+
+    assert result.exit_code != 0
+    assert "parameter" in result.output.lower()
+    assert "stage" in result.output.lower()
+
+
+def test_build_output_requires_stage() -> None:
+    """
+    Explicit output bindings belong to independent stage execution.
+    """
+
+    result = _invoke(
+        "skippy",
+        "--output",
+        "manifest=products.json",
+    )
+
+    assert result.exit_code != 0
+    assert "output" in result.output.lower()
+    assert "stage" in result.output.lower()
+
+
 # =========================================================
 # Build error boundary
 # =========================================================
@@ -427,3 +496,392 @@ def test_build_stage_execution_failure_is_reported(
 
     assert result.exit_code != 0
     assert "stage execution failed" in result.output
+
+
+# =========================================================
+# Explicit stage bindings
+# =========================================================
+
+
+def test_build_stage_passes_input_bindings(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit input bindings are forwarded to stage execution.
+    """
+
+    received = None
+
+    def execute(
+        artifact_id: str,
+        *,
+        stage_name: str,
+        realization: str | None = None,
+        project_root: Path | None = None,
+        input_paths=None,
+        parameter_values=None,
+        output_paths=None,
+    ) -> None:
+        nonlocal received
+
+        received = input_paths
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_stage",
+        execute,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--stage",
+        "vector",
+        "--input",
+        "raster.manifest=external/products.json",
+    )
+
+    assert result.exit_code == 0
+
+    assert received == {
+        "raster.manifest": (tmp_path / "external" / "products.json"),
+    }
+
+
+def test_build_stage_passes_parameter_bindings(
+    monkeypatch,
+) -> None:
+    """
+    Explicit parameter bindings are forwarded as typed values.
+    """
+
+    received = None
+
+    def execute(
+        artifact_id: str,
+        *,
+        stage_name: str,
+        realization: str | None = None,
+        project_root: Path | None = None,
+        input_paths=None,
+        parameter_values=None,
+        output_paths=None,
+    ) -> None:
+        nonlocal received
+
+        received = parameter_values
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_stage",
+        execute,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--stage",
+        "vector",
+        "--parameter",
+        "artwork_size=90",
+    )
+
+    assert result.exit_code == 0
+
+    assert received == {
+        "artwork_size": 90,
+    }
+
+
+def test_build_stage_passes_output_bindings(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit output bindings are forwarded to stage execution.
+    """
+
+    received = None
+
+    def execute(
+        artifact_id: str,
+        *,
+        stage_name: str,
+        realization: str | None = None,
+        project_root: Path | None = None,
+        input_paths=None,
+        parameter_values=None,
+        output_paths=None,
+    ) -> None:
+        nonlocal received
+
+        received = output_paths
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_stage",
+        execute,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--stage",
+        "vector",
+        "--output",
+        "manifest=external/vector.json",
+    )
+
+    assert result.exit_code == 0
+
+    assert received == {
+        "manifest": (tmp_path / "external" / "vector.json"),
+    }
+
+
+def test_build_stage_passes_all_binding_types(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Input, parameter, and output bindings may be used together.
+    """
+
+    received = None
+
+    def execute(
+        artifact_id: str,
+        *,
+        stage_name: str,
+        realization: str | None = None,
+        project_root: Path | None = None,
+        input_paths=None,
+        parameter_values=None,
+        output_paths=None,
+    ) -> None:
+        nonlocal received
+
+        received = (
+            input_paths,
+            parameter_values,
+            output_paths,
+        )
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_stage",
+        execute,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--stage",
+        "vector",
+        "--input",
+        "raster.manifest=external/raster.json",
+        "--parameter",
+        "artwork_size=90.5",
+        "--output",
+        "manifest=external/vector.json",
+    )
+
+    assert result.exit_code == 0
+
+    assert received == (
+        {
+            "raster.manifest": (tmp_path / "external" / "raster.json"),
+        },
+        {
+            "artwork_size": 90.5,
+        },
+        {
+            "manifest": (tmp_path / "external" / "vector.json"),
+        },
+    )
+
+
+def test_build_stage_accepts_repeated_bindings(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Binding options may be repeated for distinct semantic names.
+    """
+
+    received = None
+
+    def execute(
+        artifact_id: str,
+        *,
+        stage_name: str,
+        realization: str | None = None,
+        project_root: Path | None = None,
+        input_paths=None,
+        parameter_values=None,
+        output_paths=None,
+    ) -> None:
+        nonlocal received
+
+        received = (
+            input_paths,
+            parameter_values,
+            output_paths,
+        )
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_stage",
+        execute,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--stage",
+        "prepare",
+        "--input",
+        "source=external/source.png",
+        "--parameter",
+        "first=1",
+        "--parameter",
+        "second=true",
+        "--output",
+        "trace=external/trace.svg",
+        "--output",
+        "envelope=external/envelope.svg",
+    )
+
+    assert result.exit_code == 0
+
+    assert received == (
+        {
+            "source": (tmp_path / "external" / "source.png"),
+        },
+        {
+            "first": 1,
+            "second": True,
+        },
+        {
+            "trace": (tmp_path / "external" / "trace.svg"),
+            "envelope": (tmp_path / "external" / "envelope.svg"),
+        },
+    )
+
+
+def test_build_stage_without_bindings_passes_none(
+    monkeypatch,
+) -> None:
+    """
+    Ordinary stage execution does not manufacture explicit bindings.
+    """
+
+    received = None
+
+    def execute(
+        artifact_id: str,
+        *,
+        stage_name: str,
+        realization: str | None = None,
+        project_root: Path | None = None,
+        input_paths=None,
+        parameter_values=None,
+        output_paths=None,
+    ) -> None:
+        nonlocal received
+
+        received = (
+            input_paths,
+            parameter_values,
+            output_paths,
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_stage",
+        execute,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--stage",
+        "vector",
+    )
+
+    assert result.exit_code == 0
+
+    assert received == (
+        None,
+        None,
+        None,
+    )
+
+
+# =========================================================
+# Binding errors
+# =========================================================
+
+
+def test_build_stage_reports_invalid_input_binding() -> None:
+    """
+    Invalid input binding syntax is presented as a CLI error.
+    """
+
+    result = _invoke(
+        "skippy",
+        "--stage",
+        "vector",
+        "--input",
+        "raster.manifest",
+    )
+
+    assert result.exit_code != 0
+    assert "name=path" in result.output.lower()
+
+
+def test_build_stage_reports_invalid_parameter_binding() -> None:
+    """
+    Invalid parameter binding syntax is presented as a CLI error.
+    """
+
+    result = _invoke(
+        "skippy",
+        "--stage",
+        "vector",
+        "--parameter",
+        "artwork_size",
+    )
+
+    assert result.exit_code != 0
+    assert "name=value" in result.output.lower()
+
+
+def test_build_stage_reports_duplicate_output_binding() -> None:
+    """
+    Duplicate output bindings are presented as a CLI error.
+    """
+
+    result = _invoke(
+        "skippy",
+        "--stage",
+        "vector",
+        "--output",
+        "manifest=first.json",
+        "--output",
+        "manifest=second.json",
+    )
+
+    assert result.exit_code != 0
+    assert "duplicate" in result.output.lower()
