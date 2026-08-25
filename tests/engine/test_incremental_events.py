@@ -578,3 +578,198 @@ def test_incremental_failure_stops_later_stage_events(
     assert observed_stage_names.isdisjoint(
         later_names,
     )
+
+
+# =========================================================
+# Skipped stage lifecycle
+# =========================================================
+
+
+def test_incremental_build_emits_skipped_event_for_reusable_stage(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A reusable stage emits stage.skipped instead of execution events.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    execute_incremental_build(
+        build_plan,
+        execute_stage=_materialize_stage_products,
+    )
+
+    events: list[ExecutionEvent] = []
+    executed: list[str] = []
+
+    execute_incremental_build(
+        build_plan,
+        execute_stage=lambda stage: executed.append(
+            stage.name,
+        ),
+        event_sink=events.append,
+    )
+
+    assert executed == []
+
+    skipped = tuple(event.stage_name for event in events if event.kind == "stage.skipped")
+
+    assert skipped == _persistent_stage_names(
+        build_plan,
+    )
+
+
+def test_skipped_stage_does_not_emit_execution_lifecycle_events(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Reused stages emit no started, completed, or failed events.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    execute_incremental_build(
+        build_plan,
+        execute_stage=_materialize_stage_products,
+    )
+
+    events: list[ExecutionEvent] = []
+
+    execute_incremental_build(
+        build_plan,
+        execute_stage=_materialize_stage_products,
+        event_sink=events.append,
+    )
+
+    execution_events = tuple(
+        event
+        for event in events
+        if event.kind
+        in {
+            "stage.started",
+            "stage.completed",
+            "stage.failed",
+        }
+    )
+
+    assert execution_events == ()
+
+
+def test_skipped_stage_event_includes_realized_identity(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Skip observation identifies the realized stage being reused.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    execute_incremental_build(
+        build_plan,
+        execute_stage=_materialize_stage_products,
+    )
+
+    events: list[ExecutionEvent] = []
+
+    execute_incremental_build(
+        build_plan,
+        execute_stage=_materialize_stage_products,
+        event_sink=events.append,
+    )
+
+    skipped = tuple(event for event in events if event.kind == "stage.skipped")
+
+    assert skipped
+
+    for event in skipped:
+        assert event.artifact_id == build_plan.artifact_id
+        assert event.model_name == build_plan.model_name
+        assert event.realization == build_plan.realization_name
+        assert event.stage_name is not None
+
+
+def test_incremental_build_reports_executed_and_skipped_stages_in_build_order(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Skip and execution observations preserve realized build order.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    execute_incremental_build(
+        build_plan,
+        execute_stage=_materialize_stage_products,
+    )
+
+    affected = next(stage for stage in build_plan.stages if stage.products)
+
+    affected.products[0].path.unlink()
+
+    events: list[ExecutionEvent] = []
+
+    execute_incremental_build(
+        build_plan,
+        execute_stage=_materialize_stage_products,
+        event_sink=events.append,
+    )
+
+    observations = tuple(
+        (
+            event.kind,
+            event.stage_name,
+        )
+        for event in events
+        if event.kind
+        in {
+            "stage.skipped",
+            "stage.started",
+        }
+    )
+
+    expected = tuple(
+        (
+            ("stage.started" if stage.name == affected.name else "stage.skipped"),
+            stage.name,
+        )
+        for stage in build_plan.stages
+        if stage.products
+    )
+
+    assert observations == expected

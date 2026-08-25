@@ -130,14 +130,15 @@ def execute_incremental_build(
     This provides one coherent build-context snapshot for both execution
     planning and subsequently persisted completion metadata.
 
-    Required stages execute in realized build-plan order.
+    Realized stages are observed in build-plan order.
 
-    A stage.started event is emitted immediately before a required stage
-    is executed.
+    Reusable stages emit a stage.skipped event and are not executed.
+
+    Required stages emit stage.started immediately before execution.
 
     If stage execution fails, a stage.failed event is emitted and the
-    original exception propagates immediately without executing later
-    stages.
+    original exception propagates immediately without observing or
+    executing later stages.
 
     Completion metadata is persisted only after the supplied stage
     executor returns successfully. A stage.completed event is emitted
@@ -161,17 +162,20 @@ def execute_incremental_build(
         fingerprints=fingerprints,
     )
 
-    stages = {stage.name: stage for stage in build_plan.stages}
+    required_stage_names = {
+        planned_execution.stage_name for planned_execution in execution_plan.required_stages
+    }
 
-    for planned_execution in execution_plan.required_stages:
-        try:
-            stage = stages[planned_execution.stage_name]
-        except KeyError as exc:
-            raise ValueError(
-                f"Execution stage "
-                f"{planned_execution.stage_name!r} "
-                f"is unavailable from the build plan"
-            ) from exc
+    for stage in build_plan.stages:
+        if stage.name not in required_stage_names:
+            _emit_stage_event(
+                event_sink,
+                build_plan=build_plan,
+                stage=stage,
+                kind="stage.skipped",
+            )
+
+            continue
 
         _emit_stage_event(
             event_sink,
