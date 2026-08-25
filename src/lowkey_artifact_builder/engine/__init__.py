@@ -34,6 +34,9 @@ evidence rather than inferred from filesystem presence or timestamps.
 Build-context fingerprints are generated deterministically from operation
 identity, relevant parameters, and upstream input fingerprints.
 
+Build-plan fingerprint resolution derives required stage provenance from
+resolved stage parameters and dependency fingerprints.
+
 Execution product-state resolution adapts realized build-plan stages and
 products to persistent product-state evaluation.
 
@@ -89,6 +92,9 @@ from .execution_state import (
     ExecutionProductStateResolver,
     RequiredFingerprintResolver,
     create_execution_state_resolver,
+)
+from .fingerprint_plan import (
+    create_required_fingerprints,
 )
 from .freshness import (
     ProductFingerprint,
@@ -151,6 +157,7 @@ __all__ = [
     "create_execution_state_resolver",
     "create_product_fingerprint",
     "create_product_state_resolver",
+    "create_required_fingerprints",
     "create_stage_context",
     "emit_event",
     "evaluate_product_state",
