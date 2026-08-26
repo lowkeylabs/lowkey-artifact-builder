@@ -18,8 +18,10 @@ from lowkey_artifact_builder.config import write_artifact_config
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     BuildPlanError,
+    PlannedProductDependency,
     create_build_plan,
     create_build_plans,
+    create_product_dependency_build_plan,
 )
 from lowkey_artifact_builder.model import (
     ModelSpec,
@@ -1810,3 +1812,428 @@ def test_build_plan_defaults_to_no_planned_product_dependencies(
     )
 
     assert plan.planned_product_dependencies == ()
+
+
+# =========================================================
+# Product-dependency producer planning
+# =========================================================
+
+
+def test_product_dependency_build_plan_targets_bound_product(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Producer planning targets exactly the product required by the consumer.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="transform",
+        product="geometry",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="producer-artifact",
+        realization="source",
+    )
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=(
+            tmp_path
+            / "artifacts"
+            / "producer-artifact"
+            / "producer"
+            / "source"
+            / "20-transform"
+            / "geometry.dat"
+        ),
+    )
+
+    expected_target = ProductRef(
+        artifact="producer-artifact",
+        model="producer",
+        realization="source",
+        stage="transform",
+        product="geometry",
+    )
+
+    expected_plan = object()
+
+    calls: list[tuple[str, str | None, tuple[ProductRef, ...] | None, Path | None]] = []
+
+    def fake_create_build_plan(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        targets: tuple[ProductRef, ...] | None = None,
+        project_root: Path | None = None,
+    ):
+        calls.append(
+            (
+                artifact_id,
+                realization,
+                targets,
+                project_root,
+            )
+        )
+
+        return expected_plan
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.create_build_plan",
+        fake_create_build_plan,
+    )
+
+    plan = create_product_dependency_build_plan(
+        planned_dependency,
+        project_root=tmp_path,
+    )
+
+    assert plan is expected_plan
+
+    assert calls == [
+        (
+            "producer-artifact",
+            "source",
+            (expected_target,),
+            tmp_path,
+        ),
+    ]
+
+
+def test_product_dependency_build_plan_preserves_producer_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Producer planning uses the concrete artifact and realization selected
+    by the consumer's product-dependency binding.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="transform",
+        product="geometry",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="shared-artwork",
+        realization="medallion",
+    )
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=tmp_path / "geometry.dat",
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_create_build_plan(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        targets: tuple[ProductRef, ...] | None = None,
+        project_root: Path | None = None,
+    ):
+        captured["artifact_id"] = artifact_id
+        captured["realization"] = realization
+        captured["targets"] = targets
+        captured["project_root"] = project_root
+
+        return object()
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.create_build_plan",
+        fake_create_build_plan,
+    )
+
+    create_product_dependency_build_plan(
+        planned_dependency,
+        project_root=tmp_path,
+    )
+
+    assert captured["artifact_id"] == "shared-artwork"
+    assert captured["realization"] == "medallion"
+    assert captured["project_root"] == tmp_path
+
+    assert captured["targets"] == (
+        ProductRef(
+            artifact="shared-artwork",
+            model="producer",
+            realization="medallion",
+            stage="transform",
+            product="geometry",
+        ),
+    )
+
+
+def test_product_dependency_build_plan_includes_producer_prerequisites(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Targeted producer planning includes the transitive stage prerequisites
+    required to produce the bound product.
+    """
+
+    producer = ModelSpec(
+        name="producer",
+        title="Producer",
+        stages=(
+            StageSpec(
+                id=10,
+                name="prepare",
+                products=(
+                    ProductSpec(
+                        name="prepared",
+                        path="prepared.dat",
+                    ),
+                ),
+            ),
+            StageSpec(
+                id=20,
+                name="transform",
+                dependencies=("prepare",),
+                products=(
+                    ProductSpec(
+                        name="geometry",
+                        path="geometry.dat",
+                    ),
+                ),
+            ),
+            StageSpec(
+                id=30,
+                name="package",
+                dependencies=("transform",),
+                products=(
+                    ProductSpec(
+                        name="artifact",
+                        path="artifact.dat",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    class StubRegistry:
+        def get_model(
+            self,
+            name: str,
+        ) -> ModelSpec:
+            assert name == "producer"
+
+            return producer
+
+        def all_models(
+            self,
+        ) -> tuple[ModelSpec, ...]:
+            return (producer,)
+
+    class Resolver:
+        def __call__(
+            self,
+            name: str,
+        ):
+            values = {
+                "model": "producer",
+                "variant": "default",
+                "realization": "source",
+            }
+
+            return values[name]
+
+        def source(
+            self,
+            name: str,
+        ) -> str:
+            return "test"
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_resolver",
+        lambda artifact_id, *, realization=None, project_root: Resolver(),
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.build_model_registry",
+        lambda: StubRegistry(),
+    )
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="transform",
+        product="geometry",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="producer-artifact",
+        realization="source",
+    )
+
+    from lowkey_artifact_builder.engine import PlannedProductDependency
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=(
+            tmp_path
+            / "artifacts"
+            / "producer-artifact"
+            / "producer"
+            / "source"
+            / "20-transform"
+            / "geometry.dat"
+        ),
+    )
+
+    plan = create_product_dependency_build_plan(
+        planned_dependency,
+        project_root=tmp_path,
+    )
+
+    assert plan.artifact_id == "producer-artifact"
+    assert plan.model_name == "producer"
+    assert plan.realization_name == "source"
+
+    assert tuple(stage.name for stage in plan.stages) == (
+        "prepare",
+        "transform",
+    )
+
+
+def test_product_dependency_build_plan_excludes_downstream_producer_stages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Producer planning stops at the required product.
+
+    Stages downstream of the producer product are not included merely
+    because they belong to the producer artifact's complete workflow.
+    """
+
+    producer = ModelSpec(
+        name="producer",
+        title="Producer",
+        stages=(
+            StageSpec(
+                id=10,
+                name="prepare",
+                products=(
+                    ProductSpec(
+                        name="prepared",
+                        path="prepared.dat",
+                    ),
+                ),
+            ),
+            StageSpec(
+                id=20,
+                name="transform",
+                dependencies=("prepare",),
+                products=(
+                    ProductSpec(
+                        name="geometry",
+                        path="geometry.dat",
+                    ),
+                ),
+            ),
+            StageSpec(
+                id=30,
+                name="package",
+                dependencies=("transform",),
+                products=(
+                    ProductSpec(
+                        name="artifact",
+                        path="artifact.dat",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    class StubRegistry:
+        def get_model(
+            self,
+            name: str,
+        ) -> ModelSpec:
+            assert name == "producer"
+
+            return producer
+
+        def all_models(
+            self,
+        ) -> tuple[ModelSpec, ...]:
+            return (producer,)
+
+    class Resolver:
+        def __call__(
+            self,
+            name: str,
+        ):
+            values = {
+                "model": "producer",
+                "variant": "default",
+                "realization": "source",
+            }
+
+            return values[name]
+
+        def source(
+            self,
+            name: str,
+        ) -> str:
+            return "test"
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_resolver",
+        lambda artifact_id, *, realization=None, project_root: Resolver(),
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.build_model_registry",
+        lambda: StubRegistry(),
+    )
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="transform",
+        product="geometry",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="producer-artifact",
+        realization="source",
+    )
+
+    from lowkey_artifact_builder.engine import PlannedProductDependency
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=tmp_path / "geometry.dat",
+    )
+
+    plan = create_product_dependency_build_plan(
+        planned_dependency,
+        project_root=tmp_path,
+    )
+
+    assert plan.targets == (
+        ProductRef(
+            artifact="producer-artifact",
+            model="producer",
+            realization="source",
+            stage="transform",
+            product="geometry",
+        ),
+    )
+
+    assert tuple(stage.name for stage in plan.stages) == (
+        "prepare",
+        "transform",
+    )
+
+    assert "package" not in {stage.name for stage in plan.stages}
