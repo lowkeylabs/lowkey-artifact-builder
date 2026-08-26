@@ -12,6 +12,10 @@ identity, while the Defined Graph supplies dependency relationships.
 The resulting graph contains only stages required by the requested
 products. Downstream stages that are not required by any target are not
 included.
+
+Declarative product dependencies belonging to required stages are
+preserved by the realization graph. Binding those dependencies to
+concrete producer artifacts and realizations belongs to later planning.
 """
 # File: src/lowkey_artifact_builder/engine/realization_graph.py
 # Copyright 2026 LowKeyLabs LLC
@@ -31,6 +35,7 @@ from lowkey_artifact_builder.engine.graph import (
     DefinedStage,
 )
 from lowkey_artifact_builder.model import (
+    ProductDependencySpec,
     ProductRef,
 )
 
@@ -61,8 +66,16 @@ class RealizationGraph:
     Targets are the logical products requested by the caller.
 
     Stages contain the producing stages of those targets and the union
-    of their complete transitive dependency closures. Dependencies
+    of their complete transitive stage dependency closures. Dependencies
     always precede their dependents.
+
+    Product dependencies contain the declarative product dependencies
+    required by the realized stage closure. They preserve stage order
+    and declaration order and are deduplicated by logical definition
+    identity.
+
+    Product dependencies do not yet identify concrete producer artifacts
+    or realizations. That binding belongs to later planning.
 
     A Realization Graph is scoped to exactly one artifact, model, and
     realization.
@@ -73,6 +86,7 @@ class RealizationGraph:
     realization_name: str
     targets: tuple[ProductRef, ...]
     stages: tuple[DefinedStage, ...]
+    product_dependencies: tuple[ProductDependencySpec, ...]
 
 
 # =========================================================
@@ -94,6 +108,10 @@ def build_realization_graph(
 
     The returned graph contains the union of the target producers and
     their complete transitive stage dependency closures.
+
+    Declarative product dependencies belonging to those required stages
+    are collected and preserved without binding them to concrete
+    producer artifacts or realizations.
     """
 
     if not targets:
@@ -133,12 +151,17 @@ def build_realization_graph(
         unique_targets,
     )
 
+    product_dependencies = _collect_product_dependencies(
+        stages,
+    )
+
     return RealizationGraph(
         artifact_id=artifact_id,
         model_name=model_name,
         realization_name=realization_name,
         targets=unique_targets,
         stages=stages,
+        product_dependencies=product_dependencies,
     )
 
 
@@ -239,6 +262,10 @@ def _dependency_closure(
 
     Defined Graph validation guarantees that every dependency exists
     and that the stage dependency graph is acyclic.
+
+    Declarative product dependencies do not participate in this
+    model-local stage traversal. They are collected from the completed
+    required stage closure separately.
     """
 
     required: list[DefinedStage] = []
@@ -282,6 +309,40 @@ def _dependency_closure(
 
     return tuple(
         required,
+    )
+
+
+def _collect_product_dependencies(
+    stages: tuple[DefinedStage, ...],
+) -> tuple[ProductDependencySpec, ...]:
+    """
+    Collect declarative product dependencies from required stages.
+
+    Dependencies are collected in required-stage order and then in
+    declaration order within each stage.
+
+    Repeated dependencies are emitted once while preserving the first
+    occurrence.
+    """
+
+    dependencies: list[ProductDependencySpec] = []
+    seen: set[ProductDependencySpec] = set()
+
+    for stage in stages:
+        for dependency in stage.product_dependencies:
+            if dependency in seen:
+                continue
+
+            seen.add(
+                dependency,
+            )
+
+            dependencies.append(
+                dependency,
+            )
+
+    return tuple(
+        dependencies,
     )
 
 

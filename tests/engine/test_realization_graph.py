@@ -22,6 +22,7 @@ from lowkey_artifact_builder.engine.realization_graph import (
 from lowkey_artifact_builder.model import (
     ModelRegistry,
     ModelSpec,
+    ProductDependencySpec,
     ProductRef,
     ProductSpec,
     StageSpec,
@@ -492,3 +493,186 @@ def test_realization_graph_rejects_mixed_realizations() -> None:
                 product="manifest",
             ),
         )
+
+
+def test_realization_graph_preserves_required_product_dependencies() -> None:
+    """
+    A realized stage preserves its declarative product dependencies.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    registry = ModelRegistry()
+
+    registry.register_model(
+        ModelSpec(
+            name="producer",
+            title="Producer",
+            stages=(
+                StageSpec(
+                    id=10,
+                    name="prepare",
+                    products=(
+                        ProductSpec(
+                            name="geometry",
+                            path="geometry.dat",
+                        ),
+                    ),
+                ),
+            ),
+            defined_in=__name__,
+        )
+    )
+
+    registry.register_model(
+        ModelSpec(
+            name="consumer",
+            title="Consumer",
+            stages=(
+                StageSpec(
+                    id=10,
+                    name="consume",
+                    product_dependencies=(dependency,),
+                    products=(
+                        ProductSpec(
+                            name="artifact",
+                            path="artifact.dat",
+                        ),
+                    ),
+                ),
+            ),
+            defined_in=__name__,
+        )
+    )
+
+    defined_graph = build_defined_graph(
+        registry,
+    )
+
+    catalog = build_product_catalog(
+        defined_graph,
+    )
+
+    graph = build_realization_graph(
+        defined_graph,
+        catalog,
+        targets=(
+            ProductRef(
+                artifact="consumer-artifact",
+                model="consumer",
+                realization="default",
+                stage="consume",
+                product="artifact",
+            ),
+        ),
+    )
+
+    assert graph.product_dependencies == (dependency,)
+
+
+def test_realization_graph_collects_product_dependencies_from_required_stages() -> None:
+    """
+    Product dependencies are collected from the complete required stage closure.
+    """
+
+    first_dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="first",
+    )
+
+    second_dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="second",
+    )
+
+    registry = ModelRegistry()
+
+    registry.register_model(
+        ModelSpec(
+            name="producer",
+            title="Producer",
+            stages=(
+                StageSpec(
+                    id=10,
+                    name="prepare",
+                    products=(
+                        ProductSpec(
+                            name="first",
+                            path="first.dat",
+                        ),
+                        ProductSpec(
+                            name="second",
+                            path="second.dat",
+                        ),
+                    ),
+                ),
+            ),
+            defined_in=__name__,
+        )
+    )
+
+    registry.register_model(
+        ModelSpec(
+            name="consumer",
+            title="Consumer",
+            stages=(
+                StageSpec(
+                    id=10,
+                    name="prepare",
+                    product_dependencies=(first_dependency,),
+                    products=(
+                        ProductSpec(
+                            name="prepared",
+                            path="prepared.dat",
+                        ),
+                    ),
+                ),
+                StageSpec(
+                    id=20,
+                    name="package",
+                    dependencies=("prepare",),
+                    product_dependencies=(second_dependency,),
+                    products=(
+                        ProductSpec(
+                            name="artifact",
+                            path="artifact.dat",
+                        ),
+                    ),
+                ),
+            ),
+            defined_in=__name__,
+        )
+    )
+
+    defined_graph = build_defined_graph(
+        registry,
+    )
+
+    catalog = build_product_catalog(
+        defined_graph,
+    )
+
+    graph = build_realization_graph(
+        defined_graph,
+        catalog,
+        targets=(
+            ProductRef(
+                artifact="consumer-artifact",
+                model="consumer",
+                realization="default",
+                stage="package",
+                product="artifact",
+            ),
+        ),
+    )
+
+    assert graph.product_dependencies == (
+        first_dependency,
+        second_dependency,
+    )
