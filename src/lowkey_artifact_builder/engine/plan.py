@@ -51,6 +51,7 @@ from lowkey_artifact_builder.engine.specs import (
     BuildPlan,
     PlannedInput,
     PlannedProduct,
+    PlannedProductDependency,
     PlannedStage,
 )
 from lowkey_artifact_builder.model import (
@@ -167,6 +168,12 @@ def create_build_plan(
         project_root=root,
     )
 
+    planned_product_dependencies = _plan_product_dependencies(
+        bindings=product_dependency_bindings,
+        registry=registry,
+        product_resolver=product_resolver,
+    )
+
     stages = _plan_stages(
         artifact_id,
         model,
@@ -188,6 +195,7 @@ def create_build_plan(
         targets=targets,
         product_dependencies=product_dependencies,
         product_dependency_bindings=product_dependency_bindings,
+        planned_product_dependencies=planned_product_dependencies,
     )
 
 
@@ -371,6 +379,97 @@ def _resolve_product_dependency_bindings(
             project_root=project_root,
         )
         for dependency in product_dependencies
+    )
+
+
+def _plan_product_dependencies(
+    *,
+    bindings: tuple[ProductDependencyBinding, ...],
+    registry,
+    product_resolver: ProductResolver,
+) -> tuple[PlannedProductDependency, ...]:
+    """
+    Materialize bound cross-artifact product dependency locations.
+
+    Each binding identifies a concrete producer artifact and realization.
+    The declarative dependency identifies the producer model, stage, and
+    product. ProductResolver combines those identities with the producer
+    ProductSpec to determine the canonical persistent product path.
+
+    Planning resolves paths only. It does not configure, plan, execute,
+    or otherwise inspect the producer artifact.
+    """
+
+    planned: list[PlannedProductDependency] = []
+
+    for binding in bindings:
+        dependency = binding.dependency
+
+        try:
+            producer_model = registry.get_model(
+                dependency.model,
+            )
+
+        except ModelNotFoundError as exc:
+            raise BuildPlanError(f"Unknown product dependency model {dependency.model!r}.") from exc
+
+        producer_stage = _find_product_dependency_stage(
+            producer_model,
+            dependency,
+        )
+
+        producer_product = _find_product_dependency_product(
+            producer_stage,
+            dependency,
+        )
+
+        planned.append(
+            PlannedProductDependency(
+                binding=binding,
+                path=product_resolver.product_path(
+                    artifact=binding.artifact,
+                    model=dependency.model,
+                    realization=binding.realization,
+                    stage=producer_stage,
+                    product=producer_product,
+                ),
+            )
+        )
+
+    return tuple(planned)
+
+
+def _find_product_dependency_stage(
+    model: ModelSpec,
+    dependency: ProductDependencySpec,
+) -> StageSpec:
+    """
+    Return the stage that produces a declarative product dependency.
+    """
+
+    for stage in model.stages:
+        if stage.name == dependency.stage:
+            return stage
+
+    raise BuildPlanError(
+        f"Unknown product dependency stage {dependency.model}/{dependency.stage!s}."
+    )
+
+
+def _find_product_dependency_product(
+    stage: StageSpec,
+    dependency: ProductDependencySpec,
+):
+    """
+    Return the ProductSpec identified by a declarative dependency.
+    """
+
+    for product in stage.products:
+        if product.name == dependency.product:
+            return product
+
+    raise BuildPlanError(
+        f"Unknown product dependency {dependency.model}/{dependency.stage}/{dependency.product}."
     )
 
 

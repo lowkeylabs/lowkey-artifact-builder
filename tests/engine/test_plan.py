@@ -1768,6 +1768,7 @@ def test_create_build_plan_resolves_product_dependency_bindings(
 
     assert plan.product_dependencies == (dependency,)
     assert plan.product_dependency_bindings == (binding,)
+
     assert plan.product_dependency_bindings[0].product_ref == ProductRef(
         artifact="producer-artifact",
         model="producer",
@@ -1775,3 +1776,37 @@ def test_create_build_plan_resolves_product_dependency_bindings(
         stage="prepare",
         product="geometry",
     )
+
+    assert len(plan.planned_product_dependencies) == 1
+
+    planned_dependency = plan.planned_product_dependencies[0]
+
+    assert planned_dependency.binding == binding
+
+    assert planned_dependency.path == (
+        tmp_path
+        / "artifacts"
+        / "producer-artifact"
+        / "producer"
+        / "default"
+        / "10-prepare"
+        / "geometry.dat"
+    )
+
+
+def test_build_plan_defaults_to_no_planned_product_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Existing builds without cross-artifact dependencies retain no
+    materialized product dependencies.
+    """
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    assert plan.planned_product_dependencies == ()
