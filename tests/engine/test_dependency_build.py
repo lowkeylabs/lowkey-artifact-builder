@@ -49,6 +49,7 @@ from lowkey_artifact_builder.model import (
     ModelSpec,
     ProductDependencyBinding,
     ProductDependencySpec,
+    ProductRef,
     ProductSpec,
     StageSpec,
 )
@@ -64,6 +65,270 @@ type StageExecutionObserver = Callable[
     ],
     None,
 ]
+
+# =========================================================
+# Transitive dependency construction
+# =========================================================
+
+
+def _transitive_producer_build_plan(
+    tmp_path: Path,
+    *,
+    resolver,
+) -> BuildPlan:
+    """
+    Construct producer B requiring one product from upstream producer C.
+    """
+
+    dependency = ProductDependencySpec(
+        model="upstream",
+        stage="vector",
+        product="geometry",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="upstream-artifact",
+        realization="default",
+    )
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=(
+            tmp_path
+            / "artifacts"
+            / "upstream-artifact"
+            / "upstream"
+            / "default"
+            / "30-vector"
+            / "geometry.dat"
+        ),
+    )
+
+    stage_spec = StageSpec(
+        id=20,
+        name="transform",
+        product_dependencies=(dependency,),
+        products=(
+            ProductSpec(
+                name="geometry",
+                path="geometry.dat",
+            ),
+        ),
+    )
+
+    stage = PlannedStage(
+        spec=stage_spec,
+        products=(
+            PlannedProduct(
+                spec=stage_spec.products[0],
+                path=(
+                    tmp_path
+                    / "artifacts"
+                    / "producer-artifact"
+                    / "producer"
+                    / "default"
+                    / "20-transform"
+                    / "geometry.dat"
+                ),
+            ),
+        ),
+    )
+
+    return BuildPlan(
+        artifact_id="producer-artifact",
+        model=ModelSpec(
+            name="producer",
+            title="Producer",
+            stages=(stage_spec,),
+        ),
+        realization_name="default",
+        resolver=resolver,
+        project_root=tmp_path,
+        artifact_dir=(tmp_path / "artifacts" / "producer-artifact"),
+        stages=(stage,),
+        product_dependencies=(dependency,),
+        product_dependency_bindings=(binding,),
+        planned_product_dependencies=(planned_dependency,),
+    )
+
+
+def _upstream_build_plan(
+    tmp_path: Path,
+    *,
+    resolver,
+) -> BuildPlan:
+    """
+    Construct targeted upstream producer C.
+
+    The complete model contains downstream manufacturing stages, but this
+    realized BuildPlan intentionally ends at the required vector product.
+    """
+
+    prepare_spec = StageSpec(
+        id=10,
+        name="prepare",
+        products=(
+            ProductSpec(
+                name="prepared",
+                path="prepared.dat",
+            ),
+        ),
+    )
+
+    raster_spec = StageSpec(
+        id=20,
+        name="raster",
+        dependencies=("prepare",),
+        products=(
+            ProductSpec(
+                name="pixels",
+                path="pixels.dat",
+            ),
+        ),
+    )
+
+    vector_spec = StageSpec(
+        id=30,
+        name="vector",
+        dependencies=("raster",),
+        products=(
+            ProductSpec(
+                name="geometry",
+                path="geometry.dat",
+            ),
+        ),
+    )
+
+    extrude_spec = StageSpec(
+        id=40,
+        name="extrude",
+        dependencies=("vector",),
+        products=(
+            ProductSpec(
+                name="solid",
+                path="solid.dat",
+            ),
+        ),
+    )
+
+    package_spec = StageSpec(
+        id=50,
+        name="package",
+        dependencies=("extrude",),
+        products=(
+            ProductSpec(
+                name="artifact",
+                path="artifact.dat",
+            ),
+        ),
+    )
+
+    prepare = PlannedStage(
+        spec=prepare_spec,
+        products=(
+            PlannedProduct(
+                spec=prepare_spec.products[0],
+                path=(
+                    tmp_path
+                    / "artifacts"
+                    / "upstream-artifact"
+                    / "upstream"
+                    / "default"
+                    / "10-prepare"
+                    / "prepared.dat"
+                ),
+            ),
+        ),
+    )
+
+    raster = PlannedStage(
+        spec=raster_spec,
+        products=(
+            PlannedProduct(
+                spec=raster_spec.products[0],
+                path=(
+                    tmp_path
+                    / "artifacts"
+                    / "upstream-artifact"
+                    / "upstream"
+                    / "default"
+                    / "20-raster"
+                    / "pixels.dat"
+                ),
+            ),
+        ),
+    )
+
+    vector = PlannedStage(
+        spec=vector_spec,
+        products=(
+            PlannedProduct(
+                spec=vector_spec.products[0],
+                path=(
+                    tmp_path
+                    / "artifacts"
+                    / "upstream-artifact"
+                    / "upstream"
+                    / "default"
+                    / "30-vector"
+                    / "geometry.dat"
+                ),
+            ),
+        ),
+    )
+
+    return BuildPlan(
+        artifact_id="upstream-artifact",
+        model=ModelSpec(
+            name="upstream",
+            title="Upstream",
+            stages=(
+                prepare_spec,
+                raster_spec,
+                vector_spec,
+                extrude_spec,
+                package_spec,
+            ),
+        ),
+        realization_name="default",
+        resolver=resolver,
+        project_root=tmp_path,
+        artifact_dir=(tmp_path / "artifacts" / "upstream-artifact"),
+        stages=(
+            prepare,
+            raster,
+            vector,
+        ),
+        targets=(
+            ProductRef(
+                artifact="upstream-artifact",
+                model="upstream",
+                realization="default",
+                stage="vector",
+                product="geometry",
+            ),
+        ),
+    )
+
+
+def _record_plan_current(
+    build_plan: BuildPlan,
+) -> None:
+    """
+    Materialize every realized stage with matching completion metadata.
+    """
+
+    fingerprints = create_required_fingerprints(
+        build_plan,
+    )
+
+    for stage in build_plan.stages:
+        _record_stage_current(
+            build_plan,
+            stage,
+            fingerprints[stage.name],
+        )
 
 
 # =========================================================
@@ -413,10 +678,17 @@ def test_dependency_build_executes_required_producer_before_consumer(
         build_plan: BuildPlan,
         execution_plan: ExecutionPlan,
     ) -> tuple[BuildPlan, ...]:
-        assert build_plan is consumer_plan
-        assert execution_plan.required_product_dependencies
+        if build_plan is consumer_plan:
+            assert execution_plan.required_product_dependencies
 
-        return (producer_plan,)
+            return (producer_plan,)
+
+        if build_plan is producer_plan:
+            assert execution_plan.required_product_dependencies == ()
+
+            return ()
+
+        raise AssertionError(f"Unexpected BuildPlan {build_plan.artifact_id!r}")
 
     def execute_artifact(
         build_plan: BuildPlan,
@@ -591,6 +863,14 @@ def test_dependency_build_replans_consumer_after_producer_execution(
     ) -> ExecutionPlan:
         nonlocal consumer_planning_count
 
+        if build_plan is producer_plan:
+            return ExecutionPlan(
+                artifact_id=producer_plan.artifact_id,
+                model_name=producer_plan.model_name,
+                realization=producer_plan.realization_name,
+                stages=(),
+            )
+
         assert build_plan is consumer_plan
 
         consumer_planning_count += 1
@@ -626,6 +906,9 @@ def test_dependency_build_replans_consumer_after_producer_execution(
         build_plan: BuildPlan,
         execution_plan: ExecutionPlan,
     ) -> tuple[BuildPlan, ...]:
+        if build_plan is producer_plan:
+            return ()
+
         assert build_plan is consumer_plan
 
         if execution_plan.required_product_dependencies:
@@ -716,9 +999,13 @@ def test_dependency_build_stops_when_producer_execution_fails(
         build_plan: BuildPlan,
         execution_plan: ExecutionPlan,
     ) -> tuple[BuildPlan, ...]:
-        assert build_plan is consumer_plan
+        if build_plan is consumer_plan:
+            return (producer_plan,)
 
-        return (producer_plan,)
+        if build_plan is producer_plan:
+            return ()
+
+        raise AssertionError(f"Unexpected BuildPlan {build_plan.artifact_id!r}")
 
     def execute_artifact(
         build_plan: BuildPlan,
@@ -759,3 +1046,365 @@ def test_dependency_build_stops_when_producer_execution_fails(
         )
 
     assert consumer_executed is False
+
+
+# =========================================================
+# Transitive dependency orchestration
+# =========================================================
+
+
+def test_dependency_build_executes_transitive_dependencies_in_order(
+    consumer_plan: BuildPlan,
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A -> B -> C executes C before B before A.
+    """
+
+    producer_plan = _transitive_producer_build_plan(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    upstream_plan = _upstream_build_plan(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    execution_order: list[str] = []
+
+    real_execute_dependency_build = dependency_build_module.execute_dependency_build
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        if build_plan is consumer_plan:
+            assert execution_plan.required_product_dependencies
+
+            return (producer_plan,)
+
+        if build_plan is producer_plan:
+            assert execution_plan.required_product_dependencies
+
+            return (upstream_plan,)
+
+        return ()
+
+    def execute_artifact(
+        build_plan: BuildPlan,
+        **kwargs,
+    ) -> ExecutionPlan:
+        execution_order.append(
+            build_plan.artifact_id,
+        )
+
+        _record_plan_current(
+            build_plan,
+        )
+
+        return ExecutionPlan(
+            artifact_id=build_plan.artifact_id,
+            model_name=build_plan.model_name,
+            realization=build_plan.realization_name,
+            stages=(),
+        )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "execute_incremental_artifact_build",
+        execute_artifact,
+    )
+
+    real_execute_dependency_build(
+        consumer_plan,
+    )
+
+    assert execution_order == [
+        "upstream-artifact",
+        "producer-artifact",
+        "consumer-artifact",
+    ]
+
+
+def test_dependency_build_reuses_current_transitive_dependency(
+    consumer_plan: BuildPlan,
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A current C product is reused while required B and A work still executes.
+    """
+
+    producer_plan = _transitive_producer_build_plan(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    upstream_plan = _upstream_build_plan(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    _record_plan_current(
+        upstream_plan,
+    )
+
+    upstream_fingerprints = create_required_fingerprints(
+        upstream_plan,
+    )
+
+    required_upstream_fingerprint = upstream_fingerprints["vector"]
+
+    execution_order: list[str] = []
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        if build_plan is consumer_plan:
+            return (producer_plan,)
+
+        if build_plan is producer_plan:
+            assert execution_plan.required_product_dependencies == ()
+
+            return ()
+
+        return ()
+
+    def supplied_fingerprint(
+        dependency: PlannedProductDependency,
+    ) -> ProductFingerprint | None:
+        if dependency.product_ref.artifact == "upstream-artifact":
+            return required_upstream_fingerprint
+
+        return None
+
+    def execute_artifact(
+        build_plan: BuildPlan,
+        **kwargs,
+    ) -> ExecutionPlan:
+        execution_order.append(
+            build_plan.artifact_id,
+        )
+
+        _record_plan_current(
+            build_plan,
+        )
+
+        return ExecutionPlan(
+            artifact_id=build_plan.artifact_id,
+            model_name=build_plan.model_name,
+            realization=build_plan.realization_name,
+            stages=(),
+        )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "execute_incremental_artifact_build",
+        execute_artifact,
+    )
+
+    execute_dependency_build(
+        consumer_plan,
+        product_dependency_fingerprint=supplied_fingerprint,
+    )
+
+    assert execution_order == [
+        "producer-artifact",
+        "consumer-artifact",
+    ]
+
+
+def test_dependency_build_targets_only_required_transitive_product(
+    consumer_plan: BuildPlan,
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Transitive execution stops at the specifically required upstream product.
+    """
+
+    producer_plan = _transitive_producer_build_plan(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    upstream_plan = _upstream_build_plan(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    executed_stages: list[
+        tuple[
+            str,
+            str,
+        ]
+    ] = []
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        if build_plan is consumer_plan:
+            return (producer_plan,)
+
+        if build_plan is producer_plan:
+            return (upstream_plan,)
+
+        return ()
+
+    def execute_artifact(
+        build_plan: BuildPlan,
+        **kwargs,
+    ) -> ExecutionPlan:
+        for stage in build_plan.stages:
+            executed_stages.append(
+                (
+                    build_plan.artifact_id,
+                    stage.name,
+                )
+            )
+
+        _record_plan_current(
+            build_plan,
+        )
+
+        return ExecutionPlan(
+            artifact_id=build_plan.artifact_id,
+            model_name=build_plan.model_name,
+            realization=build_plan.realization_name,
+            stages=(),
+        )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "execute_incremental_artifact_build",
+        execute_artifact,
+    )
+
+    execute_dependency_build(
+        consumer_plan,
+    )
+
+    upstream_stages = [
+        stage_name
+        for artifact_id, stage_name in executed_stages
+        if artifact_id == "upstream-artifact"
+    ]
+
+    assert upstream_stages == [
+        "prepare",
+        "raster",
+        "vector",
+    ]
+
+    assert "extrude" not in upstream_stages
+    assert "package" not in upstream_stages
+
+
+def test_dependency_build_propagates_transitive_producer_failure(
+    consumer_plan: BuildPlan,
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Failure in C prevents execution of both dependent B and consumer A.
+    """
+
+    producer_plan = _transitive_producer_build_plan(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    upstream_plan = _upstream_build_plan(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    executed: list[str] = []
+
+    class ExpectedUpstreamError(Exception):
+        """
+        Expected transitive producer failure.
+        """
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        if build_plan is consumer_plan:
+            return (producer_plan,)
+
+        if build_plan is producer_plan:
+            return (upstream_plan,)
+
+        return ()
+
+    def execute_artifact(
+        build_plan: BuildPlan,
+        **kwargs,
+    ) -> ExecutionPlan:
+        executed.append(
+            build_plan.artifact_id,
+        )
+
+        if build_plan is upstream_plan:
+            raise ExpectedUpstreamError
+
+        _record_plan_current(
+            build_plan,
+        )
+
+        return ExecutionPlan(
+            artifact_id=build_plan.artifact_id,
+            model_name=build_plan.model_name,
+            realization=build_plan.realization_name,
+            stages=(),
+        )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "execute_incremental_artifact_build",
+        execute_artifact,
+    )
+
+    with pytest.raises(
+        ExpectedUpstreamError,
+    ):
+        execute_dependency_build(
+            consumer_plan,
+        )
+
+    assert executed == [
+        "upstream-artifact",
+    ]

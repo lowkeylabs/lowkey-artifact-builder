@@ -63,46 +63,24 @@ def execute_dependency_build(
     """
     Execute one dependency-aware artifact build.
 
-    The consumer is first planned without executing local stages.
+    Required cross-artifact producer products are resolved recursively.
 
-    If every bound producer product is already reusable, the consumer is
-    executed directly using the same producer-product fingerprint
-    resolution supplied by the caller.
+    A producer whose own required product dependencies are not reusable is
+    dependency-planned and executed before the producer itself. Producer
+    fingerprints discovered during recursive execution are retained across
+    the complete orchestration so each dependent artifact can be replanned
+    against the products produced earlier in the traversal.
 
-    If producer products require production, targeted producer BuildPlans
-    are constructed from the consumer's execution requirements and
-    executed before the consumer.
+    Producer products already reusable for their required build-context
+    fingerprints do not create producer work.
 
-    After producer execution, required producer fingerprints are derived
-    from the producer BuildPlans. The consumer is then replanned so its
-    persistent state and required stage fingerprints are evaluated against
-    the newly produced producer products.
+    After all required producer work has completed, each dependent artifact
+    is replanned before its local stages execute.
 
-    Only after that replan may the consumer execute.
-
-    This operation intentionally supports one producer dependency level.
-    Producer BuildPlans are executed through incremental artifact
-    execution directly rather than recursively through this function.
+    Dependency-cycle detection remains outside this boundary.
     """
 
-    initial_plan = plan_incremental_execution(
-        build_plan,
-        product_dependency_fingerprint=product_dependency_fingerprint,
-    )
-
-    producer_plans = create_required_product_dependency_build_plans(
-        build_plan,
-        initial_plan,
-    )
-
-    if not producer_plans:
-        return execute_incremental_artifact_build(
-            build_plan,
-            product_dependency_fingerprint=product_dependency_fingerprint,
-            event_sink=event_sink,
-        )
-
-    producer_fingerprints: dict[
+    produced: dict[
         tuple[
             str,
             str,
@@ -113,25 +91,74 @@ def execute_dependency_build(
         ProductFingerprint,
     ] = {}
 
+    return _execute_dependency_build(
+        build_plan,
+        supplied_fingerprint=product_dependency_fingerprint,
+        produced=produced,
+        event_sink=event_sink,
+    )
+
+
+def _execute_dependency_build(
+    build_plan: BuildPlan,
+    *,
+    supplied_fingerprint: (ProductDependencyFingerprintResolver | None),
+    produced: dict[
+        tuple[
+            str,
+            str,
+            str,
+            str,
+            str,
+        ],
+        ProductFingerprint,
+    ],
+    event_sink: EventSink | None,
+) -> ExecutionPlan:
+    """
+    Execute one node of a dependency-aware build traversal.
+
+    produced is shared by every recursive invocation. Fingerprints recorded
+    for upstream producer products therefore become immediately available
+    when dependent producer or consumer artifacts are replanned.
+    """
+
+    product_dependency_fingerprint = _create_product_dependency_fingerprint_resolver(
+        supplied=supplied_fingerprint,
+        produced=produced,
+    )
+
+    initial_plan = plan_incremental_execution(
+        build_plan,
+        product_dependency_fingerprint=(product_dependency_fingerprint),
+    )
+
+    producer_plans = create_required_product_dependency_build_plans(
+        build_plan,
+        initial_plan,
+    )
+
     for producer_plan in producer_plans:
-        execute_incremental_artifact_build(
+        _execute_dependency_build(
             producer_plan,
+            supplied_fingerprint=supplied_fingerprint,
+            produced=produced,
             event_sink=event_sink,
         )
 
         _record_producer_fingerprints(
             producer_plan=producer_plan,
-            fingerprints=producer_fingerprints,
+            fingerprints=produced,
         )
 
-    required_product_dependency_fingerprint = _create_product_dependency_fingerprint_resolver(
-        supplied=product_dependency_fingerprint,
-        produced=producer_fingerprints,
+    product_dependency_fingerprint = _create_product_dependency_fingerprint_resolver(
+        supplied=supplied_fingerprint,
+        produced=produced,
     )
 
     replanned = plan_incremental_execution(
         build_plan,
-        product_dependency_fingerprint=(required_product_dependency_fingerprint),
+        product_dependency_fingerprint=(product_dependency_fingerprint),
     )
 
     if replanned.required_product_dependencies:
@@ -139,7 +166,7 @@ def execute_dependency_build(
 
     return execute_incremental_artifact_build(
         build_plan,
-        product_dependency_fingerprint=(required_product_dependency_fingerprint),
+        product_dependency_fingerprint=(product_dependency_fingerprint),
         event_sink=event_sink,
     )
 
@@ -166,8 +193,8 @@ def _record_producer_fingerprints(
     """
     Record required fingerprints for products realized by one producer.
 
-    Required stage fingerprints are derived from the same producer
-    BuildPlan used for execution.
+    Required stage fingerprints are derived after all transitive producer
+    dependencies required by this BuildPlan have completed.
 
     Every persistent product produced by a realized stage therefore maps
     to the fingerprint required for that producing stage.
