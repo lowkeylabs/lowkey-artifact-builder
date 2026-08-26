@@ -13,10 +13,6 @@ executed.
 
 Producer products already reusable for their required build-context
 fingerprints do not create producer work.
-
-This module intentionally orchestrates one level of cross-artifact
-dependencies. Recursive producer dependency traversal and dependency-cycle
-handling remain outside this boundary.
 """
 # File: src/lowkey_artifact_builder/engine/dependency_build.py
 # Copyright 2026 LowKeyLabs LLC
