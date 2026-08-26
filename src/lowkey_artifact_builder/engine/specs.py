@@ -41,6 +41,7 @@ from lowkey_artifact_builder.config import (
 from lowkey_artifact_builder.model import (
     InputSpec,
     ModelSpec,
+    ProductDependencySpec,
     ProductRef,
     ProductSpec,
     StageSpec,
@@ -273,6 +274,14 @@ class BuildPlan:
     required to produce them. ProductRef remains a logical identity and
     contains no filesystem location.
 
+    Product_dependencies records definition-level products required by the
+    planned realization but produced outside its model-local stage
+    dependency closure.
+
+    These dependencies identify producer model, stage, and product but do
+    not yet bind that product to a concrete producer artifact or
+    realization.
+
     Stage parameter declarations remain on StageSpec and describe which
     configuration values a stage normally consumes. Parameter values
     themselves are obtained directly from resolver and are not copied
@@ -301,6 +310,8 @@ class BuildPlan:
     stages: tuple[PlannedStage, ...]
 
     targets: tuple[ProductRef, ...] | None = None
+
+    product_dependencies: tuple[ProductDependencySpec, ...] = ()
 
     @property
     def model_name(

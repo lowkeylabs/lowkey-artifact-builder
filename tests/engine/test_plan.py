@@ -23,6 +23,7 @@ from lowkey_artifact_builder.engine import (
 )
 from lowkey_artifact_builder.model import (
     ModelSpec,
+    ProductDependencySpec,
     ProductRef,
     ProductSpec,
     StageSpec,
@@ -1401,3 +1402,59 @@ def test_create_build_plans_rejects_target_for_other_artifact(
             targets=(target,),
             project_root=tmp_path,
         )
+
+
+def test_build_plan_preserves_product_dependencies() -> None:
+    """
+    A build plan retains declarative product dependencies required by
+    its selected realization graph.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    plan = BuildPlan(
+        artifact_id="consumer",
+        model=ModelSpec(
+            name="consumer-model",
+            title="Consumer Model",
+        ),
+        realization_name="default",
+        resolver=None,  # type: ignore[arg-type]
+        project_root=Path("/project"),
+        artifact_dir=Path("/project/artifacts/consumer"),
+        stages=(),
+        targets=(
+            ProductRef(
+                artifact="consumer",
+                model="consumer-model",
+                realization="default",
+                stage="package",
+                product="artifact",
+            ),
+        ),
+        product_dependencies=(dependency,),
+    )
+
+    assert plan.product_dependencies == (dependency,)
+
+
+def test_build_plan_defaults_to_no_product_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Existing builds without cross-product requirements retain an empty
+    product dependency set.
+    """
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    assert plan.product_dependencies == ()

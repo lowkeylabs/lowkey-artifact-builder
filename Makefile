@@ -31,6 +31,13 @@ typecheck:
 pre-commit:
 	uv run pre-commit run --all-files
 
+prep:
+	git add --all
+	-make pre-commit
+	make pre-commit
+	git add --all
+	make check
+
 check: lint typecheck pre-commit test-fast
 
 check-full: lint typecheck pre-commit test
