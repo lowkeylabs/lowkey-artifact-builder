@@ -50,6 +50,23 @@ from .specs import (
 )
 
 # =========================================================
+# Errors
+# =========================================================
+
+
+class DependencyBuildError(Exception):
+    """
+    Base error for cross-artifact dependency build orchestration.
+    """
+
+
+class DependencyCycleError(DependencyBuildError):
+    """
+    Cross-artifact dependency traversal contains a cycle.
+    """
+
+
+# =========================================================
 # Dependency-aware build execution
 # =========================================================
 
@@ -65,19 +82,13 @@ def execute_dependency_build(
 
     Required cross-artifact producer products are resolved recursively.
 
-    A producer whose own required product dependencies are not reusable is
-    dependency-planned and executed before the producer itself. Producer
-    fingerprints discovered during recursive execution are retained across
-    the complete orchestration so each dependent artifact can be replanned
-    against the products produced earlier in the traversal.
+    Producer fingerprints discovered during recursive execution are retained
+    across the complete orchestration so each dependent artifact can be
+    replanned against products produced earlier in the traversal.
 
-    Producer products already reusable for their required build-context
-    fingerprints do not create producer work.
-
-    After all required producer work has completed, each dependent artifact
-    is replanned before its local stages execute.
-
-    Dependency-cycle detection remains outside this boundary.
+    The active dependency path is tracked independently of completed work.
+    Re-entering an artifact realization already present on that path is a
+    dependency cycle and fails explicitly.
     """
 
     produced: dict[
@@ -95,6 +106,7 @@ def execute_dependency_build(
         build_plan,
         supplied_fingerprint=product_dependency_fingerprint,
         produced=produced,
+        active=(),
         event_sink=event_sink,
     )
 
@@ -113,15 +125,53 @@ def _execute_dependency_build(
         ],
         ProductFingerprint,
     ],
+    active: tuple[
+        tuple[
+            str,
+            str,
+            str,
+        ],
+        ...,
+    ],
     event_sink: EventSink | None,
 ) -> ExecutionPlan:
     """
     Execute one node of a dependency-aware build traversal.
 
-    produced is shared by every recursive invocation. Fingerprints recorded
-    for upstream producer products therefore become immediately available
-    when dependent producer or consumer artifacts are replanned.
+    produced is shared by every recursive invocation.
+
+    active contains only artifact realizations on the current recursive
+    traversal path. A repeated identity therefore represents a dependency
+    cycle rather than merely a producer encountered previously elsewhere
+    in the dependency graph.
     """
+
+    identity = (
+        build_plan.artifact_id,
+        build_plan.model_name,
+        build_plan.realization_name,
+    )
+
+    if identity in active:
+        cycle_start = active.index(
+            identity,
+        )
+
+        cycle = (
+            *active[cycle_start:],
+            identity,
+        )
+
+        path = " -> ".join(
+            f"{artifact}/{model}/{realization}" for artifact, model, realization in cycle
+        )
+
+        raise DependencyCycleError(f"Cross-artifact dependency cycle detected: {path}")
+
+    active = (
+        *active,
+        identity,
+    )
 
     product_dependency_fingerprint = _create_product_dependency_fingerprint_resolver(
         supplied=supplied_fingerprint,
@@ -143,6 +193,7 @@ def _execute_dependency_build(
             producer_plan,
             supplied_fingerprint=supplied_fingerprint,
             produced=produced,
+            active=active,
             event_sink=event_sink,
         )
 
@@ -162,7 +213,9 @@ def _execute_dependency_build(
     )
 
     if replanned.required_product_dependencies:
-        raise ValueError("Producer execution did not satisfy all required product dependencies")
+        raise DependencyBuildError(
+            "Producer execution did not satisfy all required product dependencies"
+        )
 
     return execute_incremental_artifact_build(
         build_plan,
@@ -285,5 +338,7 @@ def _create_product_dependency_fingerprint_resolver(
 
 
 __all__ = [
+    "DependencyBuildError",
+    "DependencyCycleError",
     "execute_dependency_build",
 ]

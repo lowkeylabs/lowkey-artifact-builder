@@ -33,6 +33,7 @@ import pytest
 import lowkey_artifact_builder.engine.dependency_build as dependency_build_module
 from lowkey_artifact_builder.engine import (
     BuildPlan,
+    DependencyCycleError,
     ExecutionPlan,
     PlannedProduct,
     PlannedProductDependency,
@@ -309,6 +310,92 @@ def _upstream_build_plan(
                 product="geometry",
             ),
         ),
+    )
+
+
+def _cyclic_build_plan(
+    tmp_path: Path,
+    *,
+    artifact_id: str,
+    model_name: str,
+    dependency_artifact: str,
+    dependency_model: str,
+    resolver,
+) -> BuildPlan:
+    """
+    Construct one single-stage artifact participating in a dependency cycle.
+    """
+
+    dependency = ProductDependencySpec(
+        model=dependency_model,
+        stage="build",
+        product="product",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact=dependency_artifact,
+        realization="default",
+    )
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=(
+            tmp_path
+            / "artifacts"
+            / dependency_artifact
+            / dependency_model
+            / "default"
+            / "10-build"
+            / "product.dat"
+        ),
+    )
+
+    stage_spec = StageSpec(
+        id=10,
+        name="build",
+        product_dependencies=(dependency,),
+        products=(
+            ProductSpec(
+                name="product",
+                path="product.dat",
+            ),
+        ),
+    )
+
+    stage = PlannedStage(
+        spec=stage_spec,
+        products=(
+            PlannedProduct(
+                spec=stage_spec.products[0],
+                path=(
+                    tmp_path
+                    / "artifacts"
+                    / artifact_id
+                    / model_name
+                    / "default"
+                    / "10-build"
+                    / "product.dat"
+                ),
+            ),
+        ),
+    )
+
+    return BuildPlan(
+        artifact_id=artifact_id,
+        model=ModelSpec(
+            name=model_name,
+            title=model_name.title(),
+            stages=(stage_spec,),
+        ),
+        realization_name="default",
+        resolver=resolver,
+        project_root=tmp_path,
+        artifact_dir=(tmp_path / "artifacts" / artifact_id),
+        stages=(stage,),
+        product_dependencies=(dependency,),
+        product_dependency_bindings=(binding,),
+        planned_product_dependencies=(planned_dependency,),
     )
 
 
@@ -1408,3 +1495,205 @@ def test_dependency_build_propagates_transitive_producer_failure(
     assert executed == [
         "upstream-artifact",
     ]
+
+
+# =========================================================
+# Dependency-cycle detection
+# =========================================================
+
+
+def test_dependency_build_rejects_direct_dependency_cycle(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A -> B -> A fails explicitly rather than recursing indefinitely.
+    """
+
+    plan_a = _cyclic_build_plan(
+        tmp_path,
+        artifact_id="artifact-a",
+        model_name="model-a",
+        dependency_artifact="artifact-b",
+        dependency_model="model-b",
+        resolver=test_resolver,
+    )
+
+    plan_b = _cyclic_build_plan(
+        tmp_path,
+        artifact_id="artifact-b",
+        model_name="model-b",
+        dependency_artifact="artifact-a",
+        dependency_model="model-a",
+        resolver=test_resolver,
+    )
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        assert execution_plan.required_product_dependencies
+
+        if build_plan is plan_a:
+            return (plan_b,)
+
+        if build_plan is plan_b:
+            return (plan_a,)
+
+        raise AssertionError(f"Unexpected BuildPlan {build_plan.artifact_id!r}")
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    with pytest.raises(
+        DependencyCycleError,
+    ):
+        execute_dependency_build(
+            plan_a,
+        )
+
+
+def test_dependency_build_rejects_long_dependency_cycle(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A -> B -> C -> A fails explicitly.
+    """
+
+    plan_a = _cyclic_build_plan(
+        tmp_path,
+        artifact_id="artifact-a",
+        model_name="model-a",
+        dependency_artifact="artifact-b",
+        dependency_model="model-b",
+        resolver=test_resolver,
+    )
+
+    plan_b = _cyclic_build_plan(
+        tmp_path,
+        artifact_id="artifact-b",
+        model_name="model-b",
+        dependency_artifact="artifact-c",
+        dependency_model="model-c",
+        resolver=test_resolver,
+    )
+
+    plan_c = _cyclic_build_plan(
+        tmp_path,
+        artifact_id="artifact-c",
+        model_name="model-c",
+        dependency_artifact="artifact-a",
+        dependency_model="model-a",
+        resolver=test_resolver,
+    )
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        assert execution_plan.required_product_dependencies
+
+        if build_plan is plan_a:
+            return (plan_b,)
+
+        if build_plan is plan_b:
+            return (plan_c,)
+
+        if build_plan is plan_c:
+            return (plan_a,)
+
+        raise AssertionError(f"Unexpected BuildPlan {build_plan.artifact_id!r}")
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    with pytest.raises(
+        DependencyCycleError,
+    ):
+        execute_dependency_build(
+            plan_a,
+        )
+
+
+def test_dependency_cycle_error_identifies_dependency_path(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Cycle failure identifies the artifact realizations in the cycle.
+    """
+
+    plan_a = _cyclic_build_plan(
+        tmp_path,
+        artifact_id="artifact-a",
+        model_name="model-a",
+        dependency_artifact="artifact-b",
+        dependency_model="model-b",
+        resolver=test_resolver,
+    )
+
+    plan_b = _cyclic_build_plan(
+        tmp_path,
+        artifact_id="artifact-b",
+        model_name="model-b",
+        dependency_artifact="artifact-c",
+        dependency_model="model-c",
+        resolver=test_resolver,
+    )
+
+    plan_c = _cyclic_build_plan(
+        tmp_path,
+        artifact_id="artifact-c",
+        model_name="model-c",
+        dependency_artifact="artifact-a",
+        dependency_model="model-a",
+        resolver=test_resolver,
+    )
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        if build_plan is plan_a:
+            return (plan_b,)
+
+        if build_plan is plan_b:
+            return (plan_c,)
+
+        if build_plan is plan_c:
+            return (plan_a,)
+
+        raise AssertionError(f"Unexpected BuildPlan {build_plan.artifact_id!r}")
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    with pytest.raises(
+        DependencyCycleError,
+    ) as exc_info:
+        execute_dependency_build(
+            plan_a,
+        )
+
+    message = str(
+        exc_info.value,
+    )
+
+    assert "artifact-a/model-a/default" in message
+    assert "artifact-b/model-b/default" in message
+    assert "artifact-c/model-c/default" in message
+
+    assert "artifact-a/model-a/default" in message[message.find("artifact-c/model-c/default") :]

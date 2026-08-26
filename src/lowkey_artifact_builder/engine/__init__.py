@@ -73,6 +73,8 @@ from .context import (
     create_stage_context,
 )
 from .dependency_build import (
+    DependencyBuildError,
+    DependencyCycleError,
     execute_dependency_build,
 )
 from .dependency_plan import (
@@ -150,6 +152,8 @@ __all__ = [
     "BuildError",
     "BuildPlan",
     "BuildPlanError",
+    "DependencyBuildError",
+    "DependencyCycleError",
     "EventSink",
     "ExecutionEvent",
     "ExecutionPlan",
