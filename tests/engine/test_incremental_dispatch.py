@@ -9,9 +9,15 @@ Only stages requiring execution are dispatched. Each dispatched stage
 receives a StageContext adapted directly from the same BuildPlan and
 PlannedStage used for incremental planning.
 
+Cross-artifact product dependencies participate in incremental execution
+through their required producer-product fingerprints. Current producer
+products permit consumer execution, while absent or stale producer
+products prevent consumer dispatch until the producer requirement has
+been satisfied.
+
 These tests exercise orchestration between incremental execution and
 engine stage dispatch. They do not execute model-specific stage
-implementations.
+implementations or orchestrate producer builds.
 """
 # File: tests/engine/test_incremental_dispatch.py
 # Copyright 2026 LowKeyLabs LLC
@@ -27,13 +33,23 @@ import pytest
 import lowkey_artifact_builder.engine.incremental as incremental_module
 from lowkey_artifact_builder.engine import (
     BuildPlan,
+    PlannedProduct,
+    PlannedProductDependency,
     PlannedStage,
     ProductFingerprint,
+    ProductState,
     StageCompletion,
     StageContext,
     create_required_fingerprints,
     execute_incremental_artifact_build,
     write_stage_completion,
+)
+from lowkey_artifact_builder.model import (
+    ModelSpec,
+    ProductDependencyBinding,
+    ProductDependencySpec,
+    ProductSpec,
+    StageSpec,
 )
 
 type ArtworkPlanFactory = Callable[..., BuildPlan]
@@ -164,6 +180,135 @@ def _stage_by_name(
     """
 
     return next(stage for stage in build_plan.stages if stage.name == stage_name)
+
+
+def _product_dependency_build_plan(
+    tmp_path: Path,
+    *,
+    resolver,
+) -> BuildPlan:
+    """
+    Construct a minimal consumer plan with one cross-artifact dependency.
+
+    The consumer stage requires an intermediate geometry product from a
+    different artifact and model. The producer product itself is represented
+    by the normal PlannedProductDependency contract.
+
+    Producer execution is intentionally outside this helper and outside
+    these tests.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="transform",
+        product="geometry",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="producer-artifact",
+        realization="default",
+    )
+
+    dependency_path = (
+        tmp_path
+        / "artifacts"
+        / "producer-artifact"
+        / "producer"
+        / "default"
+        / "20-transform"
+        / "geometry.dat"
+    )
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=dependency_path,
+    )
+
+    stage_spec = StageSpec(
+        id=10,
+        name="consume",
+        product_dependencies=(dependency,),
+        products=(
+            ProductSpec(
+                name="artifact",
+                path="artifact.dat",
+            ),
+        ),
+    )
+
+    stage = PlannedStage(
+        spec=stage_spec,
+        products=(
+            PlannedProduct(
+                spec=stage_spec.products[0],
+                path=(
+                    tmp_path
+                    / "artifacts"
+                    / "consumer-artifact"
+                    / "consumer"
+                    / "default"
+                    / "10-consume"
+                    / "artifact.dat"
+                ),
+            ),
+        ),
+    )
+
+    return BuildPlan(
+        artifact_id="consumer-artifact",
+        model=ModelSpec(
+            name="consumer",
+            title="Consumer",
+            stages=(stage_spec,),
+        ),
+        realization_name="default",
+        resolver=resolver,
+        project_root=tmp_path,
+        artifact_dir=(tmp_path / "artifacts" / "consumer-artifact"),
+        stages=(stage,),
+        product_dependencies=(dependency,),
+        product_dependency_bindings=(binding,),
+        planned_product_dependencies=(planned_dependency,),
+    )
+
+
+def _record_product_dependency_current(
+    build_plan: BuildPlan,
+    *,
+    fingerprint: ProductFingerprint,
+) -> None:
+    """
+    Materialize the bound producer product with matching completion metadata.
+    """
+
+    if len(build_plan.planned_product_dependencies) != 1:
+        raise AssertionError("Expected exactly one planned product dependency.")
+
+    planned_dependency = build_plan.planned_product_dependencies[0]
+    binding = planned_dependency.binding
+    dependency = binding.dependency
+
+    planned_dependency.path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    planned_dependency.path.write_bytes(
+        b"producer-geometry",
+    )
+
+    write_stage_completion(
+        planned_dependency.path.parent,
+        StageCompletion(
+            artifact_id=binding.artifact,
+            model_name=dependency.model,
+            realization=binding.realization,
+            stage_name=dependency.stage,
+            products=(dependency.product,),
+            fingerprint=fingerprint,
+        ),
+    )
 
 
 # =========================================================
@@ -503,6 +648,234 @@ def test_incremental_artifact_build_dispatches_only_invalidated_chain(
     assert tuple(
         dispatched,
     ) == tuple(stage.stage_name for stage in execution_plan.required_stages)
+
+
+# =========================================================
+# Cross-artifact dependency dispatch
+# =========================================================
+
+
+def test_incremental_artifact_build_accepts_product_dependency_fingerprint(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Incremental artifact execution accepts authoritative producer-product
+    fingerprint provenance.
+    """
+
+    build_plan = _product_dependency_build_plan(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    producer_fingerprint = ProductFingerprint(
+        algorithm="sha256",
+        value="a" * 64,
+    )
+
+    _record_product_dependency_current(
+        build_plan,
+        fingerprint=producer_fingerprint,
+    )
+
+    dispatched: list[str] = []
+
+    def dispatch(
+        context: StageContext,
+    ) -> None:
+        dispatched.append(
+            context.stage_name,
+        )
+
+        _materialize_stage_products(
+            build_plan.stages[0],
+        )
+
+    monkeypatch.setattr(
+        incremental_module,
+        "execute_stage",
+        dispatch,
+    )
+
+    execution_plan = execute_incremental_artifact_build(
+        build_plan,
+        product_dependency_fingerprint=(lambda dependency: producer_fingerprint),
+    )
+
+    assert dispatched == [
+        "consume",
+    ]
+
+    assert execution_plan.product_dependencies[0].state is ProductState.CURRENT
+
+
+def test_incremental_artifact_build_reuses_current_product_dependency(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A current producer product is reused without producer execution.
+    """
+
+    build_plan = _product_dependency_build_plan(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    producer_fingerprint = ProductFingerprint(
+        algorithm="sha256",
+        value="b" * 64,
+    )
+
+    _record_product_dependency_current(
+        build_plan,
+        fingerprint=producer_fingerprint,
+    )
+
+    dispatched: list[str] = []
+
+    def dispatch(
+        context: StageContext,
+    ) -> None:
+        dispatched.append(
+            context.stage_name,
+        )
+
+        _materialize_stage_products(
+            build_plan.stages[0],
+        )
+
+    monkeypatch.setattr(
+        incremental_module,
+        "execute_stage",
+        dispatch,
+    )
+
+    execution_plan = execute_incremental_artifact_build(
+        build_plan,
+        product_dependency_fingerprint=(lambda dependency: producer_fingerprint),
+    )
+
+    assert execution_plan.required_product_dependencies == ()
+
+    assert dispatched == [
+        "consume",
+    ]
+
+
+def test_incremental_artifact_build_does_not_execute_consumer_when_dependency_is_stale(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A stale producer product prevents consumer execution.
+    """
+
+    build_plan = _product_dependency_build_plan(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    recorded_fingerprint = ProductFingerprint(
+        algorithm="sha256",
+        value="c" * 64,
+    )
+
+    required_fingerprint = ProductFingerprint(
+        algorithm="sha256",
+        value="d" * 64,
+    )
+
+    _record_product_dependency_current(
+        build_plan,
+        fingerprint=recorded_fingerprint,
+    )
+
+    dispatched: list[str] = []
+
+    def dispatch(
+        context: StageContext,
+    ) -> None:
+        dispatched.append(
+            context.stage_name,
+        )
+
+    monkeypatch.setattr(
+        incremental_module,
+        "execute_stage",
+        dispatch,
+    )
+
+    execution_plan = execute_incremental_artifact_build(
+        build_plan,
+        product_dependency_fingerprint=(lambda dependency: required_fingerprint),
+    )
+
+    assert dispatched == []
+
+    assert (
+        len(
+            execution_plan.required_product_dependencies,
+        )
+        == 1
+    )
+
+    assert execution_plan.required_product_dependencies[0].state is ProductState.STALE
+
+
+def test_incremental_artifact_build_does_not_execute_consumer_when_dependency_is_absent(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    An absent required producer product prevents consumer execution.
+    """
+
+    build_plan = _product_dependency_build_plan(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    producer_fingerprint = ProductFingerprint(
+        algorithm="sha256",
+        value="e" * 64,
+    )
+
+    dispatched: list[str] = []
+
+    def dispatch(
+        context: StageContext,
+    ) -> None:
+        dispatched.append(
+            context.stage_name,
+        )
+
+    monkeypatch.setattr(
+        incremental_module,
+        "execute_stage",
+        dispatch,
+    )
+
+    execution_plan = execute_incremental_artifact_build(
+        build_plan,
+        product_dependency_fingerprint=(lambda dependency: producer_fingerprint),
+    )
+
+    assert dispatched == []
+
+    assert (
+        len(
+            execution_plan.required_product_dependencies,
+        )
+        == 1
+    )
+
+    assert execution_plan.required_product_dependencies[0].state is ProductState.ABSENT
 
 
 # =========================================================

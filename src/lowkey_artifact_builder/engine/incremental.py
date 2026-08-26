@@ -97,6 +97,42 @@ type ProductDependencyFingerprintResolver = Callable[
 
 
 # =========================================================
+# Product dependency fingerprint resolution
+# =========================================================
+
+
+def _unavailable_product_dependency_fingerprint(
+    dependency: PlannedProductDependency,
+) -> ProductFingerprint | None:
+    """
+    Return no authoritative fingerprint for a producer product.
+
+    This preserves conservative incremental behavior when no higher-level
+    orchestration boundary supplies the fingerprint required by a bound
+    cross-artifact product dependency.
+    """
+
+    return None
+
+
+def _resolve_product_dependency_fingerprint_resolver(
+    product_dependency_fingerprint: (ProductDependencyFingerprintResolver | None),
+) -> ProductDependencyFingerprintResolver:
+    """
+    Return the effective producer-product fingerprint resolver.
+
+    Callers may supply authoritative producer build-context fingerprints.
+    Without such a resolver, producer products cannot prove freshness and
+    therefore conservatively require production.
+    """
+
+    if product_dependency_fingerprint is None:
+        return _unavailable_product_dependency_fingerprint
+
+    return product_dependency_fingerprint
+
+
+# =========================================================
 # Incremental execution planning
 # =========================================================
 
@@ -138,20 +174,9 @@ def plan_incremental_execution(
     intentionally outside this boundary.
     """
 
-    required_product_dependency_fingerprint: ProductDependencyFingerprintResolver
-
-    if product_dependency_fingerprint is None:
-
-        def no_product_dependency_fingerprint(
-            _dependency: PlannedProductDependency,
-            /,
-        ) -> ProductFingerprint | None:
-            return None
-
-        required_product_dependency_fingerprint = no_product_dependency_fingerprint
-
-    else:
-        required_product_dependency_fingerprint = product_dependency_fingerprint
+    required_product_dependency_fingerprint = _resolve_product_dependency_fingerprint_resolver(
+        product_dependency_fingerprint,
+    )
 
     product_dependencies = _plan_product_dependencies(
         build_plan,
@@ -184,6 +209,7 @@ def execute_incremental_build(
     build_plan: BuildPlan,
     *,
     execute_stage: IncrementalStageExecutor,
+    product_dependency_fingerprint: (ProductDependencyFingerprintResolver | None) = None,
     event_sink: EventSink | None = None,
 ) -> ExecutionPlan:
     """
@@ -194,6 +220,11 @@ def execute_incremental_build(
 
     Bound cross-artifact product dependencies are evaluated before
     consumer-stage fingerprint generation.
+
+    The required fingerprint for each bound producer product may be
+    supplied by a higher-level orchestration boundary. If no resolver is
+    supplied, producer products cannot prove freshness and retain the
+    existing conservative behavior.
 
     Required producer work is represented in the returned ExecutionPlan.
     This function does not recursively execute producer artifacts.
@@ -239,9 +270,13 @@ def execute_incremental_build(
     )
 
     try:
+        required_product_dependency_fingerprint = _resolve_product_dependency_fingerprint_resolver(
+            product_dependency_fingerprint,
+        )
+
         product_dependencies = _plan_product_dependencies(
             build_plan,
-            required_fingerprint=lambda _: None,
+            required_fingerprint=required_product_dependency_fingerprint,
         )
 
         if any(dependency.requires_production for dependency in product_dependencies):
@@ -337,6 +372,7 @@ def execute_incremental_build(
 def execute_incremental_artifact_build(
     build_plan: BuildPlan,
     *,
+    product_dependency_fingerprint: (ProductDependencyFingerprintResolver | None) = None,
     event_sink: EventSink | None = None,
 ) -> ExecutionPlan:
     """
@@ -346,8 +382,12 @@ def execute_incremental_artifact_build(
     require execution.
 
     Bound cross-artifact producer products must already be reusable.
-    Recursive producer planning and execution belong to a higher-level
-    orchestration boundary.
+    Their required producer build-context fingerprints may be supplied by
+    a higher-level orchestration boundary so persistent producer products
+    can prove freshness.
+
+    Recursive producer planning and execution remain outside this
+    boundary.
 
     Each required PlannedStage is adapted directly to the established
     engine execution boundary using the same BuildPlan and PlannedStage
@@ -385,6 +425,7 @@ def execute_incremental_artifact_build(
     return execute_incremental_build(
         build_plan,
         execute_stage=execute_planned_stage,
+        product_dependency_fingerprint=product_dependency_fingerprint,
         event_sink=event_sink,
     )
 
