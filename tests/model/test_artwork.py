@@ -105,13 +105,20 @@ def test_artwork_vector_is_independent_of_physical_size() -> None:
     assert stages["vector"].parameters == ()
 
 
-def test_artwork_extrude_inputs() -> None:
-    """Extrusion depends on artwork palette and raise."""
+def test_artwork_extrude_introduces_physical_dimensions() -> None:
+    """
+    Extrusion is the artwork model's physical dimensionalization boundary.
+
+    Registered vector geometry remains independent of manufacturing size
+    until extrusion, where physical artwork size and extrusion height are
+    introduced.
+    """
 
     stages = {stage.name: stage for stage in MODEL.stages}
 
     assert stages["extrude"].parameters == (
         "artwork_colors",
+        "artwork_size",
         "artwork_raise",
     )
 
@@ -158,5 +165,6 @@ def test_artwork_model_parameters() -> None:
         "artwork_pixels",
         "artwork_min_island_area",
         "artwork_island_connectivity",
+        "artwork_size",
         "artwork_raise",
     )

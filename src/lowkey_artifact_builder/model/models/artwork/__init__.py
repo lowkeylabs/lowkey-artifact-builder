@@ -145,6 +145,7 @@ STAGES = (
         dependencies=("vector",),
         parameters=(
             "artwork_colors",
+            "artwork_size",
             "artwork_raise",
         ),
         products=(
