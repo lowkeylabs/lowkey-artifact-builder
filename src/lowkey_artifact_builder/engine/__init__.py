@@ -72,6 +72,9 @@ from .context import (
     create_planned_stage_context,
     create_stage_context,
 )
+from .dependency_plan import (
+    create_required_product_dependency_build_plans,
+)
 from .events import (
     EventSink,
     ExecutionEvent,
@@ -177,6 +180,7 @@ __all__ = [
     "create_product_state_resolver",
     "create_product_dependency_fingerprint_resolver",
     "create_product_dependency_build_plan",
+    "create_required_product_dependency_build_plans",
     "create_required_fingerprints",
     "create_stage_context",
     "emit_event",
