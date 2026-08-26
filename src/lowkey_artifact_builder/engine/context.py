@@ -284,6 +284,11 @@ def _planned_stage_inputs(
 
     Persistent products from direct dependency stages use qualified
     semantic names. Transitive dependencies are intentionally excluded.
+
+    Bound cross-artifact product dependencies declared by the stage use
+    fully qualified definition-level names of the form
+    '<model>.<stage>.<product>' and their already-materialized planned
+    product dependency paths.
     """
 
     inputs: dict[str, Path] = {}
@@ -320,6 +325,35 @@ def _planned_stage_inputs(
                 name=f"{dependency.name}.{product.name}",
                 path=product.path,
             )
+
+    planned_product_dependencies = {
+        planned_dependency.binding.dependency: planned_dependency
+        for planned_dependency in build_plan.planned_product_dependencies
+    }
+
+    for dependency in stage.spec.product_dependencies:
+        try:
+            planned_dependency = planned_product_dependencies[dependency]
+
+        except KeyError as exc:
+            dependency_identity = f"{dependency.model}/{dependency.stage}/{dependency.product}"
+
+            raise StageContextError(
+                f"Cannot construct context for stage "
+                f"{stage.name!r} "
+                f"of artifact {build_plan.artifact_id!r}: "
+                f"planned product dependency "
+                f"{dependency_identity!r} "
+                "is not present in the build plan."
+            ) from exc
+
+        _add_planned_input(
+            build_plan=build_plan,
+            stage=stage,
+            inputs=inputs,
+            name=(f"{dependency.model}.{dependency.stage}.{dependency.product}"),
+            path=planned_dependency.path,
+        )
 
     return inputs
 

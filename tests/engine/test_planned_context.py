@@ -31,14 +31,20 @@ import pytest
 
 from lowkey_artifact_builder.engine import (
     BuildPlan,
+    PlannedProductDependency,
     PlannedStage,
     StageContext,
     StageContextError,
     create_planned_stage_context,
 )
+from lowkey_artifact_builder.model import (
+    ModelSpec,
+    ProductDependencyBinding,
+    ProductDependencySpec,
+    StageSpec,
+)
 
 type ArtworkPlanFactory = Callable[..., BuildPlan]
-
 
 # =========================================================
 # Helpers
@@ -373,6 +379,80 @@ def test_create_planned_stage_context_exposes_only_direct_dependencies(
             qualified_name = f"{candidate.name}.{product.name}"
 
             assert qualified_name not in context.inputs
+
+
+def test_create_planned_stage_context_exposes_product_dependency(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    A bound cross-artifact product dependency is exposed as a stage input.
+
+    The BuildPlan owns the already-materialized dependency path. Planned
+    context construction exposes that path without resolving the producer
+    artifact again.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="producer-artifact",
+        realization="default",
+    )
+
+    dependency_path = (
+        tmp_path
+        / "artifacts"
+        / "producer-artifact"
+        / "producer"
+        / "default"
+        / "10-prepare"
+        / "geometry.dat"
+    )
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=dependency_path,
+    )
+
+    stage_spec = StageSpec(
+        id=10,
+        name="consume",
+        product_dependencies=(dependency,),
+    )
+
+    stage = PlannedStage(
+        spec=stage_spec,
+    )
+
+    plan = BuildPlan(
+        artifact_id="consumer-artifact",
+        model=ModelSpec(
+            name="consumer",
+            title="Consumer",
+            stages=(stage_spec,),
+        ),
+        realization_name="default",
+        resolver=test_resolver,
+        project_root=tmp_path,
+        artifact_dir=tmp_path / "artifacts" / "consumer-artifact",
+        stages=(stage,),
+        product_dependencies=(dependency,),
+        product_dependency_bindings=(binding,),
+        planned_product_dependencies=(planned_dependency,),
+    )
+
+    context = create_planned_stage_context(
+        plan,
+        stage,
+    )
+
+    assert context.inputs["producer.prepare.geometry"] == dependency_path
 
 
 # =========================================================

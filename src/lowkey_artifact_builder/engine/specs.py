@@ -174,6 +174,45 @@ class PlannedProduct:
 
 
 # =========================================================
+# Planned product dependencies
+# =========================================================
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class PlannedProductDependency:
+    """
+    A bound external product materialized for an artifact build plan.
+
+    Binding identifies the concrete producer artifact and realization
+    selected for a declarative product dependency.
+
+    Path is the already-resolved filesystem location at which the
+    producer product is expected to exist.
+
+    Planning resolves this location. Stage-context construction consumes
+    it without resolving producer configuration or recomputing canonical
+    product locations.
+    """
+
+    binding: ProductDependencyBinding
+
+    path: Path
+
+    @property
+    def product_ref(
+        self,
+    ) -> ProductRef:
+        """
+        Return the concrete logical identity of the producer product.
+        """
+
+        return self.binding.product_ref
+
+
+# =========================================================
 # Planned stages
 # =========================================================
 
@@ -293,6 +332,13 @@ class BuildPlan:
     The bindings retain logical ProductRef identity. Filesystem locations
     and producer build planning remain separate concerns.
 
+    Planned_product_dependencies records the concrete filesystem
+    locations resolved for those bound producer products.
+
+    These paths are planning results. Execution and StageContext
+    construction consume them without recomputing producer product
+    locations.
+
     Stage parameter declarations remain on StageSpec and describe which
     configuration values a stage normally consumes. Parameter values
     themselves are obtained directly from resolver and are not copied
@@ -325,6 +371,8 @@ class BuildPlan:
     product_dependencies: tuple[ProductDependencySpec, ...] = ()
 
     product_dependency_bindings: tuple[ProductDependencyBinding, ...] = ()
+
+    planned_product_dependencies: tuple[PlannedProductDependency, ...] = ()
 
     @property
     def model_name(
@@ -468,11 +516,11 @@ class StageContext:
 # Exports
 # =========================================================
 
-
 __all__ = [
     "BuildPlan",
     "PlannedInput",
     "PlannedProduct",
+    "PlannedProductDependency",
     "PlannedStage",
     "StageContext",
     "StageContextError",
