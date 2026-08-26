@@ -72,6 +72,9 @@ from .context import (
     create_planned_stage_context,
     create_stage_context,
 )
+from .dependency_build import (
+    execute_dependency_build,
+)
 from .dependency_plan import (
     create_required_product_dependency_build_plans,
 )
@@ -191,6 +194,7 @@ __all__ = [
     "execute_incremental_artifact_build",
     "execute_incremental_build",
     "execute_stage",
+    "execute_dependency_build",
     "gather_product_evidence",
     "plan_execution",
     "plan_incremental_execution",
