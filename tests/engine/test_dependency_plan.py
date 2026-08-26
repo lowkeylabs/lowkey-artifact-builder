@@ -467,3 +467,229 @@ def test_multiple_required_product_dependencies_create_independent_producer_plan
         (geometry.product_ref,),
         (mask.product_ref,),
     )
+
+
+# =========================================================
+# Planning validation
+# =========================================================
+
+
+def test_dependency_planning_rejects_foreign_artifact_execution_plan(
+    tmp_path: Path,
+    test_resolver: Resolver,
+) -> None:
+    """
+    Execution decisions from another artifact cannot drive producer
+    planning.
+    """
+
+    dependency = _planned_product_dependency(
+        tmp_path,
+        artifact="producer-artifact",
+        model="producer",
+        stage="transform",
+        product="geometry",
+    )
+
+    build_plan = _consumer_build_plan(
+        tmp_path,
+        test_resolver,
+        dependencies=(dependency,),
+    )
+
+    execution_plan = ExecutionPlan(
+        artifact_id="other-consumer",
+        model_name="consumer",
+        realization="default",
+        stages=(),
+        product_dependencies=(),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Execution plan artifact",
+    ):
+        create_required_product_dependency_build_plans(
+            build_plan,
+            execution_plan,
+        )
+
+
+def test_dependency_planning_rejects_foreign_model_execution_plan(
+    tmp_path: Path,
+    test_resolver: Resolver,
+) -> None:
+    """
+    Execution decisions from another model cannot drive producer planning.
+    """
+
+    dependency = _planned_product_dependency(
+        tmp_path,
+        artifact="producer-artifact",
+        model="producer",
+        stage="transform",
+        product="geometry",
+    )
+
+    build_plan = _consumer_build_plan(
+        tmp_path,
+        test_resolver,
+        dependencies=(dependency,),
+    )
+
+    execution_plan = ExecutionPlan(
+        artifact_id="consumer-artifact",
+        model_name="other-model",
+        realization="default",
+        stages=(),
+        product_dependencies=(),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Execution plan model",
+    ):
+        create_required_product_dependency_build_plans(
+            build_plan,
+            execution_plan,
+        )
+
+
+def test_dependency_planning_rejects_foreign_realization_execution_plan(
+    tmp_path: Path,
+    test_resolver: Resolver,
+) -> None:
+    """
+    Execution decisions from another realization cannot drive producer
+    planning.
+    """
+
+    dependency = _planned_product_dependency(
+        tmp_path,
+        artifact="producer-artifact",
+        model="producer",
+        stage="transform",
+        product="geometry",
+    )
+
+    build_plan = _consumer_build_plan(
+        tmp_path,
+        test_resolver,
+        dependencies=(dependency,),
+    )
+
+    execution_plan = ExecutionPlan(
+        artifact_id="consumer-artifact",
+        model_name="consumer",
+        realization="other-realization",
+        stages=(),
+        product_dependencies=(),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Execution plan realization",
+    ):
+        create_required_product_dependency_build_plans(
+            build_plan,
+            execution_plan,
+        )
+
+
+def test_dependency_planning_rejects_unplanned_required_product(
+    tmp_path: Path,
+    test_resolver: Resolver,
+) -> None:
+    """
+    Required producer work must correspond to a dependency actually bound
+    by the consumer BuildPlan.
+    """
+
+    planned_dependency = _planned_product_dependency(
+        tmp_path,
+        artifact="producer-artifact",
+        model="producer",
+        stage="transform",
+        product="geometry",
+    )
+
+    unplanned_dependency = _planned_product_dependency(
+        tmp_path,
+        artifact="other-producer",
+        model="producer",
+        stage="transform",
+        product="geometry",
+    )
+
+    build_plan = _consumer_build_plan(
+        tmp_path,
+        test_resolver,
+        dependencies=(planned_dependency,),
+    )
+
+    execution_plan = ExecutionPlan(
+        artifact_id="consumer-artifact",
+        model_name="consumer",
+        realization="default",
+        stages=(),
+        product_dependencies=(
+            PlannedProductDependencyExecution(
+                product_ref=unplanned_dependency.product_ref,
+                state=ProductState.ABSENT,
+            ),
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="is not present in build plan",
+    ):
+        create_required_product_dependency_build_plans(
+            build_plan,
+            execution_plan,
+        )
+
+
+def test_dependency_planning_rejects_non_product_ref_identity(
+    tmp_path: Path,
+    test_resolver: Resolver,
+) -> None:
+    """
+    Producer planning requires canonical ProductRef identity.
+    """
+
+    dependency = _planned_product_dependency(
+        tmp_path,
+        artifact="producer-artifact",
+        model="producer",
+        stage="transform",
+        product="geometry",
+    )
+
+    build_plan = _consumer_build_plan(
+        tmp_path,
+        test_resolver,
+        dependencies=(dependency,),
+    )
+
+    execution_plan = ExecutionPlan(
+        artifact_id="consumer-artifact",
+        model_name="consumer",
+        realization="default",
+        stages=(),
+        product_dependencies=(
+            PlannedProductDependencyExecution(
+                product_ref="producer/transform/geometry",
+                state=ProductState.ABSENT,
+            ),
+        ),
+    )
+
+    with pytest.raises(
+        TypeError,
+        match="must be ProductRef",
+    ):
+        create_required_product_dependency_build_plans(
+            build_plan,
+            execution_plan,
+        )
