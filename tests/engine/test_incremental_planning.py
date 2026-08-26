@@ -25,13 +25,22 @@ import pytest
 
 from lowkey_artifact_builder.engine import (
     BuildPlan,
+    PlannedProductDependency,
+    PlannedProductDependencyExecution,
     PlannedStage,
     PlannedStageExecution,
     ProductFingerprint,
+    ProductState,
     StageCompletion,
     create_required_fingerprints,
     plan_incremental_execution,
     write_stage_completion,
+)
+from lowkey_artifact_builder.model import (
+    ModelSpec,
+    ProductDependencyBinding,
+    ProductDependencySpec,
+    StageSpec,
 )
 
 type ArtworkPlanFactory = Callable[..., BuildPlan]
@@ -193,6 +202,61 @@ def _descendant_stage_names(
 
     return tuple(
         descendants,
+    )
+
+
+def _product_dependency_plan(
+    *,
+    tmp_path: Path,
+    resolver,
+    dependency_path: Path,
+) -> BuildPlan:
+    """
+    Construct a minimal realized consumer plan with one bound producer product.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="producer-artifact",
+        realization="default",
+    )
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=dependency_path,
+    )
+
+    stage_spec = StageSpec(
+        id=10,
+        name="consume",
+        product_dependencies=(dependency,),
+    )
+
+    stage = PlannedStage(
+        spec=stage_spec,
+    )
+
+    return BuildPlan(
+        artifact_id="consumer-artifact",
+        model=ModelSpec(
+            name="consumer",
+            title="Consumer",
+            stages=(stage_spec,),
+        ),
+        realization_name="default",
+        resolver=resolver,
+        project_root=tmp_path,
+        artifact_dir=(tmp_path / "artifacts" / "consumer-artifact"),
+        stages=(stage,),
+        product_dependencies=(dependency,),
+        product_dependency_bindings=(binding,),
+        planned_product_dependencies=(planned_dependency,),
     )
 
 
@@ -533,3 +597,142 @@ def test_changed_declared_parameter_invalidates_stage_and_descendants(
 
     for descendant in descendants:
         assert descendant in required
+
+
+# =========================================================
+# Cross-artifact product dependencies
+# =========================================================
+
+
+def test_incremental_plan_preserves_product_dependency(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    Incremental planning preserves a bound producer product requirement.
+    """
+
+    dependency_path = (
+        tmp_path
+        / "artifacts"
+        / "producer-artifact"
+        / "producer"
+        / "default"
+        / "10-prepare"
+        / "geometry.dat"
+    )
+
+    build_plan = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+        dependency_path=dependency_path,
+    )
+
+    execution_plan = plan_incremental_execution(
+        build_plan,
+    )
+
+    assert (
+        len(
+            execution_plan.product_dependencies,
+        )
+        == 1
+    )
+
+    dependency = execution_plan.product_dependencies[0]
+
+    assert isinstance(
+        dependency,
+        PlannedProductDependencyExecution,
+    )
+
+    assert dependency.product_ref == (build_plan.planned_product_dependencies[0].product_ref)
+
+
+def test_absent_product_dependency_requires_production(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    An absent bound producer product requires production.
+    """
+
+    dependency_path = (
+        tmp_path
+        / "artifacts"
+        / "producer-artifact"
+        / "producer"
+        / "default"
+        / "10-prepare"
+        / "geometry.dat"
+    )
+
+    build_plan = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+        dependency_path=dependency_path,
+    )
+
+    execution_plan = plan_incremental_execution(
+        build_plan,
+    )
+
+    assert (
+        len(
+            execution_plan.required_product_dependencies,
+        )
+        == 1
+    )
+
+    dependency = execution_plan.required_product_dependencies[0]
+
+    assert dependency.state is ProductState.ABSENT
+    assert dependency.requires_production
+
+
+def test_absent_product_dependency_does_not_require_unrelated_producer_pipeline(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    Incremental planning identifies the required producer product itself.
+
+    Producer stages are not injected into the consumer's local realized
+    stage sequence.
+    """
+
+    dependency_path = (
+        tmp_path
+        / "artifacts"
+        / "producer-artifact"
+        / "producer"
+        / "default"
+        / "10-prepare"
+        / "geometry.dat"
+    )
+
+    build_plan = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+        dependency_path=dependency_path,
+    )
+
+    execution_plan = plan_incremental_execution(
+        build_plan,
+    )
+
+    assert _stage_names(
+        execution_plan.stages,
+    ) == ("consume",)
+
+    assert (
+        len(
+            execution_plan.required_product_dependencies,
+        )
+        == 1
+    )
+
+    assert (
+        execution_plan.required_product_dependencies[0].product_ref
+        == build_plan.planned_product_dependencies[0].product_ref
+    )
