@@ -1458,3 +1458,119 @@ def test_build_plan_defaults_to_no_product_dependencies(
     )
 
     assert plan.product_dependencies == ()
+
+
+def test_create_build_plan_preserves_realization_product_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Targeted planning preserves declarative product dependencies discovered
+    by the selected realization graph.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    producer = ModelSpec(
+        name="producer",
+        title="Producer",
+        stages=(
+            StageSpec(
+                id=10,
+                name="prepare",
+                products=(
+                    ProductSpec(
+                        name="geometry",
+                        path="geometry.dat",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    consumer = ModelSpec(
+        name="consumer",
+        title="Consumer",
+        stages=(
+            StageSpec(
+                id=10,
+                name="package",
+                product_dependencies=(dependency,),
+                products=(
+                    ProductSpec(
+                        name="artifact",
+                        path="artifact.dat",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    class StubRegistry:
+        def get_model(
+            self,
+            name: str,
+        ) -> ModelSpec:
+            models = {
+                "producer": producer,
+                "consumer": consumer,
+            }
+
+            return models[name]
+
+        def all_models(
+            self,
+        ) -> tuple[ModelSpec, ...]:
+            return (
+                producer,
+                consumer,
+            )
+
+    class Resolver:
+        def __call__(
+            self,
+            name: str,
+        ):
+            values = {
+                "model": "consumer",
+                "variant": "default",
+                "realization": "default",
+            }
+
+            return values[name]
+
+        def source(
+            self,
+            name: str,
+        ) -> str:
+            return "test"
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_resolver",
+        lambda artifact_id, *, realization=None, project_root: Resolver(),
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.build_model_registry",
+        lambda: StubRegistry(),
+    )
+
+    target = ProductRef(
+        artifact="consumer-artifact",
+        model="consumer",
+        realization="default",
+        stage="package",
+        product="artifact",
+    )
+
+    plan = create_build_plan(
+        "consumer-artifact",
+        targets=(target,),
+        project_root=tmp_path,
+    )
+
+    assert plan.product_dependencies == (dependency,)

@@ -55,6 +55,7 @@ from lowkey_artifact_builder.engine.specs import (
 from lowkey_artifact_builder.model import (
     ModelNotFoundError,
     ModelSpec,
+    ProductDependencySpec,
     ProductRef,
     StageSpec,
     build_model_registry,
@@ -95,7 +96,9 @@ def create_build_plan(
     resolves to the implicit realization named "default".
 
     When targets are supplied, only stages required to produce those
-    products and their transitive dependencies are planned.
+    products and their transitive dependencies are planned. Declarative
+    product dependencies discovered by the selected Realization Graph
+    are preserved by the BuildPlan.
 
     When targets are omitted, every participating model stage is
     planned, preserving complete-artifact build behavior.
@@ -146,7 +149,7 @@ def create_build_plan(
         artifact_id,
     )
 
-    selected_stages = _select_stages(
+    selected_stages, product_dependencies = _select_stages(
         artifact_id=artifact_id,
         model=model,
         realization_name=realization_name,
@@ -174,6 +177,7 @@ def create_build_plan(
         artifact_dir=artifact_dir,
         stages=stages,
         targets=targets,
+        product_dependencies=product_dependencies,
     )
 
 
@@ -254,27 +258,37 @@ def _select_stages(
     resolver: Resolver,
     registry,
     targets: tuple[ProductRef, ...] | None,
-) -> tuple[StageSpec, ...]:
+) -> tuple[
+    tuple[StageSpec, ...],
+    tuple[ProductDependencySpec, ...],
+]:
     """
-    Select model stages required for one build plan.
+    Select model stages and product dependencies required for one build plan.
 
     Without explicit targets, every feature-participating stage is
-    selected.
+    selected and no realization-scoped product dependencies are
+    returned.
 
     With explicit targets, a Realization Graph determines the target
-    producers and their transitive dependency closure. Every required
-    stage must also participate under the resolved feature
+    producers, their transitive stage dependency closure, and the
+    declarative product dependencies required by that closure. Every
+    required stage must also participate under the resolved feature
     configuration.
     """
 
     if targets is None:
-        return tuple(
+        stages = tuple(
             stage
             for stage in model.stages
             if _stage_participates(
                 stage,
                 resolver,
             )
+        )
+
+        return (
+            stages,
+            (),
         )
 
     if not targets:
@@ -312,7 +326,10 @@ def _select_stages(
         resolver,
     )
 
-    return stages
+    return (
+        stages,
+        realization_graph.product_dependencies,
+    )
 
 
 def _validate_targets(
