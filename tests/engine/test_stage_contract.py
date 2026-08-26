@@ -544,14 +544,14 @@ def test_independent_execution_exposes_parameter_override(
         resolver=test_resolver,
     )
 
-    observed: float | None = None
+    observed: int | None = None
 
     def implementation(
         context: StageContext,
     ) -> None:
         nonlocal observed
 
-        observed = context.resolver("artwork_size")
+        observed = context.resolver("artwork_pixels")
 
         _create_declared_outputs(
             context,
@@ -564,10 +564,10 @@ def test_independent_execution_exposes_parameter_override(
 
     context = create_stage_context(
         "example",
-        stage_name="vector",
+        stage_name="raster",
         project_root=tmp_path,
         parameter_values={
-            "artwork_size": 90.0,
+            "artwork_pixels": 2048,
         },
     )
 
@@ -577,14 +577,14 @@ def test_independent_execution_exposes_parameter_override(
 
     execute_artifact_stage(
         "example",
-        stage_name="vector",
+        stage_name="raster",
         project_root=tmp_path,
         parameter_values={
-            "artwork_size": 90.0,
+            "artwork_pixels": 2048,
         },
     )
 
-    assert observed == 90.0
+    assert observed == 2048
 
 
 def test_independent_execution_uses_explicit_output_path(

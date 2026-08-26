@@ -1,21 +1,25 @@
 """
-Artwork artifact model.
+Artwork vector stage.
 
-The artwork model converts source raster artwork into registered,
-independently printable color components and packages those components
-into a final 3MF file.
+The vector stage converts registered raster color layers into
+registered vector geometry without assigning physical manufacturing
+dimensions.
 
-Artwork is treated as 2.5D geometry. Source artwork is reduced to a
-configured artwork palette, separated into mutually exclusive
-registered layers, converted to vector geometry, and extruded to a
-configured height.
+The raster manifest identifies the dynamically generated raster layers
+that participate in this stage. One common square crop is calculated
+from the union of all raster layers and applied to every layer so that
+registration is preserved.
 
-Artwork colors are properties of the artwork itself. They are distinct
-from printer colors associated with an artifact that may later consume
-the artwork.
+Each cropped raster layer is traced by Inkscape. All resulting SVG
+documents retain the common coordinate system established by the
+registered raster crop.
 
-The artwork model has no underlying base. Its final 3MF contains only
-the generated artwork components.
+Physical dimensionalization is the responsibility of a downstream
+consumer.
+
+Filesystem layout, dependency resolution, and configuration resolution
+are responsibilities of the build engine. This implementation consumes
+only the paths and values supplied through StageContext.
 """
 # File: src/lowkey_artifact_builder/model/models/artwork/__init__.py
 # Copyright 2026 LowKeyLabs LLC
@@ -125,7 +129,7 @@ STAGES = (
         name="vector",
         description=("Convert registered raster color layers into registered vector geometry."),
         dependencies=("raster",),
-        parameters=("artwork_size",),
+        parameters=(),
         products=(
             ProductSpec(
                 name="manifest",

@@ -92,12 +92,17 @@ def test_artwork_raster_is_independent_of_physical_size() -> None:
     )
 
 
-def test_artwork_vector_inputs() -> None:
-    """Vector generation depends on physical artwork size."""
+def test_artwork_vector_is_independent_of_physical_size() -> None:
+    """
+    Vector generation preserves registered artwork geometry without
+    assigning physical manufacturing dimensions.
+
+    Physical artwork size must not participate in vector generation.
+    """
 
     stages = {stage.name: stage for stage in MODEL.stages}
 
-    assert stages["vector"].parameters == ("artwork_size",)
+    assert stages["vector"].parameters == ()
 
 
 def test_artwork_extrude_inputs() -> None:
@@ -153,6 +158,5 @@ def test_artwork_model_parameters() -> None:
         "artwork_pixels",
         "artwork_min_island_area",
         "artwork_island_connectivity",
-        "artwork_size",
         "artwork_raise",
     )

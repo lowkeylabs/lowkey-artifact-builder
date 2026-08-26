@@ -751,14 +751,14 @@ def test_create_stage_context_uses_explicit_parameter_value(
 
     context = create_stage_context(
         "example",
-        stage_name="vector",
+        stage_name="raster",
         project_root=tmp_path,
         parameter_values={
-            "artwork_size": 90.0,
+            "artwork_pixels": 2048,
         },
     )
 
-    assert context.resolver("artwork_size") == 90.0
+    assert context.resolver("artwork_pixels") == 2048
 
 
 def test_create_stage_context_preserves_unoverridden_parameters(
@@ -837,7 +837,7 @@ def test_create_stage_context_parameter_override_does_not_mutate_resolver(
     """
 
     original = test_resolver(
-        "artwork_size",
+        "artwork_pixels",
     )
 
     monkeypatch.setattr(
@@ -847,15 +847,15 @@ def test_create_stage_context_parameter_override_does_not_mutate_resolver(
 
     context = create_stage_context(
         "example",
-        stage_name="vector",
+        stage_name="raster",
         project_root=tmp_path,
         parameter_values={
-            "artwork_size": 90.0,
+            "artwork_pixels": 2048,
         },
     )
 
-    assert context.resolver("artwork_size") == 90.0
-    assert test_resolver("artwork_size") == original
+    assert context.resolver("artwork_pixels") == 2048
+    assert test_resolver("artwork_pixels") == original
     assert context.resolver is not test_resolver
 
 
@@ -965,9 +965,9 @@ def test_create_stage_context_combines_explicit_bindings(
     Input, parameter, and output overrides coexist in one context.
     """
 
-    explicit_input = tmp_path / "external" / "raster-products.json"
+    explicit_input = tmp_path / "external" / "trace.svg"
 
-    explicit_output = tmp_path / "external" / "vector-products.json"
+    explicit_output = tmp_path / "external" / "raster-products.json"
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.context.get_resolver",
@@ -976,21 +976,21 @@ def test_create_stage_context_combines_explicit_bindings(
 
     context = create_stage_context(
         "example",
-        stage_name="vector",
+        stage_name="raster",
         project_root=tmp_path,
         input_paths={
-            "raster.manifest": explicit_input,
+            "prepare.trace": explicit_input,
         },
         parameter_values={
-            "artwork_size": 90.0,
+            "artwork_pixels": 2048,
         },
         output_paths={
             "manifest": explicit_output,
         },
     )
 
-    assert context.inputs["raster.manifest"] == explicit_input
+    assert context.inputs["prepare.trace"] == explicit_input
 
-    assert context.resolver("artwork_size") == 90.0
+    assert context.resolver("artwork_pixels") == 2048
 
     assert context.outputs["manifest"] == explicit_output

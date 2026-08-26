@@ -157,10 +157,6 @@ def execute(
         raster.manifest
             Manifest describing registered raster color layers.
 
-        artwork_size
-            Physical size of the resulting artwork geometry in
-            millimeters.
-
     The stage produces:
 
         manifest
@@ -174,13 +170,6 @@ def execute(
 
     vector_manifest = context.output(
         "manifest",
-    )
-
-    artwork_size = _positive_number(
-        "artwork_size",
-        context.resolver(
-            "artwork_size",
-        ),
     )
 
     if not raster_manifest.is_file():
@@ -210,7 +199,6 @@ def execute(
                 layer.path,
                 output,
                 crop=crop,
-                artwork_size=artwork_size,
             )
 
             vector_layers.append(
@@ -223,7 +211,6 @@ def execute(
         _write_manifest(
             vector_manifest,
             vector_layers,
-            artwork_size=artwork_size,
         )
 
     except (
@@ -238,40 +225,6 @@ def execute(
         raise VectorError(
             f"Could not generate vector artwork from {raster_manifest}: {exc}"
         ) from exc
-
-
-# =========================================================
-# Validation
-# =========================================================
-
-
-def _positive_number(
-    name: str,
-    value: Any,
-) -> float:
-    """
-    Return a validated positive number.
-    """
-
-    if isinstance(
-        value,
-        bool,
-    ):
-        raise VectorError(f"{name} must be greater than zero.")
-
-    try:
-        result = float(value)
-
-    except (
-        TypeError,
-        ValueError,
-    ) as exc:
-        raise VectorError(f"{name} must be numeric.") from exc
-
-    if result <= 0:
-        raise VectorError(f"{name} must be greater than zero.")
-
-    return result
 
 
 # =========================================================
@@ -698,10 +651,9 @@ def _trace_mask(
     output: Path,
     *,
     crop: RasterCrop,
-    artwork_size: float,
 ) -> None:
     """
-    Trace one categorical raster mask into a CAD-ready SVG.
+    Trace one categorical raster mask into registered vector geometry.
 
     The source mask is first cropped using the common artwork crop and
     converted into a fully opaque black-and-white tracing image.
@@ -714,8 +666,8 @@ def _trace_mask(
     Inkscape therefore receives no source colors, transparency, or
     antialiased intermediate values.
 
-    The resulting SVG document is assigned the configured physical
-    artwork dimensions while preserving registration between layers.
+    Every layer is traced from the same registered crop so relative
+    geometry is preserved without assigning physical dimensions.
     """
 
     output = output.resolve()
@@ -763,36 +715,9 @@ def _trace_mask(
         tree,
     )
 
-    _set_document_geometry(
-        tree,
-        artwork_size=artwork_size,
-    )
-
     save(
         tree,
         output,
-    )
-
-
-def _set_document_geometry(
-    tree: ET.ElementTree[ET.Element[str]],
-    *,
-    artwork_size: float,
-) -> None:
-    """
-    Set final CAD-compatible SVG dimensions.
-    """
-
-    root = tree.getroot()
-
-    root.set(
-        "width",
-        f"{artwork_size:g}mm",
-    )
-
-    root.set(
-        "height",
-        f"{artwork_size:g}mm",
     )
 
 
@@ -826,8 +751,6 @@ def _write_manifest(
             Path,
         ]
     ],
-    *,
-    artwork_size: float,
 ) -> None:
     """
     Write the vector product manifest.
@@ -848,7 +771,6 @@ def _write_manifest(
     ]
 
     data = {
-        "artwork_size": artwork_size,
         "products": products,
     }
 

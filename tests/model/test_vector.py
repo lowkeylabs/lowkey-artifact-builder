@@ -159,11 +159,7 @@ def _resolver() -> StubResolver:
     Return standard vector-stage configuration.
     """
 
-    return StubResolver(
-        {
-            "artwork_size": 60.0,
-        }
-    )
+    return StubResolver({})
 
 
 # =========================================================
@@ -226,7 +222,6 @@ def test_vector_uses_declared_raster_manifest(
         output: Path,
         *,
         crop: vector.RasterCrop,
-        artwork_size: float,
     ) -> None:
         traced_sources.append(source)
 
@@ -328,7 +323,6 @@ def test_vector_places_dynamic_svgs_beside_declared_manifest(
         output: Path,
         *,
         crop: vector.RasterCrop,
-        artwork_size: float,
     ) -> None:
         traced_outputs.append(output)
 
@@ -411,7 +405,6 @@ def test_vector_manifest_describes_stage_local_products(
         output: Path,
         *,
         crop: vector.RasterCrop,
-        artwork_size: float,
     ) -> None:
         output.parent.mkdir(
             parents=True,
@@ -438,7 +431,6 @@ def test_vector_manifest_describes_stage_local_products(
     )
 
     assert data == {
-        "artwork_size": 60.0,
         "products": [
             {
                 "index": 1,
@@ -452,3 +444,97 @@ def test_vector_manifest_describes_stage_local_products(
             }
         ],
     }
+
+
+# =========================================================
+# Registered-geometry tests
+# =========================================================
+
+
+def test_vector_generation_is_independent_of_physical_size(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Vector generation operates entirely in registered geometry.
+
+    Physical artwork size is not required to trace raster layers into
+    registered vector products.
+    """
+
+    raster_directory = tmp_path / "raster"
+
+    raster = raster_directory / "layer.png"
+
+    _write_raster(
+        raster,
+        box=(5, 5, 15, 15),
+    )
+
+    raster_manifest = raster_directory / "products.json"
+
+    _write_raster_manifest(
+        raster_manifest,
+        [
+            {
+                "index": 1,
+                "path": raster.name,
+                "name": "white",
+                "color": _color(
+                    255,
+                    255,
+                    255,
+                ),
+            }
+        ],
+    )
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "raster.manifest": raster_manifest,
+        },
+        outputs={
+            "manifest": vector_manifest,
+        },
+        resolver=StubResolver({}),
+    )
+
+    observed_crop: vector.RasterCrop | None = None
+
+    def fake_trace_mask(
+        source: Path,
+        output: Path,
+        *,
+        crop: vector.RasterCrop,
+    ) -> None:
+        nonlocal observed_crop
+
+        observed_crop = crop
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_text(
+            "<svg/>",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        vector,
+        "_trace_mask",
+        fake_trace_mask,
+    )
+
+    vector.execute(context)  # type: ignore[arg-type]
+
+    assert observed_crop == vector.RasterCrop(
+        x=5,
+        y=5,
+        size=10,
+    )
+
+    assert vector_manifest.is_file()
