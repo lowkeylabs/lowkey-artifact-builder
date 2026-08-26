@@ -59,7 +59,7 @@ def _write_workspace(
 artwork_colors = ["white", "black"]
 artwork_pixels = 64
 artwork_size = 20.0
-artwork_min_island_area = 0.1
+artwork_min_island_area = 1
 artwork_island_connectivity = 8
 artwork_raise = 1.0
 """.lstrip(),

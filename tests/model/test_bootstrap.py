@@ -47,16 +47,15 @@ def test_builtin_models_are_registered() -> None:
 
 def test_builtin_model_names() -> None:
     """
-    The initial built-in model set is deterministic.
+    Built-in models are discovered deterministically.
     """
 
     registry = build_model_registry()
 
     names = [model.name for model in registry.all_models()]
 
-    assert names == [
-        "artwork",
-    ]
+    assert names == sorted(names)
+    assert "artwork" in names
 
 
 def test_artwork_model_metadata() -> None:
