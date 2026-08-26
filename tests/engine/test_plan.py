@@ -23,6 +23,7 @@ from lowkey_artifact_builder.engine import (
 )
 from lowkey_artifact_builder.model import (
     ModelSpec,
+    ProductDependencyBinding,
     ProductDependencySpec,
     ProductRef,
     ProductSpec,
@@ -1559,6 +1560,17 @@ def test_create_build_plan_preserves_realization_product_dependencies(
         lambda: StubRegistry(),
     )
 
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="producer-artifact",
+        realization="default",
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_product_dependency_binding",
+        lambda artifact_id, required_dependency, *, project_root: binding,
+    )
+
     target = ProductRef(
         artifact="consumer-artifact",
         model="consumer",
@@ -1574,3 +1586,192 @@ def test_create_build_plan_preserves_realization_product_dependencies(
     )
 
     assert plan.product_dependencies == (dependency,)
+
+
+def test_build_plan_preserves_product_dependency_bindings() -> None:
+    """
+    A build plan may retain concrete producer bindings for its
+    declarative product dependencies.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="producer-artifact",
+        realization="default",
+    )
+
+    plan = BuildPlan(
+        artifact_id="consumer",
+        model=ModelSpec(
+            name="consumer-model",
+            title="Consumer Model",
+        ),
+        realization_name="default",
+        resolver=None,  # type: ignore[arg-type]
+        project_root=Path("/project"),
+        artifact_dir=Path("/project/artifacts/consumer"),
+        stages=(),
+        product_dependencies=(dependency,),
+        product_dependency_bindings=(binding,),
+    )
+
+    assert plan.product_dependency_bindings == (binding,)
+
+
+def test_build_plan_defaults_to_no_product_dependency_bindings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Existing builds without cross-artifact dependencies retain no
+    concrete producer bindings.
+    """
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    assert plan.product_dependency_bindings == ()
+
+
+def test_create_build_plan_resolves_product_dependency_bindings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Planning resolves declarative product dependencies to configured
+    producer artifact and realization bindings.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    producer = ModelSpec(
+        name="producer",
+        title="Producer",
+        stages=(
+            StageSpec(
+                id=10,
+                name="prepare",
+                products=(
+                    ProductSpec(
+                        name="geometry",
+                        path="geometry.dat",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    consumer = ModelSpec(
+        name="consumer",
+        title="Consumer",
+        stages=(
+            StageSpec(
+                id=10,
+                name="package",
+                product_dependencies=(dependency,),
+                products=(
+                    ProductSpec(
+                        name="artifact",
+                        path="artifact.dat",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    class StubRegistry:
+        def get_model(
+            self,
+            name: str,
+        ) -> ModelSpec:
+            models = {
+                "producer": producer,
+                "consumer": consumer,
+            }
+
+            return models[name]
+
+        def all_models(
+            self,
+        ) -> tuple[ModelSpec, ...]:
+            return (
+                producer,
+                consumer,
+            )
+
+    class Resolver:
+        def __call__(
+            self,
+            name: str,
+        ):
+            values = {
+                "model": "consumer",
+                "variant": "default",
+                "realization": "default",
+            }
+
+            return values[name]
+
+        def source(
+            self,
+            name: str,
+        ) -> str:
+            return "test"
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_resolver",
+        lambda artifact_id, *, realization=None, project_root: Resolver(),
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.build_model_registry",
+        lambda: StubRegistry(),
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="producer-artifact",
+        realization="default",
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_product_dependency_binding",
+        lambda artifact_id, required_dependency, *, project_root: binding,
+    )
+
+    target = ProductRef(
+        artifact="consumer-artifact",
+        model="consumer",
+        realization="default",
+        stage="package",
+        product="artifact",
+    )
+
+    plan = create_build_plan(
+        "consumer-artifact",
+        targets=(target,),
+        project_root=tmp_path,
+    )
+
+    assert plan.product_dependencies == (dependency,)
+    assert plan.product_dependency_bindings == (binding,)
+    assert plan.product_dependency_bindings[0].product_ref == ProductRef(
+        artifact="producer-artifact",
+        model="producer",
+        realization="default",
+        stage="prepare",
+        product="geometry",
+    )

@@ -30,6 +30,7 @@ from pathlib import Path
 
 from lowkey_artifact_builder.config import (
     Resolver,
+    get_product_dependency_binding,
     get_realization_names,
     get_resolver,
 )
@@ -55,6 +56,7 @@ from lowkey_artifact_builder.engine.specs import (
 from lowkey_artifact_builder.model import (
     ModelNotFoundError,
     ModelSpec,
+    ProductDependencyBinding,
     ProductDependencySpec,
     ProductRef,
     StageSpec,
@@ -98,7 +100,8 @@ def create_build_plan(
     When targets are supplied, only stages required to produce those
     products and their transitive dependencies are planned. Declarative
     product dependencies discovered by the selected Realization Graph
-    are preserved by the BuildPlan.
+    are preserved by the BuildPlan and resolved to their configured
+    producer artifact and realization bindings.
 
     When targets are omitted, every participating model stage is
     planned, preserving complete-artifact build behavior.
@@ -158,6 +161,12 @@ def create_build_plan(
         targets=targets,
     )
 
+    product_dependency_bindings = _resolve_product_dependency_bindings(
+        artifact_id=artifact_id,
+        product_dependencies=product_dependencies,
+        project_root=root,
+    )
+
     stages = _plan_stages(
         artifact_id,
         model,
@@ -178,6 +187,7 @@ def create_build_plan(
         stages=stages,
         targets=targets,
         product_dependencies=product_dependencies,
+        product_dependency_bindings=product_dependency_bindings,
     )
 
 
@@ -329,6 +339,38 @@ def _select_stages(
     return (
         stages,
         realization_graph.product_dependencies,
+    )
+
+
+# =========================================================
+# Product dependency binding
+# =========================================================
+
+
+def _resolve_product_dependency_bindings(
+    *,
+    artifact_id: str,
+    product_dependencies: tuple[ProductDependencySpec, ...],
+    project_root: Path,
+) -> tuple[ProductDependencyBinding, ...]:
+    """
+    Resolve declarative product dependencies to configured producers.
+
+    Each declarative dependency required by the selected realization
+    graph is bound through artifact configuration to the concrete
+    producer artifact and realization that will supply the product.
+
+    Producer existence and producer build planning are intentionally
+    outside this function's responsibility.
+    """
+
+    return tuple(
+        get_product_dependency_binding(
+            artifact_id,
+            dependency,
+            project_root=project_root,
+        )
+        for dependency in product_dependencies
     )
 
 
