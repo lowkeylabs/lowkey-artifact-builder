@@ -36,6 +36,11 @@ def test_png_builds_complete_3mf(
     The repository supplies only the source test artwork. Configuration,
     artifact-owned inputs, intermediate products, and the final 3MF are
     all created beneath an isolated temporary project root.
+
+    Raster and vector processing preserve registered artwork geometry
+    independently of physical manufacturing dimensions. Physical size
+    is introduced only when the registered vector geometry is consumed
+    by the extrusion stage.
     """
 
     # -----------------------------------------------------
@@ -72,7 +77,11 @@ def test_png_builds_complete_3mf(
     #
     #   1  -> artwork model
     #   1  -> nydeli-clean.png
-    #   70 -> artwork size in millimeters
+    #   70 -> physical artwork size used by extrusion
+    #
+    # Raster and vector processing remain independent of physical
+    # dimensions. artwork_size is consumed only when the registered
+    # vector geometry is dimensionalized by the extrusion stage.
     #
     # setup_artifact() asks only for parameters that cannot
     # already be resolved through the configuration stack.

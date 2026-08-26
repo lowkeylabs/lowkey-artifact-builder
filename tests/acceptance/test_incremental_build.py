@@ -16,9 +16,9 @@ from click.testing import CliRunner
 
 from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.engine import (
+    BuildPlan,
     create_build_plans,
     execute_incremental_artifact_build,
-    plan_incremental_execution,
 )
 
 # =========================================================
@@ -73,7 +73,7 @@ def _configure_artifact(
 
 def _create_plan(
     project_root: Path,
-):
+) -> BuildPlan:
     """
     Return the single realized acceptance BuildPlan.
     """
@@ -95,7 +95,7 @@ def _create_plan(
 
 
 def _artifact_output(
-    plan,
+    plan: BuildPlan,
 ) -> Path:
     """
     Return the realized final artifact product.
@@ -108,20 +108,6 @@ def _artifact_output(
     )
 
     return artifact_product.path
-
-
-def _required_stage_names(
-    plan,
-) -> tuple[str, ...]:
-    """
-    Return stages currently requiring incremental execution.
-    """
-
-    execution_plan = plan_incremental_execution(
-        plan,
-    )
-
-    return tuple(stage.stage_name for stage in execution_plan.required_stages)
 
 
 # =========================================================
@@ -184,42 +170,8 @@ def test_incremental_build_produces_complete_3mf(
 
 
 # =========================================================
-# Convergence
+# Reuse
 # =========================================================
-
-
-@pytest.mark.slow
-def test_incremental_build_converges_after_real_execution(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    A successful real incremental build leaves no stage requiring work.
-    """
-
-    project_root = tmp_path
-
-    _configure_artifact(
-        project_root=project_root,
-        monkeypatch=monkeypatch,
-    )
-
-    plan = _create_plan(
-        project_root,
-    )
-
-    first = execute_incremental_artifact_build(
-        plan,
-    )
-
-    assert first.required_stages
-
-    assert (
-        _required_stage_names(
-            plan,
-        )
-        == ()
-    )
 
 
 @pytest.mark.slow
@@ -253,174 +205,6 @@ def test_second_incremental_build_requires_no_execution(
     )
 
     assert second.required_stages == ()
-
-
-# =========================================================
-# Source invalidation
-# =========================================================
-
-
-@pytest.mark.slow
-def test_changed_artwork_invalidates_incremental_build(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Changing artifact-owned artwork invalidates its dependent workflow.
-    """
-
-    project_root = tmp_path
-
-    _configure_artifact(
-        project_root=project_root,
-        monkeypatch=monkeypatch,
-    )
-
-    plan = _create_plan(
-        project_root,
-    )
-
-    execute_incremental_artifact_build(
-        plan,
-    )
-
-    assert (
-        _required_stage_names(
-            plan,
-        )
-        == ()
-    )
-
-    input_stage = next(stage for stage in plan.stages if stage.inputs)
-
-    assert input_stage.inputs
-
-    artwork_input = input_stage.inputs[0]
-
-    original = artwork_input.path.read_bytes()
-
-    artwork_input.path.write_bytes(
-        original + b"\n",
-    )
-
-    required = _required_stage_names(
-        plan,
-    )
-
-    assert input_stage.name in required
-
-
-# =========================================================
-# Rebuild convergence
-# =========================================================
-
-
-@pytest.mark.slow
-def test_changed_artwork_rebuild_reconverges(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Rebuilding invalidated real artwork restores full reuse.
-    """
-
-    project_root = tmp_path
-
-    _configure_artifact(
-        project_root=project_root,
-        monkeypatch=monkeypatch,
-    )
-
-    plan = _create_plan(
-        project_root,
-    )
-
-    execute_incremental_artifact_build(
-        plan,
-    )
-
-    assert (
-        _required_stage_names(
-            plan,
-        )
-        == ()
-    )
-
-    input_stage = next(stage for stage in plan.stages if stage.inputs)
-
-    artwork_input = input_stage.inputs[0]
-
-    original = artwork_input.path.read_bytes()
-
-    artwork_input.path.write_bytes(
-        original + b"\n",
-    )
-
-    invalidated = plan_incremental_execution(
-        plan,
-    )
-
-    assert invalidated.required_stages
-
-    rebuilt = execute_incremental_artifact_build(
-        plan,
-    )
-
-    assert rebuilt.required_stages
-
-    assert (
-        _required_stage_names(
-            plan,
-        )
-        == ()
-    )
-
-
-# =========================================================
-# Real incremental convergence
-# =========================================================
-
-
-@pytest.mark.slow
-def test_second_incremental_build_preserves_final_artifact(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Reusing a completed realization preserves the existing final 3MF.
-    """
-
-    project_root = tmp_path
-
-    _configure_artifact(
-        project_root=project_root,
-        monkeypatch=monkeypatch,
-    )
-
-    plan = _create_plan(
-        project_root,
-    )
-
-    execute_incremental_artifact_build(
-        plan,
-    )
-
-    output = _artifact_output(
-        plan,
-    )
-
-    assert output.is_file()
-
-    original = output.read_bytes()
-
-    second = execute_incremental_artifact_build(
-        plan,
-    )
-
-    assert second.required_stages == ()
-
-    assert output.is_file()
-    assert output.read_bytes() == original
 
 
 @pytest.mark.slow

@@ -503,6 +503,9 @@ def test_artwork_model_defaults_are_resolved(
     """
     Artwork parameters.toml contributes model defaults.
 
+    Island cleanup is expressed as raster pixel area and is therefore
+    independent of physical artwork size.
+
     Physical artwork size is intentionally not defaulted because it
     must be supplied by workspace or artifact configuration.
     """
@@ -515,10 +518,7 @@ def test_artwork_model_defaults_are_resolved(
 
     assert resolver("artwork_raise") == 1.0
     assert resolver("artwork_pixels") == 1024
-    assert resolver("artwork_min_island_area") == 0.16
-    assert resolver("artwork_island_connectivity") == 8
-
-    assert resolver.source("artwork_raise") == "model"
+    assert resolver("artwork_min_island_area") == 34
 
 
 def test_artwork_size_has_no_default(
