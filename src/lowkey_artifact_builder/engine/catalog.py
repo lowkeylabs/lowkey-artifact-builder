@@ -17,6 +17,7 @@ from lowkey_artifact_builder.engine.graph import (
     DefinedGraph,
 )
 from lowkey_artifact_builder.model import (
+    ProductDependencySpec,
     ProductSpec,
 )
 
@@ -113,6 +114,27 @@ class ProductCatalog:
                 return product
 
         raise ProductNotFoundError(f"Product not found: {model_name}/{stage_name}/{product_name}")
+
+    def resolve_dependency(
+        self,
+        dependency: ProductDependencySpec,
+    ) -> CatalogProduct:
+        """
+        Resolve a declarative product dependency to its catalog product.
+
+        ProductDependencySpec and CatalogProduct share the same
+        definition-level product identity: model, producing stage, and
+        product name.
+
+        Raises ProductNotFoundError when the dependency does not identify
+        a product present in the catalog.
+        """
+
+        return self.product(
+            model_name=dependency.model,
+            stage_name=dependency.stage,
+            product_name=dependency.product,
+        )
 
 
 # =========================================================

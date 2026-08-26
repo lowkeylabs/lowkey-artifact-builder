@@ -17,6 +17,7 @@ from lowkey_artifact_builder.engine.graph import (
     build_defined_graph,
 )
 from lowkey_artifact_builder.model import (
+    ProductDependencySpec,
     build_model_registry,
 )
 
@@ -249,3 +250,63 @@ def test_product_catalog_contains_every_defined_product_once() -> None:
 
     assert catalog_products == defined_products
     assert len(catalog_products) == len(set(catalog_products))
+
+
+def test_product_catalog_resolves_product_dependency() -> None:
+    """
+    A declarative product dependency resolves to its catalog product.
+    """
+
+    registry = build_model_registry()
+
+    graph = build_defined_graph(
+        registry,
+    )
+
+    catalog = build_product_catalog(
+        graph,
+    )
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="manifest",
+    )
+
+    product = catalog.resolve_dependency(
+        dependency,
+    )
+
+    assert product.model_name == "artwork"
+    assert product.stage_name == "vector"
+    assert product.product_name == "manifest"
+
+
+def test_product_catalog_rejects_unknown_product_dependency() -> None:
+    """
+    Resolving an unknown declarative product dependency fails normally.
+    """
+
+    registry = build_model_registry()
+
+    graph = build_defined_graph(
+        registry,
+    )
+
+    catalog = build_product_catalog(
+        graph,
+    )
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="missing",
+    )
+
+    with pytest.raises(
+        ProductNotFoundError,
+        match="Product not found: artwork/vector/missing",
+    ):
+        catalog.resolve_dependency(
+            dependency,
+        )
