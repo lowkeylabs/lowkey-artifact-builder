@@ -399,6 +399,201 @@ def _cyclic_build_plan(
     )
 
 
+def _dependency_build_plan(
+    tmp_path: Path,
+    *,
+    artifact_id: str,
+    model_name: str,
+    dependencies: tuple[
+        tuple[
+            str,
+            str,
+        ],
+        ...,
+    ],
+    resolver,
+) -> BuildPlan:
+    """
+    Construct one single-stage artifact with zero or more product dependencies.
+
+    Each dependency tuple contains:
+
+        artifact_id
+        model_name
+
+    Every dependency refers to that artifact's build/product product.
+    """
+
+    dependency_specs = tuple(
+        ProductDependencySpec(
+            model=dependency_model,
+            stage="build",
+            product="product",
+        )
+        for _, dependency_model in dependencies
+    )
+
+    bindings = tuple(
+        ProductDependencyBinding(
+            dependency=dependency,
+            artifact=dependency_artifact,
+            realization="default",
+        )
+        for dependency, (
+            dependency_artifact,
+            _,
+        ) in zip(
+            dependency_specs,
+            dependencies,
+            strict=True,
+        )
+    )
+
+    planned_dependencies = tuple(
+        PlannedProductDependency(
+            binding=binding,
+            path=(
+                tmp_path
+                / "artifacts"
+                / binding.artifact
+                / binding.dependency.model
+                / binding.realization
+                / "10-build"
+                / "product.dat"
+            ),
+        )
+        for binding in bindings
+    )
+
+    stage_spec = StageSpec(
+        id=10,
+        name="build",
+        product_dependencies=dependency_specs,
+        products=(
+            ProductSpec(
+                name="product",
+                path="product.dat",
+            ),
+        ),
+    )
+
+    stage = PlannedStage(
+        spec=stage_spec,
+        products=(
+            PlannedProduct(
+                spec=stage_spec.products[0],
+                path=(
+                    tmp_path
+                    / "artifacts"
+                    / artifact_id
+                    / model_name
+                    / "default"
+                    / "10-build"
+                    / "product.dat"
+                ),
+            ),
+        ),
+    )
+
+    return BuildPlan(
+        artifact_id=artifact_id,
+        model=ModelSpec(
+            name=model_name,
+            title=model_name.title(),
+            stages=(stage_spec,),
+        ),
+        realization_name="default",
+        resolver=resolver,
+        project_root=tmp_path,
+        artifact_dir=(tmp_path / "artifacts" / artifact_id),
+        stages=(stage,),
+        product_dependencies=dependency_specs,
+        product_dependency_bindings=bindings,
+        planned_product_dependencies=planned_dependencies,
+    )
+
+
+def _shared_dependency_plans(
+    tmp_path: Path,
+    *,
+    resolver,
+) -> tuple[
+    BuildPlan,
+    BuildPlan,
+    BuildPlan,
+    BuildPlan,
+]:
+    """
+    Construct a diamond dependency graph.
+
+            A
+           / |
+          B   C
+           | /
+            D
+
+    A depends on B and C. Both B and C depend on the same producer D.
+    """
+
+    plan_d = _dependency_build_plan(
+        tmp_path,
+        artifact_id="artifact-d",
+        model_name="model-d",
+        dependencies=(),
+        resolver=resolver,
+    )
+
+    plan_b = _dependency_build_plan(
+        tmp_path,
+        artifact_id="artifact-b",
+        model_name="model-b",
+        dependencies=(
+            (
+                "artifact-d",
+                "model-d",
+            ),
+        ),
+        resolver=resolver,
+    )
+
+    plan_c = _dependency_build_plan(
+        tmp_path,
+        artifact_id="artifact-c",
+        model_name="model-c",
+        dependencies=(
+            (
+                "artifact-d",
+                "model-d",
+            ),
+        ),
+        resolver=resolver,
+    )
+
+    plan_a = _dependency_build_plan(
+        tmp_path,
+        artifact_id="artifact-a",
+        model_name="model-a",
+        dependencies=(
+            (
+                "artifact-b",
+                "model-b",
+            ),
+            (
+                "artifact-c",
+                "model-c",
+            ),
+        ),
+        resolver=resolver,
+    )
+
+    return (
+        plan_a,
+        plan_b,
+        plan_c,
+        plan_d,
+    )
+
+
 def _record_plan_current(
     build_plan: BuildPlan,
 ) -> None:
@@ -1697,3 +1892,398 @@ def test_dependency_cycle_error_identifies_dependency_path(
     assert "artifact-c/model-c/default" in message
 
     assert "artifact-a/model-a/default" in message[message.find("artifact-c/model-c/default") :]
+
+
+# =========================================================
+# Shared dependency orchestration
+# =========================================================
+
+
+def test_dependency_build_executes_shared_producer_once(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A producer required through multiple dependency branches executes once.
+    """
+
+    (
+        plan_a,
+        plan_b,
+        plan_c,
+        plan_d,
+    ) = _shared_dependency_plans(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    execution_order: list[str] = []
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        if build_plan is plan_a:
+            return (
+                plan_b,
+                plan_c,
+            )
+
+        if build_plan is plan_b:
+            if execution_plan.required_product_dependencies:
+                return (plan_d,)
+
+            return ()
+
+        if build_plan is plan_c:
+            if execution_plan.required_product_dependencies:
+                return (plan_d,)
+
+            return ()
+
+        if build_plan is plan_d:
+            return ()
+
+        raise AssertionError(f"Unexpected BuildPlan {build_plan.artifact_id!r}")
+
+    def execute_artifact(
+        build_plan: BuildPlan,
+        **kwargs,
+    ) -> ExecutionPlan:
+        execution_order.append(
+            build_plan.artifact_id,
+        )
+
+        _record_plan_current(
+            build_plan,
+        )
+
+        return ExecutionPlan(
+            artifact_id=build_plan.artifact_id,
+            model_name=build_plan.model_name,
+            realization=build_plan.realization_name,
+            stages=(),
+        )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "execute_incremental_artifact_build",
+        execute_artifact,
+    )
+
+    execute_dependency_build(
+        plan_a,
+    )
+
+    assert (
+        execution_order.count(
+            "artifact-d",
+        )
+        == 1
+    )
+
+    assert execution_order == [
+        "artifact-d",
+        "artifact-b",
+        "artifact-c",
+        "artifact-a",
+    ]
+
+
+def test_dependency_build_reuses_shared_producer_for_second_branch(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    The second branch sees the shared producer as reusable after the first.
+    """
+
+    (
+        plan_a,
+        plan_b,
+        plan_c,
+        plan_d,
+    ) = _shared_dependency_plans(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    d_required_for_b = True
+    d_required_for_c = True
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        nonlocal d_required_for_b
+        nonlocal d_required_for_c
+
+        if build_plan is plan_a:
+            return (
+                plan_b,
+                plan_c,
+            )
+
+        if build_plan is plan_b:
+            d_required_for_b = bool(execution_plan.required_product_dependencies)
+
+            if d_required_for_b:
+                return (plan_d,)
+
+            return ()
+
+        if build_plan is plan_c:
+            d_required_for_c = bool(execution_plan.required_product_dependencies)
+
+            if d_required_for_c:
+                return (plan_d,)
+
+            return ()
+
+        if build_plan is plan_d:
+            return ()
+
+        raise AssertionError(f"Unexpected BuildPlan {build_plan.artifact_id!r}")
+
+    def execute_artifact(
+        build_plan: BuildPlan,
+        **kwargs,
+    ) -> ExecutionPlan:
+        _record_plan_current(
+            build_plan,
+        )
+
+        return ExecutionPlan(
+            artifact_id=build_plan.artifact_id,
+            model_name=build_plan.model_name,
+            realization=build_plan.realization_name,
+            stages=(),
+        )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "execute_incremental_artifact_build",
+        execute_artifact,
+    )
+
+    execute_dependency_build(
+        plan_a,
+    )
+
+    assert d_required_for_b is True
+    assert d_required_for_c is False
+
+
+def test_dependency_build_executes_sibling_producers_before_consumer(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Both sibling producer branches complete before their consumer executes.
+    """
+
+    (
+        plan_a,
+        plan_b,
+        plan_c,
+        plan_d,
+    ) = _shared_dependency_plans(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    execution_order: list[str] = []
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        if build_plan is plan_a:
+            return (
+                plan_b,
+                plan_c,
+            )
+
+        if build_plan is plan_b:
+            if execution_plan.required_product_dependencies:
+                return (plan_d,)
+
+            return ()
+
+        if build_plan is plan_c:
+            if execution_plan.required_product_dependencies:
+                return (plan_d,)
+
+            return ()
+
+        if build_plan is plan_d:
+            return ()
+
+        raise AssertionError(f"Unexpected BuildPlan {build_plan.artifact_id!r}")
+
+    def execute_artifact(
+        build_plan: BuildPlan,
+        **kwargs,
+    ) -> ExecutionPlan:
+        execution_order.append(
+            build_plan.artifact_id,
+        )
+
+        _record_plan_current(
+            build_plan,
+        )
+
+        return ExecutionPlan(
+            artifact_id=build_plan.artifact_id,
+            model_name=build_plan.model_name,
+            realization=build_plan.realization_name,
+            stages=(),
+        )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "execute_incremental_artifact_build",
+        execute_artifact,
+    )
+
+    execute_dependency_build(
+        plan_a,
+    )
+
+    consumer_index = execution_order.index(
+        "artifact-a",
+    )
+
+    assert (
+        execution_order.index(
+            "artifact-b",
+        )
+        < consumer_index
+    )
+
+    assert (
+        execution_order.index(
+            "artifact-c",
+        )
+        < consumer_index
+    )
+
+    assert execution_order.index(
+        "artifact-d",
+    ) < execution_order.index(
+        "artifact-b",
+    )
+
+
+def test_dependency_build_shared_producer_failure_stops_all_dependents(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Failure of shared D prevents B, C, and their common consumer A.
+    """
+
+    (
+        plan_a,
+        plan_b,
+        plan_c,
+        plan_d,
+    ) = _shared_dependency_plans(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    executed: list[str] = []
+
+    class ExpectedSharedProducerError(Exception):
+        """
+        Expected shared-producer execution failure.
+        """
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        if build_plan is plan_a:
+            return (
+                plan_b,
+                plan_c,
+            )
+
+        if build_plan is plan_b:
+            return (plan_d,)
+
+        if build_plan is plan_c:
+            return (plan_d,)
+
+        if build_plan is plan_d:
+            return ()
+
+        raise AssertionError(f"Unexpected BuildPlan {build_plan.artifact_id!r}")
+
+    def execute_artifact(
+        build_plan: BuildPlan,
+        **kwargs,
+    ) -> ExecutionPlan:
+        executed.append(
+            build_plan.artifact_id,
+        )
+
+        if build_plan is plan_d:
+            raise ExpectedSharedProducerError
+
+        _record_plan_current(
+            build_plan,
+        )
+
+        return ExecutionPlan(
+            artifact_id=build_plan.artifact_id,
+            model_name=build_plan.model_name,
+            realization=build_plan.realization_name,
+            stages=(),
+        )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "execute_incremental_artifact_build",
+        execute_artifact,
+    )
+
+    with pytest.raises(
+        ExpectedSharedProducerError,
+    ):
+        execute_dependency_build(
+            plan_a,
+        )
+
+    assert executed == [
+        "artifact-d",
+    ]
