@@ -27,6 +27,9 @@ A model consists of:
     Product
         A persistent filesystem work product produced by a stage.
 
+    Product dependency
+        A declarative dependency on a product produced by a model stage.
+
 Artifact content and configuration are separate from model
 specifications.
 
@@ -285,6 +288,37 @@ class ProductSpec:
     description: str = ""
 
 
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class ProductDependencySpec:
+    """
+    Identify a declarative dependency on a model product.
+
+    A product dependency identifies the model, stage, and product that
+    provide a persistent product required by a consuming stage.
+
+    ProductDependencySpec belongs to the declarative model definition.
+    It therefore identifies a producer independently of any particular
+    artifact or realization.
+
+    Artifact and realization identity are runtime concerns represented
+    by ProductRef after a declarative dependency has been bound to a
+    configured artifact realization.
+
+    ProductDependencySpec contains no filesystem information. Resolving
+    the dependency to a concrete product location belongs to planning
+    and product resolution.
+    """
+
+    model: str
+
+    stage: str
+
+    product: str
+
+
 # =========================================================
 # Features
 # =========================================================
@@ -338,7 +372,7 @@ class VariantSpec:
     """
     Define a named parameter preset belonging to a model.
 
-    Variants provide reusable model-scoped configuration presets.
+    Variants provide reusable named parameter presets.
 
     Parameters contain resolved-configuration overrides associated with
     the variant. They describe parameter values rather than filesystem
@@ -398,15 +432,22 @@ class StageSpec:
 
     The numeric ID does not define the semantic identity of the stage
     and does not determine dependency or execution order. The stage
-    name is its semantic identity, and dependencies are expressed using
-    stage names.
+    name is its semantic identity.
 
-    Dependencies identify other stages that must be satisfied before
-    this stage may execute.
+    Dependencies identify stages within the same model that must be
+    satisfied before this stage may execute.
 
-    Products produced by direct dependency stages are made available to
-    the executing stage by the build engine. They are therefore not
-    repeated as explicit InputSpec declarations.
+    Product dependencies identify persistent products produced by model
+    stages. Unlike ordinary stage dependencies, a product dependency may
+    identify a producer belonging to another model.
+
+    Declarative product dependencies contain model, stage, and product
+    identity only. Binding such a dependency to a particular artifact
+    and realization belongs to planning and product resolution.
+
+    Products produced by direct same-model dependency stages are made
+    available to the executing stage by the build engine. They are
+    therefore not repeated as explicit InputSpec declarations.
 
     Required features identify optional model features that must be
     enabled for this stage to participate in an artifact workflow.
@@ -453,6 +494,8 @@ class StageSpec:
     description: str = ""
 
     dependencies: tuple[str, ...] = ()
+
+    product_dependencies: tuple[ProductDependencySpec, ...] = ()
 
     requires_features: tuple[str, ...] = ()
 
@@ -637,6 +680,7 @@ __all__ = [
     "FeatureSpec",
     "InputSpec",
     "ModelSpec",
+    "ProductDependencySpec",
     "ProductRef",
     "ProductSpec",
     "StageSpec",

@@ -13,6 +13,7 @@ from lowkey_artifact_builder.model.specs import (
     FeatureSpec,
     InputSpec,
     ModelSpec,
+    ProductDependencySpec,
     ProductSpec,
     StageSpec,
 )
@@ -86,6 +87,63 @@ def test_product_spec_defaults() -> None:
     )
 
     assert product.description == ""
+
+
+# =========================================================
+# ProductDependencySpec
+# =========================================================
+
+
+def test_product_dependency_spec_preserves_logical_identity() -> None:
+    """
+    A product dependency identifies its producer without filesystem location.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    assert dependency.model == "producer"
+    assert dependency.stage == "prepare"
+    assert dependency.product == "geometry"
+
+
+def test_product_dependency_spec_is_structurally_equal() -> None:
+    """
+    Equivalent product dependencies have value-object equality.
+    """
+
+    first = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    second = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    assert first == second
+
+
+def test_product_dependency_spec_contains_no_artifact_identity() -> None:
+    """
+    Declarative product dependencies do not bind a model to one artifact.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    assert not hasattr(dependency, "artifact")
+    assert not hasattr(dependency, "realization")
+    assert not hasattr(dependency, "path")
 
 
 # =========================================================
@@ -181,6 +239,7 @@ def test_stage_spec_defaults() -> None:
     assert stage.id == 10
     assert stage.description == ""
     assert stage.dependencies == ()
+    assert stage.product_dependencies == ()
     assert stage.requires_features == ()
     assert stage.inputs == ()
     assert stage.parameters == ()
@@ -273,6 +332,26 @@ def test_stage_parameters_are_independent_of_source() -> None:
 
     assert "outside_diameter" in stage.parameters
     assert "base_raise" in stage.parameters
+
+
+def test_stage_spec_supports_cross_model_product_dependency() -> None:
+    """
+    A stage may declaratively depend on a product produced by another model.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    stage = StageSpec(
+        id=10,
+        name="consume",
+        product_dependencies=(dependency,),
+    )
+
+    assert stage.product_dependencies == (dependency,)
 
 
 # =========================================================
@@ -515,6 +594,21 @@ def test_product_spec_is_immutable() -> None:
 
     with pytest.raises(FrozenInstanceError):
         product.name = "changed"  # type: ignore[misc]
+
+
+def test_product_dependency_spec_is_immutable() -> None:
+    """
+    Product dependency definitions cannot be modified after creation.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        dependency.model = "changed"  # type: ignore[misc]
 
 
 def test_feature_spec_is_immutable() -> None:
