@@ -319,6 +319,39 @@ class ProductDependencySpec:
     product: str
 
 
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class ProductDependencyBinding:
+    """
+    Concrete producer binding for one declarative product dependency.
+
+    The dependency supplies definition-level producer identity. Artifact
+    and realization identify the configured producer instance.
+    """
+
+    dependency: ProductDependencySpec
+    artifact: str
+    realization: str
+
+    @property
+    def product_ref(
+        self,
+    ) -> ProductRef:
+        """
+        Return the concrete logical product reference for this binding.
+        """
+
+        return ProductRef(
+            artifact=self.artifact,
+            model=self.dependency.model,
+            realization=self.realization,
+            stage=self.dependency.stage,
+            product=self.dependency.product,
+        )
+
+
 # =========================================================
 # Features
 # =========================================================
@@ -680,6 +713,7 @@ __all__ = [
     "FeatureSpec",
     "InputSpec",
     "ModelSpec",
+    "ProductDependencyBinding",
     "ProductDependencySpec",
     "ProductRef",
     "ProductSpec",

@@ -13,7 +13,9 @@ from lowkey_artifact_builder.model.specs import (
     FeatureSpec,
     InputSpec,
     ModelSpec,
+    ProductDependencyBinding,
     ProductDependencySpec,
+    ProductRef,
     ProductSpec,
     StageSpec,
 )
@@ -654,3 +656,98 @@ def test_model_spec_is_immutable() -> None:
 
     with pytest.raises(FrozenInstanceError):
         model.name = "changed"  # type: ignore[misc]
+
+
+def test_product_dependency_binding_preserves_producer_identity() -> None:
+    """
+    A product dependency binding identifies the concrete producer
+    artifact and realization for one declarative dependency.
+    """
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="geometry",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="nydeli",
+        realization="default",
+    )
+
+    assert binding.dependency == dependency
+    assert binding.artifact == "nydeli"
+    assert binding.realization == "default"
+
+
+def test_product_dependency_binding_resolves_product_ref() -> None:
+    """
+    A dependency binding resolves its declarative dependency to a
+    concrete logical product reference.
+    """
+
+    binding = ProductDependencyBinding(
+        dependency=ProductDependencySpec(
+            model="artwork",
+            stage="vector",
+            product="geometry",
+        ),
+        artifact="nydeli",
+        realization="default",
+    )
+
+    assert binding.product_ref == ProductRef(
+        artifact="nydeli",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="geometry",
+    )
+
+
+def test_product_dependency_binding_is_structurally_equal() -> None:
+    """
+    Equivalent dependency bindings have value-object equality.
+    """
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="geometry",
+    )
+
+    first = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="nydeli",
+        realization="default",
+    )
+
+    second = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="nydeli",
+        realization="default",
+    )
+
+    assert first == second
+
+
+def test_product_dependency_binding_is_immutable() -> None:
+    """
+    Product dependency bindings are immutable value objects.
+    """
+
+    binding = ProductDependencyBinding(
+        dependency=ProductDependencySpec(
+            model="artwork",
+            stage="vector",
+            product="geometry",
+        ),
+        artifact="nydeli",
+        realization="default",
+    )
+
+    with pytest.raises(
+        FrozenInstanceError,
+    ):
+        binding.artifact = "other"  # type: ignore[misc]
