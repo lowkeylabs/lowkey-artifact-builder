@@ -1,8 +1,9 @@
 """
 Tests for execution product-state resolution.
 
-Execution product-state resolution adapts realized build-plan stages and
-products to persistent product-state evaluation.
+Execution product-state resolution adapts realized build-plan stages,
+products, and bound cross-artifact product dependencies to persistent
+product-state evaluation.
 
 The resolver determines the producing stage working directory, resolves
 the declared product path, obtains the fingerprint required by the current
@@ -12,6 +13,12 @@ layer.
 Persistent completion evidence belongs to one realized artifact, model,
 realization, and stage. Completion metadata whose identity does not match
 the realized producer cannot prove that its products are current.
+
+Cross-artifact product dependencies are evaluated as first-class persistent
+products. Their state is determined from the bound producer artifact,
+model, realization, stage, product, and already-planned filesystem path.
+Evaluation of one required producer product does not require unrelated
+downstream products from the producer artifact.
 
 These tests exercise execution-planning orchestration only. They do not
 execute stages or emit execution events.
@@ -29,12 +36,19 @@ import pytest
 
 from lowkey_artifact_builder.engine import (
     BuildPlan,
+    PlannedProductDependency,
     PlannedStage,
     ProductFingerprint,
     ProductState,
     StageCompletion,
     create_execution_state_resolver,
     write_stage_completion,
+)
+from lowkey_artifact_builder.model import (
+    ModelSpec,
+    ProductDependencyBinding,
+    ProductDependencySpec,
+    StageSpec,
 )
 
 type ArtworkPlanFactory = Callable[..., BuildPlan]
@@ -171,12 +185,129 @@ def _resolve_with_completion(
 
     resolve = create_execution_state_resolver(
         build_plan,
-        required_fingerprint=lambda candidate: (required_fingerprint),
+        required_fingerprint=lambda candidate: required_fingerprint,
     )
 
     return resolve(
         stage,
         product.name,
+    )
+
+
+def _product_dependency_plan(
+    *,
+    tmp_path: Path,
+    resolver,
+) -> tuple[
+    BuildPlan,
+    PlannedStage,
+    PlannedProductDependency,
+]:
+    """
+    Construct a minimal consumer plan with one cross-artifact dependency.
+
+    The dependency refers specifically to the producer's prepare.geometry
+    product. The producer may conceptually contain later stages, but those
+    stages are intentionally absent from the consumer BuildPlan.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="producer-artifact",
+        realization="default",
+    )
+
+    dependency_path = (
+        tmp_path
+        / "artifacts"
+        / "producer-artifact"
+        / "producer"
+        / "default"
+        / "10-prepare"
+        / "geometry.dat"
+    )
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=dependency_path,
+    )
+
+    stage_spec = StageSpec(
+        id=10,
+        name="consume",
+        product_dependencies=(dependency,),
+    )
+
+    stage = PlannedStage(
+        spec=stage_spec,
+    )
+
+    plan = BuildPlan(
+        artifact_id="consumer-artifact",
+        model=ModelSpec(
+            name="consumer",
+            title="Consumer",
+            stages=(stage_spec,),
+        ),
+        realization_name="default",
+        resolver=resolver,
+        project_root=tmp_path,
+        artifact_dir=(tmp_path / "artifacts" / "consumer-artifact"),
+        stages=(stage,),
+        product_dependencies=(dependency,),
+        product_dependency_bindings=(binding,),
+        planned_product_dependencies=(planned_dependency,),
+    )
+
+    return (
+        plan,
+        stage,
+        planned_dependency,
+    )
+
+
+def _product_dependency_completion(
+    dependency: PlannedProductDependency,
+    *,
+    fingerprint: ProductFingerprint | None,
+) -> StageCompletion:
+    """
+    Create completion metadata belonging to a bound producer product.
+    """
+
+    product_ref = dependency.product_ref
+
+    return StageCompletion(
+        artifact_id=product_ref.artifact,
+        model_name=product_ref.model,
+        realization=product_ref.realization,
+        stage_name=product_ref.stage,
+        products=(product_ref.product,),
+        fingerprint=fingerprint,
+    )
+
+
+def _materialize_product_dependency(
+    dependency: PlannedProductDependency,
+) -> None:
+    """
+    Materialize one bound producer product.
+    """
+
+    dependency.path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    dependency.path.write_text(
+        "producer-product",
+        encoding="utf-8",
     )
 
 
@@ -865,3 +996,353 @@ def test_empty_completion_product_set_cannot_prove_current(
     )
 
     assert state is ProductState.INCOMPLETE
+
+
+# =========================================================
+# Cross-artifact product dependency state
+# =========================================================
+
+
+def test_missing_product_dependency_resolves_absent(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    A bound producer product without persistent materialization is ABSENT.
+
+    State resolution uses the already-planned producer product rather than
+    requiring that producer artifact to appear as a stage in the consumer
+    BuildPlan.
+    """
+
+    (
+        build_plan,
+        _,
+        dependency,
+    ) = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+    )
+
+    resolve = create_execution_state_resolver(
+        build_plan,
+        required_fingerprint=lambda stage: _fingerprint(
+            stage.name,
+        ),
+    )
+
+    assert (
+        resolve.product_dependency(
+            dependency,
+            required_fingerprint=_fingerprint(
+                "producer-prepare",
+            ),
+        )
+        is ProductState.ABSENT
+    )
+
+
+def test_current_product_dependency_resolves_current(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    Matching producer materialization and completion provenance is CURRENT.
+    """
+
+    (
+        build_plan,
+        _,
+        dependency,
+    ) = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+    )
+
+    fingerprint = _fingerprint(
+        "producer-prepare",
+    )
+
+    _materialize_product_dependency(
+        dependency,
+    )
+
+    write_stage_completion(
+        dependency.path.parent,
+        _product_dependency_completion(
+            dependency,
+            fingerprint=fingerprint,
+        ),
+    )
+
+    resolve = create_execution_state_resolver(
+        build_plan,
+        required_fingerprint=lambda stage: _fingerprint(
+            stage.name,
+        ),
+    )
+
+    assert (
+        resolve.product_dependency(
+            dependency,
+            required_fingerprint=fingerprint,
+        )
+        is ProductState.CURRENT
+    )
+
+
+def test_product_dependency_without_completion_resolves_incomplete(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    Materialized producer output without successful completion is INCOMPLETE.
+    """
+
+    (
+        build_plan,
+        _,
+        dependency,
+    ) = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+    )
+
+    _materialize_product_dependency(
+        dependency,
+    )
+
+    resolve = create_execution_state_resolver(
+        build_plan,
+        required_fingerprint=lambda stage: _fingerprint(
+            stage.name,
+        ),
+    )
+
+    assert (
+        resolve.product_dependency(
+            dependency,
+            required_fingerprint=_fingerprint(
+                "producer-prepare",
+            ),
+        )
+        is ProductState.INCOMPLETE
+    )
+
+
+def test_changed_product_dependency_fingerprint_resolves_stale(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    Producer completion from another build context is STALE.
+    """
+
+    (
+        build_plan,
+        _,
+        dependency,
+    ) = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+    )
+
+    _materialize_product_dependency(
+        dependency,
+    )
+
+    write_stage_completion(
+        dependency.path.parent,
+        _product_dependency_completion(
+            dependency,
+            fingerprint=_fingerprint(
+                "recorded-producer",
+            ),
+        ),
+    )
+
+    resolve = create_execution_state_resolver(
+        build_plan,
+        required_fingerprint=lambda stage: _fingerprint(
+            stage.name,
+        ),
+    )
+
+    assert (
+        resolve.product_dependency(
+            dependency,
+            required_fingerprint=_fingerprint(
+                "required-producer",
+            ),
+        )
+        is ProductState.STALE
+    )
+
+
+def test_product_dependency_state_uses_bound_producer_identity(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    Completion must belong to the concrete bound producer artifact.
+
+    A completion record for the correct model, realization, stage, and
+    product but a different artifact cannot prove CURRENT.
+    """
+
+    (
+        build_plan,
+        _,
+        dependency,
+    ) = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+    )
+
+    fingerprint = _fingerprint(
+        "producer-prepare",
+    )
+
+    _materialize_product_dependency(
+        dependency,
+    )
+
+    product_ref = dependency.product_ref
+
+    write_stage_completion(
+        dependency.path.parent,
+        StageCompletion(
+            artifact_id="other-producer-artifact",
+            model_name=product_ref.model,
+            realization=product_ref.realization,
+            stage_name=product_ref.stage,
+            products=(product_ref.product,),
+            fingerprint=fingerprint,
+        ),
+    )
+
+    resolve = create_execution_state_resolver(
+        build_plan,
+        required_fingerprint=lambda stage: _fingerprint(
+            stage.name,
+        ),
+    )
+
+    assert (
+        resolve.product_dependency(
+            dependency,
+            required_fingerprint=fingerprint,
+        )
+        is not ProductState.CURRENT
+    )
+
+
+def test_product_dependency_outside_build_plan_is_rejected(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    Dependency-state resolution is limited to dependencies in the BuildPlan.
+    """
+
+    (
+        first_plan,
+        _,
+        _,
+    ) = _product_dependency_plan(
+        tmp_path=tmp_path / "first",
+        resolver=test_resolver,
+    )
+
+    (
+        _,
+        _,
+        foreign_dependency,
+    ) = _product_dependency_plan(
+        tmp_path=tmp_path / "second",
+        resolver=test_resolver,
+    )
+
+    resolve = create_execution_state_resolver(
+        first_plan,
+        required_fingerprint=lambda stage: _fingerprint(
+            stage.name,
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="dependency",
+    ):
+        resolve.product_dependency(
+            foreign_dependency,
+            required_fingerprint=_fingerprint(
+                "producer-prepare",
+            ),
+        )
+
+
+def test_product_dependency_state_does_not_require_downstream_product(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    Reuse is proven for the exact required producer product.
+
+    A consumer requiring producer.prepare.geometry can reuse that current
+    product even when no downstream or final producer product exists.
+    """
+
+    (
+        build_plan,
+        _,
+        dependency,
+    ) = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+    )
+
+    fingerprint = _fingerprint(
+        "producer-prepare",
+    )
+
+    _materialize_product_dependency(
+        dependency,
+    )
+
+    write_stage_completion(
+        dependency.path.parent,
+        _product_dependency_completion(
+            dependency,
+            fingerprint=fingerprint,
+        ),
+    )
+
+    downstream_product = (
+        tmp_path
+        / "artifacts"
+        / "producer-artifact"
+        / "producer"
+        / "default"
+        / "50-package"
+        / "artifact.dat"
+    )
+
+    assert not downstream_product.exists()
+
+    resolve = create_execution_state_resolver(
+        build_plan,
+        required_fingerprint=lambda stage: _fingerprint(
+            stage.name,
+        ),
+    )
+
+    assert (
+        resolve.product_dependency(
+            dependency,
+            required_fingerprint=fingerprint,
+        )
+        is ProductState.CURRENT
+    )
+
+    assert not downstream_product.exists()
