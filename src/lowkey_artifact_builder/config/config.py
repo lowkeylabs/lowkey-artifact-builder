@@ -820,6 +820,11 @@ def update_artifact_config(
     into the existing [parameters] table rather than replacing the
     complete table.
 
+    If values contains a "product_dependencies" mapping, dependency
+    bindings are merged by binding name rather than replacing the
+    complete [product_dependencies] table. An updated binding replaces
+    that binding as a complete unit.
+
     If artifact.toml does not yet exist, a new document is created.
 
     Returns the artifact.toml path.
@@ -844,9 +849,22 @@ def update_artifact_config(
 
             continue
 
+        if name == "product_dependencies" and isinstance(
+            value,
+            Mapping,
+        ):
+            _update_product_dependencies_table(
+                document,
+                value,
+            )
+
+            continue
+
         document[name] = value
 
-    _validate_artifact_document(document.unwrap())
+    _validate_artifact_document(
+        document.unwrap(),
+    )
 
     path.parent.mkdir(
         parents=True,
@@ -1072,6 +1090,43 @@ def _update_parameters_table(
 
     for name, value in values.items():
         parameters[name] = value
+
+
+def _update_product_dependencies_table(
+    document: TOMLDocument,
+    values: Mapping[str, Any],
+) -> None:
+    """
+    Merge bindings into the artifact [product_dependencies] table.
+
+    Existing bindings not named by the update are preserved.
+
+    Each supplied binding replaces the complete binding having the same
+    name. Binding contents are intentionally not recursively merged.
+    """
+
+    existing = document.get(
+        "product_dependencies",
+    )
+
+    if existing is None:
+        product_dependencies = tomlkit.table()
+
+        document["product_dependencies"] = product_dependencies
+
+    else:
+        if not isinstance(
+            existing,
+            MutableMapping,
+        ):
+            raise ConfigError(
+                "The existing [product_dependencies] section in artifact.toml must be a TOML table."
+            )
+
+        product_dependencies = existing
+
+    for name, value in values.items():
+        product_dependencies[name] = value
 
 
 def _write_artifact_document_atomic(

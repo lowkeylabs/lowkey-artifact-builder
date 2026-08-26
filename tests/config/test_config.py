@@ -937,3 +937,100 @@ def test_unknown_parameter_raises_config_error(
         match="Unknown configuration value",
     ):
         resolver("does_not_exist")
+
+
+def test_write_artifact_config_preserves_product_dependency_binding(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact configuration may persist a concrete producer binding for
+    a declarative product dependency.
+    """
+
+    write_artifact_config(
+        "consumer",
+        {
+            "model": "consumer",
+            "product_dependencies": {
+                "geometry": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "geometry",
+                    "artifact": "nydeli",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "consumer",
+        project_root=tmp_path,
+    )
+
+    assert config["product_dependencies"] == {
+        "geometry": {
+            "model": "artwork",
+            "stage": "vector",
+            "product": "geometry",
+            "artifact": "nydeli",
+            "realization": "default",
+        },
+    }
+
+
+def test_update_artifact_config_preserves_other_product_dependency_bindings(
+    tmp_path: Path,
+) -> None:
+    """
+    Updating one product dependency binding preserves sibling bindings.
+    """
+
+    write_artifact_config(
+        "consumer",
+        {
+            "model": "consumer",
+            "product_dependencies": {
+                "geometry": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "geometry",
+                    "artifact": "first",
+                    "realization": "default",
+                },
+                "mask": {
+                    "model": "artwork",
+                    "stage": "raster",
+                    "product": "mask",
+                    "artifact": "second",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    update_artifact_config(
+        "consumer",
+        {
+            "product_dependencies": {
+                "geometry": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "geometry",
+                    "artifact": "replacement",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "consumer",
+        project_root=tmp_path,
+    )
+
+    assert config["product_dependencies"]["geometry"]["artifact"] == "replacement"
+    assert config["product_dependencies"]["mask"]["artifact"] == "second"
