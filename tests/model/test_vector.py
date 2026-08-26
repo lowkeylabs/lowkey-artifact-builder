@@ -431,6 +431,7 @@ def test_vector_manifest_describes_stage_local_products(
     )
 
     assert data == {
+        "registered_extent": 10,
         "products": [
             {
                 "index": 1,
@@ -538,3 +539,86 @@ def test_vector_generation_is_independent_of_physical_size(
     )
 
     assert vector_manifest.is_file()
+
+
+def test_vector_manifest_records_registered_extent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    The vector manifest records the common registered coordinate extent.
+
+    Downstream consumers use this extent to dimensionalize registered
+    vector geometry without inspecting individual SVG documents.
+    """
+
+    raster_directory = tmp_path / "raster"
+
+    raster = raster_directory / "layer.png"
+
+    _write_raster(
+        raster,
+        box=(5, 5, 15, 15),
+    )
+
+    raster_manifest = raster_directory / "products.json"
+
+    _write_raster_manifest(
+        raster_manifest,
+        [
+            {
+                "index": 1,
+                "path": raster.name,
+                "name": "white",
+                "color": _color(
+                    255,
+                    255,
+                    255,
+                ),
+            }
+        ],
+    )
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "raster.manifest": raster_manifest,
+        },
+        outputs={
+            "manifest": vector_manifest,
+        },
+        resolver=StubResolver({}),
+    )
+
+    def fake_trace_mask(
+        source: Path,
+        output: Path,
+        *,
+        crop: vector.RasterCrop,
+    ) -> None:
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_text(
+            "<svg/>",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        vector,
+        "_trace_mask",
+        fake_trace_mask,
+    )
+
+    vector.execute(context)  # type: ignore[arg-type]
+
+    data = json.loads(
+        vector_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert data["registered_extent"] == 10

@@ -4,14 +4,17 @@ Artwork extrusion stage.
 The extrusion stage converts registered vector color layers into
 independently printable STL components.
 
-Each vector layer is imported into OpenSCAD, centered about the origin,
-and linearly extruded from Z=0 through the configured artwork raise.
+Each vector layer shares a common registered coordinate system described
+by the vector manifest. The extrusion stage dimensionalizes that common
+coordinate system to the configured physical artwork size, centers it
+about the origin, and linearly extrudes it from Z=0 through the
+configured artwork raise.
 
 The vector manifest identifies the dynamically generated vector layers
-that participate in this stage. The generated STL components are
-dynamic products whose filenames, geometry associations, semantic color
-names, and color assignments are recorded in the declared extrusion
-manifest.
+that participate in this stage and records their common registered
+coordinate extent. The generated STL components are dynamic products
+whose filenames, geometry associations, semantic color names, and color
+assignments are recorded in the declared extrusion manifest.
 
 Filesystem layout, dependency resolution, and configuration resolution
 are responsibilities of the build engine. This implementation consumes
@@ -77,6 +80,26 @@ class VectorLayer:
     ]
 
 
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class VectorManifest:
+    """
+    Registered vector geometry consumed by the extrusion stage.
+
+    registered_extent describes the common square coordinate system
+    shared by every vector layer.
+    """
+
+    registered_extent: int
+
+    layers: tuple[
+        VectorLayer,
+        ...,
+    ]
+
+
 # =========================================================
 # Public interface
 # =========================================================
@@ -91,11 +114,15 @@ def execute(
     The stage consumes:
 
         vector.manifest
-            Manifest describing the registered vector color layers
-            produced by the vector stage.
+            Manifest describing the registered vector color layers and
+            their common registered coordinate extent.
 
         artwork_colors
             Resolved artwork palette.
+
+        artwork_size
+            Physical width and height of the dimensionalized artwork in
+            millimeters.
 
         artwork_raise
             Physical extrusion height of the artwork geometry in
@@ -146,7 +173,9 @@ def execute(
     )
 
     try:
-        layers = _load_vector_manifest(vector_manifest)
+        vector_products = _load_vector_manifest(
+            vector_manifest,
+        )
 
         outputs: list[
             tuple[
@@ -155,11 +184,12 @@ def execute(
             ]
         ] = []
 
-        for layer in layers:
+        for layer in vector_products.layers:
             output = extrude_manifest.parent / f"color-{layer.index}.stl"
 
             source = _build_scad(
                 layer.path,
+                registered_extent=vector_products.registered_extent,
                 artwork_size=artwork_size,
                 artwork_raise=artwork_raise,
             )
@@ -239,6 +269,30 @@ def _positive_number(
     return result
 
 
+def _positive_integer(
+    name: str,
+    value: Any,
+) -> int:
+    """
+    Return a validated positive integer.
+    """
+
+    if (
+        isinstance(
+            value,
+            bool,
+        )
+        or not isinstance(
+            value,
+            int,
+        )
+        or value < 1
+    ):
+        raise ExtrudeError(f"{name} must be a positive integer.")
+
+    return value
+
+
 def _color_component(
     color: dict[str, Any],
     name: str,
@@ -274,9 +328,12 @@ def _color_component(
 
 def _load_vector_manifest(
     manifest: Path,
-) -> list[VectorLayer]:
+) -> VectorManifest:
     """
-    Load vector products from the vector manifest.
+    Load registered vector products from the vector manifest.
+
+    registered_extent describes the common square coordinate system
+    shared by every vector layer.
 
     Semantic color names assigned by the raster stage are required and
     preserved together with their configured RGB representations.
@@ -294,6 +351,13 @@ def _load_vector_manifest(
         json.JSONDecodeError,
     ) as exc:
         raise ExtrudeError(f"Could not read vector manifest: {manifest}") from exc
+
+    registered_extent = _positive_integer(
+        "Vector manifest registered extent",
+        data.get(
+            "registered_extent",
+        ),
+    )
 
     products = data.get("products")
 
@@ -409,7 +473,10 @@ def _load_vector_manifest(
 
     result.sort(key=lambda layer: layer.index)
 
-    return result
+    return VectorManifest(
+        registered_extent=registered_extent,
+        layers=tuple(result),
+    )
 
 
 # =========================================================
@@ -454,22 +521,23 @@ def _scad_string(
 def _build_scad(
     svg: Path,
     *,
+    registered_extent: int,
     artwork_size: float,
     artwork_raise: float,
 ) -> str:
     """
     Return OpenSCAD source for one artwork color layer.
 
-    All SVG color layers share one common document coordinate system.
+    All SVG color layers share one common registered coordinate system.
     Their individual geometry bounds intentionally differ and must not
-    be centered independently.
+    be fitted or centered independently.
 
-    The SVG is therefore imported without OpenSCAD centering. The
-    complete artwork coordinate system is translated by half the
-    configured physical artwork size so that the common SVG canvas is
-    centered at the model origin.
+    The common registered coordinate extent is scaled uniformly to the
+    configured physical artwork size. The resulting physical artwork
+    coordinate system is then translated by half the artwork size so
+    that it is centered at the model origin.
 
-    This identical translation is applied to every color layer,
+    Identical scaling and translation are applied to every color layer,
     preserving registration between layers.
     """
 
@@ -477,6 +545,15 @@ def _build_scad(
 
     if not svg.is_file():
         raise ExtrudeError(f"Artwork SVG does not exist: {svg}")
+
+    registered_extent = _positive_integer(
+        "registered_extent",
+        registered_extent,
+    )
+
+    registered_extent_scad = str(
+        registered_extent,
+    )
 
     artwork_size_scad = _scad_number(
         artwork_size,
@@ -496,6 +573,7 @@ def _build_scad(
 // DO NOT EDIT THIS FILE.
 //
 
+registered_extent = {registered_extent_scad};
 artwork_size = {artwork_size_scad};
 artwork_raise = {artwork_raise_scad};
 
@@ -513,14 +591,21 @@ translate(
         0
     ]
 )
-    linear_extrude(
-        height = artwork_raise,
-        convexity = 10
+    scale(
+        [
+            artwork_size / registered_extent,
+            artwork_size / registered_extent,
+            1
+        ]
     )
-        import(
-            artwork_svg,
-            center = false
-        );
+        linear_extrude(
+            height = artwork_raise,
+            convexity = 10
+        )
+            import(
+                artwork_svg,
+                center = false
+            );
 """
 
 

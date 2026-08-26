@@ -2,19 +2,24 @@
 Artwork vector stage.
 
 The vector stage converts registered raster color layers into
-registered vector geometry at the configured physical artwork size.
+registered vector geometry without assigning physical manufacturing
+dimensions.
 
 The raster manifest identifies the dynamically generated raster layers
 that participate in this stage. One common square crop is calculated
 from the union of all raster layers and applied to every layer so that
 registration is preserved.
 
-Each cropped raster layer is traced by Inkscape. The resulting SVG
-document is assigned the configured physical artwork dimensions while
-preserving the common coordinate system produced by tracing.
+Each cropped raster layer is traced by Inkscape. All resulting SVG
+documents retain the common coordinate system established by the
+registered raster crop.
 
-Scaling is baked into path geometry rather than represented by SVG
-transforms.
+The vector manifest records that common registered coordinate extent so
+that downstream consumers can dimensionalize the registered geometry
+without inspecting individual SVG documents.
+
+Physical dimensionalization is the responsibility of a downstream
+consumer.
 
 Filesystem layout, dependency resolution, and configuration resolution
 are responsibilities of the build engine. This implementation consumes
@@ -211,6 +216,7 @@ def execute(
         _write_manifest(
             vector_manifest,
             vector_layers,
+            registered_extent=crop.size,
         )
 
     except (
@@ -751,9 +757,15 @@ def _write_manifest(
             Path,
         ]
     ],
+    *,
+    registered_extent: int,
 ) -> None:
     """
     Write the vector product manifest.
+
+    registered_extent records the common square coordinate extent shared
+    by every generated vector layer. Downstream consumers use this value
+    to dimensionalize the registered geometry.
     """
 
     products = [
@@ -771,6 +783,7 @@ def _write_manifest(
     ]
 
     data = {
+        "registered_extent": registered_extent,
         "products": products,
     }
 

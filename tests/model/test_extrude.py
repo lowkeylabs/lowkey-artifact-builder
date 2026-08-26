@@ -93,9 +93,11 @@ def _color(
 def _write_vector_manifest(
     path: Path,
     products: list[dict[str, Any]],
+    *,
+    registered_extent: int = 20,
 ) -> None:
     """
-    Write a minimal vector manifest.
+    Write a minimal registered vector manifest.
     """
 
     path.parent.mkdir(
@@ -106,6 +108,7 @@ def _write_vector_manifest(
     path.write_text(
         json.dumps(
             {
+                "registered_extent": registered_extent,
                 "products": products,
             }
         ),
@@ -422,3 +425,52 @@ def test_extrude_manifest_describes_stage_local_products(
             }
         ],
     }
+
+
+# =========================================================
+# Dimensionalization tests
+# =========================================================
+
+
+def test_build_scad_fits_registered_geometry_to_physical_size(
+    tmp_path: Path,
+) -> None:
+    """
+    Extrusion fits registered vector geometry to the configured
+    physical artwork size.
+
+    Registered vector coordinates are dimensionless until extrusion.
+    The consuming extrusion stage therefore scales the common vector
+    coordinate system to artwork_size before creating physical geometry.
+    """
+
+    svg = tmp_path / "layer.svg"
+
+    svg.write_text(
+        """
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+        >
+            <rect
+                x="0"
+                y="0"
+                width="20"
+                height="20"
+            />
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    source = extrude._build_scad(
+        svg,
+        registered_extent=20,
+        artwork_size=150.0,
+        artwork_raise=1.0,
+    )
+
+    assert "registered_extent = 20;" in source
+    assert "artwork_size = 150;" in source
+    assert "scale(" in source
+    assert "artwork_size / registered_extent" in source
