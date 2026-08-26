@@ -3,15 +3,15 @@ Build-plan fingerprint resolution.
 
 Build-plan fingerprint resolution derives the fingerprint required by each
 realized stage from its operation identity, resolved parameter values,
-external input contents, and the required fingerprints of its realized
-dependency stages.
+external input contents, cross-artifact product dependency contents, and
+the required fingerprints of its realized dependency stages.
 
 Stage parameters are declared by StageSpec and resolved through the
 BuildPlan's authoritative realization Resolver.
 
-External filesystem inputs contribute content fingerprints rather than
-filesystem paths or timestamps, so equivalent content has equivalent
-provenance across workspaces.
+External filesystem inputs and cross-artifact product dependencies
+contribute content fingerprints rather than filesystem paths or timestamps,
+so equivalent content has equivalent provenance across workspaces.
 
 Dependency fingerprints propagate required build context through the
 realized stage graph without inspecting persistent products or completion
@@ -69,7 +69,8 @@ def create_required_fingerprints(
 
     inputs
         Content fingerprints of declared external filesystem inputs and
-        required fingerprints of declared dependency stages.
+        cross-artifact product dependencies, plus required fingerprints
+        of declared dependency stages.
 
     Filesystem destinations and timestamps do not participate in
     fingerprint generation, so equivalent build contexts remain portable
@@ -115,6 +116,13 @@ def _create_stage_fingerprint(
 
     inputs.update(
         _resolve_external_input_fingerprints(
+            stage=stage,
+        )
+    )
+
+    inputs.update(
+        _resolve_product_dependency_fingerprints(
+            build_plan=build_plan,
             stage=stage,
         )
     )
@@ -187,6 +195,62 @@ def _resolve_dependency_fingerprints(
 
         inputs[f"dependency:{dependency}"] = _format_fingerprint(
             fingerprint,
+        )
+
+    return inputs
+
+
+# =========================================================
+# Product dependency resolution
+# =========================================================
+
+
+def _resolve_product_dependency_fingerprints(
+    *,
+    build_plan: BuildPlan,
+    stage: PlannedStage,
+) -> dict[str, str]:
+    """
+    Resolve content fingerprints of cross-artifact product dependencies.
+
+    Only product dependencies explicitly declared by the realized stage
+    participate in its fingerprint.
+
+    Planned dependency paths identify persistent producer products, but
+    the paths themselves do not participate in provenance. Product
+    contents are hashed directly so equivalent producer products have
+    equivalent provenance across workspaces.
+
+    A required dependency that is not present in the BuildPlan fails
+    rather than silently producing incomplete provenance.
+    """
+
+    inputs: dict[str, str] = {}
+
+    for dependency in stage.spec.product_dependencies:
+        planned_dependency = next(
+            (
+                planned
+                for planned in build_plan.planned_product_dependencies
+                if planned.binding.dependency == dependency
+            ),
+            None,
+        )
+
+        if planned_dependency is None:
+            identity = f"{dependency.model}/{dependency.stage}/{dependency.product}"
+
+            raise ValueError(
+                f"Planned product dependency {identity!r} "
+                f"required by stage {stage.name!r} is unavailable"
+            )
+
+        identity = f"{dependency.model}.{dependency.stage}.{dependency.product}"
+
+        inputs[f"product:{identity}"] = _format_fingerprint(
+            _fingerprint_file(
+                planned_dependency.path,
+            )
         )
 
     return inputs

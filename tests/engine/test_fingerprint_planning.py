@@ -26,9 +26,16 @@ import pytest
 
 from lowkey_artifact_builder.engine import (
     BuildPlan,
+    PlannedProductDependency,
     PlannedStage,
     ProductFingerprint,
     create_required_fingerprints,
+)
+from lowkey_artifact_builder.model import (
+    ModelSpec,
+    ProductDependencyBinding,
+    ProductDependencySpec,
+    StageSpec,
 )
 
 type ArtworkPlanFactory = Callable[..., BuildPlan]
@@ -126,6 +133,62 @@ def _materialize_external_inputs(
             planned_input.path.write_bytes(
                 b"fingerprint-planning-test-input",
             )
+
+
+def _product_dependency_plan(
+    *,
+    tmp_path: Path,
+    resolver,
+    dependency_path: Path,
+) -> BuildPlan:
+    """
+    Construct a minimal consumer build plan with one cross-artifact
+    product dependency.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="producer-artifact",
+        realization="default",
+    )
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=dependency_path,
+    )
+
+    stage_spec = StageSpec(
+        id=10,
+        name="consume",
+        product_dependencies=(dependency,),
+    )
+
+    stage = PlannedStage(
+        spec=stage_spec,
+    )
+
+    return BuildPlan(
+        artifact_id="consumer-artifact",
+        model=ModelSpec(
+            name="consumer",
+            title="Consumer",
+            stages=(stage_spec,),
+        ),
+        realization_name="default",
+        resolver=resolver,
+        project_root=tmp_path,
+        artifact_dir=tmp_path / "artifacts" / "consumer-artifact",
+        stages=(stage,),
+        product_dependencies=(dependency,),
+        product_dependency_bindings=(binding,),
+        planned_product_dependencies=(planned_dependency,),
+    )
 
 
 # =========================================================
@@ -489,6 +552,105 @@ def test_dependency_fingerprints_distinguish_stage_contexts(
     ) == len(
         values,
     )
+
+
+# =========================================================
+# Cross-artifact product dependency provenance
+# =========================================================
+
+
+def test_stage_fingerprint_depends_on_product_dependency_content(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    A consumer stage fingerprint includes the content of a required
+    cross-artifact product.
+    """
+
+    dependency_path = tmp_path / "producer" / "geometry.dat"
+
+    dependency_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    dependency_path.write_bytes(
+        b"first-producer-product",
+    )
+
+    build_plan = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+        dependency_path=dependency_path,
+    )
+
+    first = create_required_fingerprints(
+        build_plan,
+    )
+
+    dependency_path.write_bytes(
+        b"second-producer-product",
+    )
+
+    second = create_required_fingerprints(
+        build_plan,
+    )
+
+    assert first["consume"] != second["consume"]
+
+
+def test_identical_product_dependency_content_has_identical_fingerprint(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    Equivalent cross-artifact product content contributes equivalent
+    provenance independently of its filesystem location.
+    """
+
+    first_path = tmp_path / "first" / "geometry.dat"
+    second_path = tmp_path / "second" / "geometry.dat"
+
+    first_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    second_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    first_path.write_bytes(
+        b"same-producer-product",
+    )
+
+    second_path.write_bytes(
+        b"same-producer-product",
+    )
+
+    first_plan = _product_dependency_plan(
+        tmp_path=tmp_path / "first-plan",
+        resolver=test_resolver,
+        dependency_path=first_path,
+    )
+
+    second_plan = _product_dependency_plan(
+        tmp_path=tmp_path / "second-plan",
+        resolver=test_resolver,
+        dependency_path=second_path,
+    )
+
+    first = create_required_fingerprints(
+        first_plan,
+    )
+
+    second = create_required_fingerprints(
+        second_plan,
+    )
+
+    assert first["consume"] == second["consume"]
 
 
 # =========================================================
