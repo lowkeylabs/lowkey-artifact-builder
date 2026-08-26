@@ -36,6 +36,7 @@ prep:
 	-make pre-commit
 	make pre-commit
 	git add --all
+	make typecheck
 	make check
 
 check: lint typecheck pre-commit test-fast

@@ -15,10 +15,15 @@ import tomlkit
 from lowkey_artifact_builder.config import (
     ConfigError,
     artifact_config_path,
+    get_product_dependency_binding,
     get_resolver,
     load_artifact_config,
     update_artifact_config,
     write_artifact_config,
+)
+from lowkey_artifact_builder.model import (
+    ProductDependencyBinding,
+    ProductDependencySpec,
 )
 
 # =========================================================
@@ -1034,3 +1039,122 @@ def test_update_artifact_config_preserves_other_product_dependency_bindings(
 
     assert config["product_dependencies"]["geometry"]["artifact"] == "replacement"
     assert config["product_dependencies"]["mask"]["artifact"] == "second"
+
+
+def test_get_product_dependency_binding(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact configuration binds a declarative product dependency to a
+    concrete producer artifact and realization.
+    """
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="geometry",
+    )
+
+    write_artifact_config(
+        "consumer",
+        {
+            "model": "consumer",
+            "product_dependencies": {
+                "geometry": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "geometry",
+                    "artifact": "nydeli",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    binding = get_product_dependency_binding(
+        "consumer",
+        dependency,
+        project_root=tmp_path,
+    )
+
+    assert binding == ProductDependencyBinding(
+        dependency=dependency,
+        artifact="nydeli",
+        realization="default",
+    )
+
+
+def test_get_product_dependency_binding_rejects_missing_binding(
+    tmp_path: Path,
+) -> None:
+    """
+    A required declarative dependency must have a configured producer
+    binding.
+    """
+
+    write_artifact_config(
+        "consumer",
+        {
+            "model": "consumer",
+        },
+        project_root=tmp_path,
+    )
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="geometry",
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="geometry",
+    ):
+        get_product_dependency_binding(
+            "consumer",
+            dependency,
+            project_root=tmp_path,
+        )
+
+
+def test_get_product_dependency_binding_rejects_mismatched_definition(
+    tmp_path: Path,
+) -> None:
+    """
+    A configured binding must describe the declarative dependency being
+    bound.
+    """
+
+    write_artifact_config(
+        "consumer",
+        {
+            "model": "consumer",
+            "product_dependencies": {
+                "geometry": {
+                    "model": "other",
+                    "stage": "prepare",
+                    "product": "different",
+                    "artifact": "nydeli",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="geometry",
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="geometry",
+    ):
+        get_product_dependency_binding(
+            "consumer",
+            dependency,
+            project_root=tmp_path,
+        )

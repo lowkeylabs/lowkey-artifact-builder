@@ -87,7 +87,11 @@ import tomlkit
 from tomlkit.exceptions import ParseError
 from tomlkit.toml_document import TOMLDocument
 
-from lowkey_artifact_builder.model import build_model_registry
+from lowkey_artifact_builder.model import (
+    ProductDependencyBinding,
+    ProductDependencySpec,
+    build_model_registry,
+)
 
 # =========================================================
 # Types
@@ -698,6 +702,133 @@ def get_realization_names(
         raise ConfigError("The [realizations] section in artifact.toml must be a TOML table.")
 
     return tuple(realizations)
+
+
+def get_product_dependency_binding(
+    artifact_id: str,
+    dependency: ProductDependencySpec,
+    *,
+    project_root: Path | str | None = None,
+) -> ProductDependencyBinding:
+    """
+    Resolve one configured product dependency binding.
+
+    A ProductDependencySpec identifies the definition-level product
+    required by a consumer model. Artifact configuration binds that
+    dependency to the concrete producer artifact and realization that
+    will supply the product.
+
+    Product dependency bindings are keyed by the required product name
+    in the artifact's [product_dependencies] table.
+
+    The configured model, stage, and product must exactly match the
+    supplied declarative dependency.
+    """
+
+    _validate_artifact_id(
+        artifact_id,
+    )
+
+    root = _project_root(
+        project_root,
+    )
+
+    artifact_document = load_artifact_config(
+        artifact_id,
+        project_root=root,
+    )
+
+    product_dependencies = artifact_document.get(
+        "product_dependencies",
+    )
+
+    if product_dependencies is None:
+        raise ConfigError(
+            f"Artifact {artifact_id!r} does not configure "
+            f"product dependency {dependency.product!r}."
+        )
+
+    if not isinstance(
+        product_dependencies,
+        Mapping,
+    ):
+        raise ConfigError(
+            "The [product_dependencies] section in artifact.toml must be a TOML table."
+        )
+
+    configured = product_dependencies.get(
+        dependency.product,
+    )
+
+    if configured is None:
+        raise ConfigError(
+            f"Artifact {artifact_id!r} does not configure "
+            f"product dependency {dependency.product!r}."
+        )
+
+    if not isinstance(
+        configured,
+        Mapping,
+    ):
+        raise ConfigError(f"Product dependency {dependency.product!r} must be a TOML table.")
+
+    configured_model = configured.get(
+        "model",
+    )
+
+    configured_stage = configured.get(
+        "stage",
+    )
+
+    configured_product = configured.get(
+        "product",
+    )
+
+    if (
+        configured_model != dependency.model
+        or configured_stage != dependency.stage
+        or configured_product != dependency.product
+    ):
+        raise ConfigError(
+            f"Configured product dependency {dependency.product!r} "
+            "does not match its declarative dependency."
+        )
+
+    producer_artifact = configured.get(
+        "artifact",
+    )
+
+    if (
+        not isinstance(
+            producer_artifact,
+            str,
+        )
+        or not producer_artifact.strip()
+    ):
+        raise ConfigError(
+            f"Product dependency {dependency.product!r} must define a non-empty artifact."
+        )
+
+    producer_realization = configured.get(
+        "realization",
+    )
+
+    if (
+        not isinstance(
+            producer_realization,
+            str,
+        )
+        or not producer_realization.strip()
+    ):
+        raise ConfigError(
+            f"Product dependency {dependency.product!r} must define a non-empty realization."
+        )
+
+    return ProductDependencyBinding(
+        dependency=dependency,
+        artifact=producer_artifact,
+        realization=producer_realization,
+    )
 
 
 # =========================================================
@@ -1736,13 +1867,13 @@ def _project_root(
 # Exports
 # =========================================================
 
-
 __all__ = [
     "ConfigError",
     "Derivation",
     "Derivations",
     "Resolver",
     "artifact_config_path",
+    "get_product_dependency_binding",
     "get_realization_names",
     "get_resolver",
     "load_artifact_config",
