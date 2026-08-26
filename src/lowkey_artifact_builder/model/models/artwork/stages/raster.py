@@ -14,7 +14,7 @@ palette using perceptual color matching. The resulting semantic color
 identity is recorded in the stage manifest for consumption by later
 stages.
 
-Small disconnected islands are removed using a physical-area threshold.
+Small disconnected islands are removed using a raster pixel-area threshold.
 """
 # File: src/lowkey_artifact_builder/model/models/artwork/stages/raster.py
 # Copyright 2026 LowKeyLabs LLC
@@ -23,7 +23,6 @@ Small disconnected islands are removed using a physical-area threshold.
 from __future__ import annotations
 
 import json
-import math
 import tempfile
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
@@ -172,11 +171,8 @@ def execute(
         artwork_pixels
             Width and height of every registered raster layer.
 
-        artwork_size
-            Physical artwork size in millimeters.
-
         artwork_min_island_area
-            Minimum disconnected island area in square millimeters.
+            Minimum disconnected island area in square pixels.
 
         artwork_island_connectivity
             Pixel connectivity used for island detection.
@@ -210,14 +206,7 @@ def execute(
         ),
     )
 
-    artwork_size = _positive_number(
-        "artwork_size",
-        context.resolver(
-            "artwork_size",
-        ),
-    )
-
-    minimum_area = _positive_number(
+    minimum_area = _positive_integer(
         "artwork_min_island_area",
         context.resolver(
             "artwork_min_island_area",
@@ -294,7 +283,6 @@ def execute(
 
         _cleanup_layers(
             layers,
-            artwork_size=artwork_size,
             minimum_area=minimum_area,
             connectivity=connectivity,
         )
@@ -1063,12 +1051,11 @@ def _remove_small_islands(
 def _cleanup_layers(
     layers: list[Path],
     *,
-    artwork_size: float,
-    minimum_area: float,
+    minimum_area: int,
     connectivity: int,
 ) -> None:
     """
-    Remove physically insignificant islands from color layers.
+    Remove raster islands below the configured pixel-area threshold.
     """
 
     if not layers:
@@ -1079,15 +1066,6 @@ def _cleanup_layers(
 
     if width != height:
         raise RasterError("Raster color layers must be square.")
-
-    mm_per_pixel = artwork_size / width
-
-    pixel_area = mm_per_pixel * mm_per_pixel
-
-    minimum_pixels = max(
-        1,
-        math.ceil(minimum_area / pixel_area),
-    )
 
     for path in layers:
         with Image.open(path) as image:
@@ -1105,7 +1083,7 @@ def _cleanup_layers(
             try:
                 cleaned = _remove_small_islands(
                     alpha,
-                    minimum_pixels=minimum_pixels,
+                    minimum_pixels=minimum_area,
                     connectivity=connectivity,
                 )
 

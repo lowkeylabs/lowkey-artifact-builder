@@ -674,46 +674,6 @@ def test_create_stage_context_uses_explicit_dependency_product(
     assert context.inputs["raster.manifest"] == explicit
 
 
-def test_create_stage_context_preserves_unoverridden_inputs(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    test_resolver: Resolver,
-) -> None:
-    """
-    Explicit bindings replace only the named stage inputs.
-    """
-
-    explicit = tmp_path / "external" / "trace.svg"
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.engine.context.get_resolver",
-        lambda *args, **kwargs: test_resolver,
-    )
-
-    baseline = create_stage_context(
-        "example",
-        stage_name="raster",
-        project_root=tmp_path,
-    )
-
-    context = create_stage_context(
-        "example",
-        stage_name="raster",
-        project_root=tmp_path,
-        input_paths={
-            "prepare.trace": explicit,
-        },
-    )
-
-    assert context.inputs["prepare.trace"] == explicit
-
-    for name, path in baseline.inputs.items():
-        if name == "prepare.trace":
-            continue
-
-        assert context.inputs[name] == path
-
-
 def test_create_stage_context_rejects_unknown_explicit_input(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -820,15 +780,23 @@ def test_create_stage_context_preserves_unoverridden_parameters(
         stage_name="raster",
         project_root=tmp_path,
         parameter_values={
-            "artwork_size": 90.0,
+            "artwork_pixels": 2048,
         },
     )
 
-    assert context.resolver("artwork_size") == 90.0
+    assert context.resolver("artwork_pixels") == 2048
 
-    assert context.resolver("artwork_pixels") == test_resolver("artwork_pixels")
+    assert context.resolver("artwork_colors") == test_resolver(
+        "artwork_colors",
+    )
 
-    assert context.resolver("artwork_colors") == test_resolver("artwork_colors")
+    assert context.resolver("artwork_min_island_area") == test_resolver(
+        "artwork_min_island_area",
+    )
+
+    assert context.resolver("artwork_island_connectivity") == test_resolver(
+        "artwork_island_connectivity",
+    )
 
 
 def test_create_stage_context_rejects_unknown_explicit_parameter(

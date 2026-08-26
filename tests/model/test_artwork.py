@@ -73,15 +73,20 @@ def test_artwork_prepare_parameters() -> None:
     assert stages["prepare"].parameters == ("artwork_colors",)
 
 
-def test_artwork_raster_inputs() -> None:
-    """Raster generation depends on artwork processing parameters."""
+def test_artwork_raster_is_independent_of_physical_size() -> None:
+    """
+    Raster generation operates in raster coordinates and does not
+    depend on physical manufacturing dimensions.
+
+    Island cleanup is defined in the raster coordinate space, so
+    artwork_size must not participate in raster generation.
+    """
 
     stages = {stage.name: stage for stage in MODEL.stages}
 
     assert stages["raster"].parameters == (
         "artwork_colors",
         "artwork_pixels",
-        "artwork_size",
         "artwork_min_island_area",
         "artwork_island_connectivity",
     )
@@ -146,8 +151,8 @@ def test_artwork_model_parameters() -> None:
         "source",
         "artwork_colors",
         "artwork_pixels",
-        "artwork_size",
         "artwork_min_island_area",
         "artwork_island_connectivity",
+        "artwork_size",
         "artwork_raise",
     )

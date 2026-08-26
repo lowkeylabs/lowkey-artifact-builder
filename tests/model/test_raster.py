@@ -95,8 +95,7 @@ def _resolver() -> StubResolver:
                 "white",
             ],
             "artwork_pixels": 20,
-            "artwork_size": 60.0,
-            "artwork_min_island_area": 0.1,
+            "artwork_min_island_area": 4,
             "artwork_island_connectivity": 8,
         }
     )
@@ -479,3 +478,67 @@ def test_raster_manifest_describes_stage_local_products(
             }
         ],
     }
+
+
+# =========================================================
+# Island-cleanup tests
+# =========================================================
+
+
+def test_cleanup_layers_uses_raster_pixel_area(
+    tmp_path: Path,
+) -> None:
+    """
+    Island cleanup uses raster pixel area rather than physical size.
+
+    An island smaller than the configured pixel-area threshold is
+    removed, while an island meeting the threshold is preserved.
+    """
+
+    path = tmp_path / "layer.png"
+
+    image = Image.new(
+        "RGBA",
+        (10, 10),
+        (255, 255, 255, 0),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        # Three-pixel island.
+        pixels[1, 1] = (255, 255, 255, 255)
+        pixels[1, 2] = (255, 255, 255, 255)
+        pixels[2, 1] = (255, 255, 255, 255)
+
+        # Four-pixel island.
+        pixels[6, 6] = (255, 255, 255, 255)
+        pixels[6, 7] = (255, 255, 255, 255)
+        pixels[7, 6] = (255, 255, 255, 255)
+        pixels[7, 7] = (255, 255, 255, 255)
+
+        image.save(
+            path,
+            format="PNG",
+        )
+
+    finally:
+        image.close()
+
+    raster._cleanup_layers(
+        [path],
+        minimum_area=4,
+        connectivity=4,
+    )
+
+    with Image.open(path) as result:
+        alpha = result.getchannel("A")
+
+        try:
+            assert alpha.getpixel((1, 1)) == 0
+            assert alpha.getpixel((6, 6)) == 255
+
+        finally:
+            alpha.close()
