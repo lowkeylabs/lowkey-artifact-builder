@@ -16,6 +16,7 @@ from lowkey_artifact_builder.engine.graph import (
 from lowkey_artifact_builder.model import (
     ModelRegistry,
     ModelSpec,
+    ProductDependencySpec,
     ProductSpec,
     StageSpec,
     VariantSpec,
@@ -412,6 +413,159 @@ def test_defined_graph_rejects_duplicate_product_identity() -> None:
     with pytest.raises(
         DefinedGraphError,
         match=("Duplicate product identity 'example/build/artifact'"),
+    ):
+        build_defined_graph(
+            registry,
+        )
+
+
+def test_defined_graph_preserves_cross_model_product_dependency() -> None:
+    """
+    Defined graph stages preserve declarative cross-model product dependencies.
+    """
+
+    registry = ModelRegistry()
+
+    registry.register_model(
+        ModelSpec(
+            name="producer",
+            title="Producer",
+            stages=(
+                StageSpec(
+                    id=10,
+                    name="prepare",
+                    products=(
+                        ProductSpec(
+                            name="geometry",
+                            path="geometry.stl",
+                        ),
+                    ),
+                ),
+            ),
+            defined_in=__name__,
+        )
+    )
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    registry.register_model(
+        ModelSpec(
+            name="consumer",
+            title="Consumer",
+            stages=(
+                StageSpec(
+                    id=10,
+                    name="consume",
+                    product_dependencies=(dependency,),
+                ),
+            ),
+            defined_in=__name__,
+        )
+    )
+
+    graph = build_defined_graph(
+        registry,
+    )
+
+    consumer = graph.model(
+        "consumer",
+    )
+
+    assert consumer.stage("consume").product_dependencies == (dependency,)
+
+
+def test_defined_graph_rejects_unknown_product_dependency_model() -> None:
+    """
+    A product dependency must identify a registered producer model.
+    """
+
+    registry = ModelRegistry()
+
+    registry.register_model(
+        ModelSpec(
+            name="consumer",
+            title="Consumer",
+            stages=(
+                StageSpec(
+                    id=10,
+                    name="consume",
+                    product_dependencies=(
+                        ProductDependencySpec(
+                            model="missing",
+                            stage="prepare",
+                            product="geometry",
+                        ),
+                    ),
+                ),
+            ),
+            defined_in=__name__,
+        )
+    )
+
+    with pytest.raises(
+        DefinedGraphError,
+        match="missing",
+    ):
+        build_defined_graph(
+            registry,
+        )
+
+
+def test_defined_graph_rejects_unknown_product_dependency() -> None:
+    """
+    A product dependency must identify a product defined by its producer.
+    """
+
+    registry = ModelRegistry()
+
+    registry.register_model(
+        ModelSpec(
+            name="producer",
+            title="Producer",
+            stages=(
+                StageSpec(
+                    id=10,
+                    name="prepare",
+                    products=(
+                        ProductSpec(
+                            name="other",
+                            path="other.stl",
+                        ),
+                    ),
+                ),
+            ),
+            defined_in=__name__,
+        )
+    )
+
+    registry.register_model(
+        ModelSpec(
+            name="consumer",
+            title="Consumer",
+            stages=(
+                StageSpec(
+                    id=10,
+                    name="consume",
+                    product_dependencies=(
+                        ProductDependencySpec(
+                            model="producer",
+                            stage="prepare",
+                            product="geometry",
+                        ),
+                    ),
+                ),
+            ),
+            defined_in=__name__,
+        )
+    )
+
+    with pytest.raises(
+        DefinedGraphError,
+        match="geometry",
     ):
         build_defined_graph(
             registry,

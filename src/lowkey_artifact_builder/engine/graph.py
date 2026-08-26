@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from lowkey_artifact_builder.model import (
     ModelRegistry,
     ModelSpec,
+    ProductDependencySpec,
     ProductSpec,
     StageSpec,
     VariantSpec,
@@ -103,6 +104,19 @@ class DefinedStage:
         """
 
         return self.spec.dependencies
+
+    @property
+    def product_dependencies(
+        self,
+    ) -> tuple[ProductDependencySpec, ...]:
+        """
+        Return logical products required by this stage.
+
+        Product dependencies may identify products produced by stages
+        belonging to another model.
+        """
+
+        return self.spec.product_dependencies
 
     @property
     def products(
@@ -266,6 +280,74 @@ def _validate_product_identities(
             )
 
 
+def _defined_product_identities(
+    models: tuple[ModelSpec, ...],
+) -> set[tuple[str, str, str]]:
+    """
+    Return every definition-level product identity in the graph.
+
+    Product identities are represented by model name, producing stage
+    name, and product name.
+
+    The complete set is collected across all registered models so that
+    product dependencies may refer to producers belonging to another
+    model.
+    """
+
+    identities: set[tuple[str, str, str]] = set()
+
+    for model in models:
+        for stage in model.stages:
+            for product in stage.products:
+                identities.add(
+                    (
+                        model.name,
+                        stage.name,
+                        product.name,
+                    )
+                )
+
+    return identities
+
+
+def _validate_product_dependencies(
+    models: tuple[ModelSpec, ...],
+) -> None:
+    """
+    Validate product dependencies across all registered models.
+
+    Every declarative product dependency must identify a product defined
+    by a registered model, stage, and product declaration.
+
+    Product dependencies are validated against the complete graph rather
+    than one model at a time because a dependency may cross model
+    boundaries.
+    """
+
+    identities = _defined_product_identities(
+        models,
+    )
+
+    for model in models:
+        for stage in model.stages:
+            for dependency in stage.product_dependencies:
+                identity = (
+                    dependency.model,
+                    dependency.stage,
+                    dependency.product,
+                )
+
+                if identity in identities:
+                    continue
+
+                product_identity = f"{dependency.model}/{dependency.stage}/{dependency.product}"
+
+                raise DefinedGraphError(
+                    f"Stage {stage.name!r} in model {model.name!r} "
+                    f"depends on unknown product {product_identity!r}."
+                )
+
+
 def _validate_acyclic(
     model: ModelSpec,
 ) -> None:
@@ -330,15 +412,28 @@ def build_defined_graph(
     Construct and validate the complete Defined Graph.
 
     The graph contains the registered models, model-scoped variants,
-    stages, products, and stage dependencies known to the artifact
-    builder. It contains no artifact- or realization-specific state.
+    stages, products, stage dependencies, and product dependencies known
+    to the artifact builder. It contains no artifact- or
+    realization-specific state.
 
     Graph construction validates definition identities and dependency
     targets and rejects cyclic stage dependencies before returning the
     completed graph.
+
+    Product dependencies are validated across the complete set of
+    registered models so that a stage may depend on a product produced
+    by another model.
     """
 
-    models = tuple(_build_defined_model(model) for model in registry.all_models())
+    model_specs = tuple(
+        registry.all_models(),
+    )
+
+    models = tuple(_build_defined_model(model) for model in model_specs)
+
+    _validate_product_dependencies(
+        model_specs,
+    )
 
     return DefinedGraph(
         _models=models,
@@ -351,9 +446,12 @@ def _build_defined_model(
     """
     Construct the defined graph representation of one model.
 
-    Every dependency declared by a stage must identify another stage
-    defined by the same model. Stage dependencies must form an acyclic
-    graph.
+    Every stage dependency declared by a stage must identify another
+    stage defined by the same model. Stage dependencies must form an
+    acyclic graph.
+
+    Product dependencies are validated separately against the complete
+    set of registered models after individual models have been built.
     """
 
     stage_names = {stage.name for stage in model.stages}
