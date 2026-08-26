@@ -24,6 +24,7 @@ metadata.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from pathlib import Path
 
 from .freshness import (
@@ -32,6 +33,7 @@ from .freshness import (
 )
 from .specs import (
     BuildPlan,
+    PlannedProductDependency,
     PlannedStage,
 )
 
@@ -42,6 +44,10 @@ from .specs import (
 
 _CONTENT_FINGERPRINT_ALGORITHM = "sha256"
 
+type ProductDependencyFingerprintResolver = Callable[
+    [PlannedProductDependency],
+    ProductFingerprint,
+]
 
 # =========================================================
 # Required fingerprint construction
@@ -87,6 +93,89 @@ def create_required_fingerprints(
         )
 
     return fingerprints
+
+
+def create_product_dependency_fingerprint_resolver(
+    build_plan: BuildPlan,
+) -> ProductDependencyFingerprintResolver:
+    """
+    Create a required-fingerprint resolver for products of one producer plan.
+
+    The resolver maps a bound cross-artifact product dependency to the
+    required build-context fingerprint of the realized stage that produces
+    that product.
+
+    The supplied BuildPlan is authoritative for producer artifact, model,
+    realization, realized stages, declared products, and required stage
+    fingerprints.
+
+    Resolving an intermediate product selects its producing stage directly.
+    Downstream producer stages therefore do not participate in the resolved
+    fingerprint except insofar as they are independently present in the
+    producer BuildPlan.
+
+    The dependency must identify the same artifact, model, and realization
+    as the supplied producer BuildPlan. Its declared stage must exist in the
+    realized plan and must declare the requested product.
+    """
+
+    fingerprints = create_required_fingerprints(
+        build_plan,
+    )
+
+    def resolve(
+        dependency: PlannedProductDependency,
+        /,
+    ) -> ProductFingerprint:
+        binding = dependency.binding
+        required = binding.dependency
+
+        if binding.artifact != build_plan.artifact_id:
+            raise ValueError(
+                f"Product dependency artifact {binding.artifact!r} "
+                f"does not match producer build plan artifact "
+                f"{build_plan.artifact_id!r}"
+            )
+
+        if required.model != build_plan.model_name:
+            raise ValueError(
+                f"Product dependency model {required.model!r} "
+                f"does not match producer build plan model "
+                f"{build_plan.model_name!r}"
+            )
+
+        if binding.realization != build_plan.realization_name:
+            raise ValueError(
+                f"Product dependency realization "
+                f"{binding.realization!r} does not match producer "
+                f"build plan realization "
+                f"{build_plan.realization_name!r}"
+            )
+
+        stage = next(
+            (stage for stage in build_plan.stages if stage.name == required.stage),
+            None,
+        )
+
+        if stage is None:
+            raise ValueError(
+                f"Producer stage {required.stage!r} required by "
+                f"product dependency is not realized by build plan"
+            )
+
+        if not any(product.name == required.product for product in stage.products):
+            raise ValueError(
+                f"Product {required.product!r} is not declared by producer stage {required.stage!r}"
+            )
+
+        try:
+            return fingerprints[stage.name]
+        except KeyError as exc:
+            raise ValueError(
+                f"Required fingerprint for producer stage {stage.name!r} is unavailable"
+            ) from exc
+
+    return resolve
 
 
 # =========================================================
@@ -338,5 +427,7 @@ def _format_fingerprint(
 
 
 __all__ = [
+    "ProductDependencyFingerprintResolver",
+    "create_product_dependency_fingerprint_resolver",
     "create_required_fingerprints",
 ]

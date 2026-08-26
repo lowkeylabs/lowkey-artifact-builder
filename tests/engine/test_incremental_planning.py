@@ -33,6 +33,7 @@ from lowkey_artifact_builder.engine import (
     ProductFingerprint,
     ProductState,
     StageCompletion,
+    create_product_dependency_fingerprint_resolver,
     create_required_fingerprints,
     plan_incremental_execution,
     write_stage_completion,
@@ -319,6 +320,111 @@ def _record_product_dependency_current(
     )
 
     return fingerprint
+
+
+def _producer_product_plan(
+    *,
+    tmp_path: Path,
+    resolver,
+) -> BuildPlan:
+    """
+    Construct a producer plan with an intermediate reusable product.
+
+    The requested geometry product is produced by transform. Package is
+    deliberately downstream so tests can prove that resolving geometry
+    provenance does not depend upon the producer's complete pipeline.
+    """
+
+    prepare_spec = StageSpec(
+        id=10,
+        name="prepare",
+        products=(
+            ProductSpec(
+                name="prepared",
+                path="prepared.dat",
+            ),
+        ),
+    )
+
+    transform_spec = StageSpec(
+        id=20,
+        name="transform",
+        dependencies=("prepare",),
+        products=(
+            ProductSpec(
+                name="geometry",
+                path="geometry.dat",
+            ),
+        ),
+    )
+
+    package_spec = StageSpec(
+        id=30,
+        name="package",
+        dependencies=("transform",),
+        products=(
+            ProductSpec(
+                name="artifact",
+                path="artifact.dat",
+            ),
+        ),
+    )
+
+    model = ModelSpec(
+        name="producer",
+        title="Producer",
+        stages=(
+            prepare_spec,
+            transform_spec,
+            package_spec,
+        ),
+    )
+
+    realization_dir = tmp_path / "artifacts" / "producer-artifact" / "producer" / "default"
+
+    prepare = PlannedStage(
+        spec=prepare_spec,
+        products=(
+            PlannedProduct(
+                spec=prepare_spec.products[0],
+                path=realization_dir / "10-prepare" / "prepared.dat",
+            ),
+        ),
+    )
+
+    transform = PlannedStage(
+        spec=transform_spec,
+        products=(
+            PlannedProduct(
+                spec=transform_spec.products[0],
+                path=realization_dir / "20-transform" / "geometry.dat",
+            ),
+        ),
+    )
+
+    package = PlannedStage(
+        spec=package_spec,
+        products=(
+            PlannedProduct(
+                spec=package_spec.products[0],
+                path=realization_dir / "30-package" / "artifact.dat",
+            ),
+        ),
+    )
+
+    return BuildPlan(
+        artifact_id="producer-artifact",
+        model=model,
+        realization_name="default",
+        resolver=resolver,
+        project_root=tmp_path,
+        artifact_dir=tmp_path / "artifacts" / "producer-artifact",
+        stages=(
+            prepare,
+            transform,
+            package,
+        ),
+    )
 
 
 # =========================================================
@@ -938,3 +1044,295 @@ def test_current_product_dependency_does_not_add_producer_stages(
     assert _stage_names(
         execution_plan.stages,
     ) == ("consume",)
+
+
+def test_product_dependency_fingerprint_comes_from_producer_plan(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    A bound dependency resolves to the fingerprint of its producing stage.
+    """
+
+    producer_plan = _producer_product_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+    )
+
+    fingerprints = create_required_fingerprints(
+        producer_plan,
+    )
+
+    dependency = PlannedProductDependency(
+        binding=ProductDependencyBinding(
+            dependency=ProductDependencySpec(
+                model="producer",
+                stage="transform",
+                product="geometry",
+            ),
+            artifact="producer-artifact",
+            realization="default",
+        ),
+        path=(
+            tmp_path
+            / "artifacts"
+            / "producer-artifact"
+            / "producer"
+            / "default"
+            / "20-transform"
+            / "geometry.dat"
+        ),
+    )
+
+    resolver = create_product_dependency_fingerprint_resolver(
+        producer_plan,
+    )
+
+    assert resolver(dependency) == fingerprints["transform"]
+
+
+def test_product_dependency_fingerprint_does_not_use_downstream_stage(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    Intermediate-product provenance is independent of downstream stages.
+    """
+
+    producer_plan = _producer_product_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+    )
+
+    fingerprints = create_required_fingerprints(
+        producer_plan,
+    )
+
+    dependency = PlannedProductDependency(
+        binding=ProductDependencyBinding(
+            dependency=ProductDependencySpec(
+                model="producer",
+                stage="transform",
+                product="geometry",
+            ),
+            artifact="producer-artifact",
+            realization="default",
+        ),
+        path=(
+            tmp_path
+            / "artifacts"
+            / "producer-artifact"
+            / "producer"
+            / "default"
+            / "20-transform"
+            / "geometry.dat"
+        ),
+    )
+
+    resolver = create_product_dependency_fingerprint_resolver(
+        producer_plan,
+    )
+
+    resolved = resolver(
+        dependency,
+    )
+
+    assert resolved == fingerprints["transform"]
+    assert resolved != fingerprints["package"]
+
+
+def test_product_dependency_fingerprint_includes_upstream_context(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    Intermediate-product provenance includes prerequisite-stage provenance.
+    """
+
+    producer_plan = _producer_product_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+    )
+
+    first = create_product_dependency_fingerprint_resolver(
+        producer_plan,
+    )
+
+    dependency = PlannedProductDependency(
+        binding=ProductDependencyBinding(
+            dependency=ProductDependencySpec(
+                model="producer",
+                stage="transform",
+                product="geometry",
+            ),
+            artifact="producer-artifact",
+            realization="default",
+        ),
+        path=(
+            tmp_path
+            / "artifacts"
+            / "producer-artifact"
+            / "producer"
+            / "default"
+            / "20-transform"
+            / "geometry.dat"
+        ),
+    )
+
+    first_fingerprint = first(
+        dependency,
+    )
+
+    prepare = producer_plan.stages[0]
+
+    changed_prepare_spec = StageSpec(
+        id=prepare.spec.id,
+        name=prepare.spec.name,
+        parameters=("changed_parameter",),
+        products=prepare.spec.products,
+    )
+
+    object.__setattr__(
+        prepare,
+        "spec",
+        changed_prepare_spec,
+    )
+
+    original_resolver = producer_plan.resolver
+
+    def changed_resolver(
+        name: str,
+    ) -> object:
+        if name == "changed_parameter":
+            return "changed"
+
+        return original_resolver(
+            name,
+        )
+
+    object.__setattr__(
+        producer_plan,
+        "resolver",
+        changed_resolver,
+    )
+
+    second = create_product_dependency_fingerprint_resolver(
+        producer_plan,
+    )
+
+    assert second(dependency) != first_fingerprint
+
+
+def test_current_intermediate_product_dependency_uses_producer_plan_fingerprint(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    Producer-plan provenance proves an intermediate dependency reusable.
+    """
+
+    producer_plan = _producer_product_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+    )
+
+    dependency_path = (
+        tmp_path
+        / "artifacts"
+        / "producer-artifact"
+        / "producer"
+        / "default"
+        / "20-transform"
+        / "geometry.dat"
+    )
+
+    consumer_plan = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+        dependency_path=dependency_path,
+    )
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="transform",
+        product="geometry",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="producer-artifact",
+        realization="default",
+    )
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=dependency_path,
+    )
+
+    object.__setattr__(
+        consumer_plan,
+        "product_dependencies",
+        (dependency,),
+    )
+
+    object.__setattr__(
+        consumer_plan,
+        "product_dependency_bindings",
+        (binding,),
+    )
+
+    object.__setattr__(
+        consumer_plan,
+        "planned_product_dependencies",
+        (planned_dependency,),
+    )
+
+    consumer_stage = consumer_plan.stages[0]
+
+    object.__setattr__(
+        consumer_stage,
+        "spec",
+        StageSpec(
+            id=consumer_stage.spec.id,
+            name=consumer_stage.spec.name,
+            product_dependencies=(dependency,),
+        ),
+    )
+
+    producer_fingerprints = create_required_fingerprints(
+        producer_plan,
+    )
+
+    dependency_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    dependency_path.write_bytes(
+        b"producer-geometry",
+    )
+
+    write_stage_completion(
+        dependency_path.parent,
+        StageCompletion(
+            artifact_id="producer-artifact",
+            model_name="producer",
+            realization="default",
+            stage_name="transform",
+            products=("geometry",),
+            fingerprint=producer_fingerprints["transform"],
+        ),
+    )
+
+    fingerprint_resolver = create_product_dependency_fingerprint_resolver(
+        producer_plan,
+    )
+
+    execution_plan = plan_incremental_execution(
+        consumer_plan,
+        product_dependency_fingerprint=fingerprint_resolver,
+    )
+
+    assert execution_plan.product_dependencies[0].state is ProductState.CURRENT
+    assert execution_plan.required_product_dependencies == ()
+    assert _stage_names(execution_plan.stages) == ("consume",)

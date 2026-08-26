@@ -99,6 +99,7 @@ from .execution_state import (
     create_execution_state_resolver,
 )
 from .fingerprint_plan import (
+    create_product_dependency_fingerprint_resolver,
     create_required_fingerprints,
 )
 from .freshness import (
@@ -173,6 +174,7 @@ __all__ = [
     "create_planned_stage_context",
     "create_product_fingerprint",
     "create_product_state_resolver",
+    "create_product_dependency_fingerprint_resolver",
     "create_required_fingerprints",
     "create_stage_context",
     "emit_event",
