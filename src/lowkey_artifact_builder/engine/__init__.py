@@ -117,6 +117,7 @@ from .plan import (
     BuildPlanError,
     create_build_plan,
     create_build_plans,
+    create_product_dependency_build_plan,
 )
 from .specs import (
     BuildPlan,
@@ -175,6 +176,7 @@ __all__ = [
     "create_product_fingerprint",
     "create_product_state_resolver",
     "create_product_dependency_fingerprint_resolver",
+    "create_product_dependency_build_plan",
     "create_required_fingerprints",
     "create_stage_context",
     "emit_event",

@@ -199,6 +199,37 @@ def create_build_plan(
     )
 
 
+def create_product_dependency_build_plan(
+    dependency: PlannedProductDependency,
+    *,
+    project_root: Path | None = None,
+) -> BuildPlan:
+    """
+    Construct the targeted producer build plan for one product dependency.
+
+    The bound dependency identifies the concrete producer artifact and
+    realization. Its ProductRef identifies the exact producer product
+    required by the consumer.
+
+    Targeted build planning therefore realizes only the producing stage
+    and its transitive stage dependencies. Downstream producer stages are
+    not included merely because they belong to the producer's complete
+    artifact workflow.
+
+    Producer planning remains delegated to create_build_plan so product
+    selection, dependency closure, feature participation, configuration
+    resolution, and filesystem materialization retain one authoritative
+    implementation.
+    """
+
+    return create_build_plan(
+        dependency.binding.artifact,
+        realization=dependency.binding.realization,
+        targets=(dependency.product_ref,),
+        project_root=project_root,
+    )
+
+
 def create_build_plans(
     artifact_id: str,
     *,
@@ -800,9 +831,9 @@ def _plan_stage_products(
 # Exports
 # =========================================================
 
-
 __all__ = [
     "BuildPlanError",
     "create_build_plan",
     "create_build_plans",
+    "create_product_dependency_build_plan",
 ]
