@@ -25,6 +25,7 @@ import pytest
 
 from lowkey_artifact_builder.engine import (
     BuildPlan,
+    PlannedProduct,
     PlannedProductDependency,
     PlannedProductDependencyExecution,
     PlannedStage,
@@ -40,6 +41,7 @@ from lowkey_artifact_builder.model import (
     ModelSpec,
     ProductDependencyBinding,
     ProductDependencySpec,
+    ProductSpec,
     StageSpec,
 )
 
@@ -238,8 +240,27 @@ def _product_dependency_plan(
         product_dependencies=(dependency,),
     )
 
+    consumer_product_path = (
+        tmp_path
+        / "artifacts"
+        / "consumer-artifact"
+        / "consumer"
+        / "default"
+        / "10-consume"
+        / "artifact.dat"
+    )
+
     stage = PlannedStage(
         spec=stage_spec,
+        products=(
+            PlannedProduct(
+                spec=ProductSpec(
+                    name="artifact",
+                    path="artifact.dat",
+                ),
+                path=consumer_product_path,
+            ),
+        ),
     )
 
     return BuildPlan(
@@ -258,6 +279,46 @@ def _product_dependency_plan(
         product_dependency_bindings=(binding,),
         planned_product_dependencies=(planned_dependency,),
     )
+
+
+def _record_product_dependency_current(
+    build_plan: BuildPlan,
+    *,
+    fingerprint: ProductFingerprint,
+    content: bytes = b"producer-product",
+) -> ProductFingerprint:
+    """
+    Materialize one bound producer product with matching completion provenance.
+    """
+
+    assert len(build_plan.planned_product_dependencies) == 1
+
+    planned_dependency = build_plan.planned_product_dependencies[0]
+    binding = planned_dependency.binding
+    dependency = binding.dependency
+
+    planned_dependency.path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    planned_dependency.path.write_bytes(
+        content,
+    )
+
+    write_stage_completion(
+        planned_dependency.path.parent,
+        StageCompletion(
+            artifact_id=binding.artifact,
+            model_name=dependency.model,
+            realization=binding.realization,
+            stage_name=dependency.stage,
+            products=(dependency.product,),
+            fingerprint=fingerprint,
+        ),
+    )
+
+    return fingerprint
 
 
 # =========================================================
@@ -736,3 +797,144 @@ def test_absent_product_dependency_does_not_require_unrelated_producer_pipeline(
         execution_plan.required_product_dependencies[0].product_ref
         == build_plan.planned_product_dependencies[0].product_ref
     )
+
+
+def test_current_product_dependency_does_not_require_production(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    A current bound producer product is reusable.
+    """
+
+    dependency_path = (
+        tmp_path
+        / "artifacts"
+        / "producer-artifact"
+        / "producer"
+        / "default"
+        / "10-prepare"
+        / "geometry.dat"
+    )
+
+    build_plan = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+        dependency_path=dependency_path,
+    )
+
+    producer_fingerprint = _record_product_dependency_current(
+        build_plan,
+        fingerprint=ProductFingerprint(
+            algorithm="sha256",
+            value="a" * 64,
+        ),
+    )
+
+    execution_plan = plan_incremental_execution(
+        build_plan,
+        product_dependency_fingerprint=(lambda dependency: producer_fingerprint),
+    )
+
+    assert len(execution_plan.product_dependencies) == 1
+
+    dependency = execution_plan.product_dependencies[0]
+
+    assert dependency.state is ProductState.CURRENT
+    assert not dependency.requires_production
+    assert execution_plan.required_product_dependencies == ()
+
+
+def test_current_product_dependency_allows_consumer_planning(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    A reusable producer product permits normal consumer-stage planning.
+
+    The consumer product is absent, so normal persistent-state planning
+    identifies the consumer stage as requiring execution.
+    """
+
+    dependency_path = (
+        tmp_path
+        / "artifacts"
+        / "producer-artifact"
+        / "producer"
+        / "default"
+        / "10-prepare"
+        / "geometry.dat"
+    )
+
+    build_plan = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+        dependency_path=dependency_path,
+    )
+
+    producer_fingerprint = _record_product_dependency_current(
+        build_plan,
+        fingerprint=ProductFingerprint(
+            algorithm="sha256",
+            value="a" * 64,
+        ),
+    )
+
+    execution_plan = plan_incremental_execution(
+        build_plan,
+        product_dependency_fingerprint=(lambda dependency: producer_fingerprint),
+    )
+
+    assert execution_plan.product_dependencies[0].state is ProductState.CURRENT
+
+    assert execution_plan.stages[0].product_states == (ProductState.ABSENT,)
+
+    assert _stage_names(
+        execution_plan.required_stages,
+    ) == ("consume",)
+
+
+def test_current_product_dependency_does_not_add_producer_stages(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    Reusing a current producer product adds no producer stages.
+
+    The consumer execution plan contains only its own realized workflow.
+    """
+
+    dependency_path = (
+        tmp_path
+        / "artifacts"
+        / "producer-artifact"
+        / "producer"
+        / "default"
+        / "10-prepare"
+        / "geometry.dat"
+    )
+
+    build_plan = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+        dependency_path=dependency_path,
+    )
+
+    producer_fingerprint = _record_product_dependency_current(
+        build_plan,
+        fingerprint=ProductFingerprint(
+            algorithm="sha256",
+            value="a" * 64,
+        ),
+    )
+
+    execution_plan = plan_incremental_execution(
+        build_plan,
+        product_dependency_fingerprint=(lambda dependency: producer_fingerprint),
+    )
+
+    assert execution_plan.required_product_dependencies == ()
+
+    assert _stage_names(
+        execution_plan.stages,
+    ) == ("consume",)

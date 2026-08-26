@@ -68,6 +68,7 @@ from .freshness import (
 )
 from .specs import (
     BuildPlan,
+    PlannedProductDependency,
     PlannedStage,
     StageContext,
 )
@@ -87,6 +88,13 @@ type IncrementalStageExecutor = Callable[
     None,
 ]
 
+type ProductDependencyFingerprintResolver = Callable[
+    [
+        PlannedProductDependency,
+    ],
+    ProductFingerprint | None,
+]
+
 
 # =========================================================
 # Incremental execution planning
@@ -95,12 +103,23 @@ type IncrementalStageExecutor = Callable[
 
 def plan_incremental_execution(
     build_plan: BuildPlan,
+    *,
+    product_dependency_fingerprint: (ProductDependencyFingerprintResolver | None) = None,
 ) -> ExecutionPlan:
     """
     Construct a persistent-state-aware execution plan.
 
     Bound cross-artifact product dependencies are evaluated before
     consumer-stage fingerprints are generated.
+
+    The required fingerprint for each bound producer product may be
+    supplied by a higher-level orchestration boundary. This permits
+    persistent producer products to prove freshness without requiring
+    this module to construct producer BuildPlans recursively.
+
+    If no producer fingerprint resolver is supplied, producer products
+    cannot prove freshness and therefore retain the existing conservative
+    behavior.
 
     If any producer product is not currently reusable, the returned
     ExecutionPlan identifies that required producer work without
@@ -119,8 +138,24 @@ def plan_incremental_execution(
     intentionally outside this boundary.
     """
 
+    required_product_dependency_fingerprint: ProductDependencyFingerprintResolver
+
+    if product_dependency_fingerprint is None:
+
+        def no_product_dependency_fingerprint(
+            _dependency: PlannedProductDependency,
+            /,
+        ) -> ProductFingerprint | None:
+            return None
+
+        required_product_dependency_fingerprint = no_product_dependency_fingerprint
+
+    else:
+        required_product_dependency_fingerprint = product_dependency_fingerprint
+
     product_dependencies = _plan_product_dependencies(
         build_plan,
+        required_fingerprint=required_product_dependency_fingerprint,
     )
 
     if any(dependency.requires_production for dependency in product_dependencies):
@@ -206,6 +241,7 @@ def execute_incremental_build(
     try:
         product_dependencies = _plan_product_dependencies(
             build_plan,
+            required_fingerprint=lambda _: None,
         )
 
         if any(dependency.requires_production for dependency in product_dependencies):
@@ -376,6 +412,8 @@ def execute_stage(
 
 def _plan_product_dependencies(
     build_plan: BuildPlan,
+    *,
+    required_fingerprint: ProductDependencyFingerprintResolver,
 ) -> tuple[
     PlannedProductDependencyExecution,
     ...,
@@ -385,6 +423,10 @@ def _plan_product_dependencies(
 
     Producer-product state is resolved before consumer-stage fingerprints
     are generated.
+
+    The required producer build-context fingerprint is supplied by the
+    caller. This module therefore evaluates producer freshness without
+    constructing or recursively planning the producer artifact itself.
 
     No producer BuildPlan is constructed here. A producer product that is
     not reusable is represented only as required producer work.
@@ -413,7 +455,9 @@ def _plan_product_dependencies(
     for dependency in build_plan.planned_product_dependencies:
         state = product_state.product_dependency(
             dependency,
-            required_fingerprint=None,
+            required_fingerprint=required_fingerprint(
+                dependency,
+            ),
         )
 
         dependencies.append(
@@ -673,6 +717,7 @@ def _stage_working_dir(
 
 __all__ = [
     "IncrementalStageExecutor",
+    "ProductDependencyFingerprintResolver",
     "execute_incremental_artifact_build",
     "execute_incremental_build",
     "plan_incremental_execution",
