@@ -1,9 +1,12 @@
 """
-Registered Artwork consumption for the Shape compose stage.
+Registered composition for the Shape model.
 
-This module initially establishes only the registered-geometry consumer
-contract. Physical Shape geometry, fitting, dimensionalization, and packaging
-are introduced by later implementation slices.
+This module establishes the registered-geometry composition boundary for
+Shape.
+
+Registered structural Shape geometry and registered Artwork remain
+nonphysical through this stage. Physical Shape dimensionalization and
+extrusion belong to downstream Shape stages.
 """
 # File: src/lowkey_artifact_builder/model/models/shape/stages/compose.py
 # Copyright 2026 LowKeyLabs LLC
@@ -12,9 +15,12 @@ are introduced by later implementation slices.
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from lowkey_artifact_builder.engine import StageContext
 
 # =========================================================
 # Registered Artwork
@@ -94,6 +100,42 @@ class PlacedRegisteredArtwork:
 
     transform: RegisteredArtworkTransform
     components: tuple[PlacedRegisteredArtworkComponent, ...]
+
+
+# =========================================================
+# Public interface
+# =========================================================
+
+
+def execute(
+    context: StageContext,
+) -> None:
+    """
+    Execute registered Shape composition.
+
+    Composition consumes the registered structural Shape product through
+    StageContext and materializes the declared registered composition product
+    through StageContext.
+
+    This initial executable composition boundary preserves the registered
+    structural geometry unchanged. It does not introduce physical dimensions.
+
+    Registered Artwork incorporation is introduced separately once optional
+    Artwork dependency semantics are established.
+    """
+
+    structure_input = context.input(
+        "structure.structure",
+    )
+
+    output = context.output(
+        "composition",
+    )
+
+    shutil.copyfile(
+        structure_input,
+        output,
+    )
 
 
 # =========================================================

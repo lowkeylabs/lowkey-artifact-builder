@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from .compose import execute as execute_compose
 from .structure import execute as execute_structure
 
 # =========================================================
@@ -62,6 +63,12 @@ def register_stage_implementations(
         "shape",
         "structure",
         execute_structure,
+    )
+
+    registry.register(
+        "shape",
+        "compose",
+        execute_compose,
     )
 
 

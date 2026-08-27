@@ -8,9 +8,18 @@ Tests for Shape registered-Artwork composition.
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
+from unittest.mock import Mock, call
 
+from lowkey_artifact_builder.engine import StageContext
+from lowkey_artifact_builder.engine.bootstrap import build_stage_registry
+from lowkey_artifact_builder.model.models.shape import stages
 from lowkey_artifact_builder.model.models.shape.stages import compose
+
+# =========================================================
+# Helpers
+# =========================================================
 
 
 def _write_vector_manifest(
@@ -60,6 +69,34 @@ def _write_vector_manifest(
         ),
         encoding="utf-8",
     )
+
+
+def _write_registered_structure(
+    path: Path,
+) -> None:
+    """
+    Write representative registered Shape structure.
+    """
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    path.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="-0.5 -0.5 1.0 1.0">'
+            '<circle cx="0.0" cy="0.0" r="0.5" />'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+
+# =========================================================
+# Registered Artwork manifest
+# =========================================================
 
 
 def test_load_registered_artwork_uses_declared_manifest_membership(
@@ -185,6 +222,11 @@ def test_load_registered_artwork_reads_common_registered_extent(
 
     assert artwork.registered_extent.width == 16.0
     assert artwork.registered_extent.height == 12.0
+
+
+# =========================================================
+# Registered Artwork placement
+# =========================================================
 
 
 def test_registered_artwork_transform_is_derived_from_common_extent() -> None:
@@ -320,3 +362,169 @@ def test_registered_artwork_components_share_one_transform(
     )
 
     assert tuple(component.component for component in placement.components) == artwork.components
+
+
+# =========================================================
+# Compose stage execution
+# =========================================================
+
+
+def test_compose_stage_materializes_registered_composition(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape composition materializes its declared registered product.
+
+    The stage obtains registered Shape structure and its output location
+    through StageContext rather than constructing artifact filesystem paths.
+    """
+
+    structure_input = tmp_path / "structure.svg"
+    output = tmp_path / "composition.svg"
+
+    _write_registered_structure(
+        structure_input,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.input.return_value = structure_input
+    context.output.return_value = output
+
+    compose.execute(
+        context,
+    )
+
+    context.input.assert_called_once_with(
+        "structure.structure",
+    )
+    context.output.assert_called_once_with(
+        "composition",
+    )
+
+    assert output.is_file()
+
+
+def test_compose_stage_preserves_registered_shape_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape composition preserves structural geometry in registered Shape space.
+
+    Composition does not introduce physical X/Y dimensions before the
+    downstream dimensionalization boundary.
+    """
+
+    structure_input = tmp_path / "structure.svg"
+    output = tmp_path / "composition.svg"
+
+    _write_registered_structure(
+        structure_input,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.input.return_value = structure_input
+    context.output.return_value = output
+
+    compose.execute(
+        context,
+    )
+
+    root = ET.parse(
+        output,
+    ).getroot()
+
+    assert root.get("viewBox") == "-0.5 -0.5 1.0 1.0"
+    assert root.get("width") is None
+    assert root.get("height") is None
+
+    circle = root.find(
+        "{http://www.w3.org/2000/svg}circle",
+    )
+
+    assert circle is not None
+    assert circle.get("cx") == "0.0"
+    assert circle.get("cy") == "0.0"
+    assert circle.get("r") == "0.5"
+
+
+def test_compose_stage_does_not_resolve_physical_parameters(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered composition does not perform physical dimensionalization.
+
+    Physical Shape dimensions belong to the downstream extrusion boundary.
+    """
+
+    structure_input = tmp_path / "structure.svg"
+    output = tmp_path / "composition.svg"
+
+    _write_registered_structure(
+        structure_input,
+    )
+
+    resolver = Mock()
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = structure_input
+    context.output.return_value = output
+
+    compose.execute(
+        context,
+    )
+
+    assert resolver.call_args_list == []
+
+
+# =========================================================
+# Compose stage registration
+# =========================================================
+
+
+def test_shape_registers_compose_stage_implementation() -> None:
+    """
+    Shape contributes its compose implementation through its stage package.
+
+    Registration uses logical model and stage identities rather than numeric
+    stage IDs or engine-specific orchestration.
+    """
+
+    registry = Mock()
+
+    stages.register_stage_implementations(
+        registry,
+    )
+
+    assert (
+        call(
+            "shape",
+            "compose",
+            compose.execute,
+        )
+        in registry.register.call_args_list
+    )
+
+
+def test_engine_bootstrap_discovers_shape_compose_implementation() -> None:
+    """
+    Normal engine bootstrap discovers the executable Shape compose stage.
+
+    Shape participates in generic model stage discovery without requiring the
+    engine to know about the Shape model explicitly.
+    """
+
+    registry = build_stage_registry()
+
+    implementation = registry.get(
+        "shape",
+        "compose",
+    )
+
+    assert implementation is compose.execute

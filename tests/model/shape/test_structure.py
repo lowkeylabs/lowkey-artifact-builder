@@ -566,13 +566,14 @@ def test_shape_registers_structure_stage_implementation() -> None:
         registry,
     )
 
-    assert registry.register.call_args_list == [
+    assert (
         call(
             "shape",
             "structure",
             structure.execute,
-        ),
-    ]
+        )
+        in registry.register.call_args_list
+    )
 
 
 def test_engine_bootstrap_discovers_shape_structure_implementation() -> None:

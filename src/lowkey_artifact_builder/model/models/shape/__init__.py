@@ -4,10 +4,9 @@ Shape model definition.
 The shape model defines parameterized geometric bodies that may consume
 registered Artwork geometry.
 
-The model is introduced incrementally. Its current declaration establishes
-registered structural Shape production, registered composition, and the
-physical dimensionalization boundary without prematurely declaring later
-ridge or packaging behavior.
+The current declaration establishes registered structural Shape production,
+registered composition, and the physical dimensionalization boundary without
+prematurely declaring later ridge or packaging behavior.
 """
 # File: src/lowkey_artifact_builder/model/models/shape/__init__.py
 # Copyright 2026 LowKeyLabs LLC
