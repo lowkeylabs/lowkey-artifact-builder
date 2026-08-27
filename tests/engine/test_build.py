@@ -1321,3 +1321,62 @@ def test_execute_artifact_stage_forwards_parameter_and_output_bindings(
 
     assert received_parameters == parameters
     assert received_outputs == outputs
+
+
+def test_execute_targeted_artwork_vector_build_stops_before_physical_stages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Executing an Artwork vector target stops at registered vector geometry.
+
+    The build executes the prerequisite prepare and raster stages and the
+    vector producer, but it does not execute extrusion or packaging.
+    """
+
+    _create_source(tmp_path)
+
+    target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="manifest",
+    )
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+        targets=(target,),
+    )
+
+    executed: list[str] = []
+
+    def implementation(
+        context: StageContext,
+    ) -> None:
+        executed.append(context.stage_name)
+
+        _create_declared_outputs(context)
+
+    _install_stage_implementation(
+        monkeypatch,
+        implementation,
+    )
+
+    execute_build(plan)
+
+    assert executed == [
+        "prepare",
+        "raster",
+        "vector",
+    ]
+
+    realization = plan.artifact_dir / "artwork" / "default"
+
+    assert (realization / "30-vector" / "products.json").is_file()
+
+    assert not (realization / "40-extrude").exists()
+
+    assert not (realization / "50-package").exists()

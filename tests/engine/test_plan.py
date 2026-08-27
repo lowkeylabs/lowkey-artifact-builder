@@ -189,6 +189,62 @@ def test_create_build_plan_preserves_dependencies(
     }
 
 
+def test_create_build_plan_targets_artwork_registered_vector_geometry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Registered Artwork vector geometry is an independently realizable target.
+
+    Targeting the vector manifest includes only the vector producer and its
+    transitive prerequisites. Physical extrusion and packaging are downstream
+    consumers and must not participate merely because they belong to the
+    complete Artwork workflow.
+    """
+
+    target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="manifest",
+    )
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+        targets=(target,),
+    )
+
+    assert plan.targets == (target,)
+
+    assert tuple(stage.name for stage in plan.stages) == (
+        "prepare",
+        "raster",
+        "vector",
+    )
+
+    assert all(
+        stage.name
+        not in {
+            "extrude",
+            "package",
+        }
+        for stage in plan.stages
+    )
+
+    vector = plan.stages[-1]
+
+    assert vector.name == "vector"
+
+    assert tuple(product.spec.name for product in vector.products) == ("manifest",)
+
+    assert vector.products[0].path == (
+        plan.artifact_dir / "artwork" / "default" / "30-vector" / "products.json"
+    )
+
+
 # =========================================================
 # Planning side effects
 # =========================================================

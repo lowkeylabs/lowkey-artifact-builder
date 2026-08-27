@@ -753,22 +753,17 @@ def test_vector_layers_share_one_registered_coordinate_system(
 
     assert data["registered_extent"] == first_crop.size
 
-    assert [
-        product["name"]
-        for product in data["products"]
-    ] == [
+    assert [product["name"] for product in data["products"]] == [
         "white",
         "black",
     ]
 
-    assert [
-        product["index"]
-        for product in data["products"]
-    ] == [
+    assert [product["index"] for product in data["products"]] == [
         1,
         2,
     ]
-    
+
+
 def test_vector_registration_is_based_on_union_of_all_layers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -884,5 +879,3 @@ def test_vector_registration_is_based_on_union_of_all_layers(
     )
 
     assert data["registered_extent"] == 18
-    
-    
