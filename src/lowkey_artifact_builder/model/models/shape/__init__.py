@@ -23,6 +23,8 @@ from lowkey_artifact_builder.model.specs import (
     StageSpec,
 )
 
+from .stages import register_stage_implementations
+
 # =========================================================
 # Model definition
 # =========================================================
@@ -77,3 +79,9 @@ def register_models(
     registry.register_model(
         MODEL,
     )
+
+
+__all__ = [
+    "register_models",
+    "register_stage_implementations",
+]

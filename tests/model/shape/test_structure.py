@@ -14,7 +14,9 @@ from unittest.mock import Mock, call
 import pytest
 
 from lowkey_artifact_builder.engine import StageContext
+from lowkey_artifact_builder.engine.bootstrap import build_stage_registry
 from lowkey_artifact_builder.formats import svg
+from lowkey_artifact_builder.model.models.shape import stages
 from lowkey_artifact_builder.model.models.shape.stages import structure
 
 # =========================================================
@@ -254,3 +256,49 @@ def test_structure_stage_rejects_unsupported_geometry(
         )
 
     assert not output.exists()
+
+
+# =========================================================
+# Stage registration
+# =========================================================
+
+
+def test_shape_registers_structure_stage_implementation() -> None:
+    """
+    Shape contributes its structural implementation through its stage package.
+
+    Registration uses logical model and stage identities rather than numeric
+    stage IDs or engine-specific orchestration.
+    """
+
+    registry = Mock()
+
+    stages.register_stage_implementations(
+        registry,
+    )
+
+    assert registry.register.call_args_list == [
+        call(
+            "shape",
+            "structure",
+            structure.execute,
+        ),
+    ]
+
+
+def test_engine_bootstrap_discovers_shape_structure_implementation() -> None:
+    """
+    Normal engine bootstrap discovers the executable Shape structure stage.
+
+    Shape participates in generic model stage discovery without requiring the
+    engine to know about the Shape model explicitly.
+    """
+
+    registry = build_stage_registry()
+
+    implementation = registry.get(
+        "shape",
+        "structure",
+    )
+
+    assert implementation is structure.execute
