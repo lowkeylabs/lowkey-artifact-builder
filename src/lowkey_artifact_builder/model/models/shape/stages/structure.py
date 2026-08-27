@@ -15,6 +15,8 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
+from lowkey_artifact_builder.engine import StageContext
+from lowkey_artifact_builder.formats import svg
 from lowkey_artifact_builder.formats.svg import SVG_NS
 
 # =========================================================
@@ -72,6 +74,47 @@ class CircleGeometry:
         """Return the maximum registered Y coordinate."""
 
         return self.diameter / 2.0
+
+
+# =========================================================
+# Public interface
+# =========================================================
+
+
+def execute(
+    context: StageContext,
+) -> None:
+    """
+    Execute registered Shape structural production.
+
+    Structural production resolves the selected Shape geometry and
+    materializes the declared registered SVG product through StageContext.
+
+    Physical dimensionalization and extrusion belong to downstream
+    Shape stages.
+    """
+
+    shape_geometry = context.resolver(
+        "shape_geometry",
+    )
+
+    if shape_geometry != "circle":
+        raise ValueError(f"Unsupported Shape geometry: {shape_geometry!r}.")
+
+    output = context.output(
+        "structure",
+    )
+
+    geometry = create_circle_geometry()
+
+    document = create_circle_svg(
+        geometry,
+    )
+
+    svg.save(
+        document,
+        output,
+    )
 
 
 # =========================================================

@@ -9,7 +9,11 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from unittest.mock import Mock, call
 
+import pytest
+
+from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.formats import svg
 from lowkey_artifact_builder.model.models.shape.stages import structure
 
@@ -155,3 +159,98 @@ def test_circle_svg_can_be_persisted_as_declared_structure_product(
     assert circle.get("cx") == "0.0"
     assert circle.get("cy") == "0.0"
     assert circle.get("r") == "0.5"
+
+
+# =========================================================
+# Structural stage execution
+# =========================================================
+
+
+def test_structure_stage_materializes_declared_registered_product(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape structural production materializes its declared registered SVG.
+
+    The stage obtains Shape policy and its output location through StageContext
+    rather than constructing artifact filesystem paths itself.
+    """
+
+    output = tmp_path / "structure.svg"
+
+    resolver = Mock(
+        side_effect={
+            "shape_geometry": "circle",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.output.return_value = output
+
+    structure.execute(
+        context,
+    )
+
+    assert resolver.call_args_list == [
+        call("shape_geometry"),
+    ]
+
+    context.output.assert_called_once_with(
+        "structure",
+    )
+
+    assert output.is_file()
+
+    persisted = ET.parse(
+        output,
+    )
+
+    root = persisted.getroot()
+
+    assert root.get("viewBox") == "-0.5 -0.5 1.0 1.0"
+
+    circle = root.find(
+        "{http://www.w3.org/2000/svg}circle",
+    )
+
+    assert circle is not None
+    assert circle.get("cx") == "0.0"
+    assert circle.get("cy") == "0.0"
+    assert circle.get("r") == "0.5"
+
+
+def test_structure_stage_rejects_unsupported_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Structural production rejects geometry it does not yet implement.
+
+    Unsupported geometry must not silently produce circle geometry.
+    """
+
+    output = tmp_path / "structure.svg"
+
+    resolver = Mock(
+        side_effect={
+            "shape_geometry": "square",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.output.return_value = output
+
+    with pytest.raises(
+        ValueError,
+        match="square",
+    ):
+        structure.execute(
+            context,
+        )
+
+    assert not output.exists()
