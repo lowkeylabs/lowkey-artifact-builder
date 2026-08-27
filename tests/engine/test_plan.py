@@ -2293,3 +2293,108 @@ def test_product_dependency_build_plan_excludes_downstream_producer_stages(
     )
 
     assert "package" not in {stage.name for stage in plan.stages}
+
+
+def test_create_build_plan_binds_shape_registered_artwork_dependency(
+    tmp_path: Path,
+) -> None:
+    """
+    Complete Shape planning binds its declared registered Artwork dependency.
+
+    A cross-model product dependency belongs to the participating Shape stage
+    whether that stage was selected through an explicit product target or
+    through normal complete-artifact planning.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "product_dependencies": {
+                "manifest": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "manifest",
+                    "artifact": "artwork-example",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="manifest",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="artwork-example",
+        realization="default",
+    )
+
+    assert tuple(stage.name for stage in plan.stages) == ("compose",)
+
+    assert plan.product_dependencies == (dependency,)
+
+    assert plan.product_dependency_bindings == (binding,)
+
+    assert len(plan.planned_product_dependencies) == 1
+
+    planned = plan.planned_product_dependencies[0]
+
+    assert planned.binding == binding
+
+    assert planned.product_ref == ProductRef(
+        artifact="artwork-example",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="manifest",
+    )
+
+    assert planned.path == (
+        tmp_path
+        / "artifacts"
+        / "artwork-example"
+        / "artwork"
+        / "default"
+        / "30-vector"
+        / "products.json"
+    )
+
+
+def test_create_build_plan_requires_shape_registered_artwork_binding(
+    tmp_path: Path,
+) -> None:
+    """
+    Complete Shape planning requires a producer binding for registered Artwork.
+
+    The Shape model declares that registered Artwork is required by its
+    participating compose stage, so an artifact that does not bind that
+    dependency cannot produce a valid complete build plan.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(
+        Exception,
+        match="manifest",
+    ):
+        create_build_plan(
+            "shape-example",
+            project_root=tmp_path,
+        )

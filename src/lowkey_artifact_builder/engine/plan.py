@@ -315,8 +315,8 @@ def _select_stages(
     Select model stages and product dependencies required for one build plan.
 
     Without explicit targets, every feature-participating stage is
-    selected and no realization-scoped product dependencies are
-    returned.
+    selected together with the declarative product dependencies required
+    by those participating stages.
 
     With explicit targets, a Realization Graph determines the target
     producers, their transitive stage dependency closure, and the
@@ -335,9 +335,13 @@ def _select_stages(
             )
         )
 
+        product_dependencies = tuple(
+            dependency for stage in stages for dependency in stage.product_dependencies
+        )
+
         return (
             stages,
-            (),
+            product_dependencies,
         )
 
     if not targets:
