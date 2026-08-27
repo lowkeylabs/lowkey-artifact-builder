@@ -356,6 +356,126 @@ def test_stage_spec_supports_cross_model_product_dependency() -> None:
     assert stage.product_dependencies == (dependency,)
 
 
+def test_stage_dependency_identity_is_independent_of_numeric_id() -> None:
+    """
+    Stage dependencies identify stages by semantic name rather than numeric ID.
+    """
+
+    first_prepare = StageSpec(
+        id=10,
+        name="prepare",
+    )
+
+    first_vector = StageSpec(
+        id=20,
+        name="vector",
+        dependencies=("prepare",),
+    )
+
+    second_prepare = StageSpec(
+        id=40,
+        name="prepare",
+    )
+
+    second_vector = StageSpec(
+        id=10,
+        name="vector",
+        dependencies=("prepare",),
+    )
+
+    first_model = ModelSpec(
+        name="first",
+        title="First",
+        stages=(
+            first_prepare,
+            first_vector,
+        ),
+    )
+
+    second_model = ModelSpec(
+        name="second",
+        title="Second",
+        stages=(
+            second_prepare,
+            second_vector,
+        ),
+    )
+
+    first_dependencies = {stage.name: stage.dependencies for stage in first_model.stages}
+
+    second_dependencies = {stage.name: stage.dependencies for stage in second_model.stages}
+
+    assert (
+        first_dependencies
+        == second_dependencies
+        == {
+            "prepare": (),
+            "vector": ("prepare",),
+        }
+    )
+
+
+def test_stage_numeric_id_does_not_imply_dependency() -> None:
+    """
+    Numeric stage ordering does not create an undeclared dependency.
+    """
+
+    later_id = StageSpec(
+        id=20,
+        name="independent",
+    )
+
+    earlier_id = StageSpec(
+        id=10,
+        name="prepare",
+    )
+
+    model = ModelSpec(
+        name="example",
+        title="Example",
+        stages=(
+            later_id,
+            earlier_id,
+        ),
+    )
+
+    stages = {stage.name: stage for stage in model.stages}
+
+    assert stages["independent"].dependencies == ()
+    assert stages["prepare"].dependencies == ()
+
+
+def test_stage_dependency_may_point_to_higher_numeric_id() -> None:
+    """
+    Dependency direction is independent of numeric stage ordering.
+    """
+
+    producer = StageSpec(
+        id=20,
+        name="prepare",
+    )
+
+    consumer = StageSpec(
+        id=10,
+        name="vector",
+        dependencies=("prepare",),
+    )
+
+    model = ModelSpec(
+        name="example",
+        title="Example",
+        stages=(
+            producer,
+            consumer,
+        ),
+    )
+
+    stages = {stage.name: stage for stage in model.stages}
+
+    assert stages["vector"].dependencies == ("prepare",)
+    assert stages["prepare"].dependencies == ()
+
+
 # =========================================================
 # ModelSpec
 # =========================================================

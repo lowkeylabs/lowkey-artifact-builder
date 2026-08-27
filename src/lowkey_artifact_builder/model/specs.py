@@ -460,11 +460,12 @@ class StageSpec:
     A stage is the smallest unit of work that the build system may
     independently determine to be current, stale, or incomplete.
 
-    ID is a stable numeric identifier used for human presentation and
+    ID is a numeric presentation ordinal used for human presentation and
     filesystem organization.
 
     The numeric ID does not define the semantic identity of the stage
-    and does not determine dependency or execution order. The stage
+    and does not determine dependency or execution order. It may change
+    when the model's deterministic presentation order changes. The stage
     name is its semantic identity.
 
     Dependencies identify stages within the same model that must be
@@ -552,8 +553,12 @@ class ModelSpec:
     """
     Define an artifact model.
 
-    A model describes the capabilities and workflow used to transform
-    an artifact definition into a final printable 3MF file.
+    A model describes a reusable manufacturing recipe consisting of
+    features, variants, stages, dependencies, parameters, and persistent
+    products.
+
+    Declared products are first-class build targets. A model does not
+    define its workflow in terms of one privileged final product.
 
     A model describes a kind of artifact rather than a particular
     artifact instance.
