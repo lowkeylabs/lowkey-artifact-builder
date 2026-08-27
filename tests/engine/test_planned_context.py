@@ -29,12 +29,14 @@ from pathlib import Path
 
 import pytest
 
+from lowkey_artifact_builder.config import write_artifact_config
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     PlannedProductDependency,
     PlannedStage,
     StageContext,
     StageContextError,
+    create_build_plan,
     create_planned_stage_context,
 )
 from lowkey_artifact_builder.model import (
@@ -453,6 +455,63 @@ def test_create_planned_stage_context_exposes_product_dependency(
     )
 
     assert context.inputs["producer.prepare.geometry"] == dependency_path
+
+
+def test_shape_context_receives_registered_artwork_manifest(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape receives bound registered Artwork through its StageContext.
+
+    Complete Shape planning resolves the declarative Artwork vector-manifest
+    dependency to its canonical producer path. Planned context construction
+    then exposes that path using the fully qualified logical dependency name.
+
+    The consumer does not discover or construct the producer filesystem path.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "product_dependencies": {
+                "manifest": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "manifest",
+                    "artifact": "artwork-example",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert tuple(stage.name for stage in plan.stages) == ("compose",)
+
+    stage = plan.stages[0]
+
+    context = create_planned_stage_context(
+        plan,
+        stage,
+    )
+
+    assert context.inputs == {
+        "artwork.vector.manifest": (
+            tmp_path
+            / "artifacts"
+            / "artwork-example"
+            / "artwork"
+            / "default"
+            / "30-vector"
+            / "products.json"
+        ),
+    }
 
 
 # =========================================================
