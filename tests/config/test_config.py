@@ -574,6 +574,32 @@ artwork_size = 70.0
     assert resolver.source("artwork_size") == "workspace"
 
 
+def test_shape_model_defaults_are_resolved(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape parameters.toml contributes initial structural defaults.
+
+    The initial structural implementation begins with circle geometry
+    and supplies physical defaults for its overall size and base
+    thickness through normal model configuration.
+    """
+
+    resolver = get_resolver(
+        "shape-example",
+        model="shape",
+        project_root=tmp_path,
+    )
+
+    assert resolver("shape_geometry") == "circle"
+    assert resolver("shape_size") == 100.0
+    assert resolver("shape_base_raise") == 2.0
+
+    assert resolver.source("shape_geometry") == "model"
+    assert resolver.source("shape_size") == "model"
+    assert resolver.source("shape_base_raise") == "model"
+
+
 # =========================================================
 # Configuration precedence
 # =========================================================

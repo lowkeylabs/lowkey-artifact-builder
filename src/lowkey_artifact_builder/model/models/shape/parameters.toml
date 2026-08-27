@@ -1,0 +1,31 @@
+#
+# Model configuration defaults for the Shape model.
+#
+
+[parameters]
+
+# ---------------------------------------------------------
+# Structural geometry
+# ---------------------------------------------------------
+
+#
+# Initial Shape geometry.
+#
+
+shape_geometry = "circle"
+
+
+#
+# Overall physical X/Y envelope of the Shape, in millimeters.
+#
+# For circle geometry this is the diameter.
+#
+
+shape_size = 100.0
+
+
+#
+# Physical thickness of the structural base, in millimeters.
+#
+
+shape_base_raise = 2.0
