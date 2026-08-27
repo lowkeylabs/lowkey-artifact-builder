@@ -255,7 +255,6 @@ Current model parameters include values controlling:
 ```text
 artwork_pixels
 artwork_raise
-artwork_overlap
 artwork_min_island_area
 artwork_island_connectivity
 ```
