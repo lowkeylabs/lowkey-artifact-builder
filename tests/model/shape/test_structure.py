@@ -271,6 +271,137 @@ def test_octagon_svg_contains_centered_regular_octagon() -> None:
 
 
 # =========================================================
+# Physical base dimensionalization
+# =========================================================
+
+
+@pytest.mark.parametrize(
+    ("shape_geometry", "geometry_factory"),
+    (
+        ("circle", structure.create_circle_geometry),
+        ("square", structure.create_square_geometry),
+        ("octagon", structure.create_octagon_geometry),
+    ),
+)
+def test_structural_base_uses_shape_size_as_physical_envelope(
+    shape_geometry: str,
+    geometry_factory,
+) -> None:
+    """
+    Physical base dimensionalization applies Shape size to registered geometry.
+
+    Every supported registered Shape has the same canonical 1.0 by 1.0
+    envelope, so shape_size establishes the complete physical X/Y envelope
+    regardless of geometry.
+    """
+
+    registered = geometry_factory()
+
+    base = structure.create_structural_base(
+        registered,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+    )
+
+    assert base.geometry_name == shape_geometry
+    assert base.width == 100.0
+    assert base.height == 100.0
+
+
+@pytest.mark.parametrize(
+    "shape_size",
+    (
+        75.0,
+        100.0,
+        125.0,
+    ),
+)
+def test_structural_base_scales_registered_geometry_to_shape_size(
+    shape_size: float,
+) -> None:
+    """
+    Changing shape_size changes physical size rather than registered geometry.
+    """
+
+    registered = structure.create_circle_geometry()
+
+    base = structure.create_structural_base(
+        registered,
+        shape_size=shape_size,
+        shape_base_raise=2.0,
+    )
+
+    assert registered.width == 1.0
+    assert registered.height == 1.0
+
+    assert base.width == shape_size
+    assert base.height == shape_size
+
+
+@pytest.mark.parametrize(
+    "shape_base_raise",
+    (
+        1.0,
+        2.0,
+        4.5,
+    ),
+)
+def test_structural_base_uses_shape_base_raise_as_physical_thickness(
+    shape_base_raise: float,
+) -> None:
+    """
+    Structural base thickness is introduced at dimensionalization.
+
+    The physical base begins at Z=0 and extends through shape_base_raise.
+    """
+
+    registered = structure.create_circle_geometry()
+
+    base = structure.create_structural_base(
+        registered,
+        shape_size=100.0,
+        shape_base_raise=shape_base_raise,
+    )
+
+    assert base.min_z == 0.0
+    assert base.max_z == shape_base_raise
+    assert base.thickness == shape_base_raise
+
+
+def test_structural_base_preserves_registered_source_geometry() -> None:
+    """
+    Physical dimensionalization does not alter registered Shape geometry.
+
+    Registered geometry remains reusable independently of any physical Shape
+    realization derived from it.
+    """
+
+    registered = structure.create_circle_geometry()
+
+    small = structure.create_structural_base(
+        registered,
+        shape_size=75.0,
+        shape_base_raise=2.0,
+    )
+    large = structure.create_structural_base(
+        registered,
+        shape_size=125.0,
+        shape_base_raise=4.0,
+    )
+
+    assert registered.width == 1.0
+    assert registered.height == 1.0
+
+    assert small.width == 75.0
+    assert small.height == 75.0
+    assert small.thickness == 2.0
+
+    assert large.width == 125.0
+    assert large.height == 125.0
+    assert large.thickness == 4.0
+
+
+# =========================================================
 # Structural stage execution
 # =========================================================
 

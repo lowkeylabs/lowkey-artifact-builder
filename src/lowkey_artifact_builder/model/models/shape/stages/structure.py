@@ -2,9 +2,9 @@
 Registered structural geometry for the Shape model.
 
 This module defines the registered, nonphysical geometry produced by Shape
-structural production.
+structural production and the physical base geometry derived from it.
 
-Physical dimensionalization and extrusion belong to downstream Shape stages.
+Physical persistence and extrusion belong to downstream Shape stages.
 """
 # File: src/lowkey_artifact_builder/model/models/shape/stages/structure.py
 # Copyright 2026 LowKeyLabs LLC
@@ -201,6 +201,55 @@ class OctagonGeometry:
         )
 
 
+type RegisteredGeometry = CircleGeometry | SquareGeometry | OctagonGeometry
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class StructuralBase:
+    """
+    Physical structural base derived from registered Shape geometry.
+
+    registered_geometry identifies the reusable nonphysical Shape geometry.
+
+    shape_size defines the complete physical X/Y envelope in millimeters.
+
+    thickness defines the physical Z extent. The structural base begins at
+    Z=0 and extends upward through its configured thickness.
+    """
+
+    registered_geometry: RegisteredGeometry
+    geometry_name: str
+    shape_size: float
+    thickness: float
+
+    @property
+    def width(self) -> float:
+        """Return the physical X extent in millimeters."""
+
+        return self.shape_size
+
+    @property
+    def height(self) -> float:
+        """Return the physical Y extent in millimeters."""
+
+        return self.shape_size
+
+    @property
+    def min_z(self) -> float:
+        """Return the minimum physical Z coordinate."""
+
+        return 0.0
+
+    @property
+    def max_z(self) -> float:
+        """Return the maximum physical Z coordinate."""
+
+        return self.thickness
+
+
 # =========================================================
 # Public interface
 # =========================================================
@@ -287,6 +336,52 @@ def create_octagon_geometry() -> OctagonGeometry:
     """
 
     return OctagonGeometry()
+
+
+def create_structural_base(
+    registered_geometry: RegisteredGeometry,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+) -> StructuralBase:
+    """
+    Dimensionalize registered Shape geometry as a physical structural base.
+
+    shape_size establishes the complete physical X/Y envelope in millimeters.
+    shape_base_raise establishes the physical base thickness.
+
+    The registered source geometry remains unchanged.
+    """
+
+    if isinstance(
+        registered_geometry,
+        CircleGeometry,
+    ):
+        geometry_name = "circle"
+
+    elif isinstance(
+        registered_geometry,
+        SquareGeometry,
+    ):
+        geometry_name = "square"
+
+    elif isinstance(
+        registered_geometry,
+        OctagonGeometry,
+    ):
+        geometry_name = "octagon"
+
+    else:
+        raise TypeError(
+            f"Unsupported registered Shape geometry: {type(registered_geometry).__name__}."
+        )
+
+    return StructuralBase(
+        registered_geometry=registered_geometry,
+        geometry_name=geometry_name,
+        shape_size=shape_size,
+        thickness=shape_base_raise,
+    )
 
 
 # =========================================================
