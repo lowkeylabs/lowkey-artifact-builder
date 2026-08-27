@@ -149,21 +149,18 @@ def test_shape_declares_structural_stage() -> None:
     assert structure_stage.product_dependencies == ()
 
 
-def test_shape_structure_consumes_structural_parameters() -> None:
+def test_shape_structure_consumes_registered_geometry_parameters() -> None:
     """
-    Structural production consumes the Shape geometry dimensions.
+    Structural production consumes only policy required to construct the
+    registered Shape geometry.
 
-    These names identify values supplied by normal configuration resolution;
-    their defaults belong to the Shape model's parameters.toml.
+    Physical X/Y size and Z dimensions belong to downstream physical
+    dimensionalization rather than registered structural production.
     """
 
     structure_stage = _structure_stage()
 
-    assert structure_stage.parameters == (
-        "shape_geometry",
-        "shape_size",
-        "shape_base_raise",
-    )
+    assert structure_stage.parameters == ("shape_geometry",)
 
 
 def test_shape_structure_produces_persistent_structure() -> None:
@@ -181,7 +178,11 @@ def test_shape_structure_produces_persistent_structure() -> None:
 
 def test_shape_structure_has_canonical_relative_product_path() -> None:
     """
-    Shape structural geometry has a model-declared relative product path.
+    Registered Shape structural geometry has a model-declared relative
+    vector-product path.
+
+    The structure stage persists registered two-dimensional geometry rather
+    than dimensionalized manufacturing geometry or a packaged 3MF.
 
     Generated filesystem placement remains the responsibility of planning
     and product resolution rather than artifact configuration.
@@ -191,4 +192,4 @@ def test_shape_structure_has_canonical_relative_product_path() -> None:
 
     product = next(product for product in structure_stage.products if product.name == "structure")
 
-    assert product.path == "structure.3mf"
+    assert product.path == "structure.svg"

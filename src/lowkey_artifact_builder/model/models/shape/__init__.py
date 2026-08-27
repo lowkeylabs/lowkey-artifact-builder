@@ -5,7 +5,7 @@ The shape model defines parameterized geometric bodies that may consume
 registered Artwork geometry.
 
 The model is introduced incrementally. Its current declaration establishes
-independent structural Shape production and preserves the registered-geometry
+registered structural Shape production and preserves the registered-geometry
 consumer boundary without prematurely declaring later ridge, extrusion, or
 packaging behavior.
 """
@@ -36,24 +36,20 @@ MODEL = ModelSpec(
         StageSpec(
             id=10,
             name="structure",
-            description=("Produce structural Shape geometry."),
-            parameters=(
-                "shape_geometry",
-                "shape_size",
-                "shape_base_raise",
-            ),
+            description=("Produce registered structural Shape geometry."),
+            parameters=("shape_geometry",),
             products=(
                 ProductSpec(
                     name="structure",
-                    path="structure.3mf",
-                    description=("Structural Shape geometry."),
+                    path="structure.svg",
+                    description=("Registered structural Shape geometry."),
                 ),
             ),
         ),
         StageSpec(
             id=20,
             name="compose",
-            description=("Consume registered Artwork geometry for Shape composition."),
+            description=("Compose registered structural Shape and Artwork geometry."),
             product_dependencies=(
                 ProductDependencySpec(
                     model="artwork",
