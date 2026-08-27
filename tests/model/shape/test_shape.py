@@ -32,6 +32,12 @@ def _extrude_stage():
     return next(stage for stage in MODEL.stages if stage.name == "extrude")
 
 
+def _package_stage():
+    """Return the Shape stage that packages physical components."""
+
+    return next(stage for stage in MODEL.stages if stage.name == "package")
+
+
 # =========================================================
 # Model identity
 # =========================================================
@@ -301,9 +307,12 @@ def test_shape_extrude_consumes_physical_base_parameters() -> None:
     )
 
 
-def test_shape_extrude_produces_physical_base_geometry() -> None:
+def test_shape_extrude_produces_physical_base_stl() -> None:
     """
-    Shape extrusion produces persistent physical base manufacturing geometry.
+    Shape extrusion produces persistent physical manufacturing geometry.
+
+    The structural base remains an independently printable STL component.
+    Final 3MF assembly belongs to the downstream package stage.
     """
 
     extrude_stage = _extrude_stage()
@@ -312,4 +321,96 @@ def test_shape_extrude_produces_physical_base_geometry() -> None:
 
     product = extrude_stage.products[0]
 
-    assert product.path == "base.3mf"
+    assert product.path == "base.stl"
+
+
+def test_shape_extrude_does_not_produce_final_artifact() -> None:
+    """
+    Shape extrusion does not own final artifact packaging.
+
+    Physical component production and final 3MF assembly are separate stage
+    responsibilities.
+    """
+
+    extrude_stage = _extrude_stage()
+
+    assert all(product.name != "artifact" for product in extrude_stage.products)
+
+    assert all(product.path != "artifact.3mf" for product in extrude_stage.products)
+
+
+# =========================================================
+# Packaging boundary
+# =========================================================
+
+
+def test_shape_declares_package_stage_after_extrusion() -> None:
+    """
+    Shape declares packaging downstream of physical extrusion.
+
+    Numeric stage IDs preserve deterministic presentation order while the
+    explicit dependency establishes the semantic prerequisite.
+    """
+
+    extrude_stage = _extrude_stage()
+    package_stage = _package_stage()
+
+    assert extrude_stage.id < package_stage.id
+
+
+def test_shape_package_depends_on_extrude_stage() -> None:
+    """
+    Shape packaging follows production of physical manufacturing geometry.
+
+    The extrusion products belong to the same model-local stage closure.
+    """
+
+    package_stage = _package_stage()
+
+    assert package_stage.dependencies == ("extrude",)
+    assert package_stage.product_dependencies == ()
+
+
+def test_shape_package_declares_no_geometry_parameters() -> None:
+    """
+    Shape packaging does not construct or dimensionalize geometry.
+
+    Geometry policy and physical dimensions belong to upstream stages.
+    Packaging assembles already produced physical components.
+    """
+
+    package_stage = _package_stage()
+
+    assert package_stage.parameters == ()
+
+
+def test_shape_package_produces_final_artifact() -> None:
+    """
+    Shape packaging produces the canonical final 3MF artifact.
+    """
+
+    package_stage = _package_stage()
+
+    assert tuple(product.name for product in package_stage.products) == ("artifact",)
+
+    product = package_stage.products[0]
+
+    assert product.path == "artifact.3mf"
+
+
+def test_shape_final_artifact_has_single_package_producer() -> None:
+    """
+    The canonical final Shape artifact has exactly one producer.
+
+    artifact.3mf belongs exclusively to the package stage rather than to
+    structural, composition, or extrusion production.
+    """
+
+    producers = tuple(
+        stage.name
+        for stage in MODEL.stages
+        for product in stage.products
+        if product.path == "artifact.3mf"
+    )
+
+    assert producers == ("package",)

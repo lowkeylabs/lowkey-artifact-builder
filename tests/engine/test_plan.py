@@ -2343,6 +2343,7 @@ def test_create_build_plan_binds_shape_registered_artwork_dependency(
         "structure",
         "compose",
         "extrude",
+        "package",
     )
 
     assert plan.product_dependencies == (dependency,)

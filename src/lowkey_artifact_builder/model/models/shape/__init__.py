@@ -5,8 +5,8 @@ The shape model defines parameterized geometric bodies that may consume
 registered Artwork geometry.
 
 The current declaration establishes registered structural Shape production,
-registered composition, and the physical dimensionalization boundary without
-prematurely declaring later ridge or packaging behavior.
+registered composition, physical dimensionalization, and final artifact
+packaging without prematurely declaring later ridge or feature behavior.
 """
 # File: src/lowkey_artifact_builder/model/models/shape/__init__.py
 # Copyright 2026 LowKeyLabs LLC
@@ -79,8 +79,21 @@ MODEL = ModelSpec(
             products=(
                 ProductSpec(
                     name="base",
-                    path="base.3mf",
+                    path="base.stl",
                     description=("Physical structural Shape base geometry."),
+                ),
+            ),
+        ),
+        StageSpec(
+            id=40,
+            name="package",
+            description=("Package physical Shape components into the final artifact."),
+            dependencies=("extrude",),
+            products=(
+                ProductSpec(
+                    name="artifact",
+                    path="artifact.3mf",
+                    description=("Final packaged Shape artifact."),
                 ),
             ),
         ),

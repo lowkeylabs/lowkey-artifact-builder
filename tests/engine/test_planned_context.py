@@ -498,6 +498,7 @@ def test_shape_context_receives_registered_artwork_manifest(
         "structure",
         "compose",
         "extrude",
+        "package",
     )
 
     stage = _stage_by_name(
