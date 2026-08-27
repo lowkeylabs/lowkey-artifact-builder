@@ -163,3 +163,26 @@ def render_circle_2d_source(
     """
 
     return f"$fn={openscad_fn};\n\ncircle(d={geometry.diameter});\n"
+
+
+def render_structural_base_source(
+    base: StructuralBase,
+    *,
+    openscad_fn: int,
+) -> str:
+    """
+    Render a structural Shape base as OpenSCAD source.
+
+    The base's two-dimensional geometry determines its physical X/Y
+    extent. Its thickness determines the extrusion height from Z=0.
+
+    OpenSCAD curve resolution controls rendering quality without
+    changing the physical geometry semantics.
+    """
+
+    geometry_source = render_circle_2d_source(
+        base.geometry,
+        openscad_fn=openscad_fn,
+    )
+
+    return f"linear_extrude(height={base.thickness}) {{\n{geometry_source}}}\n"

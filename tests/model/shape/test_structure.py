@@ -166,3 +166,61 @@ def test_circle_base_thickness_changes_with_shape_base_raise() -> None:
     assert base.thickness == 3.5
     assert base.min_z == 0.0
     assert base.max_z == 3.5
+
+
+# =========================================================
+# Structural base production geometry
+# =========================================================
+
+
+def test_circle_base_extrudes_circle_to_configured_thickness() -> None:
+    """
+    Circle structural geometry is extruded through shape_base_raise.
+
+    The resulting production geometry combines the circle's physical X/Y
+    extent with the structural base's physical Z extent.
+    """
+
+    geometry = structure.create_circle_geometry(
+        shape_size=100.0,
+    )
+
+    base = structure.create_structural_base(
+        geometry,
+        shape_base_raise=2.0,
+    )
+
+    source = structure.render_structural_base_source(
+        base,
+        openscad_fn=360,
+    )
+
+    assert "linear_extrude(height=2.0" in source
+    assert "circle(d=100.0" in source
+
+
+def test_circle_base_extrusion_uses_independent_xy_and_z_dimensions() -> None:
+    """
+    Structural base X/Y size and Z thickness remain independent policies.
+
+    shape_size controls the circle diameter while shape_base_raise controls
+    only its extrusion height.
+    """
+
+    geometry = structure.create_circle_geometry(
+        shape_size=72.0,
+    )
+
+    base = structure.create_structural_base(
+        geometry,
+        shape_base_raise=3.5,
+    )
+
+    source = structure.render_structural_base_source(
+        base,
+        openscad_fn=180,
+    )
+
+    assert "$fn=180" in source
+    assert "linear_extrude(height=3.5" in source
+    assert "circle(d=72.0" in source
