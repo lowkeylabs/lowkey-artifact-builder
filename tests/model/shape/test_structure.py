@@ -69,3 +69,48 @@ def test_circle_geometry_scales_directly_with_shape_size() -> None:
     assert geometry.max_x == 36.0
     assert geometry.min_y == -36.0
     assert geometry.max_y == 36.0
+
+
+# =========================================================
+# Circle 2D production geometry
+# =========================================================
+
+
+def test_circle_geometry_produces_centered_openscad_circle() -> None:
+    """
+    Circle geometry can be expressed as executable 2D production geometry.
+
+    The generated circle uses shape_size as its physical diameter and remains
+    centered about the model origin.
+    """
+
+    geometry = structure.create_circle_geometry(
+        shape_size=100.0,
+    )
+
+    source = structure.render_circle_2d_source(
+        geometry,
+        openscad_fn=360,
+    )
+
+    assert "circle(d=100.0" in source
+
+
+def test_circle_2d_geometry_uses_configured_curve_resolution() -> None:
+    """
+    Circle production geometry uses the supplied OpenSCAD curve resolution.
+
+    Rendering resolution does not alter the semantic physical size of the
+    Shape.
+    """
+
+    geometry = structure.create_circle_geometry(
+        shape_size=100.0,
+    )
+
+    source = structure.render_circle_2d_source(
+        geometry,
+        openscad_fn=180,
+    )
+
+    assert "$fn=180" in source

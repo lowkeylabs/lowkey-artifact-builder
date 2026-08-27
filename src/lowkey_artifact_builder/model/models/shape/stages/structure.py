@@ -92,3 +92,24 @@ def create_circle_geometry(
     return CircleGeometry(
         diameter=shape_size,
     )
+
+
+# =========================================================
+# Geometry rendering
+# =========================================================
+
+
+def render_circle_2d_source(
+    geometry: CircleGeometry,
+    *,
+    openscad_fn: int,
+) -> str:
+    """
+    Render circular Shape geometry as OpenSCAD 2D source.
+
+    The circle remains centered about the model origin. OpenSCAD curve
+    resolution controls rendering quality without changing the physical
+    geometry semantics.
+    """
+
+    return f"$fn={openscad_fn};\n\ncircle(d={geometry.diameter});\n"
