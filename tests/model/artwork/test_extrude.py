@@ -474,3 +474,85 @@ def test_build_scad_fits_registered_geometry_to_physical_size(
     assert "artwork_size = 150;" in source
     assert "scale(" in source
     assert "artwork_size / registered_extent" in source
+
+
+def test_build_scad_introduces_physical_z_from_artwork_raise(
+    tmp_path: Path,
+) -> None:
+    """
+    Extrusion introduces physical Z through artwork_raise.
+
+    Registered vector geometry has no physical thickness. The extrusion
+    consumer introduces that dimension from resolved Artwork configuration.
+    """
+
+    svg = tmp_path / "layer.svg"
+
+    svg.write_text(
+        """
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+        >
+            <rect
+                x="0"
+                y="0"
+                width="20"
+                height="20"
+            />
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    source = extrude._build_scad(
+        svg,
+        registered_extent=20,
+        artwork_size=150.0,
+        artwork_raise=1.25,
+    )
+
+    assert "artwork_raise = 1.25;" in source
+    assert "linear_extrude(" in source
+    assert "height = artwork_raise" in source
+
+
+def test_build_scad_applies_one_physical_xy_scale_independent_of_z_raise(
+    tmp_path: Path,
+) -> None:
+    """
+    Physical X/Y dimensionalization is independent of physical Z height.
+
+    artwork_size scales the registered coordinate system in X/Y while
+    artwork_raise independently supplies the extrusion height.
+    """
+
+    svg = tmp_path / "layer.svg"
+
+    svg.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    low = extrude._build_scad(
+        svg,
+        registered_extent=25,
+        artwork_size=100.0,
+        artwork_raise=0.5,
+    )
+
+    high = extrude._build_scad(
+        svg,
+        registered_extent=25,
+        artwork_size=100.0,
+        artwork_raise=2.0,
+    )
+
+    assert "artwork_size / registered_extent" in low
+    assert "artwork_size / registered_extent" in high
+
+    assert "artwork_raise = 0.5;" in low
+    assert "artwork_raise = 2;" in high
+
+    assert "height = artwork_raise" in low
+    assert "height = artwork_raise" in high
