@@ -114,3 +114,55 @@ def test_circle_2d_geometry_uses_configured_curve_resolution() -> None:
     )
 
     assert "$fn=180" in source
+
+
+# =========================================================
+# Structural base
+# =========================================================
+
+
+def test_circle_base_uses_shape_base_raise_as_thickness() -> None:
+    """
+    Circle base thickness is determined by shape_base_raise.
+
+    The structural base begins at Z=0 and extends through the configured
+    physical base raise.
+    """
+
+    geometry = structure.create_circle_geometry(
+        shape_size=100.0,
+    )
+
+    base = structure.create_structural_base(
+        geometry,
+        shape_base_raise=2.0,
+    )
+
+    assert base.geometry is geometry
+    assert base.thickness == 2.0
+    assert base.min_z == 0.0
+    assert base.max_z == 2.0
+
+
+def test_circle_base_thickness_changes_with_shape_base_raise() -> None:
+    """
+    Changing shape_base_raise changes only the physical Z extent of the base.
+
+    Base thickness is independent of the circle's X/Y size semantics.
+    """
+
+    geometry = structure.create_circle_geometry(
+        shape_size=72.0,
+    )
+
+    base = structure.create_structural_base(
+        geometry,
+        shape_base_raise=3.5,
+    )
+
+    assert base.geometry.width == 72.0
+    assert base.geometry.height == 72.0
+
+    assert base.thickness == 3.5
+    assert base.min_z == 0.0
+    assert base.max_z == 3.5

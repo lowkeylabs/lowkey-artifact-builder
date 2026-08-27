@@ -73,6 +73,36 @@ class CircleGeometry:
         return self.diameter / 2.0
 
 
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class StructuralBase:
+    """
+    Physical structural base of a Shape.
+
+    geometry defines the base's X/Y extent.
+
+    thickness defines its physical Z extent. Structural bases begin
+    at Z=0 and extend upward through their configured thickness.
+    """
+
+    geometry: CircleGeometry
+    thickness: float
+
+    @property
+    def min_z(self) -> float:
+        """Return the minimum Z coordinate."""
+
+        return 0.0
+
+    @property
+    def max_z(self) -> float:
+        """Return the maximum Z coordinate."""
+
+        return self.thickness
+
+
 # =========================================================
 # Geometry construction
 # =========================================================
@@ -91,6 +121,26 @@ def create_circle_geometry(
 
     return CircleGeometry(
         diameter=shape_size,
+    )
+
+
+def create_structural_base(
+    geometry: CircleGeometry,
+    *,
+    shape_base_raise: float,
+) -> StructuralBase:
+    """
+    Construct the physical structural base for Shape geometry.
+
+    shape_base_raise defines the base's physical thickness.
+
+    The base begins at Z=0 and extends upward through
+    shape_base_raise.
+    """
+
+    return StructuralBase(
+        geometry=geometry,
+        thickness=shape_base_raise,
     )
 
 
