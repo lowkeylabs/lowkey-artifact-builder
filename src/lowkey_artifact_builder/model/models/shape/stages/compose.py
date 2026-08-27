@@ -55,6 +55,124 @@ class RegisteredArtwork:
     components: tuple[RegisteredArtworkComponent, ...]
 
 
+@dataclass(frozen=True)
+class RegisteredArtworkTransform:
+    """
+    One common transformation applied to registered Artwork.
+
+    The transformation uniformly scales the registered coordinate system
+    to fit within the available region and centers the transformed extent.
+    """
+
+    scale: float
+    width: float
+    height: float
+    translate_x: float
+    translate_y: float
+
+
+@dataclass(frozen=True)
+class PlacedRegisteredArtworkComponent:
+    """
+    One registered Artwork component associated with its common transform.
+
+    The component payload remains unchanged and opaque at this boundary.
+    """
+
+    component: RegisteredArtworkComponent
+    transform: RegisteredArtworkTransform
+
+
+@dataclass(frozen=True)
+class PlacedRegisteredArtwork:
+    """
+    Registered Artwork positioned within an available region.
+
+    Every component shares the same transformation so their registered
+    relationship is preserved.
+    """
+
+    transform: RegisteredArtworkTransform
+    components: tuple[PlacedRegisteredArtworkComponent, ...]
+
+
+# =========================================================
+# Registered Artwork placement
+# =========================================================
+
+
+def fit_registered_artwork(
+    artwork: RegisteredArtwork,
+    *,
+    available_width: float,
+    available_height: float,
+) -> RegisteredArtworkTransform:
+    """
+    Fit registered Artwork uniformly within an available region.
+
+    One scale is derived from the common registered extent. The transformed
+    extent is centered within the available region.
+
+    Individual component payloads are not inspected or independently fitted.
+    """
+
+    registered_width = artwork.registered_extent.width
+    registered_height = artwork.registered_extent.height
+
+    scale = min(
+        available_width / registered_width,
+        available_height / registered_height,
+    )
+
+    width = registered_width * scale
+    height = registered_height * scale
+
+    translate_x = (available_width - width) / 2.0
+    translate_y = (available_height - height) / 2.0
+
+    return RegisteredArtworkTransform(
+        scale=scale,
+        width=width,
+        height=height,
+        translate_x=translate_x,
+        translate_y=translate_y,
+    )
+
+
+def place_registered_artwork(
+    artwork: RegisteredArtwork,
+    *,
+    available_width: float,
+    available_height: float,
+) -> PlacedRegisteredArtwork:
+    """
+    Place every registered Artwork component using one common transform.
+
+    The common transform is calculated once from the registered collection
+    extent and associated unchanged with every component. This preserves the
+    registration established by the Artwork producer.
+    """
+
+    transform = fit_registered_artwork(
+        artwork,
+        available_width=available_width,
+        available_height=available_height,
+    )
+
+    components = tuple(
+        PlacedRegisteredArtworkComponent(
+            component=component,
+            transform=transform,
+        )
+        for component in artwork.components
+    )
+
+    return PlacedRegisteredArtwork(
+        transform=transform,
+        components=components,
+    )
+
+
 # =========================================================
 # Manifest loading
 # =========================================================

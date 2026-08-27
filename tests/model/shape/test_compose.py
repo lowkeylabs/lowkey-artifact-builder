@@ -185,3 +185,138 @@ def test_load_registered_artwork_reads_common_registered_extent(
 
     assert artwork.registered_extent.width == 16.0
     assert artwork.registered_extent.height == 12.0
+
+
+def test_registered_artwork_transform_is_derived_from_common_extent() -> None:
+    """
+    Artwork fitting derives one transform from the common registered extent.
+
+    The transform is based on the registered collection as a whole rather
+    than on bounds calculated independently for individual components.
+    """
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=16.0,
+            height=12.0,
+        ),
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork(
+        artwork,
+        available_width=80.0,
+        available_height=80.0,
+    )
+
+    assert transform.scale == 5.0
+    assert transform.width == 80.0
+    assert transform.height == 60.0
+
+
+def test_registered_artwork_fit_preserves_aspect_ratio() -> None:
+    """
+    Registered Artwork uses uniform contain-style scaling.
+
+    The limiting interior dimension determines one X/Y scale so Artwork is
+    completely contained without stretching.
+    """
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=16.0,
+            height=12.0,
+        ),
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork(
+        artwork,
+        available_width=64.0,
+        available_height=36.0,
+    )
+
+    assert transform.scale == 3.0
+    assert transform.width == 48.0
+    assert transform.height == 36.0
+
+
+def test_registered_artwork_fit_centers_common_extent() -> None:
+    """
+    Registered Artwork is centered within the available region.
+
+    Translation is calculated from the transformed common registered extent,
+    not independently for individual components.
+    """
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=16.0,
+            height=12.0,
+        ),
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork(
+        artwork,
+        available_width=80.0,
+        available_height=80.0,
+    )
+
+    assert transform.translate_x == 0.0
+    assert transform.translate_y == 10.0
+
+
+def test_registered_artwork_components_share_one_transform(
+    tmp_path: Path,
+) -> None:
+    """
+    Every registered component receives the same Artwork transformation.
+
+    Shape does not independently fit component payloads because doing so could
+    destroy registration between the component layers.
+    """
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=16.0,
+            height=12.0,
+        ),
+        components=(
+            compose.RegisteredArtworkComponent(
+                index=1,
+                path=tmp_path / "white.svg",
+                name="white",
+                color={
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 255,
+                },
+            ),
+            compose.RegisteredArtworkComponent(
+                index=2,
+                path=tmp_path / "black.svg",
+                name="black",
+                color={
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 255,
+                },
+            ),
+        ),
+    )
+
+    placement = compose.place_registered_artwork(
+        artwork,
+        available_width=80.0,
+        available_height=80.0,
+    )
+
+    assert tuple(component.transform for component in placement.components) == (
+        placement.transform,
+        placement.transform,
+    )
+
+    assert tuple(component.component for component in placement.components) == artwork.components
