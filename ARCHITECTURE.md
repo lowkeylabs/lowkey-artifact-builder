@@ -15,6 +15,38 @@ implementation defines the architecture. Determine whether the implementation
 is incomplete or whether an architectural decision has intentionally changed.
 If the architecture changes, update this document as part of that change.
 
+
+## Normative specifications
+
+`ARCHITECTURE.md` defines the system-wide architectural terminology,
+relationships, contracts, and invariants of `lowkey-artifact-builder`.
+
+Each:
+
+```text
+model/models/<model>/DEFINITION.md
+```
+
+defines the normative semantics, requirements, and invariants specific to that
+model.
+
+The repository implementation and tests must conform to both the system
+architecture and the applicable model definitions.
+
+A CHANGEPLAN.md, when present, is a temporary implementation plan derived by
+comparing the current repository against these permanent specifications. It
+describes testable changes needed to bring the implementation into alignment.
+It is not itself a normative specification and may be removed once alignment
+is complete.
+
+Tests provide executable evidence of conformance. They do not replace the
+permanent specifications.
+
+When evaluating architectural completeness, compare the current repository
+against ARCHITECTURE.md and the applicable model DEFINITION.md files.
+When differences exist, a change plan may be created to resolve those
+differences in independently testable slices.
+
 ---
 
 # 1. Purpose
@@ -483,13 +515,52 @@ extrude
 package
 ```
 
-A stage may currently implement more than one conceptual operation.
+Stages and operations serve different architectural purposes.
 
-For example, an extrusion stage may initially perform both fitting and
-extrusion.
+A stage is an execution and persistence boundary. An operation is reusable
+transformation logic that may be invoked by one or more stages.
 
-The architectural distinction should nevertheless remain clear so that
-operations can be separated or reused later without changing product
+A stage may implement or compose more than one conceptual operation. Not every
+operation requires its own stage. A separate stage is appropriate when an
+independent execution, persistence, dependency, inspection, or resumption
+boundary provides meaningful value.
+
+When multiple models require the same mechanical transformation with different
+model-specific policy or parameters, the common behavior should preferentially
+be implemented as a reusable operation rather than duplicated between
+model-specific stage implementations.
+
+Model-specific stages own model policy. They resolve model semantics,
+configuration, and products into the inputs required by reusable operations.
+
+Reusable operations own model-independent mechanics. They should not depend on
+model-specific configuration namespaces or require knowledge of the model that
+invoked them.
+
+Conceptually:
+
+```text
+artwork stage ──┐
+                │
+                ▼
+         reusable operation
+                ▲
+                │
+shape stage ────┘
+```
+
+Models therefore compose reusable operations rather than obtain shared behavior
+by invoking another model's stage implementation or inheriting another model's
+pipeline.
+
+For example, artwork and shape models may make different decisions about
+physical size, placement, component identity, or extrusion height while using
+the same reusable extrusion mechanics.
+
+The distinction between stage policy and reusable operations should remain
+clear even when an initial implementation performs several operations inside a
+single stage. This permits common mechanics to be extracted and reused as new
+models demonstrate shared requirements without changing model or product
 semantics.
 
 ---
@@ -698,40 +769,66 @@ creating a second independent pipeline abstraction.
 
 ## 4.10 Stage ID
 
-Every stage has a stable numeric identifier used for human presentation and
-filesystem organization.
+A numeric stage ID is a presentation ordinal used for human-readable ordering
+and filesystem organization.
 
 For example:
 
 ```text
-10-prepare
-20-raster
-30-vector
-40-extrude
-50-package
+artwork
+    10-prepare
+    20-raster
+    30-vector
+    40-extrude
+    50-package
+
+shape
+    10-prepare
+    20-extrude
+    30-package
 ```
 
-The numeric stage ID:
+Stage IDs do not define:
 
-* provides stable human-readable ordering;
-* makes filesystem trees easier to inspect;
-* permits insertion of future stages between existing stages.
+stage semantics;
+operation type;
+compatibility between stages;
+dependencies;
+execution order; or
+relationships between stages in different models.
 
-The numeric stage ID does not determine dependency order.
+Two stages that perform similar operations do not need to share the same
+numeric ID. Conversely, matching numeric IDs in different models imply no
+architectural relationship.
 
-The semantic identity is:
+Dependencies determine required execution ordering. The numeric stage ID
+reflects a deterministic presentation ordering; it does not create that
+ordering.
+
+Stage IDs should normally be assigned sequentially according to the
+deterministic ordering of the stages within a model or realization. Gaps do
+not need to be reserved for possible future stages.
+
+Adding, removing, or reordering stages may therefore cause numeric stage IDs
+and generated filesystem locations to change. Such renumbering does not change
+the semantic identity of an existing stage.
+
+The semantic identity is the stage name:
 
 ```text
 prepare
 ```
 
-not:
+not its presentation:
 
 ```text
 10-prepare
 ```
 
 Logical product references therefore do not depend on the numeric stage ID.
+
+The filesystem materializes the resolved stage ordering for human inspection.
+It must not be used to infer model semantics or dependency relationships.
 
 ---
 
@@ -2115,7 +2212,6 @@ Responsible for declaring:
 * parameters;
 * variants;
 * stages;
-* stage IDs;
 * dependencies;
 * products;
 * product contracts.
@@ -2428,41 +2524,28 @@ reconsidered before implementation.
 
 ---
 
-# 36. Initial Refactoring Strategy
+# 36. Implementation Alignment
 
-The existing repository should be evolved incrementally rather than rewritten.
+The repository should evolve incrementally toward the architecture defined by
+this document and the normative definitions of its models.
 
-The working artwork model serves as the behavioral regression target.
+Implementation work should begin by comparing the current repository against:
 
-A recommended sequence is:
+```text
+ARCHITECTURE.md
+model/models/<model>/DEFINITION.md
+```
 
-1. Introduce stable stage IDs.
-2. Introduce explicit logical reference types.
-3. Define centralized reference parsing and formatting.
-4. Introduce the central resolver.
-5. Route existing path construction through the resolver while preserving
-   current behavior.
-6. Make ProductSpec paths stage-local.
-7. Introduce model-scoped variants.
-8. Introduce the model/realization filesystem hierarchy.
-9. Move all generated products beneath their producing stages.
-10. Remove special filesystem handling for `artifact.3mf`.
-11. Construct and validate the complete Defined Graph.
-12. Derive the Product Catalog from the Defined Graph.
-13. Select requested realizations from artifact configuration.
-14. Compute the Realization Graph.
-15. Evaluate product state and construct the Execution Plan.
-16. Add partial product-targeted builds.
-17. Add cross-model product dependencies.
-18. Add cross-artifact product dependencies.
-19. Introduce registered geometry contracts.
-20. Implement a second production model to validate composition.
+Differences between the permanent specifications and the implementation should
+be captured in a temporary CHANGEPLAN.md as small, independently testable
+changes or refactors.
 
-The existing artwork transformations should remain functionally equivalent
-throughout the infrastructure refactor.
+Implementation should proceed incrementally, with tests providing executable
+evidence that each change moves the repository toward conformance while
+preserving behavior that remains architecturally valid.
 
-Once this migration is complete, replace this section with a shorter
-implementation-status section.
+When the repository conforms to ARCHITECTURE.md and the applicable model
+definitions, the temporary change plan is no longer required.
 
 ---
 
