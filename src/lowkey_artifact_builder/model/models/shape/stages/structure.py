@@ -12,7 +12,10 @@ Physical dimensionalization and extrusion belong to downstream Shape stages.
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+
+from lowkey_artifact_builder.formats.svg import SVG_NS
 
 # =========================================================
 # Geometry specifications
@@ -88,21 +91,37 @@ def create_circle_geometry() -> CircleGeometry:
 
 
 # =========================================================
-# Geometry rendering
+# SVG construction
 # =========================================================
 
 
-def render_circle_2d_source(
+def create_circle_svg(
     geometry: CircleGeometry,
-    *,
-    openscad_fn: int,
-) -> str:
+) -> ET.ElementTree[ET.Element[str]]:
     """
-    Render registered circular Shape geometry as OpenSCAD 2D source.
+    Construct an SVG document containing registered circular Shape geometry.
 
-    The circle remains centered about the Shape origin with its canonical
-    registered diameter. Rendering resolution does not alter the registered
-    geometry semantics.
+    The document uses the geometry's registered bounds as its viewBox and does
+    not assign physical width or height attributes.
     """
 
-    return f"$fn={openscad_fn};\n\ncircle(d={geometry.diameter});\n"
+    root = ET.Element(
+        f"{{{SVG_NS}}}svg",
+        {
+            "viewBox": (f"{geometry.min_x} {geometry.min_y} {geometry.width} {geometry.height}"),
+        },
+    )
+
+    ET.SubElement(
+        root,
+        f"{{{SVG_NS}}}circle",
+        {
+            "cx": "0.0",
+            "cy": "0.0",
+            "r": str(geometry.diameter / 2.0),
+        },
+    )
+
+    return ET.ElementTree(
+        root,
+    )

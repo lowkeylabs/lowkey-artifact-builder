@@ -7,6 +7,10 @@ Tests for Shape registered structural geometry.
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+from lowkey_artifact_builder.formats import svg
 from lowkey_artifact_builder.model.models.shape.stages import structure
 
 # =========================================================
@@ -60,39 +64,94 @@ def test_circle_geometry_requires_no_physical_size() -> None:
 
 
 # =========================================================
-# Circle registered production geometry
+# Circle registered SVG
 # =========================================================
 
 
-def test_circle_geometry_produces_canonical_registered_circle() -> None:
+def test_circle_geometry_produces_registered_svg_document() -> None:
     """
-    Circle geometry can be expressed as registered two-dimensional geometry.
+    Circle structural geometry can be represented as a registered SVG document.
 
-    Rendering preserves the canonical unit-diameter circle rather than
-    introducing a physical Shape dimension.
-    """
-
-    geometry = structure.create_circle_geometry()
-
-    source = structure.render_circle_2d_source(
-        geometry,
-        openscad_fn=360,
-    )
-
-    assert "circle(d=1.0" in source
-
-
-def test_circle_registered_geometry_uses_configured_curve_resolution() -> None:
-    """
-    Rendering resolution does not alter registered geometry semantics.
+    The SVG uses the canonical Shape registered envelope centered at the
+    origin rather than introducing physical dimensions.
     """
 
     geometry = structure.create_circle_geometry()
 
-    source = structure.render_circle_2d_source(
+    document = structure.create_circle_svg(
         geometry,
-        openscad_fn=180,
     )
 
-    assert "$fn=180" in source
-    assert "circle(d=1.0" in source
+    root = document.getroot()
+
+    assert root is not None
+    assert root.tag == "{http://www.w3.org/2000/svg}svg"
+    assert root.get("viewBox") == "-0.5 -0.5 1.0 1.0"
+
+
+def test_circle_svg_contains_canonical_registered_circle() -> None:
+    """
+    The structural SVG contains the canonical registered circle geometry.
+    """
+
+    geometry = structure.create_circle_geometry()
+
+    document = structure.create_circle_svg(
+        geometry,
+    )
+
+    root = document.getroot()
+
+    circle = root.find(
+        "{http://www.w3.org/2000/svg}circle",
+    )
+
+    assert circle is not None
+    assert circle.get("cx") == "0.0"
+    assert circle.get("cy") == "0.0"
+    assert circle.get("r") == "0.5"
+
+
+def test_circle_svg_can_be_persisted_as_declared_structure_product(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered circle geometry can be persisted as an SVG product.
+
+    Generic SVG persistence writes the model-specific registered geometry
+    without assigning physical millimeter dimensions.
+    """
+
+    geometry = structure.create_circle_geometry()
+
+    document = structure.create_circle_svg(
+        geometry,
+    )
+
+    output = tmp_path / "structure.svg"
+
+    svg.save(
+        document,
+        output,
+    )
+
+    assert output.is_file()
+
+    persisted = ET.parse(
+        output,
+    )
+
+    root = persisted.getroot()
+
+    assert root.get("viewBox") == "-0.5 -0.5 1.0 1.0"
+    assert root.get("width") is None
+    assert root.get("height") is None
+
+    circle = root.find(
+        "{http://www.w3.org/2000/svg}circle",
+    )
+
+    assert circle is not None
+    assert circle.get("cx") == "0.0"
+    assert circle.get("cy") == "0.0"
+    assert circle.get("r") == "0.5"
