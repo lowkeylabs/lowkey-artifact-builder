@@ -28,7 +28,7 @@ complete.
 
 ```text
 Phase 11 — Started
-Phase 12 — Not started
+Phase 12 — Started
 Phase 13 — Not started
 Phase 14 — Not started
 ```
