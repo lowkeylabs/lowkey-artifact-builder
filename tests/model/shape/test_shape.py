@@ -10,6 +10,23 @@ from lowkey_artifact_builder.model import (
 from lowkey_artifact_builder.model.models.shape import MODEL
 
 # =========================================================
+# Helpers
+# =========================================================
+
+
+def _compose_stage():
+    """Return the Shape stage that consumes registered Artwork."""
+
+    return next(stage for stage in MODEL.stages if stage.name == "compose")
+
+
+def _structure_stage():
+    """Return the Shape stage that produces structural geometry."""
+
+    return next(stage for stage in MODEL.stages if stage.name == "structure")
+
+
+# =========================================================
 # Model identity
 # =========================================================
 
@@ -38,14 +55,15 @@ def test_shape_model_is_discovered() -> None:
 
 def test_shape_declares_registered_artwork_consumer_stage() -> None:
     """
-    Shape declares the first stage that consumes registered Artwork.
+    Shape retains the stage that consumes registered Artwork.
 
-    The initial Shape declaration grows only far enough to establish the
-    registered-geometry consumer boundary. Structural geometry and later
-    manufacturing stages are introduced by subsequent slices.
+    Introducing independent structural production must preserve the
+    registered-geometry consumer boundary established by earlier slices.
     """
 
-    assert tuple(stage.name for stage in MODEL.stages) == ("compose",)
+    compose_stage = _compose_stage()
+
+    assert compose_stage.name == "compose"
 
 
 def test_shape_consumes_artwork_vector_manifest_by_logical_identity() -> None:
@@ -58,9 +76,9 @@ def test_shape_consumes_artwork_vector_manifest_by_logical_identity() -> None:
     declaration.
     """
 
-    stage = MODEL.stages[0]
+    compose_stage = _compose_stage()
 
-    assert stage.product_dependencies == (
+    assert compose_stage.product_dependencies == (
         ProductDependencySpec(
             model="artwork",
             stage="vector",
@@ -77,7 +95,9 @@ def test_shape_registered_artwork_dependency_contains_only_logical_identity() ->
     belong to runtime planning rather than the consuming model declaration.
     """
 
-    dependency = MODEL.stages[0].product_dependencies[0]
+    compose_stage = _compose_stage()
+
+    dependency = compose_stage.product_dependencies[0]
 
     assert dependency.model == "artwork"
     assert dependency.stage == "vector"
@@ -101,13 +121,74 @@ def test_shape_registered_artwork_dependency_contains_only_logical_identity() ->
 
 def test_shape_registered_artwork_consumer_declares_no_physical_parameters() -> None:
     """
-    Consuming registered Artwork does not yet dimensionalize it.
+    Consuming registered Artwork does not itself dimensionalize it.
 
-    Physical Shape sizing, fitting, extrusion, and packaging belong to later
-    Shape behavior and must not be introduced merely to establish the logical
-    registered-geometry dependency.
+    Physical Shape sizing belongs to structural Shape production rather than
+    to the registered-Artwork dependency declaration.
     """
 
-    stage = MODEL.stages[0]
+    compose_stage = _compose_stage()
 
-    assert stage.parameters == ()
+    assert compose_stage.parameters == ()
+
+
+# =========================================================
+# Structural Shape declaration
+# =========================================================
+
+
+def test_shape_declares_structural_stage() -> None:
+    """
+    Shape declares an independently executable structural stage.
+
+    Structural Shape production does not depend on registered Artwork.
+    """
+
+    structure_stage = _structure_stage()
+
+    assert structure_stage.product_dependencies == ()
+
+
+def test_shape_structure_consumes_structural_parameters() -> None:
+    """
+    Structural production consumes the Shape geometry dimensions.
+
+    These names identify values supplied by normal configuration resolution;
+    their defaults belong to the Shape model's parameters.toml.
+    """
+
+    structure_stage = _structure_stage()
+
+    assert structure_stage.parameters == (
+        "shape_geometry",
+        "shape_size",
+        "shape_base_raise",
+    )
+
+
+def test_shape_structure_produces_persistent_structure() -> None:
+    """
+    Structural production declares one independently verifiable product.
+
+    The product participates in the normal resumable-build and canonical
+    product-resolution contracts.
+    """
+
+    structure_stage = _structure_stage()
+
+    assert tuple(product.name for product in structure_stage.products) == ("structure",)
+
+
+def test_shape_structure_has_canonical_relative_product_path() -> None:
+    """
+    Shape structural geometry has a model-declared relative product path.
+
+    Generated filesystem placement remains the responsibility of planning
+    and product resolution rather than artifact configuration.
+    """
+
+    structure_stage = _structure_stage()
+
+    product = next(product for product in structure_stage.products if product.name == "structure")
+
+    assert product.path == "structure.3mf"

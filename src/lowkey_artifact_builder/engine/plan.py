@@ -29,6 +29,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lowkey_artifact_builder.config import (
+    ConfigError,
     Resolver,
     get_product_dependency_binding,
     get_realization_names,
@@ -403,18 +404,28 @@ def _resolve_product_dependency_bindings(
     graph is bound through artifact configuration to the concrete
     producer artifact and realization that will supply the product.
 
+    Configuration failures encountered while resolving bindings are
+    translated to BuildPlanError so callers of the planning subsystem
+    receive its public error type.
+
     Producer existence and producer build planning are intentionally
     outside this function's responsibility.
     """
 
-    return tuple(
-        get_product_dependency_binding(
-            artifact_id,
-            dependency,
-            project_root=project_root,
+    try:
+        return tuple(
+            get_product_dependency_binding(
+                artifact_id,
+                dependency,
+                project_root=project_root,
+            )
+            for dependency in product_dependencies
         )
-        for dependency in product_dependencies
-    )
+
+    except ConfigError as exc:
+        raise BuildPlanError(
+            f"Unable to resolve product dependencies for artifact {artifact_id!r}: {exc}"
+        ) from exc
 
 
 def _plan_product_dependencies(

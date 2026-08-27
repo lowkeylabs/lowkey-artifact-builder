@@ -29,6 +29,9 @@ from lowkey_artifact_builder.model import (
 def test_product_catalog_contains_artwork_products() -> None:
     """
     The product catalog contains every product defined by artwork.
+
+    Products belonging to other registered models do not affect the
+    Artwork-specific catalog contract exercised by this test.
     """
 
     registry = build_model_registry()
@@ -41,14 +44,17 @@ def test_product_catalog_contains_artwork_products() -> None:
         graph,
     )
 
-    assert tuple(
+    artwork_products = tuple(
         (
             product.model_name,
             product.stage_name,
             product.product_name,
         )
         for product in catalog.products
-    ) == (
+        if product.model_name == "artwork"
+    )
+
+    assert artwork_products == (
         (
             "artwork",
             "prepare",

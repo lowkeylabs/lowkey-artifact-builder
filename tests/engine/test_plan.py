@@ -2301,9 +2301,8 @@ def test_create_build_plan_binds_shape_registered_artwork_dependency(
     """
     Complete Shape planning binds its declared registered Artwork dependency.
 
-    A cross-model product dependency belongs to the participating Shape stage
-    whether that stage was selected through an explicit product target or
-    through normal complete-artifact planning.
+    Structural Shape production participates independently, while the compose
+    stage consumes the configured registered Artwork product.
     """
 
     write_artifact_config(
@@ -2340,7 +2339,10 @@ def test_create_build_plan_binds_shape_registered_artwork_dependency(
         realization="default",
     )
 
-    assert tuple(stage.name for stage in plan.stages) == ("compose",)
+    assert tuple(stage.name for stage in plan.stages) == (
+        "structure",
+        "compose",
+    )
 
     assert plan.product_dependencies == (dependency,)
 
@@ -2377,9 +2379,10 @@ def test_create_build_plan_requires_shape_registered_artwork_binding(
     """
     Complete Shape planning requires a producer binding for registered Artwork.
 
-    The Shape model declares that registered Artwork is required by its
-    participating compose stage, so an artifact that does not bind that
-    dependency cannot produce a valid complete build plan.
+    Structural Shape geometry is independently producible, but a complete
+    untargeted build includes the compose stage. Because compose declares the
+    registered Artwork product dependency, that complete build requires a
+    concrete producer binding.
     """
 
     write_artifact_config(
@@ -2391,10 +2394,52 @@ def test_create_build_plan_requires_shape_registered_artwork_binding(
     )
 
     with pytest.raises(
-        Exception,
+        BuildPlanError,
         match="manifest",
     ):
         create_build_plan(
             "shape-example",
             project_root=tmp_path,
         )
+
+
+def test_create_build_plan_targets_shape_structure_without_artwork_binding(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape structural geometry can be planned without registered Artwork.
+
+    Targeting the structure product selects only the independent structural
+    producer. The downstream compose stage and its cross-artifact Artwork
+    dependency are therefore outside the requested realization closure.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    target = ProductRef(
+        artifact="shape-example",
+        model="shape",
+        realization="default",
+        stage="structure",
+        product="structure",
+    )
+
+    plan = create_build_plan(
+        "shape-example",
+        targets=(target,),
+        project_root=tmp_path,
+    )
+
+    assert plan.targets == (target,)
+
+    assert tuple(stage.name for stage in plan.stages) == ("structure",)
+
+    assert plan.product_dependencies == ()
+    assert plan.product_dependency_bindings == ()
+    assert plan.planned_product_dependencies == ()

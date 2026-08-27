@@ -461,13 +461,15 @@ def test_shape_context_receives_registered_artwork_manifest(
     tmp_path: Path,
 ) -> None:
     """
-    Shape receives bound registered Artwork through its StageContext.
+    Shape compose receives bound registered Artwork through its StageContext.
 
-    Complete Shape planning resolves the declarative Artwork vector-manifest
-    dependency to its canonical producer path. Planned context construction
-    then exposes that path using the fully qualified logical dependency name.
+    Complete Shape planning includes independent structural production and
+    registered-Artwork composition. Planning resolves the declarative Artwork
+    vector-manifest dependency to its canonical producer path.
 
-    The consumer does not discover or construct the producer filesystem path.
+    Planned context construction then exposes that path to the compose stage
+    using the fully qualified logical dependency name. The consumer does not
+    discover or construct the producer filesystem path.
     """
 
     write_artifact_config(
@@ -492,9 +494,15 @@ def test_shape_context_receives_registered_artwork_manifest(
         project_root=tmp_path,
     )
 
-    assert tuple(stage.name for stage in plan.stages) == ("compose",)
+    assert tuple(stage.name for stage in plan.stages) == (
+        "structure",
+        "compose",
+    )
 
-    stage = plan.stages[0]
+    stage = _stage_by_name(
+        plan,
+        "compose",
+    )
 
     context = create_planned_stage_context(
         plan,
