@@ -173,20 +173,31 @@ geometry types.
 A suitable incremental sequence is:
 
 1. Declare the minimum Shape stage/product contract.
-2. Test circle size semantics.
-3. Implement circle 2D geometry.
-4. Test physical base thickness.
-5. Dimensionalize/extrude the circle into a structural base.
-6. Package the resulting component into a valid 3MF.
-7. Add an acceptance test proving a Shape without Artwork is a complete valid
-   artifact.
+2. Establish canonical registered circle geometry.
+3. Extend canonical registered geometry to square and octagon.
+4. Establish common physical `shape_size` envelope semantics.
+5. Establish physical base-thickness semantics through `shape_base_raise`.
+6. Establish the registered composition boundary required before physical dimensionalization.
+7. Dimensionalize/extrude registered Shape geometry into a structural base.
+8. Package the resulting component into a valid 3MF.
+9. Add an acceptance test proving a Shape without Artwork is a complete valid artifact.
 
-Do not introduce Artwork composition into this first production slice.
+Steps 1–5 are implemented at current HEAD.
+
+Do not introduce Artwork composition behavior into this first production
+slice. The registered composition boundary may be declared before Artwork
+composition itself is implemented.
+
 
 # Phase 12 — Shape Structural Geometry
 
 Complete the structural portion of the initial Shape model defined by
 `shape/DEFINITION.md`.
+
+The registered geometry and common base-value semantics described by 12.1 and
+the geometry-level portion of 12.2 were established incrementally during
+Phase 11. Those completed behaviors need not be reimplemented. Phase 12
+continues from the remaining structural behavior at repository HEAD.
 
 ## 12.1 Common Shape Geometry Semantics
 
