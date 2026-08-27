@@ -26,6 +26,7 @@ format:
 	uv run ruff check --fix src tests
 
 typecheck:
+	uv run ruff check src tests
 	uv run pyright
 
 pre-commit:
