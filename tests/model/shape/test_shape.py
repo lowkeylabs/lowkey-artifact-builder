@@ -15,7 +15,7 @@ from lowkey_artifact_builder.model.models.shape import MODEL
 
 
 def _compose_stage():
-    """Return the Shape stage that consumes registered Artwork."""
+    """Return the Shape stage that composes registered geometry."""
 
     return next(stage for stage in MODEL.stages if stage.name == "compose")
 
@@ -24,6 +24,12 @@ def _structure_stage():
     """Return the Shape stage that produces structural geometry."""
 
     return next(stage for stage in MODEL.stages if stage.name == "structure")
+
+
+def _extrude_stage():
+    """Return the Shape stage that dimensionalizes registered geometry."""
+
+    return next(stage for stage in MODEL.stages if stage.name == "extrude")
 
 
 # =========================================================
@@ -123,8 +129,7 @@ def test_shape_registered_artwork_consumer_declares_no_physical_parameters() -> 
     """
     Consuming registered Artwork does not itself dimensionalize it.
 
-    Physical Shape sizing belongs to structural Shape production rather than
-    to the registered-Artwork dependency declaration.
+    Physical Shape sizing belongs downstream of registered composition.
     """
 
     compose_stage = _compose_stage()
@@ -141,11 +146,13 @@ def test_shape_declares_structural_stage() -> None:
     """
     Shape declares an independently executable structural stage.
 
-    Structural Shape production does not depend on registered Artwork.
+    Structural Shape production has no prerequisite stage or registered
+    Artwork dependency.
     """
 
     structure_stage = _structure_stage()
 
+    assert structure_stage.dependencies == ()
     assert structure_stage.product_dependencies == ()
 
 
@@ -193,3 +200,116 @@ def test_shape_structure_has_canonical_relative_product_path() -> None:
     product = next(product for product in structure_stage.products if product.name == "structure")
 
     assert product.path == "structure.svg"
+
+
+# =========================================================
+# Registered composition boundary
+# =========================================================
+
+
+def test_shape_compose_depends_on_structure_stage() -> None:
+    """
+    Shape composition follows registered structural production.
+
+    Products from the Shape-local structure stage participate in the normal
+    model-local stage dependency closure rather than the external product
+    dependency mechanism.
+    """
+
+    compose_stage = _compose_stage()
+
+    assert compose_stage.dependencies == ("structure",)
+
+
+def test_shape_compose_produces_registered_composition() -> None:
+    """
+    Shape composition produces persistent registered geometry.
+
+    The composition remains nonphysical so downstream dimensionalization can
+    apply Shape physical dimensions to the complete registered composition.
+    """
+
+    compose_stage = _compose_stage()
+
+    assert tuple(product.name for product in compose_stage.products) == ("composition",)
+
+    product = compose_stage.products[0]
+
+    assert product.path == "composition.svg"
+
+
+def test_shape_registered_composition_has_no_physical_parameters() -> None:
+    """
+    Registered composition does not introduce physical Shape dimensions.
+
+    Physical X/Y size and Z dimensions belong to the downstream
+    dimensionalization boundary.
+    """
+
+    compose_stage = _compose_stage()
+
+    assert compose_stage.parameters == ()
+
+
+# =========================================================
+# Physical dimensionalization boundary
+# =========================================================
+
+
+def test_shape_declares_extrude_stage_after_registered_composition() -> None:
+    """
+    Shape declares physical extrusion downstream of registered composition.
+
+    Numeric stage IDs establish deterministic presentation order rather than
+    semantic identity or dependency.
+    """
+
+    structure_stage = _structure_stage()
+    compose_stage = _compose_stage()
+    extrude_stage = _extrude_stage()
+
+    assert structure_stage.id < compose_stage.id < extrude_stage.id
+
+
+def test_shape_extrude_depends_on_compose_stage() -> None:
+    """
+    Shape extrusion follows registered composition.
+
+    The composed Shape product belongs to the same model-local stage closure
+    and therefore does not require an external product dependency binding.
+    """
+
+    extrude_stage = _extrude_stage()
+
+    assert extrude_stage.dependencies == ("compose",)
+    assert extrude_stage.product_dependencies == ()
+
+
+def test_shape_extrude_consumes_physical_base_parameters() -> None:
+    """
+    Shape extrusion owns the physical dimensions of the structural base.
+
+    shape_size introduces the physical X/Y envelope and shape_base_raise
+    introduces the physical Z thickness.
+    """
+
+    extrude_stage = _extrude_stage()
+
+    assert extrude_stage.parameters == (
+        "shape_size",
+        "shape_base_raise",
+    )
+
+
+def test_shape_extrude_produces_physical_base_geometry() -> None:
+    """
+    Shape extrusion produces persistent physical base manufacturing geometry.
+    """
+
+    extrude_stage = _extrude_stage()
+
+    assert tuple(product.name for product in extrude_stage.products) == ("base",)
+
+    product = extrude_stage.products[0]
+
+    assert product.path == "base.3mf"

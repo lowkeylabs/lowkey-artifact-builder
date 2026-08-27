@@ -497,6 +497,7 @@ def test_shape_context_receives_registered_artwork_manifest(
     assert tuple(stage.name for stage in plan.stages) == (
         "structure",
         "compose",
+        "extrude",
     )
 
     stage = _stage_by_name(
@@ -510,6 +511,15 @@ def test_shape_context_receives_registered_artwork_manifest(
     )
 
     assert context.inputs == {
+        "structure.structure": (
+            tmp_path
+            / "artifacts"
+            / "shape-example"
+            / "shape"
+            / "default"
+            / "10-structure"
+            / "structure.svg"
+        ),
         "artwork.vector.manifest": (
             tmp_path
             / "artifacts"

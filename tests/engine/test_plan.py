@@ -2342,6 +2342,7 @@ def test_create_build_plan_binds_shape_registered_artwork_dependency(
     assert tuple(stage.name for stage in plan.stages) == (
         "structure",
         "compose",
+        "extrude",
     )
 
     assert plan.product_dependencies == (dependency,)
