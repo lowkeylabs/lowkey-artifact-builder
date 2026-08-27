@@ -622,3 +622,267 @@ def test_vector_manifest_records_registered_extent(
     )
 
     assert data["registered_extent"] == 10
+
+
+def test_vector_layers_share_one_registered_coordinate_system(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Every vector layer is traced in one common registered coordinate system.
+
+    Individual raster layers may occupy different regions of the source
+    raster. Vectorization must nevertheless apply the same union crop to
+    every layer so downstream consumers can combine the resulting geometry
+    without independently aligning the SVG products.
+    """
+
+    raster_directory = tmp_path / "raster"
+
+    first_raster = raster_directory / "first.png"
+    second_raster = raster_directory / "second.png"
+
+    _write_raster(
+        first_raster,
+        box=(2, 4, 8, 10),
+    )
+
+    _write_raster(
+        second_raster,
+        box=(12, 10, 18, 16),
+    )
+
+    raster_manifest = raster_directory / "products.json"
+
+    _write_raster_manifest(
+        raster_manifest,
+        [
+            {
+                "index": 1,
+                "path": first_raster.name,
+                "name": "white",
+                "color": _color(
+                    255,
+                    255,
+                    255,
+                ),
+            },
+            {
+                "index": 2,
+                "path": second_raster.name,
+                "name": "black",
+                "color": _color(
+                    0,
+                    0,
+                    0,
+                ),
+            },
+        ],
+    )
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "raster.manifest": raster_manifest,
+        },
+        outputs={
+            "manifest": vector_manifest,
+        },
+        resolver=StubResolver({}),
+    )
+
+    observed: list[
+        tuple[
+            Path,
+            Path,
+            vector.RasterCrop,
+        ]
+    ] = []
+
+    def fake_trace_mask(
+        source: Path,
+        output: Path,
+        *,
+        crop: vector.RasterCrop,
+    ) -> None:
+        observed.append(
+            (
+                source,
+                output,
+                crop,
+            )
+        )
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_text(
+            "<svg/>",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        vector,
+        "_trace_mask",
+        fake_trace_mask,
+    )
+
+    vector.execute(context)  # type: ignore[arg-type]
+
+    assert len(observed) == 2
+
+    first_crop = observed[0][2]
+    second_crop = observed[1][2]
+
+    assert first_crop == second_crop
+
+    assert first_crop == vector.RasterCrop(
+        x=2,
+        y=2,
+        size=16,
+    )
+
+    data = json.loads(
+        vector_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert data["registered_extent"] == first_crop.size
+
+    assert [
+        product["name"]
+        for product in data["products"]
+    ] == [
+        "white",
+        "black",
+    ]
+
+    assert [
+        product["index"]
+        for product in data["products"]
+    ] == [
+        1,
+        2,
+    ]
+    
+def test_vector_registration_is_based_on_union_of_all_layers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Registered vector extent is determined from the union of all layers.
+
+    No individual color layer may establish its own coordinate extent,
+    because doing so would destroy registration between independently
+    consumable vector products.
+    """
+
+    raster_directory = tmp_path / "raster"
+
+    left_raster = raster_directory / "left.png"
+    right_raster = raster_directory / "right.png"
+
+    _write_raster(
+        left_raster,
+        box=(1, 8, 5, 12),
+    )
+
+    _write_raster(
+        right_raster,
+        box=(15, 8, 19, 12),
+    )
+
+    raster_manifest = raster_directory / "products.json"
+
+    _write_raster_manifest(
+        raster_manifest,
+        [
+            {
+                "index": 1,
+                "path": left_raster.name,
+                "name": "white",
+                "color": _color(
+                    255,
+                    255,
+                    255,
+                ),
+            },
+            {
+                "index": 2,
+                "path": right_raster.name,
+                "name": "black",
+                "color": _color(
+                    0,
+                    0,
+                    0,
+                ),
+            },
+        ],
+    )
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "raster.manifest": raster_manifest,
+        },
+        outputs={
+            "manifest": vector_manifest,
+        },
+        resolver=StubResolver({}),
+    )
+
+    crops: list[vector.RasterCrop] = []
+
+    def fake_trace_mask(
+        source: Path,
+        output: Path,
+        *,
+        crop: vector.RasterCrop,
+    ) -> None:
+        crops.append(crop)
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_text(
+            "<svg/>",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        vector,
+        "_trace_mask",
+        fake_trace_mask,
+    )
+
+    vector.execute(context)  # type: ignore[arg-type]
+
+    assert crops == [
+        vector.RasterCrop(
+            x=1,
+            y=1,
+            size=18,
+        ),
+        vector.RasterCrop(
+            x=1,
+            y=1,
+            size=18,
+        ),
+    ]
+
+    data = json.loads(
+        vector_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert data["registered_extent"] == 18
+    
+    
