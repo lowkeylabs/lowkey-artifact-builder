@@ -164,6 +164,113 @@ def test_circle_svg_can_be_persisted_as_declared_structure_product(
 
 
 # =========================================================
+# Square registered geometry
+# =========================================================
+
+
+def test_square_geometry_uses_canonical_registered_extent() -> None:
+    """
+    Square structural geometry uses the canonical Shape registered extent.
+    """
+
+    geometry = structure.create_square_geometry()
+
+    assert geometry.width == 1.0
+    assert geometry.height == 1.0
+    assert geometry.min_x == -0.5
+    assert geometry.max_x == 0.5
+    assert geometry.min_y == -0.5
+    assert geometry.max_y == 0.5
+
+
+def test_square_svg_contains_canonical_registered_square() -> None:
+    """
+    Registered square SVG fills the canonical Shape envelope.
+    """
+
+    geometry = structure.create_square_geometry()
+
+    document = structure.create_square_svg(
+        geometry,
+    )
+
+    root = document.getroot()
+
+    assert root.get("viewBox") == "-0.5 -0.5 1.0 1.0"
+
+    rect = root.find(
+        "{http://www.w3.org/2000/svg}rect",
+    )
+
+    assert rect is not None
+    assert rect.get("x") == "-0.5"
+    assert rect.get("y") == "-0.5"
+    assert rect.get("width") == "1.0"
+    assert rect.get("height") == "1.0"
+
+
+# =========================================================
+# Octagon registered geometry
+# =========================================================
+
+
+def test_octagon_geometry_uses_canonical_registered_extent() -> None:
+    """
+    Octagon geometry uses a canonical 1.0 by 1.0 bounding envelope.
+    """
+
+    geometry = structure.create_octagon_geometry()
+
+    assert geometry.width == 1.0
+    assert geometry.height == 1.0
+    assert geometry.min_x == -0.5
+    assert geometry.max_x == 0.5
+    assert geometry.min_y == -0.5
+    assert geometry.max_y == 0.5
+
+
+def test_octagon_svg_contains_centered_regular_octagon() -> None:
+    """
+    Registered octagon SVG contains a centered regular octagon.
+
+    Its opposing horizontal and vertical vertices establish the canonical
+    1.0 by 1.0 Shape bounding envelope.
+    """
+
+    geometry = structure.create_octagon_geometry()
+
+    document = structure.create_octagon_svg(
+        geometry,
+    )
+
+    root = document.getroot()
+
+    assert root.get("viewBox") == "-0.5 -0.5 1.0 1.0"
+
+    polygon = root.find(
+        "{http://www.w3.org/2000/svg}polygon",
+    )
+
+    assert polygon is not None
+
+    points = polygon.get("points")
+
+    assert points is not None
+
+    coordinates = [tuple(float(value) for value in point.split(",")) for point in points.split()]
+
+    assert len(coordinates) == 8
+
+    xs = [point[0] for point in coordinates]
+    ys = [point[1] for point in coordinates]
+
+    assert min(xs) == pytest.approx(-0.5)
+    assert max(xs) == pytest.approx(0.5)
+    assert min(ys) == pytest.approx(-0.5)
+    assert max(ys) == pytest.approx(0.5)
+
+
+# =========================================================
 # Structural stage execution
 # =========================================================
 
@@ -224,20 +331,71 @@ def test_structure_stage_materializes_declared_registered_product(
     assert circle.get("r") == "0.5"
 
 
-def test_structure_stage_rejects_unsupported_geometry(
+@pytest.mark.parametrize(
+    ("shape_geometry", "element_name"),
+    (
+        ("circle", "circle"),
+        ("square", "rect"),
+        ("octagon", "polygon"),
+    ),
+)
+def test_structure_stage_materializes_selected_registered_geometry(
     tmp_path: Path,
+    shape_geometry: str,
+    element_name: str,
 ) -> None:
     """
-    Structural production rejects geometry it does not yet implement.
+    Structural production dispatches every declared Shape geometry.
 
-    Unsupported geometry must not silently produce circle geometry.
+    Every supported geometry is persisted in the same canonical registered
+    Shape envelope.
     """
 
     output = tmp_path / "structure.svg"
 
     resolver = Mock(
         side_effect={
-            "shape_geometry": "square",
+            "shape_geometry": shape_geometry,
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.output.return_value = output
+
+    structure.execute(
+        context,
+    )
+
+    assert output.is_file()
+
+    root = ET.parse(
+        output,
+    ).getroot()
+
+    assert root.get("viewBox") == "-0.5 -0.5 1.0 1.0"
+
+    element = root.find(
+        f"{{http://www.w3.org/2000/svg}}{element_name}",
+    )
+
+    assert element is not None
+
+
+def test_structure_stage_rejects_unknown_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Structural production rejects geometry outside the Shape definition.
+    """
+
+    output = tmp_path / "structure.svg"
+
+    resolver = Mock(
+        side_effect={
+            "shape_geometry": "triangle",
         }.__getitem__,
     )
 
@@ -249,7 +407,7 @@ def test_structure_stage_rejects_unsupported_geometry(
 
     with pytest.raises(
         ValueError,
-        match="square",
+        match="triangle",
     ):
         structure.execute(
             context,

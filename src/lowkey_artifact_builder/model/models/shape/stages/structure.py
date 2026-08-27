@@ -12,6 +12,7 @@ Physical dimensionalization and extrusion belong to downstream Shape stages.
 
 from __future__ import annotations
 
+import math
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
@@ -76,6 +77,130 @@ class CircleGeometry:
         return self.diameter / 2.0
 
 
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class SquareGeometry:
+    """
+    Registered two-dimensional geometry of a square Shape.
+
+    The square fills the canonical unit envelope centered about the origin.
+    """
+
+    side: float = 1.0
+
+    @property
+    def width(self) -> float:
+        """Return the registered X extent."""
+
+        return self.side
+
+    @property
+    def height(self) -> float:
+        """Return the registered Y extent."""
+
+        return self.side
+
+    @property
+    def min_x(self) -> float:
+        """Return the minimum registered X coordinate."""
+
+        return -(self.side / 2.0)
+
+    @property
+    def max_x(self) -> float:
+        """Return the maximum registered X coordinate."""
+
+        return self.side / 2.0
+
+    @property
+    def min_y(self) -> float:
+        """Return the minimum registered Y coordinate."""
+
+        return -(self.side / 2.0)
+
+    @property
+    def max_y(self) -> float:
+        """Return the maximum registered Y coordinate."""
+
+        return self.side / 2.0
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class OctagonGeometry:
+    """
+    Registered two-dimensional geometry of a regular octagonal Shape.
+
+    The octagon is centered about the origin and fits within the canonical
+    unit bounding envelope.
+    """
+
+    extent: float = 1.0
+
+    @property
+    def width(self) -> float:
+        """Return the registered X extent."""
+
+        return self.extent
+
+    @property
+    def height(self) -> float:
+        """Return the registered Y extent."""
+
+        return self.extent
+
+    @property
+    def min_x(self) -> float:
+        """Return the minimum registered X coordinate."""
+
+        return -(self.extent / 2.0)
+
+    @property
+    def max_x(self) -> float:
+        """Return the maximum registered X coordinate."""
+
+        return self.extent / 2.0
+
+    @property
+    def min_y(self) -> float:
+        """Return the minimum registered Y coordinate."""
+
+        return -(self.extent / 2.0)
+
+    @property
+    def max_y(self) -> float:
+        """Return the maximum registered Y coordinate."""
+
+        return self.extent / 2.0
+
+    @property
+    def vertices(self) -> tuple[tuple[float, float], ...]:
+        """
+        Return the vertices of the centered regular octagon.
+
+        Opposing horizontal and vertical vertices establish the complete
+        canonical registered bounding envelope.
+        """
+
+        radius = self.extent / 2.0
+
+        return tuple(
+            (
+                radius * math.cos(math.radians(angle)),
+                radius * math.sin(math.radians(angle)),
+            )
+            for angle in range(
+                0,
+                360,
+                45,
+            )
+        )
+
+
 # =========================================================
 # Public interface
 # =========================================================
@@ -98,17 +223,26 @@ def execute(
         "shape_geometry",
     )
 
-    if shape_geometry != "circle":
+    if shape_geometry == "circle":
+        document = create_circle_svg(
+            create_circle_geometry(),
+        )
+
+    elif shape_geometry == "square":
+        document = create_square_svg(
+            create_square_geometry(),
+        )
+
+    elif shape_geometry == "octagon":
+        document = create_octagon_svg(
+            create_octagon_geometry(),
+        )
+
+    else:
         raise ValueError(f"Unsupported Shape geometry: {shape_geometry!r}.")
 
     output = context.output(
         "structure",
-    )
-
-    geometry = create_circle_geometry()
-
-    document = create_circle_svg(
-        geometry,
     )
 
     svg.save(
@@ -133,6 +267,28 @@ def create_circle_geometry() -> CircleGeometry:
     return CircleGeometry()
 
 
+def create_square_geometry() -> SquareGeometry:
+    """
+    Construct canonical registered square Shape geometry.
+
+    The square fills the canonical unit envelope centered about the origin
+    without introducing physical dimensions.
+    """
+
+    return SquareGeometry()
+
+
+def create_octagon_geometry() -> OctagonGeometry:
+    """
+    Construct canonical registered regular octagonal Shape geometry.
+
+    The octagon is centered about the origin and fits within the canonical
+    unit bounding envelope without introducing physical dimensions.
+    """
+
+    return OctagonGeometry()
+
+
 # =========================================================
 # SVG construction
 # =========================================================
@@ -148,11 +304,11 @@ def create_circle_svg(
     not assign physical width or height attributes.
     """
 
-    root = ET.Element(
-        f"{{{SVG_NS}}}svg",
-        {
-            "viewBox": (f"{geometry.min_x} {geometry.min_y} {geometry.width} {geometry.height}"),
-        },
+    root = _create_svg_root(
+        min_x=geometry.min_x,
+        min_y=geometry.min_y,
+        width=geometry.width,
+        height=geometry.height,
     )
 
     ET.SubElement(
@@ -167,4 +323,96 @@ def create_circle_svg(
 
     return ET.ElementTree(
         root,
+    )
+
+
+def create_square_svg(
+    geometry: SquareGeometry,
+) -> ET.ElementTree[ET.Element[str]]:
+    """
+    Construct an SVG document containing registered square Shape geometry.
+
+    The square fills the canonical registered envelope and does not introduce
+    physical dimensions.
+    """
+
+    root = _create_svg_root(
+        min_x=geometry.min_x,
+        min_y=geometry.min_y,
+        width=geometry.width,
+        height=geometry.height,
+    )
+
+    ET.SubElement(
+        root,
+        f"{{{SVG_NS}}}rect",
+        {
+            "x": str(geometry.min_x),
+            "y": str(geometry.min_y),
+            "width": str(geometry.width),
+            "height": str(geometry.height),
+        },
+    )
+
+    return ET.ElementTree(
+        root,
+    )
+
+
+def create_octagon_svg(
+    geometry: OctagonGeometry,
+) -> ET.ElementTree[ET.Element[str]]:
+    """
+    Construct an SVG document containing registered octagonal Shape geometry.
+
+    The regular octagon is centered within the canonical registered envelope
+    and does not introduce physical dimensions.
+    """
+
+    root = _create_svg_root(
+        min_x=geometry.min_x,
+        min_y=geometry.min_y,
+        width=geometry.width,
+        height=geometry.height,
+    )
+
+    points = " ".join(f"{x},{y}" for x, y in geometry.vertices)
+
+    ET.SubElement(
+        root,
+        f"{{{SVG_NS}}}polygon",
+        {
+            "points": points,
+        },
+    )
+
+    return ET.ElementTree(
+        root,
+    )
+
+
+# =========================================================
+# SVG helpers
+# =========================================================
+
+
+def _create_svg_root(
+    *,
+    min_x: float,
+    min_y: float,
+    width: float,
+    height: float,
+) -> ET.Element[str]:
+    """
+    Construct the root for a registered Shape SVG document.
+
+    Registered SVG documents describe geometry only and therefore omit
+    physical width and height attributes.
+    """
+
+    return ET.Element(
+        f"{{{SVG_NS}}}svg",
+        {
+            "viewBox": (f"{min_x} {min_y} {width} {height}"),
+        },
     )
