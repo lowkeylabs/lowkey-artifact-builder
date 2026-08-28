@@ -18,7 +18,7 @@ The initial Shape model supports:
 
 - circle, square, and octagon geometry;
 - a physical base;
-- an optional outer ridge;
+- an optional integrated or separately printable outer ridge;
 - optional registered Artwork;
 - a printable multicomponent 3MF.
 
@@ -30,6 +30,13 @@ coordinate space. Structural Shape geometry and incorporated Artwork remain
 registered through composition.
 
 Physical dimensionalization occurs after registered composition.
+
+The assembled physical Shape and its partitioning into independently
+printable components are distinct concepts.
+
+Two Shape configurations may therefore describe the same assembled physical
+geometry while partitioning that geometry into different printable
+components.
 
 
 ## Geometry
@@ -62,6 +69,11 @@ A dimensionalized Shape with:
 
 therefore fits within a 100 mm × 100 mm envelope regardless of the
 selected geometry.
+
+`shape_size` defines the complete assembled Shape envelope.
+
+Optional structural features, including an outer ridge, do not increase
+this envelope.
 
 `shape_size` does not determine the coordinate extent of the registered
 structural representation.
@@ -117,6 +129,9 @@ Structural geometry is determined by Shape geometry policy such as:
 
 The structural representation is two-dimensional registered geometry.
 
+Structural geometry describes the complete Shape envelope independently
+of how later physical geometry is partitioned into printable components.
+
 The `structure` stage does not produce the final physical Shape,
 extruded manufacturing geometry, or a packaged 3MF.
 
@@ -132,13 +147,8 @@ The base follows the selected:
 
     shape_geometry
 
-Its two-dimensional outline is established by the registered structural
+The complete Shape outline is established by the registered structural
 geometry.
-
-During physical dimensionalization, that registered outline is scaled so
-that the complete physical Shape envelope is determined by:
-
-    shape_size
 
 The physical thickness of the base is determined by:
 
@@ -155,6 +165,15 @@ through:
 Base thickness therefore belongs to physical dimensionalization rather
 than to the registered two-dimensional structural representation.
 
+Without a separately printable outer ridge, the base occupies the complete
+Shape X/Y envelope.
+
+With a separately printable outer ridge, the base occupies the region
+inside the ridge's inner boundary.
+
+The separately printable ridge therefore reduces the X/Y extent of the
+base component without reducing the complete assembled Shape envelope.
+
 
 ## Outer Ridge
 
@@ -164,6 +183,12 @@ The ridge is controlled by:
 
     shape_outer_ridge_width
     shape_outer_ridge_raise
+    shape_outer_ridge_style
+
+The supported ridge styles are:
+
+    integrated
+    separate
 
 The ridge follows the boundary of the selected Shape geometry.
 
@@ -180,8 +205,10 @@ The ridge exists only when both:
 
 If either value is zero, the ridge does not exist.
 
-`shape_outer_ridge_width` is a physical dimension measured in
-millimeters.
+When the ridge does not exist, `shape_outer_ridge_style` has no effect on
+the produced geometry.
+
+`shape_outer_ridge_width` is a physical dimension measured in millimeters.
 
 When ridge geometry must participate in registered composition before
 physical dimensionalization, its physical width is converted to a
@@ -197,13 +224,163 @@ This conversion does not assign physical dimensions to the registered
 coordinate system. It expresses physical Shape policy as a relative
 relationship within registered Shape space.
 
-The dimensionalized ridge begins at the top of the base:
+
+## Integrated Outer Ridge
+
+With:
+
+    shape_outer_ridge_style = integrated
+
+the ridge is structurally integrated with the base.
+
+The base retains the complete Shape X/Y envelope.
+
+The ridge occupies the perimeter region between:
+
+    the complete Shape outer boundary
+
+and:
+
+    the ridge inner boundary
+
+The ridge lies on top of the base.
+
+The dimensionalized base occupies:
+
+    Z = 0
+
+through:
 
     Z = shape_base_raise
 
-and extends through:
+The dimensionalized ridge occupies:
+
+    Z = shape_base_raise
+
+through:
 
     Z = shape_base_raise + shape_outer_ridge_raise
+
+The base and ridge together form one structural printable component.
+
+Conceptually, for:
+
+    shape_base_raise = 2
+    shape_outer_ridge_raise = 1
+
+the integrated structure has:
+
+    base   -> Z = 0 through 2
+    ridge  -> Z = 2 through 3
+
+The complete assembled structural height at the ridge is therefore:
+
+    shape_base_raise + shape_outer_ridge_raise
+
+
+## Separate Outer Ridge
+
+With:
+
+    shape_outer_ridge_style = separate
+
+the ridge is an independently printable structural component.
+
+The ridge retains the complete Shape outer boundary.
+
+Its inner boundary is inset from that outer boundary by:
+
+    shape_outer_ridge_width
+
+The base outer boundary becomes the ridge inner boundary.
+
+The base and ridge therefore occupy adjacent, nonoverlapping X/Y regions.
+
+The separately printable base occupies:
+
+    Z = 0
+
+through:
+
+    Z = shape_base_raise
+
+The separately printable ridge occupies:
+
+    Z = 0
+
+through:
+
+    Z = shape_base_raise + shape_outer_ridge_raise
+
+The separate ridge uses the complete assembled ridge height because it
+replaces both the perimeter portion of the base and the raised ridge that
+would otherwise occupy that perimeter.
+
+Conceptually, for:
+
+    shape_base_raise = 2
+    shape_outer_ridge_raise = 1
+
+the separate structure has:
+
+    base   -> Z = 0 through 2
+    ridge  -> Z = 0 through 3
+
+The resulting assembled physical geometry is equivalent to the integrated
+construction, but the structural geometry is partitioned into two
+independently printable components.
+
+This partitioning permits the outer ridge to be assigned independently
+from the base during downstream multicomponent printing.
+
+
+## Ridge Equivalence
+
+For otherwise identical Shape parameters, changing:
+
+    shape_outer_ridge_style
+
+between:
+
+    integrated
+    separate
+
+does not change:
+
+- the complete Shape outer envelope;
+- the ridge outer boundary;
+- the ridge inner boundary;
+- the registered interior region;
+- the complete assembled structural height;
+- the complete assembled physical geometry.
+
+It changes only the partitioning of that geometry into independently
+printable structural components.
+
+For example, for a 100 mm square with:
+
+    shape_outer_ridge_width = 5
+
+both ridge styles have:
+
+    complete outer envelope = 100 mm × 100 mm
+    ridge inner envelope    = 90 mm × 90 mm
+
+With an integrated ridge:
+
+    base outer envelope = 100 mm × 100 mm
+
+because the ridge lies on top of the base.
+
+With a separate ridge:
+
+    base outer envelope = 90 mm × 90 mm
+
+because the independently printable ridge occupies the surrounding
+5 mm perimeter region.
+
+The union of the separate base and separate ridge corresponds to the
+same assembled structural geometry as the integrated base and ridge.
 
 
 ## Interior Region
@@ -216,9 +393,14 @@ Shape boundary.
 With an outer ridge, the interior region is bounded by the registered
 inner boundary of the ridge.
 
-An outer ridge therefore reduces the registered area available for
-Artwork without changing the registered outer Shape envelope or the
-physical value of:
+The same ridge inner boundary is used for integrated and separate ridge
+styles.
+
+Changing ridge style therefore does not change the registered area
+available for Artwork.
+
+An outer ridge reduces the registered area available for Artwork without
+changing the registered outer Shape envelope or the physical value of:
 
     shape_size
 
@@ -262,7 +444,7 @@ requires the upstream dependency:
           ↓
     artwork/vector
           ↓
-    shape
+        shape
 
 Artwork stages after the consumed vector product are not prerequisites.
 
@@ -352,10 +534,28 @@ into registered Shape coordinate space.
 Composition does not assign the final physical X/Y dimensions of the
 Shape.
 
-The composed result retains sufficient component identity to allow
-different structural and Artwork components to receive their appropriate
-physical Z semantics during downstream dimensionalization and to remain
-independently printable where required.
+Composition retains sufficient semantic component identity to support
+downstream physical dimensionalization and packaging.
+
+In particular, when:
+
+    shape_outer_ridge_style = separate
+
+the base region and outer-ridge region must remain distinguishable so
+that downstream dimensionalization can produce independently printable
+structural components.
+
+When:
+
+    shape_outer_ridge_style = integrated
+
+the base and ridge belong to one structural printable component even
+though their physical Z semantics differ.
+
+The composed result similarly retains sufficient Artwork component
+identity to allow different structural and Artwork components to receive
+their appropriate physical Z semantics and to remain independently
+printable where required.
 
 
 ## Physical Dimensionalization
@@ -412,6 +612,16 @@ These dimensions include:
     shape_outer_ridge_raise
 
 and the defined Z policy for incorporated Artwork.
+
+Ridge style determines structural component partitioning during
+dimensionalization.
+
+For an integrated ridge, dimensionalization produces one structural
+component containing the base and raised perimeter geometry.
+
+For a separate ridge, dimensionalization produces independent base and
+outer-ridge structural components whose assembled union corresponds to
+the integrated structural geometry.
 
 
 ## Artwork Dimensionalization
@@ -502,11 +712,30 @@ The initial Shape model defines:
     shape_base_raise
     shape_outer_ridge_width
     shape_outer_ridge_raise
+    shape_outer_ridge_style
 
 `shape_geometry` selects the structural geometry.
 
-The remaining parameters are physical dimensions measured in
-millimeters.
+`shape_outer_ridge_style` selects how an enabled outer ridge is partitioned
+into printable structural geometry.
+
+Its supported values are:
+
+    integrated
+    separate
+
+The default ridge style is:
+
+    integrated
+
+The dimensional parameters are:
+
+    shape_size
+    shape_base_raise
+    shape_outer_ridge_width
+    shape_outer_ridge_raise
+
+and are physical dimensions measured in millimeters.
 
 Physical parameters do not imply that every stage consuming Shape policy
 operates in physical coordinate space.
@@ -528,11 +757,19 @@ Physical Shape components are packaged after dimensionalization.
 
 Packaging preserves independently printable components where required.
 
-In particular, incorporated Artwork color components remain independently
+With an integrated outer ridge, the base and outer ridge are packaged as
+one structural component.
+
+With a separate outer ridge, the base and outer ridge remain independent
+structural components in the packaged artifact.
+
+Incorporated Artwork color components likewise remain independently
 printable components suitable for multicolor printing.
 
-Packaging does not determine Shape geometry, Artwork fitting, or physical
-dimensionalization.
+Packaging does not determine Shape geometry, ridge geometry, ridge
+partitioning, Artwork fitting, or physical dimensionalization.
+
+Those semantics must already be established before packaging.
 
 
 ## Final Product
@@ -541,8 +778,13 @@ Shape produces:
 
     artifact.3mf
 
-The final artifact contains the dimensionalized structural Shape
-geometry.
+The final artifact contains the dimensionalized structural Shape geometry.
+
+Without a separate outer ridge, the structural base and any integrated
+ridge are represented as one structural printable component.
+
+With a separate outer ridge, the final artifact contains independently
+printable base and outer-ridge structural components.
 
 When Artwork is configured, the final artifact also contains the
 incorporated Artwork components.
@@ -579,53 +821,85 @@ A conforming initial Shape implementation satisfies the following:
 
 8. An outer ridge follows the selected Shape boundary.
 
-9. The outer ridge lies within the Shape boundary and does not increase
-   `shape_size`.
+9. Outer-ridge width is measured inward from the complete Shape boundary.
 
-10. Zero outer-ridge width or zero outer-ridge raise disables the outer
+10. The outer ridge lies within the Shape boundary and does not increase
+    `shape_size`.
+
+11. Zero outer-ridge width or zero outer-ridge raise disables the outer
     ridge.
 
-11. The inner boundary of an outer ridge defines the available registered
+12. An enabled outer ridge may be integrated with the base or partitioned
+    as a separately printable structural component.
+
+13. With an integrated outer ridge, the base retains the complete Shape
+    X/Y envelope and the ridge occupies the perimeter above the base.
+
+14. With a separate outer ridge, the ridge retains the complete Shape
+    outer boundary and the base outer boundary becomes the ridge inner
+    boundary.
+
+15. A separate outer ridge and its base occupy adjacent, nonoverlapping
+    X/Y regions.
+
+16. An integrated ridge occupies Z from `shape_base_raise` through
+    `shape_base_raise + shape_outer_ridge_raise`.
+
+17. A separate ridge occupies Z from zero through
+    `shape_base_raise + shape_outer_ridge_raise`.
+
+18. Integrated and separate ridge styles produce equivalent complete
+    assembled structural geometry for otherwise identical Shape
+    parameters.
+
+19. Changing ridge style does not change the complete Shape envelope,
+    ridge inner boundary, registered interior region, or complete assembled
+    structural height.
+
+20. The inner boundary of an outer ridge defines the available registered
     interior region when the ridge exists.
 
-12. Physical Shape policy may be converted into relative registered-space
+21. Physical Shape policy may be converted into relative registered-space
     relationships when required for composition without assigning final
     physical dimensions to the registered coordinate system.
 
-13. Shape can consume registered vector Artwork produced by another
+22. Shape can consume registered vector Artwork produced by another
     artifact.
 
-14. Consuming registered Artwork does not require standalone Artwork
+23. Consuming registered Artwork does not require standalone Artwork
     extrusion or packaging.
 
-15. Dynamic Artwork component membership is obtained from its declared
+24. Dynamic Artwork component membership is obtained from its declared
     manifest rather than filesystem scanning.
 
-16. Registered Artwork and registered structural Shape geometry are
+25. Registered Artwork and registered structural Shape geometry are
     composed before final physical X/Y dimensionalization.
 
-17. Shape determines the physical size and placement of incorporated
+26. Shape determines the physical size and placement of incorporated
     Artwork.
 
-18. Incorporated Artwork is centered and uniformly contained within the
+27. Incorporated Artwork is centered and uniformly contained within the
     available interior region.
 
-19. Artwork aspect ratio and registration between color components are
+28. Artwork aspect ratio and registration between color components are
     preserved.
 
-20. All components of one registered Artwork collection receive the same
+29. All components of one registered Artwork collection receive the same
     transformation from Artwork registered space into Shape registered
     space.
 
-21. Physical X/Y dimensionalization of the composed Shape is determined
+30. Physical X/Y dimensionalization of the composed Shape is determined
     by `shape_size`.
 
-22. Physical Z dimensions are introduced according to component semantics
+31. Physical Z dimensions are introduced according to component semantics
     during downstream dimensionalization.
 
-23. Packaging occurs after physical dimensionalization.
+32. Separately printable structural components retain their identity
+    through dimensionalization and packaging.
 
-24. Shape produces a valid printable 3MF containing its structural
+33. Packaging occurs after physical dimensionalization.
+
+34. Shape produces a valid printable 3MF containing its structural
     geometry and any incorporated Artwork components.
 
 
@@ -639,12 +913,14 @@ The initial Shape model includes:
 - canonical registered Shape geometry;
 - physical Shape size;
 - physical base thickness;
-- optional outer ridge;
+- optional integrated outer ridge;
+- optional separately printable outer ridge;
+- structural component partitioning;
 - optional registered Artwork;
 - centered, aspect-preserving Artwork fitting;
 - registered Shape/Artwork composition;
 - downstream physical dimensionalization;
-- final 3MF packaging.
+- final multicomponent 3MF packaging.
 
 The initial Shape model does not include:
 
