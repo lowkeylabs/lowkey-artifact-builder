@@ -90,7 +90,29 @@ class RegisteredSquareRidge:
     inner: RegisteredRectangle
 
 
-RegisteredRidge = RegisteredCircleRidge | RegisteredSquareRidge
+@dataclass(frozen=True)
+class RegisteredPolygon:
+    """
+    One polygon expressed in registered Shape coordinates.
+    """
+
+    vertices: tuple[
+        tuple[float, float],
+        ...,
+    ]
+
+
+@dataclass(frozen=True)
+class RegisteredPolygonRidge:
+    """
+    Registered polygon geometry defining an outer ridge partition.
+    """
+
+    outer: RegisteredPolygon
+    inner: RegisteredPolygon
+
+
+type RegisteredRidge = RegisteredCircleRidge | RegisteredSquareRidge | RegisteredPolygonRidge
 
 
 # =========================================================
@@ -218,7 +240,10 @@ def execute(
                 shape_outer_ridge_style=shape_outer_ridge_style,
             )
 
-        else:
+        elif isinstance(
+            ridge,
+            RegisteredSquareRidge,
+        ):
             components = _render_square_ridge_components(
                 ridge,
                 manifest.parent,
@@ -226,6 +251,24 @@ def execute(
                 shape_base_raise=shape_base_raise,
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
                 shape_outer_ridge_style=shape_outer_ridge_style,
+            )
+
+        elif isinstance(
+            ridge,
+            RegisteredPolygonRidge,
+        ):
+            components = _render_polygon_ridge_components(
+                ridge,
+                manifest.parent,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+                shape_outer_ridge_raise=shape_outer_ridge_raise,
+                shape_outer_ridge_style=shape_outer_ridge_style,
+            )
+
+        else:
+            raise ValueError(
+                f"Unsupported registered Shape ridge geometry: {type(ridge).__name__}."
             )
 
         _write_component_manifest(
@@ -394,6 +437,190 @@ def _render_square_ridge_components(
         )
 
     raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
+
+
+def _render_polygon_ridge_components(
+    ridge: RegisteredPolygonRidge,
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+    shape_outer_ridge_style: str,
+) -> tuple[
+    tuple[str, str],
+    ...,
+]:
+    """
+    Dispatch physical polygon ridge component production by ridge style.
+    """
+
+    if shape_outer_ridge_style == "integrated":
+        return _render_integrated_polygon_ridge_components(
+            ridge,
+            output_directory,
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+            shape_outer_ridge_raise=shape_outer_ridge_raise,
+        )
+
+    if shape_outer_ridge_style == "separate":
+        return _render_separate_polygon_ridge_components(
+            ridge,
+            output_directory,
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+            shape_outer_ridge_raise=shape_outer_ridge_raise,
+        )
+
+    raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
+
+
+def _render_integrated_polygon_ridge_components(
+    ridge: RegisteredPolygonRidge,
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> tuple[
+    tuple[str, str],
+    ...,
+]:
+    """
+    Render independently printable components for a positive integrated
+    polygon ridge.
+    """
+
+    base = output_directory / BASE_COMPONENT_PATH
+
+    base_source = _build_polygon_base_scad(
+        ridge.outer,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+    )
+
+    render_stl_source(
+        base_source,
+        base,
+    )
+
+    _require_component(
+        base,
+        component_name=BASE_COMPONENT_NAME,
+    )
+
+    if shape_outer_ridge_raise <= 0.0:
+        return (
+            (
+                BASE_COMPONENT_NAME,
+                BASE_COMPONENT_PATH,
+            ),
+        )
+
+    ridge_output = output_directory / RIDGE_COMPONENT_PATH
+
+    ridge_source = _build_integrated_polygon_ridge_component_scad(
+        ridge,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+        shape_outer_ridge_raise=shape_outer_ridge_raise,
+    )
+
+    render_stl_source(
+        ridge_source,
+        ridge_output,
+    )
+
+    _require_component(
+        ridge_output,
+        component_name=RIDGE_COMPONENT_NAME,
+    )
+
+    return (
+        (
+            BASE_COMPONENT_NAME,
+            BASE_COMPONENT_PATH,
+        ),
+        (
+            RIDGE_COMPONENT_NAME,
+            RIDGE_COMPONENT_PATH,
+        ),
+    )
+
+
+def _render_separate_polygon_ridge_components(
+    ridge: RegisteredPolygonRidge,
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> tuple[
+    tuple[str, str],
+    ...,
+]:
+    """
+    Render independently printable components for a separate polygon ridge.
+    """
+
+    base = output_directory / BASE_COMPONENT_PATH
+
+    base_source = _build_polygon_base_scad(
+        ridge.inner,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+    )
+
+    render_stl_source(
+        base_source,
+        base,
+    )
+
+    _require_component(
+        base,
+        component_name=BASE_COMPONENT_NAME,
+    )
+
+    assembled_ridge_height = shape_base_raise + shape_outer_ridge_raise
+
+    if assembled_ridge_height == 0.0:
+        return (
+            (
+                BASE_COMPONENT_NAME,
+                BASE_COMPONENT_PATH,
+            ),
+        )
+
+    ridge_output = output_directory / RIDGE_COMPONENT_PATH
+
+    ridge_source = _build_separate_polygon_ridge_component_scad(
+        ridge,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+        shape_outer_ridge_raise=shape_outer_ridge_raise,
+    )
+
+    render_stl_source(
+        ridge_source,
+        ridge_output,
+    )
+
+    _require_component(
+        ridge_output,
+        component_name=RIDGE_COMPONENT_NAME,
+    )
+
+    return (
+        (
+            BASE_COMPONENT_NAME,
+            BASE_COMPONENT_PATH,
+        ),
+        (
+            RIDGE_COMPONENT_NAME,
+            RIDGE_COMPONENT_PATH,
+        ),
+    )
 
 
 def _render_integrated_circle_ridge_components(
@@ -773,13 +1000,16 @@ def _build_scad(
     """
     Build OpenSCAD source for complete physical Shape extrusion.
 
-    Registered Shape composition occupies a canonical 1x1 envelope centered
+    Registered Shape composition occupies a canonical unit envelope centered
     about the origin.
 
     A composition without a ridge partition is extruded uniformly through
     shape_base_raise.
 
     Registered ridge boundaries are dimensionalized using shape_size.
+
+    Integrated circle, square, and polygon ridges preserve their registered
+    structural partition when constructing complete assembled geometry.
     """
 
     ridge = _load_ridge(
@@ -807,13 +1037,32 @@ def _build_scad(
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
             )
 
-    elif shape_outer_ridge_style == "integrated":
-        return _build_integrated_square_ridge_scad(
-            ridge,
-            shape_size=shape_size,
-            shape_base_raise=shape_base_raise,
-            shape_outer_ridge_raise=shape_outer_ridge_raise,
-        )
+    elif isinstance(
+        ridge,
+        RegisteredSquareRidge,
+    ):
+        if shape_outer_ridge_style == "integrated":
+            return _build_integrated_square_ridge_scad(
+                ridge,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+                shape_outer_ridge_raise=shape_outer_ridge_raise,
+            )
+
+    elif isinstance(
+        ridge,
+        RegisteredPolygonRidge,
+    ):
+        if shape_outer_ridge_style == "integrated":
+            return _build_integrated_polygon_ridge_scad(
+                ridge,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+                shape_outer_ridge_raise=shape_outer_ridge_raise,
+            )
+
+    else:
+        raise ValueError(f"Unsupported registered Shape ridge geometry: {type(ridge).__name__}.")
 
     return _build_base_scad(
         _scad_path(
@@ -821,6 +1070,48 @@ def _build_scad(
         ),
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+    )
+
+
+def _build_integrated_polygon_ridge_scad(
+    ridge: RegisteredPolygonRidge,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for complete integrated polygon ridge geometry.
+    """
+
+    boundaries = _build_polygon_boundary_modules(
+        ridge,
+        shape_size=shape_size,
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        "\n"
+        f"{boundaries}"
+        "\n"
+        "union() {\n"
+        "    linear_extrude(\n"
+        "        height = shape_base_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        registered_ridge_inner_boundary();\n"
+        "\n"
+        "    linear_extrude(\n"
+        "        height = shape_base_raise + shape_outer_ridge_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        difference() {\n"
+        "            registered_shape_boundary();\n"
+        "            registered_ridge_inner_boundary();\n"
+        "        }\n"
+        "}\n"
     )
 
 
@@ -1319,6 +1610,148 @@ def _build_square_boundary_modules(
     )
 
 
+def _build_polygon_base_scad(
+    polygon: RegisteredPolygon,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for a physical registered polygon base.
+    """
+
+    points = _scad_polygon_points(
+        polygon,
+        shape_size=shape_size,
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        "\n"
+        "linear_extrude(\n"
+        "    height = shape_base_raise,\n"
+        "    center = false\n"
+        ")\n"
+        f"    polygon(points = {points});\n"
+    )
+
+
+def _build_integrated_polygon_ridge_component_scad(
+    ridge: RegisteredPolygonRidge,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for a positive integrated polygon ridge component.
+    """
+
+    boundaries = _build_polygon_boundary_modules(
+        ridge,
+        shape_size=shape_size,
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        "\n"
+        f"{boundaries}"
+        "\n"
+        "translate([0, 0, shape_base_raise])\n"
+        "    linear_extrude(\n"
+        "        height = shape_outer_ridge_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        difference() {\n"
+        "            registered_shape_boundary();\n"
+        "            registered_ridge_inner_boundary();\n"
+        "        }\n"
+    )
+
+
+def _build_separate_polygon_ridge_component_scad(
+    ridge: RegisteredPolygonRidge,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for an independently printable separate polygon ridge.
+    """
+
+    boundaries = _build_polygon_boundary_modules(
+        ridge,
+        shape_size=shape_size,
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        "\n"
+        f"{boundaries}"
+        "\n"
+        "linear_extrude(\n"
+        "    height = shape_base_raise + shape_outer_ridge_raise,\n"
+        "    center = false\n"
+        ")\n"
+        "    difference() {\n"
+        "        registered_shape_boundary();\n"
+        "        registered_ridge_inner_boundary();\n"
+        "    }\n"
+    )
+
+
+def _build_polygon_boundary_modules(
+    ridge: RegisteredPolygonRidge,
+    *,
+    shape_size: float,
+) -> str:
+    """
+    Build OpenSCAD modules for registered polygon ridge boundaries.
+    """
+
+    outer_points = _scad_polygon_points(
+        ridge.outer,
+        shape_size=shape_size,
+    )
+
+    inner_points = _scad_polygon_points(
+        ridge.inner,
+        shape_size=shape_size,
+    )
+
+    return (
+        f"// {SHAPE_BOUNDARY_ID}\n"
+        "module registered_shape_boundary() {\n"
+        f"    polygon(points = {outer_points});\n"
+        "}\n"
+        "\n"
+        f"// {RIDGE_INNER_BOUNDARY_ID}\n"
+        "module registered_ridge_inner_boundary() {\n"
+        f"    polygon(points = {inner_points});\n"
+        "}\n"
+    )
+
+
+def _scad_polygon_points(
+    polygon: RegisteredPolygon,
+    *,
+    shape_size: float,
+) -> str:
+    """
+    Format registered polygon vertices as physical OpenSCAD points.
+    """
+
+    points = ", ".join((f"[{x * shape_size:g}, {y * shape_size:g}]") for x, y in polygon.vertices)
+
+    return f"[{points}]"
+
+
 # =========================================================
 # Registered composition inspection
 # =========================================================
@@ -1334,7 +1767,7 @@ def _load_ridge(
     composition. Extrusion consumes the resulting semantic boundaries rather
     than resolving shape_outer_ridge_width again.
 
-    Circle and square semantic ridge boundaries are supported.
+    Circle, square, and polygon semantic ridge boundaries are supported.
 
     A composition without ridge semantic boundaries returns None.
     """
@@ -1394,6 +1827,12 @@ def _load_ridge(
 
     if outer_kind == "rect":
         return _load_square_ridge_elements(
+            outer_element,
+            inner_element,
+        )
+
+    if outer_kind == "polygon":
+        return _load_polygon_ridge_elements(
             outer_element,
             inner_element,
         )
@@ -1488,6 +1927,93 @@ def _load_square_ridge_elements(
     return RegisteredSquareRidge(
         outer=outer,
         inner=inner,
+    )
+
+
+def _load_polygon_ridge_elements(
+    outer_element: ET.Element,
+    inner_element: ET.Element,
+) -> RegisteredPolygonRidge:
+    """
+    Load semantic registered polygon ridge boundaries.
+    """
+
+    outer = _load_registered_polygon(
+        outer_element,
+        boundary_name=SHAPE_BOUNDARY_ID,
+    )
+
+    inner = _load_registered_polygon(
+        inner_element,
+        boundary_name=RIDGE_INNER_BOUNDARY_ID,
+    )
+
+    if len(inner.vertices) != len(outer.vertices):
+        raise ValueError(
+            "Registered Shape outer and ridge inner polygon boundaries "
+            "must have the same number of vertices."
+        )
+
+    return RegisteredPolygonRidge(
+        outer=outer,
+        inner=inner,
+    )
+
+
+def _load_registered_polygon(
+    element: ET.Element,
+    *,
+    boundary_name: str,
+) -> RegisteredPolygon:
+    """
+    Load one semantic registered polygon boundary.
+    """
+
+    if (
+        _local_name(
+            element.tag,
+        )
+        != "polygon"
+    ):
+        raise ValueError(f"Registered boundary {boundary_name!r} must be an SVG polygon.")
+
+    points = element.get(
+        "points",
+    )
+
+    if points is None:
+        raise ValueError(
+            f"Registered boundary {boundary_name!r} is missing required attribute 'points'."
+        )
+
+    vertices: list[tuple[float, float]] = []
+
+    for point in points.split():
+        coordinates = point.split(
+            ",",
+        )
+
+        if len(coordinates) != 2:
+            raise ValueError(
+                f"Registered boundary {boundary_name!r} contains an invalid polygon point."
+            )
+
+        vertices.append(
+            (
+                float(coordinates[0]),
+                float(coordinates[1]),
+            )
+        )
+
+    if len(vertices) < 3:
+        raise ValueError(
+            f"Registered boundary {boundary_name!r} must have at least three vertices."
+        )
+
+    return RegisteredPolygon(
+        vertices=tuple(
+            vertices,
+        ),
     )
 
 

@@ -134,6 +134,50 @@ def _write_square_ridge_composition(
     )
 
 
+def _write_polygon_ridge_composition(
+    path: Path,
+) -> None:
+    """
+    Write registered polygon composition containing an outer ridge boundary.
+
+    The representative polygon is a side-top regular octagon. Its inner
+    boundary is a perpendicular 0.05 registered-unit inset from every edge.
+    """
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    from lowkey_artifact_builder.model.models.shape.stages import (
+        compose,
+        structure,
+    )
+
+    geometry = structure.create_polygon_geometry(
+        number_of_sides=8,
+        rotation=22.5,
+    )
+
+    document = structure.create_polygon_svg(
+        geometry,
+    )
+
+    structure_path = path.parent / "polygon-structure.svg"
+
+    document.write(
+        structure_path,
+        encoding="unicode",
+    )
+
+    compose._compose_ridge(
+        structure_path,
+        path,
+        shape_size=100.0,
+        ridge_width=5.0,
+    )
+
+
 def _stl_bounds(
     path: Path,
 ) -> tuple[
@@ -1126,6 +1170,153 @@ def test_positive_separate_square_ridge_partitions_base_and_ridge(
             0.0,
             2.0,
         )
+    )
+
+    assert ridge_bounds == pytest.approx(
+        (
+            -50.0,
+            50.0,
+            -50.0,
+            50.0,
+            0.0,
+            3.0,
+        )
+    )
+
+
+def test_positive_integrated_polygon_ridge_has_complete_physical_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    A positive integrated polygon ridge preserves the complete Shape envelope.
+
+    The base occupies the complete registered polygon through the base top,
+    while the ridge component occupies its perimeter above the base.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_polygon_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "integrated",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    base = manifest.parent / "base.stl"
+    ridge = manifest.parent / "ridge.stl"
+
+    assert base.is_file()
+    assert ridge.is_file()
+
+    base_bounds = _stl_bounds(
+        base,
+    )
+    ridge_bounds = _stl_bounds(
+        ridge,
+    )
+
+    assert base_bounds == pytest.approx(
+        (
+            -50.0,
+            50.0,
+            -50.0,
+            50.0,
+            0.0,
+            2.0,
+        )
+    )
+
+    assert ridge_bounds == pytest.approx(
+        (
+            -50.0,
+            50.0,
+            -50.0,
+            50.0,
+            2.0,
+            3.0,
+        )
+    )
+
+
+def test_positive_separate_polygon_ridge_partitions_physical_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    A positive separate polygon ridge partitions the assembled Shape.
+
+    The base occupies the polygon inside the registered ridge boundary while
+    the independent ridge occupies the surrounding perimeter through the
+    complete assembled ridge height.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_polygon_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "separate",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    base = manifest.parent / "base.stl"
+    ridge = manifest.parent / "ridge.stl"
+
+    assert base.is_file()
+    assert ridge.is_file()
+
+    base_bounds = _stl_bounds(
+        base,
+    )
+    ridge_bounds = _stl_bounds(
+        ridge,
+    )
+
+    assert base_bounds[0] > -50.0
+    assert base_bounds[1] < 50.0
+    assert base_bounds[2] > -50.0
+    assert base_bounds[3] < 50.0
+    assert base_bounds[4] == pytest.approx(
+        0.0,
+    )
+    assert base_bounds[5] == pytest.approx(
+        2.0,
     )
 
     assert ridge_bounds == pytest.approx(
