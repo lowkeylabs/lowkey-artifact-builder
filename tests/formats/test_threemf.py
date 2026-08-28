@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from lowkey_artifact_builder.colors import PaletteColor
 from lowkey_artifact_builder.formats.threemf import (
     CONTENT_TYPES_NS,
     CORE_NS,
@@ -184,6 +185,32 @@ def test_mesh_is_immutable() -> None:
 # =========================================================
 # Component
 # =========================================================
+
+
+def test_component_retains_semantic_color() -> None:
+    """
+    Components may retain semantic printing-color identity.
+
+    Color belongs to the independently printable component and remains
+    distinct from its mesh geometry and physical printer-head assignment.
+    """
+
+    color = PaletteColor(
+        name="red",
+        rgb=(
+            220,
+            38,
+            38,
+        ),
+    )
+
+    component = Component(
+        name="ridge",
+        mesh=_mesh(),
+        color=color,
+    )
+
+    assert component.color == color
 
 
 def test_component_retains_definition() -> None:
@@ -600,6 +627,84 @@ def test_write_rejects_invalid_triangle_index(
 # =========================================================
 
 
+def test_write_preserves_component_color(
+    tmp_path: Path,
+) -> None:
+    """
+    A colored component retains its printing color in the 3MF model.
+
+    The format representation preserves RGB identity without assigning the
+    component to a physical printer head.
+    """
+
+    path = tmp_path / "example.3mf"
+
+    write(
+        (
+            Component(
+                name="ridge",
+                mesh=_mesh(),
+                color=PaletteColor(
+                    name="red",
+                    rgb=(
+                        220,
+                        38,
+                        38,
+                    ),
+                ),
+            ),
+        ),
+        path,
+    )
+
+    model = _read_model(path)
+
+    colors = model.findall(f".//{{{CORE_NS}}}basematerials/{{{CORE_NS}}}base")
+
+    assert len(colors) == 1
+
+    assert colors[0].get("displaycolor") == "#DC2626"
+
+
+def test_write_preserves_component_semantic_color_name(
+    tmp_path: Path,
+) -> None:
+    """
+    A colored component retains its semantic color name in the 3MF model.
+
+    Semantic identity survives independently from the RGB representation used
+    by the 3MF material resource.
+    """
+
+    path = tmp_path / "example.3mf"
+
+    write(
+        (
+            Component(
+                name="ridge",
+                mesh=_mesh(),
+                color=PaletteColor(
+                    name="red",
+                    rgb=(
+                        220,
+                        38,
+                        38,
+                    ),
+                ),
+            ),
+        ),
+        path,
+    )
+
+    model = _read_model(path)
+
+    colors = model.findall(f".//{{{CORE_NS}}}basematerials/{{{CORE_NS}}}base")
+
+    assert len(colors) == 1
+
+    assert colors[0].get("name") == "red"
+
+
 def test_write_model_uses_millimeters(
     tmp_path: Path,
 ) -> None:
@@ -977,3 +1082,43 @@ def test_write_restores_package_default_namespaces(
 
     assert "ns0:Types" not in content_types
     assert "ns0:Relationships" not in relationships
+
+
+def test_write_associates_component_with_its_color(
+    tmp_path: Path,
+) -> None:
+    """
+    A colored component references its own 3MF material resource.
+    """
+
+    path = tmp_path / "example.3mf"
+
+    write(
+        (
+            Component(
+                name="ridge",
+                mesh=_mesh(),
+                color=PaletteColor(
+                    name="red",
+                    rgb=(
+                        220,
+                        38,
+                        38,
+                    ),
+                ),
+            ),
+        ),
+        path,
+    )
+
+    model = _read_model(path)
+
+    objects = model.findall(f".//{{{CORE_NS}}}object")
+
+    materials = model.findall(f".//{{{CORE_NS}}}basematerials")
+
+    assert len(objects) == 1
+    assert len(materials) == 1
+
+    assert objects[0].get("pid") == materials[0].get("id")
+    assert objects[0].get("pindex") == "0"

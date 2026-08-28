@@ -23,6 +23,8 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from lowkey_artifact_builder.colors import PaletteColor
+
 # =========================================================
 # Namespaces
 # =========================================================
@@ -94,11 +96,16 @@ class Mesh:
 class Component:
     """
     A named mesh component included in a 3MF document.
+
+    A component may retain semantic printing-color identity independently
+    from physical printer-head assignment.
     """
 
     name: str
 
     mesh: Mesh
+
+    color: PaletteColor | None = None
 
 
 # =========================================================
@@ -540,10 +547,6 @@ def _build_model(
 ) -> ET.Element:
     """
     Construct the primary 3MF model document.
-
-    Namespace registration intentionally does not occur
-    here. The correct default namespace is established
-    immediately before serialization.
     """
 
     model = ET.Element(
@@ -563,14 +566,29 @@ def _build_model(
         f"{{{CORE_NS}}}build",
     )
 
+    material_resource_id = len(components) + 1
+
     for object_id, component in enumerate(
         components,
         start=1,
     ):
+        material_id: int | None = None
+
+        if component.color is not None:
+            material_id = material_resource_id
+            material_resource_id += 1
+
+            _add_base_material(
+                resources,
+                material_id,
+                component.color,
+            )
+
         _add_mesh_object(
             resources,
             object_id,
             component,
+            material_id=material_id,
         )
 
         ET.SubElement(
@@ -584,23 +602,60 @@ def _build_model(
     return model
 
 
+def _add_base_material(
+    resources: ET.Element,
+    resource_id: int,
+    color: PaletteColor,
+) -> None:
+    """
+    Add one semantic component color as a 3MF base-material resource.
+    """
+
+    base_materials = ET.SubElement(
+        resources,
+        f"{{{CORE_NS}}}basematerials",
+        {
+            "id": str(resource_id),
+        },
+    )
+
+    red, green, blue = color.rgb
+
+    ET.SubElement(
+        base_materials,
+        f"{{{CORE_NS}}}base",
+        {
+            "name": color.name,
+            "displaycolor": f"#{red:02X}{green:02X}{blue:02X}",
+        },
+    )
+
+
 def _add_mesh_object(
     resources: ET.Element,
     object_id: int,
     component: Component,
+    *,
+    material_id: int | None = None,
 ) -> None:
     """
     Add one mesh object to model resources.
     """
 
+    attributes = {
+        "id": str(object_id),
+        "type": "model",
+        "name": component.name,
+    }
+
+    if material_id is not None:
+        attributes["pid"] = str(material_id)
+        attributes["pindex"] = "0"
+
     object_element = ET.SubElement(
         resources,
         f"{{{CORE_NS}}}object",
-        {
-            "id": str(object_id),
-            "type": "model",
-            "name": component.name,
-        },
+        attributes,
     )
 
     mesh_element = ET.SubElement(
