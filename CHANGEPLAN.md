@@ -4,6 +4,16 @@ This document tracks the remaining incremental work required to bring
 `lowkey-artifact-builder` into conformance with its permanent specifications
 and to complete the initial integration between the Shape and Artwork models.
 
+## Status
+
+```text
+Phase 1 — Completed
+Phase 2 — Started
+Phase 3 — Not started
+```
+
+## Key Documents
+
 The permanent normative specifications are:
 
 ```text
@@ -31,13 +41,6 @@ Artwork.
 Before selecting each implementation slice, compare repository HEAD against
 the permanent specifications rather than assuming this plan remains complete.
 
-## Status
-
-```text
-Phase 1 — Started
-Phase 2 — Not started
-Phase 3 — Not started
-```
 
 # Development Method
 
