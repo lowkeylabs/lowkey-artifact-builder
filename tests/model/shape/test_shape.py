@@ -188,17 +188,26 @@ def test_shape_compose_produces_registered_composition() -> None:
     assert product.path == "composition.svg"
 
 
-def test_shape_registered_composition_has_no_physical_parameters() -> None:
+def test_shape_compose_consumes_structural_partition_parameters() -> None:
     """
-    Registered composition does not introduce physical Shape dimensions.
+    Registered composition owns the relative structural partition.
 
-    Physical X/Y size and Z dimensions belong to the downstream
-    dimensionalization boundary.
+    Ridge width is a physical Shape policy expressed in registered space
+    relative to shape_size. Ridge style determines whether the structural
+    regions must remain distinguishable for downstream component
+    dimensionalization.
+
+    Ridge raise remains a physical Z dimension and therefore does not belong
+    to registered composition.
     """
 
     compose_stage = _compose_stage()
 
-    assert compose_stage.parameters == ()
+    assert compose_stage.parameters == (
+        "shape_size",
+        "shape_outer_ridge_width",
+        "shape_outer_ridge_style",
+    )
 
 
 # =========================================================
@@ -235,12 +244,14 @@ def test_shape_extrude_depends_on_compose_stage() -> None:
     assert extrude_stage.product_dependencies == ()
 
 
-def test_shape_extrude_consumes_physical_base_parameters() -> None:
+def test_shape_extrude_consumes_physical_structural_parameters() -> None:
     """
-    Shape extrusion owns the physical dimensions of the structural base.
+    Shape extrusion owns physical dimensionalization of structural geometry.
 
-    shape_size introduces the physical X/Y envelope and shape_base_raise
-    introduces the physical Z thickness.
+    shape_size introduces the physical X/Y envelope. shape_base_raise and
+    shape_outer_ridge_raise introduce physical Z dimensions. Ridge style
+    determines how the registered structural regions become independently
+    printable physical components.
     """
 
     extrude_stage = _extrude_stage()
@@ -248,6 +259,8 @@ def test_shape_extrude_consumes_physical_base_parameters() -> None:
     assert extrude_stage.parameters == (
         "shape_size",
         "shape_base_raise",
+        "shape_outer_ridge_raise",
+        "shape_outer_ridge_style",
     )
 
 

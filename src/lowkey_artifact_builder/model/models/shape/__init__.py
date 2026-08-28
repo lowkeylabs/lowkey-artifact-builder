@@ -5,8 +5,8 @@ The shape model defines parameterized geometric bodies that may consume
 registered Artwork geometry.
 
 The current declaration establishes registered structural Shape production,
-registered composition, physical dimensionalization, and final artifact
-packaging without prematurely declaring later ridge or feature behavior.
+registered composition, physical dimensionalization, optional outer-ridge
+policy, and final artifact packaging.
 """
 # File: src/lowkey_artifact_builder/model/models/shape/__init__.py
 # Copyright 2026 LowKeyLabs LLC
@@ -17,7 +17,6 @@ from __future__ import annotations
 from lowkey_artifact_builder.model.registry import ModelRegistry
 from lowkey_artifact_builder.model.specs import (
     ModelSpec,
-    ProductDependencySpec,
     ProductSpec,
     StageSpec,
 )
@@ -53,6 +52,11 @@ MODEL = ModelSpec(
             description=("Compose registered structural Shape and Artwork geometry."),
             dependencies=("structure",),
             product_dependencies=(),
+            parameters=(
+                "shape_size",
+                "shape_outer_ridge_width",
+                "shape_outer_ridge_style",
+            ),
             products=(
                 ProductSpec(
                     name="composition",
@@ -69,6 +73,8 @@ MODEL = ModelSpec(
             parameters=(
                 "shape_size",
                 "shape_base_raise",
+                "shape_outer_ridge_raise",
+                "shape_outer_ridge_style",
             ),
             products=(
                 ProductSpec(

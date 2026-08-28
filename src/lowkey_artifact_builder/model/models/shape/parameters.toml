@@ -1,24 +1,26 @@
-#
-# Model configuration defaults for the Shape model.
-#
+# File: src/lowkey_artifact_builder/model/models/shape/parameters.toml
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
 
 [parameters]
 
-# ---------------------------------------------------------
-# Structural geometry
-# ---------------------------------------------------------
+# =========================================================
+# Shape geometry
+# =========================================================
 
 #
-# Initial Shape geometry.
+# Registered structural geometry.
 #
 
 shape_geometry = "circle"
 
 
+# =========================================================
+# Physical dimensions
+# =========================================================
+
 #
 # Overall physical X/Y envelope of the Shape, in millimeters.
-#
-# For circle geometry this is the diameter.
 #
 
 shape_size = 100.0
@@ -29,3 +31,47 @@ shape_size = 100.0
 #
 
 shape_base_raise = 2.0
+
+
+# =========================================================
+# Outer ridge
+# =========================================================
+
+#
+# Physical width of the optional outer ridge, measured inward
+# from the complete Shape boundary, in millimeters.
+#
+# Zero disables the ridge. Positive width enables the ridge.
+#
+
+shape_outer_ridge_width = 0.0
+
+
+#
+# Physical Z displacement of the outer-ridge top relative to
+# the top of the base, in millimeters.
+#
+# Positive values place the ridge top above the base top.
+# Zero places the ridge top flush with the base top.
+# Negative values place the ridge top below the base top.
+#
+# The minimum valid value is -shape_base_raise.
+#
+# Ridge raise does not determine whether the ridge exists.
+#
+
+shape_outer_ridge_raise = 1.0
+
+
+#
+# Structural partitioning policy for an enabled outer ridge.
+#
+# Supported values:
+#
+#     integrated
+#     separate
+#
+# This value has no geometric effect while the ridge is disabled.
+#
+
+shape_outer_ridge_style = "integrated"
