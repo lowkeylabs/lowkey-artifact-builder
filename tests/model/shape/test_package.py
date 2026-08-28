@@ -757,3 +757,175 @@ def test_engine_bootstrap_discovers_shape_package_implementation() -> None:
     )
 
     assert implementation is package.execute
+
+
+def test_package_stage_preserves_shared_component_color(
+    tmp_path: Path,
+) -> None:
+    """
+    Independently printable Shape components may share one semantic color.
+
+    Equal colors do not collapse component identity or alter component
+    membership during packaging.
+    """
+
+    component_directory = tmp_path / "extrude"
+
+    base = component_directory / "base.stl"
+    ridge = component_directory / "ridge.stl"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    _write_component_stl(
+        base,
+        solid_name="shape-base",
+    )
+
+    _write_component_stl(
+        ridge,
+        solid_name="shape-ridge",
+    )
+
+    _write_component_manifest(
+        manifest,
+        (
+            (
+                "base",
+                "base.stl",
+                "red",
+                (220, 38, 38),
+            ),
+            (
+                "ridge",
+                "ridge.stl",
+                "red",
+                (220, 38, 38),
+            ),
+        ),
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "example"
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    package.execute(
+        context,
+    )
+
+    model = _read_model(
+        artifact,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    assert [object_.get("name") for object_ in objects] == [
+        "example-base",
+        "example-ridge",
+    ]
+
+    assert len(materials) == 2
+
+    for object_ in objects:
+        material_id = object_.get("pid")
+
+        material = next(material for material in materials if material.get("id") == material_id)
+
+        color = material.find(
+            f"{{{CORE_NS}}}base",
+        )
+
+        assert color is not None
+        assert color.get("name") == "red"
+        assert color.get("displaycolor") == "#DC2626"
+
+
+@pytest.mark.parametrize(
+    "color",
+    [
+        None,
+        {},
+        {
+            "name": "",
+            "rgb": [255, 255, 255],
+        },
+        {
+            "name": "white",
+            "rgb": None,
+        },
+        {
+            "name": "white",
+            "rgb": [255, 255],
+        },
+        {
+            "name": "white",
+            "rgb": [255, 255, 256],
+        },
+    ],
+)
+def test_package_stage_rejects_invalid_component_color_metadata(
+    tmp_path: Path,
+    color: object,
+) -> None:
+    """
+    Packaging requires resolved semantic color metadata from extrusion.
+
+    Invalid or absent metadata is not repaired by resolving Shape color
+    configuration again.
+    """
+
+    component_directory = tmp_path / "extrude"
+
+    base = component_directory / "base.stl"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    _write_component_stl(
+        base,
+        solid_name="shape-base",
+    )
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "components": [
+                    {
+                        "name": "base",
+                        "path": "base.stl",
+                        "color": color,
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resolver = Mock()
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "example"
+    context.resolver = resolver
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    with pytest.raises(
+        package.PackageError,
+        match="color",
+    ):
+        package.execute(
+            context,
+        )
+
+    resolver.assert_not_called()
+
+    assert not artifact.exists()
