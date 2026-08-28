@@ -312,6 +312,82 @@ The base may be assigned a printing color.
 The outer ridge defaults to the base color but may be assigned a different
 color independently.
 
+## Color
+
+Shape structural components have semantic printing-color assignments.
+
+The base color is controlled by:
+
+```text
+shape_base_color
+```
+
+The default base color is:
+
+```text
+white
+```
+
+The outer-ridge color is controlled by:
+
+```text
+shape_outer_ridge_color
+```
+
+The default outer-ridge color is the resolved base color:
+
+```text
+shape_outer_ridge_color = shape_base_color
+```
+
+The ridge-color default is therefore derived from the resolved value of:
+
+```text
+shape_base_color
+```
+
+rather than being an independent literal color default.
+
+For example, with no explicit color configuration:
+
+```text
+shape_base_color = "white"
+shape_outer_ridge_color = "white"
+```
+
+If the base color is configured as:
+
+```text
+shape_base_color = "black"
+```
+
+and no ridge color is explicitly configured, the resolved colors are:
+
+```text
+shape_base_color = "black"
+shape_outer_ridge_color = "black"
+```
+
+An explicitly configured outer-ridge color overrides this derived default.
+
+For example:
+
+```text
+shape_base_color = "white"
+shape_outer_ridge_color = "red"
+```
+
+assigns white to the base and red to the outer ridge.
+
+Color values are semantic color names resolved through the system's common color-resolution mechanism.
+
+Color assignment does not determine structural geometry, component partitioning, or whether an outer ridge exists.
+
+Likewise, structural partitioning does not determine color assignment.
+
+A color assigned to geometry that does not produce a corresponding physical component has no effect on the produced artifact.
+
+
 ## Outer Ridge
 
 A Shape may contain an outer ridge.
@@ -1203,6 +1279,7 @@ shape_sides
 shape_rotation
 shape_size
 shape_base_raise
+shape_base_color
 shape_outer_ridge_width
 shape_outer_ridge_raise
 shape_outer_ridge_style
@@ -1296,9 +1373,24 @@ The default ridge style is:
 integrated
 ```
 
+`shape_base_color` selects the base printing color.
+
+Its default is:
+
+```text
+white
+```
+
 `shape_outer_ridge_color` selects the ridge printing color.
 
-Its default is the base color.
+Its default is the resolved value of:
+
+```text
+shape_base_color
+```
+
+An explicitly configured `shape_outer_ridge_color` overrides this derived default.
+
 
 The dimensional parameters are:
 
@@ -1487,55 +1579,62 @@ A conforming initial Shape implementation satisfies the following:
     relationships when required for composition without assigning final
     physical dimensions to the registered coordinate system.
 
-39. Outer-ridge color is independent from outer-ridge structural style.
+39. Every Shape has a semantic base color determined by `shape_base_color`.
 
-40. The default outer-ridge color is the base color.
+40. The default base color is `white`.
 
-41. An integrated ridge may have a color different from the base.
+41. The default outer-ridge color is the resolved base color.
 
-42. A separate ridge may have a color different from the base.
+42. An explicitly configured outer-ridge color overrides its derived base-color default.
 
-43. Shape can consume registered vector Artwork produced by another
+43. Outer-ridge color is independent from outer-ridge structural style.
+
+44. An integrated ridge may have a color different from the base.
+
+45. A separate ridge may have a color different from the base.
+
+46. Shape can consume registered vector Artwork produced by another
     artifact.
 
-44. Consuming registered Artwork does not require standalone Artwork
+47. Consuming registered Artwork does not require standalone Artwork
     extrusion or packaging.
 
-45. Dynamic Artwork component membership is obtained from its declared
+48. Dynamic Artwork component membership is obtained from its declared
     manifest rather than filesystem scanning.
 
-46. Registered Artwork and registered structural Shape geometry are
+49. Registered Artwork and registered structural Shape geometry are
     composed before final physical X/Y dimensionalization.
 
-47. Shape determines the physical size and placement of incorporated
+50. Shape determines the physical size and placement of incorporated
     Artwork.
 
-48. Incorporated Artwork is centered and uniformly contained within the
+51. Incorporated Artwork is centered and uniformly contained within the
     available interior region.
 
-49. Artwork aspect ratio and registration between color components are
+52. Artwork aspect ratio and registration between color components are
     preserved.
 
-50. All components of one registered Artwork collection receive the same
+53. All components of one registered Artwork collection receive the same
     transformation from Artwork registered space into Shape registered
     space.
 
-51. Physical X/Y dimensionalization of the composed Shape is determined
+54. Physical X/Y dimensionalization of the composed Shape is determined
     by `shape_size`.
 
-52. Physical Z dimensions are introduced according to component semantics
+55. Physical Z dimensions are introduced according to component semantics
     during downstream dimensionalization.
 
-53. Separately printable structural components retain their identity
+56. Separately printable structural components retain their identity
     through dimensionalization and packaging.
 
-54. Required color distinctions remain representable through
+57. Required color distinctions remain representable through
     dimensionalization and packaging.
 
-55. Packaging occurs after physical dimensionalization.
+58. Packaging occurs after physical dimensionalization.
 
-56. Shape produces a valid printable 3MF containing its structural
+59. Shape produces a valid printable 3MF containing its structural
     geometry and any incorporated Artwork components.
+
 
 ## Initial Scope
 
