@@ -15,6 +15,7 @@ import pytest
 from click.testing import CliRunner
 
 from lowkey_artifact_builder.cli._main import cli
+from lowkey_artifact_builder.config import update_artifact_config
 from lowkey_artifact_builder.engine import (
     create_build_plans,
 )
@@ -234,3 +235,364 @@ def test_shape_builds_complete_3mf_without_artwork(
 
     assert base_object.get("pid") == base_material.get("id")
     assert base_object.get("pindex") == "0"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    "ridge_style",
+    [
+        "separate",
+        "integrated",
+    ],
+)
+def test_shape_ridge_preserves_distinct_component_colors(
+    tmp_path: Path,
+    monkeypatch,
+    ridge_style: str,
+) -> None:
+    """
+    A physical Shape ridge may retain a semantic color distinct from
+    the base through the complete public build pipeline.
+
+    Both separate ridges and positive integrated ridges produce an
+    independently identifiable ridge-color volume in artifact.3mf.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    runner = CliRunner()
+
+    # -----------------------------------------------------
+    # Configure Shape through the public CLI
+    # -----------------------------------------------------
+
+    config_result = runner.invoke(
+        cli,
+        [
+            "config",
+            "colored-shape",
+        ],
+        input="2\n",
+    )
+
+    assert config_result.exit_code == 0, (
+        f"Shape configuration failed:\n{config_result.output}\n{config_result.exception!r}"
+    )
+
+    # -----------------------------------------------------
+    # Configure physical ridge and semantic colors
+    # -----------------------------------------------------
+
+    update_artifact_config(
+        "colored-shape",
+        {
+            "parameters": {
+                "shape_base_color": "white",
+                "shape_outer_ridge_width": 2.0,
+                "shape_outer_ridge_raise": 1.0,
+                "shape_outer_ridge_style": ridge_style,
+                "shape_outer_ridge_color": "red",
+            },
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Build through the public CLI
+    # -----------------------------------------------------
+
+    build_result = runner.invoke(
+        cli,
+        [
+            "build",
+            "colored-shape",
+        ],
+    )
+
+    assert build_result.exit_code == 0, (
+        f"Shape build failed:\n{build_result.output}\n{build_result.exception!r}"
+    )
+
+    # -----------------------------------------------------
+    # Locate final artifact through the build plan
+    # -----------------------------------------------------
+
+    plans = create_build_plans(
+        "colored-shape",
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
+
+    artifact_product = next(
+        product for product in package_stage.products if product.spec.name == "artifact"
+    )
+
+    output = artifact_product.path
+
+    assert output.is_file()
+    assert zipfile.is_zipfile(output)
+
+    # -----------------------------------------------------
+    # Read packaged 3MF model
+    # -----------------------------------------------------
+
+    with zipfile.ZipFile(
+        output,
+    ) as archive:
+        model_name = next(
+            name
+            for name in archive.namelist()
+            if name.startswith("3D/") and name.endswith(".model")
+        )
+
+        model = ET.fromstring(
+            archive.read(model_name),
+        )
+
+    # -----------------------------------------------------
+    # Verify component identities
+    # -----------------------------------------------------
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    assert set(objects_by_name) == {
+        "colored-shape-base",
+        "colored-shape-ridge",
+    }
+
+    assert len(materials) == 2
+
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    # -----------------------------------------------------
+    # Verify base semantic color
+    # -----------------------------------------------------
+
+    base_object = objects_by_name["colored-shape-base"]
+
+    base_material = materials_by_id[base_object.get("pid")]
+
+    base_color = base_material.find(
+        f"{{{CORE_NS}}}base",
+    )
+
+    assert base_color is not None
+
+    assert base_color.get("name") == "white"
+    assert base_color.get("displaycolor") == "#FFFFFF"
+
+    assert base_object.get("pindex") == "0"
+
+    # -----------------------------------------------------
+    # Verify ridge semantic color
+    # -----------------------------------------------------
+
+    ridge_object = objects_by_name["colored-shape-ridge"]
+
+    ridge_material = materials_by_id[ridge_object.get("pid")]
+
+    ridge_color = ridge_material.find(
+        f"{{{CORE_NS}}}base",
+    )
+
+    assert ridge_color is not None
+
+    assert ridge_color.get("name") == "red"
+    assert ridge_color.get("displaycolor") == "#DC2626"
+
+    assert ridge_object.get("pindex") == "0"
+
+
+@pytest.mark.slow
+def test_shape_component_colors_do_not_change_geometry(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    Shape semantic colors do not affect physical geometry.
+
+    Two Shapes with identical structural parameters but different
+    component colors produce identical packaged mesh geometry.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    runner = CliRunner()
+
+    # -----------------------------------------------------
+    # Configure equivalent Shapes
+    # -----------------------------------------------------
+
+    for artifact_id in (
+        "white-red-shape",
+        "red-white-shape",
+    ):
+        config_result = runner.invoke(
+            cli,
+            [
+                "config",
+                artifact_id,
+            ],
+            input="2\n",
+        )
+
+        assert config_result.exit_code == 0, (
+            f"Shape configuration failed for {artifact_id!r}:\n"
+            f"{config_result.output}\n"
+            f"{config_result.exception!r}"
+        )
+
+    structural_parameters = {
+        "shape_outer_ridge_width": 2.0,
+        "shape_outer_ridge_raise": 1.0,
+        "shape_outer_ridge_style": "separate",
+    }
+
+    update_artifact_config(
+        "white-red-shape",
+        {
+            "parameters": {
+                **structural_parameters,
+                "shape_base_color": "white",
+                "shape_outer_ridge_color": "red",
+            },
+        },
+        project_root=project_root,
+    )
+
+    update_artifact_config(
+        "red-white-shape",
+        {
+            "parameters": {
+                **structural_parameters,
+                "shape_base_color": "red",
+                "shape_outer_ridge_color": "white",
+            },
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Build both Shapes
+    # -----------------------------------------------------
+
+    for artifact_id in (
+        "white-red-shape",
+        "red-white-shape",
+    ):
+        build_result = runner.invoke(
+            cli,
+            [
+                "build",
+                artifact_id,
+            ],
+        )
+
+        assert build_result.exit_code == 0, (
+            f"Shape build failed for {artifact_id!r}:\n"
+            f"{build_result.output}\n"
+            f"{build_result.exception!r}"
+        )
+
+    # -----------------------------------------------------
+    # Read packaged mesh geometry
+    # -----------------------------------------------------
+
+    def packaged_meshes(
+        artifact_id: str,
+    ) -> dict[str, bytes]:
+        plans = create_build_plans(
+            artifact_id,
+            project_root=project_root,
+        )
+
+        assert len(plans) == 1
+
+        package_stage = next(stage for stage in plans[0].stages if stage.spec.name == "package")
+
+        artifact_product = next(
+            product for product in package_stage.products if product.spec.name == "artifact"
+        )
+
+        with zipfile.ZipFile(
+            artifact_product.path,
+        ) as archive:
+            model_name = next(
+                name
+                for name in archive.namelist()
+                if name.startswith("3D/") and name.endswith(".model")
+            )
+
+            model = ET.fromstring(
+                archive.read(model_name),
+            )
+
+        result: dict[str, bytes] = {}
+
+        for object_ in model.findall(
+            f".//{{{CORE_NS}}}object",
+        ):
+            name = object_.get("name")
+
+            assert name is not None
+
+            role = name.removeprefix(
+                f"{artifact_id}-",
+            )
+
+            mesh = object_.find(
+                f"{{{CORE_NS}}}mesh",
+            )
+
+            assert mesh is not None
+
+            result[role] = ET.tostring(
+                mesh,
+            )
+
+        return result
+
+    white_red_meshes = packaged_meshes(
+        "white-red-shape",
+    )
+
+    red_white_meshes = packaged_meshes(
+        "red-white-shape",
+    )
+
+    # -----------------------------------------------------
+    # Colors change semantics, not geometry
+    # -----------------------------------------------------
+
+    assert white_red_meshes.keys() == {
+        "base",
+        "ridge",
+    }
+
+    assert red_white_meshes.keys() == {
+        "base",
+        "ridge",
+    }
+
+    assert white_red_meshes == red_white_meshes
