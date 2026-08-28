@@ -2295,29 +2295,25 @@ def test_product_dependency_build_plan_excludes_downstream_producer_stages(
     assert "package" not in {stage.name for stage in plan.stages}
 
 
-def test_create_build_plan_binds_shape_registered_artwork_dependency(
+# =========================================================
+# Shape planning
+# =========================================================
+
+
+def test_create_build_plan_plans_complete_shape_without_product_dependencies(
     tmp_path: Path,
 ) -> None:
     """
-    Complete Shape planning binds its declared registered Artwork dependency.
+    Complete baseline Shape planning requires no external product dependency.
 
-    Structural Shape production participates independently, while the compose
-    stage consumes the configured registered Artwork product.
+    A Shape without features or dependent artifacts is a complete artifact.
+    Its build consists entirely of the Shape-local stage dependency closure.
     """
 
     write_artifact_config(
         "shape-example",
         {
             "model": "shape",
-            "product_dependencies": {
-                "manifest": {
-                    "model": "artwork",
-                    "stage": "vector",
-                    "product": "manifest",
-                    "artifact": "artwork-example",
-                    "realization": "default",
-                },
-            },
         },
         project_root=tmp_path,
     )
@@ -2327,17 +2323,7 @@ def test_create_build_plan_binds_shape_registered_artwork_dependency(
         project_root=tmp_path,
     )
 
-    dependency = ProductDependencySpec(
-        model="artwork",
-        stage="vector",
-        product="manifest",
-    )
-
-    binding = ProductDependencyBinding(
-        dependency=dependency,
-        artifact="artwork-example",
-        realization="default",
-    )
+    assert plan.targets is None
 
     assert tuple(stage.name for stage in plan.stages) == (
         "structure",
@@ -2346,74 +2332,20 @@ def test_create_build_plan_binds_shape_registered_artwork_dependency(
         "package",
     )
 
-    assert plan.product_dependencies == (dependency,)
-
-    assert plan.product_dependency_bindings == (binding,)
-
-    assert len(plan.planned_product_dependencies) == 1
-
-    planned = plan.planned_product_dependencies[0]
-
-    assert planned.binding == binding
-
-    assert planned.product_ref == ProductRef(
-        artifact="artwork-example",
-        model="artwork",
-        realization="default",
-        stage="vector",
-        product="manifest",
-    )
-
-    assert planned.path == (
-        tmp_path
-        / "artifacts"
-        / "artwork-example"
-        / "artwork"
-        / "default"
-        / "30-vector"
-        / "products.json"
-    )
+    assert plan.product_dependencies == ()
+    assert plan.product_dependency_bindings == ()
+    assert plan.planned_product_dependencies == ()
 
 
-def test_create_build_plan_requires_shape_registered_artwork_binding(
+def test_create_build_plan_targets_shape_structure_independently(
     tmp_path: Path,
 ) -> None:
     """
-    Complete Shape planning requires a producer binding for registered Artwork.
+    Shape structural geometry is independently targetable.
 
-    Structural Shape geometry is independently producible, but a complete
-    untargeted build includes the compose stage. Because compose declares the
-    registered Artwork product dependency, that complete build requires a
-    concrete producer binding.
-    """
-
-    write_artifact_config(
-        "shape-example",
-        {
-            "model": "shape",
-        },
-        project_root=tmp_path,
-    )
-
-    with pytest.raises(
-        BuildPlanError,
-        match="manifest",
-    ):
-        create_build_plan(
-            "shape-example",
-            project_root=tmp_path,
-        )
-
-
-def test_create_build_plan_targets_shape_structure_without_artwork_binding(
-    tmp_path: Path,
-) -> None:
-    """
-    Shape structural geometry can be planned without registered Artwork.
-
-    Targeting the structure product selects only the independent structural
-    producer. The downstream compose stage and its cross-artifact Artwork
-    dependency are therefore outside the requested realization closure.
+    Targeting the registered structure product selects only its producer.
+    Downstream composition, dimensionalization, and packaging are outside
+    the requested dependency closure.
     """
 
     write_artifact_config(

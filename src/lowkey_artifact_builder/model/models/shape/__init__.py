@@ -52,13 +52,7 @@ MODEL = ModelSpec(
             name="compose",
             description=("Compose registered structural Shape and Artwork geometry."),
             dependencies=("structure",),
-            product_dependencies=(
-                ProductDependencySpec(
-                    model="artwork",
-                    stage="vector",
-                    product="manifest",
-                ),
-            ),
+            product_dependencies=(),
             products=(
                 ProductSpec(
                     name="composition",

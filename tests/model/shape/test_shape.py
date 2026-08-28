@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from lowkey_artifact_builder.model import (
-    ProductDependencySpec,
     build_model_registry,
 )
 from lowkey_artifact_builder.model.models.shape import MODEL
@@ -61,16 +60,13 @@ def test_shape_model_is_discovered() -> None:
 
 
 # =========================================================
-# Registered Artwork consumer
+# Registered composition
 # =========================================================
 
 
-def test_shape_declares_registered_artwork_consumer_stage() -> None:
+def test_shape_declares_registered_composition_stage() -> None:
     """
-    Shape retains the stage that consumes registered Artwork.
-
-    Introducing independent structural production must preserve the
-    registered-geometry consumer boundary established by earlier slices.
+    Shape declares a stage for composing registered Shape geometry.
     """
 
     compose_stage = _compose_stage()
@@ -78,69 +74,17 @@ def test_shape_declares_registered_artwork_consumer_stage() -> None:
     assert compose_stage.name == "compose"
 
 
-def test_shape_consumes_artwork_vector_manifest_by_logical_identity() -> None:
+def test_shape_compose_has_no_external_product_dependencies() -> None:
     """
-    Shape depends logically on the registered Artwork vector manifest.
+    Baseline Shape composition requires no products from another model.
 
-    The model-level dependency identifies only the producing model, stage,
-    and product. Artifact identity, realization identity, and filesystem
-    location are runtime concerns and do not belong in the Shape model
-    declaration.
+    A Shape without features or dependent artifacts is a complete
+    independently buildable artifact.
     """
 
     compose_stage = _compose_stage()
 
-    assert compose_stage.product_dependencies == (
-        ProductDependencySpec(
-            model="artwork",
-            stage="vector",
-            product="manifest",
-        ),
-    )
-
-
-def test_shape_registered_artwork_dependency_contains_only_logical_identity() -> None:
-    """
-    Shape's registered Artwork dependency contains only logical identity.
-
-    Artifact binding, realization binding, and canonical filesystem resolution
-    belong to runtime planning rather than the consuming model declaration.
-    """
-
-    compose_stage = _compose_stage()
-
-    dependency = compose_stage.product_dependencies[0]
-
-    assert dependency.model == "artwork"
-    assert dependency.stage == "vector"
-    assert dependency.product == "manifest"
-
-    assert not hasattr(
-        dependency,
-        "artifact",
-    )
-
-    assert not hasattr(
-        dependency,
-        "realization",
-    )
-
-    assert not hasattr(
-        dependency,
-        "path",
-    )
-
-
-def test_shape_registered_artwork_consumer_declares_no_physical_parameters() -> None:
-    """
-    Consuming registered Artwork does not itself dimensionalize it.
-
-    Physical Shape sizing belongs downstream of registered composition.
-    """
-
-    compose_stage = _compose_stage()
-
-    assert compose_stage.parameters == ()
+    assert compose_stage.product_dependencies == ()
 
 
 # =========================================================

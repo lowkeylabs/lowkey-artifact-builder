@@ -457,34 +457,21 @@ def test_create_planned_stage_context_exposes_product_dependency(
     assert context.inputs["producer.prepare.geometry"] == dependency_path
 
 
-def test_shape_context_receives_registered_artwork_manifest(
+def test_shape_compose_context_receives_only_structural_input(
     tmp_path: Path,
 ) -> None:
     """
-    Shape compose receives bound registered Artwork through its StageContext.
+    Baseline Shape compose receives only its direct structural input.
 
-    Complete Shape planning includes independent structural production and
-    registered-Artwork composition. Planning resolves the declarative Artwork
-    vector-manifest dependency to its canonical producer path.
-
-    Planned context construction then exposes that path to the compose stage
-    using the fully qualified logical dependency name. The consumer does not
-    discover or construct the producer filesystem path.
+    A Shape without features or dependent artifacts has no external product
+    dependencies. Planned context construction therefore exposes the
+    Shape-local structure product and no Artwork product.
     """
 
     write_artifact_config(
         "shape-example",
         {
             "model": "shape",
-            "product_dependencies": {
-                "manifest": {
-                    "model": "artwork",
-                    "stage": "vector",
-                    "product": "manifest",
-                    "artifact": "artwork-example",
-                    "realization": "default",
-                },
-            },
         },
         project_root=tmp_path,
     )
@@ -520,15 +507,6 @@ def test_shape_context_receives_registered_artwork_manifest(
             / "default"
             / "10-structure"
             / "structure.svg"
-        ),
-        "artwork.vector.manifest": (
-            tmp_path
-            / "artifacts"
-            / "artwork-example"
-            / "artwork"
-            / "default"
-            / "30-vector"
-            / "products.json"
         ),
     }
 
