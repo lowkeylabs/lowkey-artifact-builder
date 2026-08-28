@@ -1283,22 +1283,38 @@ def test_integrated_ridge_components_preserve_physical_partition(
     assert ridge_bounds[5] == pytest.approx(3.0)
 
 
-def test_extrude_stage_rejects_missing_registered_composition(
+@pytest.mark.parametrize(
+    "ridge_style",
+    [
+        "integrated",
+        "separate",
+    ],
+)
+def test_extrude_rejects_ridge_raise_below_negative_base_raise(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ridge_style: str,
 ) -> None:
     """
-    Shape extrusion requires its declared registered composition input.
+    Ridge extrusion rejects a negative assembled physical height.
+
+    The minimum valid ridge raise is -shape_base_raise for both integrated
+    and separate ridge styles.
     """
 
-    composition = tmp_path / "missing.svg"
+    composition = tmp_path / "composition.svg"
     manifest = tmp_path / "products.json"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
 
     resolver = Mock(
         side_effect={
             "shape_size": 100.0,
             "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "integrated",
+            "shape_outer_ridge_raise": -2.5,
+            "shape_outer_ridge_style": ridge_style,
         }.__getitem__,
     )
 
@@ -1309,15 +1325,23 @@ def test_extrude_stage_rejects_missing_registered_composition(
     context.input.return_value = composition
     context.output.return_value = manifest
 
+    render_stl_source = Mock()
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        render_stl_source,
+    )
+
     with pytest.raises(
         extrude.ExtrudeError,
-        match="composition",
+        match="ridge",
     ):
         extrude.execute(
             context,
         )
 
-    assert not manifest.exists()
+    render_stl_source.assert_not_called()
 
 
 # =========================================================

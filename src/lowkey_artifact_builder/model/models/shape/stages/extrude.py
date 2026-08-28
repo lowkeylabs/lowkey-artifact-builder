@@ -162,6 +162,11 @@ def execute(
         ridge = _load_circle_ridge(
             composition,
         )
+        if ridge is not None:
+            _validate_ridge_height(
+                shape_base_raise=shape_base_raise,
+                shape_outer_ridge_raise=shape_outer_ridge_raise,
+            )
 
         manifest.parent.mkdir(
             parents=True,
@@ -496,6 +501,24 @@ def _write_component_manifest(
         + "\n",
         encoding="utf-8",
     )
+
+
+def _validate_ridge_height(
+    *,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> None:
+    """
+    Validate that an outer ridge has a nonnegative physical height.
+
+    Ridge raise is measured relative to the base top, so the complete
+    assembled ridge height must be greater than or equal to zero.
+    """
+
+    if shape_base_raise + shape_outer_ridge_raise < 0.0:
+        raise ExtrudeError(
+            "Shape outer ridge physical height must be greater than or equal to zero."
+        )
 
 
 # =========================================================
