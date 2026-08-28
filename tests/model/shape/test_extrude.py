@@ -443,6 +443,123 @@ def test_extruded_integrated_ridge_has_complete_physical_envelope(
     assert bounds[5] == pytest.approx(3.0)
 
 
+def test_separate_ridge_base_uses_registered_inner_boundary(
+    tmp_path: Path,
+) -> None:
+    """
+    A separate circle ridge reduces the physical X/Y extent of the base.
+
+    For a 100 mm circle with a 5 mm ridge, registered composition establishes
+    an outer radius of 0.5 and a ridge inner radius of 0.45. With separate
+    construction, the base occupies the region inside that inner boundary:
+
+        base -> 90 mm circle from Z=0 through Z=2
+
+    The complete assembled Shape envelope remains 100 mm.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "separate",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    base = manifest.parent / "base.stl"
+
+    assert base.is_file()
+
+    bounds = _stl_bounds(
+        base,
+    )
+
+    assert bounds[0] == pytest.approx(-45.0)
+    assert bounds[1] == pytest.approx(45.0)
+    assert bounds[2] == pytest.approx(-45.0)
+    assert bounds[3] == pytest.approx(45.0)
+    assert bounds[4] == pytest.approx(0.0)
+    assert bounds[5] == pytest.approx(2.0)
+
+
+def test_separate_ridge_occupies_registered_perimeter_at_assembled_height(
+    tmp_path: Path,
+) -> None:
+    """
+    A positive separate circle ridge occupies the registered perimeter region.
+
+    For a 100 mm circle with a 5 mm ridge, 2 mm base, and +1 mm ridge raise:
+
+        ridge outer diameter -> 100 mm
+        ridge inner diameter -> 90 mm
+        ridge Z              -> 0 through 3 mm
+
+    The ridge is therefore adjacent to the reduced base in X/Y and reaches the
+    same complete assembled ridge height as the corresponding integrated ridge.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "separate",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    ridge = manifest.parent / "ridge.stl"
+
+    assert ridge.is_file()
+
+    bounds = _stl_bounds(
+        ridge,
+    )
+
+    assert bounds[0] == pytest.approx(-50.0)
+    assert bounds[1] == pytest.approx(50.0)
+    assert bounds[2] == pytest.approx(-50.0)
+    assert bounds[3] == pytest.approx(50.0)
+    assert bounds[4] == pytest.approx(0.0)
+    assert bounds[5] == pytest.approx(3.0)
+
+
 # =========================================================
 # Extrude stage execution
 # =========================================================
