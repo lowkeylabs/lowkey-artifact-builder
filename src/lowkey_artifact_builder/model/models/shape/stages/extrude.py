@@ -154,6 +154,9 @@ def execute(
         shape_base_color
             Semantic printing color of the structural base.
 
+        shape_outer_ridge_color
+            Semantic printing color of the physical outer-ridge component.
+
         shape_outer_ridge_raise
             Physical change in ridge height relative to the base top.
 
@@ -203,6 +206,11 @@ def execute(
         context.resolver(
             "shape_base_color",
         ),
+        context.resolver.colors,
+    )
+
+    shape_outer_ridge_color = resolve_palette_color(
+        context.resolver("shape_outer_ridge_color"),
         context.resolver.colors,
     )
 
@@ -289,6 +297,7 @@ def execute(
             manifest,
             components,
             base_color=shape_base_color,
+            ridge_color=shape_outer_ridge_color,
         )
 
         if not manifest.is_file():
@@ -963,6 +972,7 @@ def _write_component_manifest(
     ],
     *,
     base_color: PaletteColor,
+    ridge_color: PaletteColor,
 ) -> None:
     """
     Write the physical-component manifest for Shape extrusion.
@@ -971,6 +981,11 @@ def _write_component_manifest(
     resolved semantic printing-color metadata.
     """
 
+    colors = {
+        BASE_COMPONENT_NAME: base_color,
+        RIDGE_COMPONENT_NAME: ridge_color,
+    }
+
     path.write_text(
         json.dumps(
             {
@@ -978,18 +993,12 @@ def _write_component_manifest(
                     {
                         "name": name,
                         "path": component_path,
-                        **(
-                            {
-                                "color": {
-                                    "name": base_color.name,
-                                    "rgb": list(
-                                        base_color.rgb,
-                                    ),
-                                },
-                            }
-                            if name == BASE_COMPONENT_NAME
-                            else {}
-                        ),
+                        "color": {
+                            "name": colors[name].name,
+                            "rgb": list(
+                                colors[name].rgb,
+                            ),
+                        },
                     }
                     for name, component_path in components
                 ],

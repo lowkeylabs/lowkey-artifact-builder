@@ -305,6 +305,7 @@ def _make_extrude_resolver(
     shape_base_color: str = "white",
     shape_outer_ridge_raise: float = 1.0,
     shape_outer_ridge_style: str = "integrated",
+    shape_outer_ridge_color: str = "white",
     colors: dict[str, object] | None = None,
 ) -> Mock:
     """
@@ -318,6 +319,7 @@ def _make_extrude_resolver(
             "shape_base_color": shape_base_color,
             "shape_outer_ridge_raise": shape_outer_ridge_raise,
             "shape_outer_ridge_style": shape_outer_ridge_style,
+            "shape_outer_ridge_color": shape_outer_ridge_color,
         }.__getitem__,
     )
 
@@ -1399,6 +1401,7 @@ def test_extrude_stage_materializes_declared_component_manifest(
         call("shape_size"),
         call("shape_base_raise"),
         call("shape_base_color"),
+        call("shape_outer_ridge_color"),
         call("shape_outer_ridge_raise"),
         call("shape_outer_ridge_style"),
     ]
@@ -1571,6 +1574,14 @@ def test_integrated_ridge_component_manifest_contains_base_and_ridge(
         {
             "name": "ridge",
             "path": "ridge.stl",
+            "color": {
+                "name": "white",
+                "rgb": [
+                    255,
+                    255,
+                    255,
+                ],
+            },
         },
     ]
 
@@ -2786,6 +2797,195 @@ def test_base_component_manifest_preserves_semantic_color(
         {
             "name": "base",
             "path": "base.stl",
+            "color": {
+                "name": "red",
+                "rgb": [
+                    220,
+                    38,
+                    38,
+                ],
+            },
+        },
+    ]
+
+
+def test_positive_integrated_ridge_manifest_preserves_semantic_color(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A positive integrated ridge preserves its independent semantic color.
+
+    Only the physical ridge volume above the base top is represented by the
+    ridge component, so that component carries shape_outer_ridge_color.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    resolver = _make_extrude_resolver(
+        shape_base_color="white",
+        shape_outer_ridge_color="red",
+        colors={
+            "red": {
+                "rgb": [
+                    220,
+                    38,
+                    38,
+                ],
+            },
+        },
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    def fake_render_stl_source(
+        source: str,
+        target: Path,
+    ) -> None:
+        target.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        target.write_text(
+            "stl",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    assert data["components"] == [
+        {
+            "name": "base",
+            "path": "base.stl",
+            "color": {
+                "name": "white",
+                "rgb": [
+                    255,
+                    255,
+                    255,
+                ],
+            },
+        },
+        {
+            "name": "ridge",
+            "path": "ridge.stl",
+            "color": {
+                "name": "red",
+                "rgb": [
+                    220,
+                    38,
+                    38,
+                ],
+            },
+        },
+    ]
+
+
+def test_separate_ridge_manifest_preserves_semantic_color(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A physical separate ridge preserves its independent semantic color.
+
+    Base and ridge are independently printable components and therefore
+    retain their independently resolved semantic printing colors.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    resolver = _make_extrude_resolver(
+        shape_base_color="white",
+        shape_outer_ridge_color="red",
+        shape_outer_ridge_style="separate",
+        colors={
+            "red": {
+                "rgb": [
+                    220,
+                    38,
+                    38,
+                ],
+            },
+        },
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    def fake_render_stl_source(
+        source: str,
+        target: Path,
+    ) -> None:
+        target.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        target.write_text(
+            "stl",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    assert data["components"] == [
+        {
+            "name": "base",
+            "path": "base.stl",
+            "color": {
+                "name": "white",
+                "rgb": [
+                    255,
+                    255,
+                    255,
+                ],
+            },
+        },
+        {
+            "name": "ridge",
+            "path": "ridge.stl",
             "color": {
                 "name": "red",
                 "rgb": [

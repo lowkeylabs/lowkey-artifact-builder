@@ -262,6 +262,7 @@ def test_shape_extrude_consumes_physical_structural_parameters() -> None:
         "shape_base_color",
         "shape_outer_ridge_raise",
         "shape_outer_ridge_style",
+        "shape_outer_ridge_color",
     )
 
 
