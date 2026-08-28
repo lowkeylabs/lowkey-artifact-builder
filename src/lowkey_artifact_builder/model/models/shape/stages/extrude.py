@@ -1061,6 +1061,14 @@ def _build_scad(
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
             )
 
+        if shape_outer_ridge_style == "separate":
+            return _build_separate_polygon_ridge_scad(
+                ridge,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+                shape_outer_ridge_raise=shape_outer_ridge_raise,
+            )
+
     else:
         raise ValueError(f"Unsupported registered Shape ridge geometry: {type(ridge).__name__}.")
 
@@ -1407,6 +1415,48 @@ def _build_separate_circle_ridge_component_scad(
         "        registered_shape_boundary();\n"
         "        registered_ridge_inner_boundary();\n"
         "    }\n"
+    )
+
+
+def _build_separate_polygon_ridge_scad(
+    ridge: RegisteredPolygonRidge,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for complete separate polygon ridge geometry.
+    """
+
+    boundaries = _build_polygon_boundary_modules(
+        ridge,
+        shape_size=shape_size,
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        "\n"
+        f"{boundaries}"
+        "\n"
+        "union() {\n"
+        "    linear_extrude(\n"
+        "        height = shape_base_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        registered_ridge_inner_boundary();\n"
+        "\n"
+        "    linear_extrude(\n"
+        "        height = shape_base_raise + shape_outer_ridge_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        difference() {\n"
+        "            registered_shape_boundary();\n"
+        "            registered_ridge_inner_boundary();\n"
+        "        }\n"
+        "}\n"
     )
 
 

@@ -2594,3 +2594,100 @@ def test_negative_raise_integrated_polygon_ridge_recesses_base_perimeter(
     assert bounds[3] == pytest.approx(50.0)
     assert bounds[4] == pytest.approx(0.0)
     assert bounds[5] == pytest.approx(2.0)
+
+
+def test_positive_polygon_ridge_styles_have_equivalent_assembled_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Integrated and separate positive polygon ridges have the same assembled geometry.
+
+    Ridge style changes how the Shape is partitioned into independently
+    printable components, not the intended complete physical structure.
+    """
+
+    composition = tmp_path / "composition.svg"
+    integrated = tmp_path / "integrated.stl"
+    separate = tmp_path / "separate.stl"
+
+    _write_polygon_ridge_composition(
+        composition,
+    )
+
+    integrated_source = extrude._build_scad(
+        composition,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_outer_ridge_raise=1.0,
+        shape_outer_ridge_style="integrated",
+    )
+
+    separate_source = extrude._build_scad(
+        composition,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_outer_ridge_raise=1.0,
+        shape_outer_ridge_style="separate",
+    )
+
+    extrude.render_stl_source(
+        integrated_source,
+        integrated,
+    )
+    extrude.render_stl_source(
+        separate_source,
+        separate,
+    )
+
+    assert _stl_bounds(integrated) == pytest.approx(
+        _stl_bounds(separate),
+    )
+
+
+def test_negative_polygon_ridge_styles_have_equivalent_assembled_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Integrated and separate negative polygon ridges have the same assembled geometry.
+
+    A negative ridge raise recesses the polygon perimeter in either style.
+    Style changes component partitioning while preserving the complete
+    intended physical Shape.
+    """
+
+    composition = tmp_path / "composition.svg"
+    integrated = tmp_path / "integrated.stl"
+    separate = tmp_path / "separate.stl"
+
+    _write_polygon_ridge_composition(
+        composition,
+    )
+
+    integrated_source = extrude._build_scad(
+        composition,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_outer_ridge_raise=-0.5,
+        shape_outer_ridge_style="integrated",
+    )
+
+    separate_source = extrude._build_scad(
+        composition,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_outer_ridge_raise=-0.5,
+        shape_outer_ridge_style="separate",
+    )
+
+    extrude.render_stl_source(
+        integrated_source,
+        integrated,
+    )
+    extrude.render_stl_source(
+        separate_source,
+        separate,
+    )
+
+    assert _stl_bounds(integrated) == pytest.approx(
+        _stl_bounds(separate),
+    )
