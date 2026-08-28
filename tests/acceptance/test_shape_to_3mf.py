@@ -7,6 +7,7 @@ End-to-end acceptance tests for Shape artifact production.
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.engine import (
     create_build_plans,
 )
+from lowkey_artifact_builder.formats.threemf import CORE_NS
 
 # =========================================================
 # Acceptance tests
@@ -36,6 +38,9 @@ def test_shape_builds_complete_3mf_without_artwork(
     Physical X/Y size and base thickness are introduced by extrusion,
     and the resulting physical component is packaged into the final
     artifact.3mf.
+
+    The default Shape base retains its semantic color identity through
+    dimensionalization and packaging.
 
     No Artwork source or completed Artwork artifact is required.
     """
@@ -186,12 +191,46 @@ def test_shape_builds_complete_3mf_without_artwork(
             name for name in names if name.startswith("3D/") and name.endswith(".model")
         )
 
-        model = archive.read(
+        model_data = archive.read(
             model_name,
-        ).decode(
-            "utf-8",
         )
 
     assert "[Content_Types].xml" in names
 
-    assert "testshape-base" in model
+    # -----------------------------------------------------
+    # Verify packaged component identity and color
+    # -----------------------------------------------------
+
+    model = ET.fromstring(
+        model_data,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    assert len(objects) == 1
+
+    base_object = objects[0]
+
+    assert base_object.get("name") == "testshape-base"
+
+    assert len(materials) == 1
+
+    base_material = materials[0]
+
+    base_color = base_material.find(
+        f"{{{CORE_NS}}}base",
+    )
+
+    assert base_color is not None
+
+    assert base_color.get("name") == "white"
+    assert base_color.get("displaycolor") == "#FFFFFF"
+
+    assert base_object.get("pid") == base_material.get("id")
+    assert base_object.get("pindex") == "0"
