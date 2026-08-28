@@ -131,77 +131,62 @@ class SquareGeometry:
     frozen=True,
     slots=True,
 )
-class OctagonGeometry:
+class PolygonGeometry:
     """
-    Registered two-dimensional geometry of a regular octagonal Shape.
+    Registered two-dimensional geometry of a regular polygon Shape.
 
-    The octagon is centered about the origin and fits within the canonical
-    unit bounding envelope.
+    vertices contain the normalized registered polygon coordinates.
+
+    The polygon is uniformly normalized after rotation so that its greatest
+    X/Y extent is 1.0. Its registered bounding envelope is centered about
+    the Shape origin.
+
+    number_of_sides and rotation retain the structural policy from which the
+    registered vertices were constructed.
     """
 
-    extent: float = 1.0
+    number_of_sides: int
+    rotation: float
+    vertices: tuple[tuple[float, float], ...]
 
     @property
     def width(self) -> float:
         """Return the registered X extent."""
 
-        return self.extent
+        return self.max_x - self.min_x
 
     @property
     def height(self) -> float:
         """Return the registered Y extent."""
 
-        return self.extent
+        return self.max_y - self.min_y
 
     @property
     def min_x(self) -> float:
         """Return the minimum registered X coordinate."""
 
-        return -(self.extent / 2.0)
+        return min(x for x, _ in self.vertices)
 
     @property
     def max_x(self) -> float:
         """Return the maximum registered X coordinate."""
 
-        return self.extent / 2.0
+        return max(x for x, _ in self.vertices)
 
     @property
     def min_y(self) -> float:
         """Return the minimum registered Y coordinate."""
 
-        return -(self.extent / 2.0)
+        return min(y for _, y in self.vertices)
 
     @property
     def max_y(self) -> float:
         """Return the maximum registered Y coordinate."""
 
-        return self.extent / 2.0
-
-    @property
-    def vertices(self) -> tuple[tuple[float, float], ...]:
-        """
-        Return the vertices of the centered regular octagon.
-
-        Opposing horizontal and vertical vertices establish the complete
-        canonical registered bounding envelope.
-        """
-
-        radius = self.extent / 2.0
-
-        return tuple(
-            (
-                radius * math.cos(math.radians(angle)),
-                radius * math.sin(math.radians(angle)),
-            )
-            for angle in range(
-                0,
-                360,
-                45,
-            )
-        )
+        return max(y for _, y in self.vertices)
 
 
-type RegisteredGeometry = CircleGeometry | SquareGeometry | OctagonGeometry
+type RegisteredGeometry = CircleGeometry | SquareGeometry | PolygonGeometry
 
 
 @dataclass(
@@ -214,7 +199,7 @@ class StructuralBase:
 
     registered_geometry identifies the reusable nonphysical Shape geometry.
 
-    shape_size defines the complete physical X/Y envelope in millimeters.
+    shape_size defines the maximum physical X/Y envelope in millimeters.
 
     thickness defines the physical Z extent. The structural base begins at
     Z=0 and extends upward through its configured thickness.
@@ -229,13 +214,13 @@ class StructuralBase:
     def width(self) -> float:
         """Return the physical X extent in millimeters."""
 
-        return self.shape_size
+        return self.registered_geometry.width * self.shape_size
 
     @property
     def height(self) -> float:
         """Return the physical Y extent in millimeters."""
 
-        return self.shape_size
+        return self.registered_geometry.height * self.shape_size
 
     @property
     def min_z(self) -> float:
@@ -264,6 +249,9 @@ def execute(
     Structural production resolves the selected Shape geometry and
     materializes the declared registered SVG product through StageContext.
 
+    Polygon side count and rotation are resolved only when polygon geometry
+    is selected.
+
     Physical dimensionalization and extrusion belong to downstream
     Shape stages.
     """
@@ -282,9 +270,19 @@ def execute(
             create_square_geometry(),
         )
 
-    elif shape_geometry == "octagon":
-        document = create_octagon_svg(
-            create_octagon_geometry(),
+    elif shape_geometry == "polygon":
+        number_of_sides = context.resolver(
+            "shape_sides",
+        )
+        rotation = context.resolver(
+            "shape_rotation",
+        )
+
+        document = create_polygon_svg(
+            create_polygon_geometry(
+                number_of_sides=number_of_sides,
+                rotation=rotation,
+            ),
         )
 
     else:
@@ -327,15 +325,39 @@ def create_square_geometry() -> SquareGeometry:
     return SquareGeometry()
 
 
-def create_octagon_geometry() -> OctagonGeometry:
+def create_polygon_geometry(
+    *,
+    number_of_sides: int,
+    rotation: float,
+) -> PolygonGeometry:
     """
-    Construct canonical registered regular octagonal Shape geometry.
+    Construct canonical registered regular polygon Shape geometry.
 
-    The octagon is centered about the origin and fits within the canonical
-    unit bounding envelope without introducing physical dimensions.
+    The unrotated polygon begins with one vertex on the positive Y axis.
+    Positive rotation is counterclockwise when viewed from above.
+
+    After rotation, the polygon is uniformly normalized and centered so that
+    its greatest X/Y extent is 1.0. Uniform normalization preserves the
+    regular polygon's proportions.
     """
 
-    return OctagonGeometry()
+    if number_of_sides < 3:
+        raise ValueError("Regular polygon geometry requires at least 3 sides.")
+
+    vertices = _create_regular_polygon_vertices(
+        number_of_sides=number_of_sides,
+        rotation=rotation,
+    )
+
+    normalized_vertices = _normalize_polygon_vertices(
+        vertices,
+    )
+
+    return PolygonGeometry(
+        number_of_sides=number_of_sides,
+        rotation=rotation,
+        vertices=normalized_vertices,
+    )
 
 
 def create_structural_base(
@@ -347,8 +369,14 @@ def create_structural_base(
     """
     Dimensionalize registered Shape geometry as a physical structural base.
 
-    shape_size establishes the complete physical X/Y envelope in millimeters.
+    shape_size establishes the maximum physical X/Y envelope in millimeters.
     shape_base_raise establishes the physical base thickness.
+
+    Registered geometry is normalized so that its greatest X/Y extent is 1.0.
+    Physical dimensionalization therefore scales both axes uniformly by
+    shape_size. Circle and square occupy shape_size on both axes, while a
+    polygon may occupy less than shape_size on one axis depending on its side
+    count and rotation.
 
     The registered source geometry remains unchanged.
     """
@@ -367,9 +395,9 @@ def create_structural_base(
 
     elif isinstance(
         registered_geometry,
-        OctagonGeometry,
+        PolygonGeometry,
     ):
-        geometry_name = "octagon"
+        geometry_name = "polygon"
 
     else:
         raise TypeError(
@@ -381,6 +409,101 @@ def create_structural_base(
         geometry_name=geometry_name,
         shape_size=shape_size,
         thickness=shape_base_raise,
+    )
+
+
+# =========================================================
+# Polygon helpers
+# =========================================================
+
+
+def _create_regular_polygon_vertices(
+    *,
+    number_of_sides: int,
+    rotation: float,
+) -> tuple[tuple[float, float], ...]:
+    """
+    Construct rotated vertices for a regular polygon.
+
+    Vertex zero begins on the positive Y axis before rotation. Positive
+    rotation proceeds counterclockwise, so positive rotation moves that
+    vertex toward the negative X axis.
+
+    The returned vertices have not yet been normalized into the canonical
+    registered Shape envelope.
+    """
+
+    angular_step = 360.0 / number_of_sides
+
+    return tuple(
+        _vertex_from_top_angle(
+            rotation + index * angular_step,
+        )
+        for index in range(
+            number_of_sides,
+        )
+    )
+
+
+def _vertex_from_top_angle(
+    angle: float,
+) -> tuple[float, float]:
+    """
+    Return a unit-radius vertex using an angle measured from positive Y.
+
+    Positive angles rotate counterclockwise from the positive Y axis.
+    """
+
+    radians = math.radians(
+        angle,
+    )
+
+    return (
+        -math.sin(radians),
+        math.cos(radians),
+    )
+
+
+def _normalize_polygon_vertices(
+    vertices: tuple[tuple[float, float], ...],
+) -> tuple[tuple[float, float], ...]:
+    """
+    Uniformly normalize polygon vertices into registered Shape space.
+
+    The polygon's rotated bounding envelope is first centered about the
+    registered origin. All coordinates are then scaled by the same factor so
+    that the greatest X/Y extent becomes 1.0.
+
+    Uniform scaling preserves polygon proportions.
+    """
+
+    xs = [x for x, _ in vertices]
+    ys = [y for _, y in vertices]
+
+    min_x = min(xs)
+    max_x = max(xs)
+    min_y = min(ys)
+    max_y = max(ys)
+
+    width = max_x - min_x
+    height = max_y - min_y
+
+    maximum_extent = max(
+        width,
+        height,
+    )
+
+    center_x = (min_x + max_x) / 2.0
+    center_y = (min_y + max_y) / 2.0
+
+    scale = 1.0 / maximum_extent
+
+    return tuple(
+        (
+            (x - center_x) * scale,
+            (y - center_y) * scale,
+        )
+        for x, y in vertices
     )
 
 
@@ -454,21 +577,21 @@ def create_square_svg(
     )
 
 
-def create_octagon_svg(
-    geometry: OctagonGeometry,
+def create_polygon_svg(
+    geometry: PolygonGeometry,
 ) -> ET.ElementTree[ET.Element[str]]:
     """
-    Construct an SVG document containing registered octagonal Shape geometry.
+    Construct an SVG document containing registered regular polygon geometry.
 
-    The regular octagon is centered within the canonical registered envelope
-    and does not introduce physical dimensions.
+    The polygon is persisted using its normalized registered vertices without
+    introducing physical dimensions.
     """
 
     root = _create_svg_root(
-        min_x=geometry.min_x,
-        min_y=geometry.min_y,
-        width=geometry.width,
-        height=geometry.height,
+        min_x=-0.5,
+        min_y=-0.5,
+        width=1.0,
+        height=1.0,
     )
 
     points = " ".join(f"{x},{y}" for x, y in geometry.vertices)

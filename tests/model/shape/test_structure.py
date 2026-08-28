@@ -210,36 +210,189 @@ def test_square_svg_contains_canonical_registered_square() -> None:
 
 
 # =========================================================
-# Octagon registered geometry
+# Polygon registered geometry
 # =========================================================
 
 
-def test_octagon_geometry_uses_canonical_registered_extent() -> None:
+@pytest.mark.parametrize(
+    "shape_sides",
+    (
+        3,
+        5,
+        6,
+        8,
+        12,
+    ),
+)
+def test_polygon_geometry_uses_requested_number_of_sides(
+    shape_sides: int,
+) -> None:
     """
-    Octagon geometry uses a canonical 1.0 by 1.0 bounding envelope.
-    """
+    Regular polygon construction produces the requested number of vertices.
 
-    geometry = structure.create_octagon_geometry()
-
-    assert geometry.width == 1.0
-    assert geometry.height == 1.0
-    assert geometry.min_x == -0.5
-    assert geometry.max_x == 0.5
-    assert geometry.min_y == -0.5
-    assert geometry.max_y == 0.5
-
-
-def test_octagon_svg_contains_centered_regular_octagon() -> None:
-    """
-    Registered octagon SVG contains a centered regular octagon.
-
-    Its opposing horizontal and vertical vertices establish the canonical
-    1.0 by 1.0 Shape bounding envelope.
+    Polygon mechanics are generic rather than specific to named geometries
+    such as triangle, hexagon, or octagon.
     """
 
-    geometry = structure.create_octagon_geometry()
+    geometry = structure.create_polygon_geometry(
+        number_of_sides=shape_sides,
+        rotation=0.0,
+    )
 
-    document = structure.create_octagon_svg(
+    assert len(geometry.vertices) == shape_sides
+
+
+def test_polygon_geometry_zero_rotation_places_vertex_at_top() -> None:
+    """
+    Zero polygon rotation places one vertex on the positive Y axis.
+
+    This establishes the canonical regular-polygon orientation independently
+    of the number of polygon sides.
+    """
+
+    geometry = structure.create_polygon_geometry(
+        number_of_sides=8,
+        rotation=0.0,
+    )
+
+    top = max(
+        geometry.vertices,
+        key=lambda vertex: vertex[1],
+    )
+
+    assert top[0] == pytest.approx(0.0)
+    assert top[1] == pytest.approx(0.5)
+
+
+def test_polygon_positive_rotation_is_counterclockwise() -> None:
+    """
+    Positive polygon rotation is counterclockwise when viewed from above.
+
+    Rotating the canonical top vertex positively therefore moves that vertex
+    from the positive Y axis toward the negative X axis.
+    """
+
+    geometry = structure.create_polygon_geometry(
+        number_of_sides=8,
+        rotation=10.0,
+    )
+
+    rotated_top_vertex = geometry.vertices[0]
+
+    assert rotated_top_vertex[0] < 0.0
+    assert rotated_top_vertex[1] > 0.0
+
+
+def test_polygon_geometry_half_step_rotation_places_side_at_top() -> None:
+    """
+    Rotation by half the polygon angular step places a side at the top.
+
+    For an eight-sided polygon, 180 / 8 = 22.5 degrees changes the canonical
+    vertex-top orientation into a side-top orientation.
+    """
+
+    geometry = structure.create_polygon_geometry(
+        number_of_sides=8,
+        rotation=22.5,
+    )
+
+    top_vertices = sorted(
+        geometry.vertices,
+        key=lambda vertex: vertex[1],
+        reverse=True,
+    )[:2]
+
+    assert top_vertices[0][1] == pytest.approx(
+        top_vertices[1][1],
+    )
+
+    assert top_vertices[0][0] == pytest.approx(
+        -top_vertices[1][0],
+    )
+
+    assert top_vertices[0][0] != pytest.approx(0.0)
+
+
+@pytest.mark.parametrize(
+    "rotation",
+    (
+        0.0,
+        11.25,
+        22.5,
+        45.0,
+        73.0,
+    ),
+)
+def test_polygon_rotation_preserves_canonical_maximum_extent(
+    rotation: float,
+) -> None:
+    """
+    Polygon rotation changes orientation without changing registered size.
+
+    The rotated polygon is uniformly normalized so its greatest X/Y extent
+    remains the canonical registered extent of 1.0.
+    """
+
+    geometry = structure.create_polygon_geometry(
+        number_of_sides=8,
+        rotation=rotation,
+    )
+
+    assert max(
+        geometry.width,
+        geometry.height,
+    ) == pytest.approx(1.0)
+
+    assert geometry.min_x == pytest.approx(
+        -geometry.max_x,
+    )
+    assert geometry.min_y == pytest.approx(
+        -geometry.max_y,
+    )
+
+
+def test_polygon_rotation_preserves_regular_polygon_proportions() -> None:
+    """
+    Registered normalization does not stretch rotated polygon geometry.
+
+    Every edge of the regular polygon remains the same length after rotation
+    and normalization.
+    """
+
+    geometry = structure.create_polygon_geometry(
+        number_of_sides=8,
+        rotation=17.0,
+    )
+
+    vertices = geometry.vertices
+
+    edge_lengths = []
+
+    for index, vertex in enumerate(vertices):
+        next_vertex = vertices[(index + 1) % len(vertices)]
+
+        dx = next_vertex[0] - vertex[0]
+        dy = next_vertex[1] - vertex[1]
+
+        edge_lengths.append((dx * dx + dy * dy) ** 0.5)
+
+    assert edge_lengths == pytest.approx([edge_lengths[0]] * len(edge_lengths))
+
+
+def test_polygon_svg_contains_registered_polygon() -> None:
+    """
+    Generic polygon geometry can be represented as registered SVG.
+
+    SVG persistence retains the generated polygon vertices in registered
+    Shape coordinate space.
+    """
+
+    geometry = structure.create_polygon_geometry(
+        number_of_sides=8,
+        rotation=22.5,
+    )
+
+    document = structure.create_polygon_svg(
         geometry,
     )
 
@@ -253,7 +406,9 @@ def test_octagon_svg_contains_centered_regular_octagon() -> None:
 
     assert polygon is not None
 
-    points = polygon.get("points")
+    points = polygon.get(
+        "points",
+    )
 
     assert points is not None
 
@@ -261,13 +416,37 @@ def test_octagon_svg_contains_centered_regular_octagon() -> None:
 
     assert len(coordinates) == 8
 
-    xs = [point[0] for point in coordinates]
-    ys = [point[1] for point in coordinates]
+    for actual, expected in zip(
+        coordinates,
+        geometry.vertices,
+        strict=True,
+    ):
+        assert actual == pytest.approx(expected)
 
-    assert min(xs) == pytest.approx(-0.5)
-    assert max(xs) == pytest.approx(0.5)
-    assert min(ys) == pytest.approx(-0.5)
-    assert max(ys) == pytest.approx(0.5)
+
+@pytest.mark.parametrize(
+    "shape_sides",
+    (
+        0,
+        1,
+        2,
+    ),
+)
+def test_polygon_geometry_rejects_fewer_than_three_sides(
+    shape_sides: int,
+) -> None:
+    """
+    Regular polygon geometry requires at least three sides.
+    """
+
+    with pytest.raises(
+        ValueError,
+        match="sides",
+    ):
+        structure.create_polygon_geometry(
+            number_of_sides=shape_sides,
+            rotation=0.0,
+        )
 
 
 # =========================================================
@@ -280,7 +459,6 @@ def test_octagon_svg_contains_centered_regular_octagon() -> None:
     (
         ("circle", structure.create_circle_geometry),
         ("square", structure.create_square_geometry),
-        ("octagon", structure.create_octagon_geometry),
     ),
 )
 def test_structural_base_uses_shape_size_as_physical_envelope(
@@ -290,9 +468,9 @@ def test_structural_base_uses_shape_size_as_physical_envelope(
     """
     Physical base dimensionalization applies Shape size to registered geometry.
 
-    Every supported registered Shape has the same canonical 1.0 by 1.0
-    envelope, so shape_size establishes the complete physical X/Y envelope
-    regardless of geometry.
+    Circle and square registered Shapes occupy the complete canonical 1.0 by
+    1.0 envelope, so shape_size establishes their complete physical X/Y
+    envelope.
     """
 
     registered = geometry_factory()
@@ -467,7 +645,6 @@ def test_structure_stage_materializes_declared_registered_product(
     (
         ("circle", "circle"),
         ("square", "rect"),
-        ("octagon", "polygon"),
     ),
 )
 def test_structure_stage_materializes_selected_registered_geometry(
@@ -476,10 +653,11 @@ def test_structure_stage_materializes_selected_registered_geometry(
     element_name: str,
 ) -> None:
     """
-    Structural production dispatches every declared Shape geometry.
+    Structural production dispatches the established nonpolygon Shape geometry.
 
-    Every supported geometry is persisted in the same canonical registered
-    Shape envelope.
+    Every selected geometry is persisted in canonical registered Shape space.
+    Polygon stage dispatch is established separately once the generic polygon
+    construction primitive exists.
     """
 
     output = tmp_path / "structure.svg"
@@ -592,3 +770,174 @@ def test_engine_bootstrap_discovers_shape_structure_implementation() -> None:
     )
 
     assert implementation is structure.execute
+
+
+def test_structure_stage_materializes_configured_polygon(
+    tmp_path: Path,
+) -> None:
+    """
+    Polygon structural production resolves side count and rotation.
+
+    Polygon-specific policy participates in structural geometry only when
+    polygon geometry is selected.
+    """
+
+    output = tmp_path / "structure.svg"
+
+    resolver = Mock(
+        side_effect={
+            "shape_geometry": "polygon",
+            "shape_sides": 6,
+            "shape_rotation": 30.0,
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.output.return_value = output
+
+    structure.execute(
+        context,
+    )
+
+    assert resolver.call_args_list == [
+        call("shape_geometry"),
+        call("shape_sides"),
+        call("shape_rotation"),
+    ]
+
+    assert output.is_file()
+
+    root = ET.parse(
+        output,
+    ).getroot()
+
+    polygon = root.find(
+        "{http://www.w3.org/2000/svg}polygon",
+    )
+
+    assert polygon is not None
+
+    points = polygon.get("points")
+
+    assert points is not None
+    assert len(points.split()) == 6
+
+
+@pytest.mark.parametrize(
+    "shape_geometry",
+    (
+        "circle",
+        "square",
+    ),
+)
+def test_structure_stage_does_not_resolve_polygon_policy_for_other_geometry(
+    tmp_path: Path,
+    shape_geometry: str,
+) -> None:
+    """
+    Polygon-specific policy is not resolved for circle or square geometry.
+    """
+
+    output = tmp_path / "structure.svg"
+
+    resolver = Mock(
+        side_effect={
+            "shape_geometry": shape_geometry,
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.output.return_value = output
+
+    structure.execute(
+        context,
+    )
+
+    assert resolver.call_args_list == [
+        call("shape_geometry"),
+    ]
+
+
+def test_polygon_structural_base_uses_shape_size_as_maximum_extent() -> None:
+    """
+    Polygon physical dimensionalization applies shape_size uniformly.
+
+    The polygon's greatest physical X/Y extent equals shape_size while the
+    other extent retains the registered polygon's proportions.
+    """
+
+    registered = structure.create_polygon_geometry(
+        number_of_sides=3,
+        rotation=0.0,
+    )
+
+    base = structure.create_structural_base(
+        registered,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+    )
+
+    assert base.geometry_name == "polygon"
+
+    assert max(
+        base.width,
+        base.height,
+    ) == pytest.approx(100.0)
+
+    assert base.width == pytest.approx(registered.width * 100.0)
+    assert base.height == pytest.approx(registered.height * 100.0)
+
+
+def test_polygon_structural_base_preserves_rotated_registered_proportions() -> None:
+    """
+    Polygon dimensionalization preserves the rotated registered geometry.
+
+    Rotation may change the relative X/Y extents but does not change the
+    configured maximum physical Shape extent.
+    """
+
+    first_registered = structure.create_polygon_geometry(
+        number_of_sides=3,
+        rotation=0.0,
+    )
+    rotated_registered = structure.create_polygon_geometry(
+        number_of_sides=3,
+        rotation=30.0,
+    )
+
+    first = structure.create_structural_base(
+        first_registered,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+    )
+    rotated = structure.create_structural_base(
+        rotated_registered,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+    )
+
+    assert max(
+        first.width,
+        first.height,
+    ) == pytest.approx(100.0)
+
+    assert max(
+        rotated.width,
+        rotated.height,
+    ) == pytest.approx(100.0)
+
+    assert (
+        first.width,
+        first.height,
+    ) != pytest.approx(
+        (
+            rotated.width,
+            rotated.height,
+        )
+    )
