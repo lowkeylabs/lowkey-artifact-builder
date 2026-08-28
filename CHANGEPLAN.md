@@ -34,7 +34,7 @@ the permanent specifications rather than assuming this plan remains complete.
 ## Status
 
 ```text
-Phase 1 — Not started
+Phase 1 — Started
 Phase 2 — Not started
 Phase 3 — Not started
 ```
