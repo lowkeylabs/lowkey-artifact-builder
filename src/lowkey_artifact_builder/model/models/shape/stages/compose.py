@@ -25,6 +25,7 @@ from lowkey_artifact_builder.engine import StageContext
 
 SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 SVG_CIRCLE = f"{{{SVG_NAMESPACE}}}circle"
+SVG_RECT = f"{{{SVG_NAMESPACE}}}rect"
 
 ET.register_namespace(
     "",
@@ -156,8 +157,11 @@ def execute(
         )
         return
 
-    if ridge_style == "integrated":
-        _compose_integrated_ridge(
+    if ridge_style in {
+        "integrated",
+        "separate",
+    }:
+        _compose_ridge(
             structure_input,
             output,
             shape_size=shape_size,
@@ -165,7 +169,6 @@ def execute(
         )
         return
 
-    # Separate ridge composition is established in a subsequent slice.
     shutil.copyfile(
         structure_input,
         output,
@@ -177,7 +180,7 @@ def execute(
 # =========================================================
 
 
-def _compose_integrated_ridge(
+def _compose_ridge(
     structure_input: Path,
     output: Path,
     *,
@@ -185,14 +188,16 @@ def _compose_integrated_ridge(
     ridge_width: float,
 ) -> None:
     """
-    Compose an integrated ridge in registered Shape space.
+    Compose ridge boundaries in registered Shape space.
 
-    The complete Shape boundary remains unchanged. The physical ridge width is
-    converted into a registered-space inset that establishes the ridge's inner
-    boundary.
+    The complete Shape boundary remains unchanged. Physical ridge width is
+    converted into a registered-space inset that establishes the ridge's
+    inner boundary.
 
-    This slice supports the registered circle structure. Other Shape
-    geometries are introduced separately.
+    Integrated and separate ridge styles share these registered boundaries.
+    Their different physical component partitioning belongs downstream.
+
+    Circle and square registered structures are supported by this slice.
     """
 
     tree = ET.parse(
@@ -200,12 +205,54 @@ def _compose_integrated_ridge(
     )
     root = tree.getroot()
 
-    outer_boundary = root.find(
+    registered_inset = ridge_width / shape_size
+
+    circle = root.find(
         SVG_CIRCLE,
     )
 
-    if outer_boundary is None:
-        raise ValueError("Integrated circle ridge requires registered circle structure.")
+    if circle is not None:
+        _compose_circle_ridge(
+            root,
+            circle,
+            registered_inset=registered_inset,
+        )
+
+        tree.write(
+            output,
+            encoding="unicode",
+        )
+        return
+
+    square = root.find(
+        SVG_RECT,
+    )
+
+    if square is not None:
+        _compose_square_ridge(
+            root,
+            square,
+            registered_inset=registered_inset,
+        )
+
+        tree.write(
+            output,
+            encoding="unicode",
+        )
+        return
+
+    raise ValueError("Ridge composition requires supported registered Shape structure.")
+
+
+def _compose_circle_ridge(
+    root: ET.Element,
+    outer_boundary: ET.Element,
+    *,
+    registered_inset: float,
+) -> None:
+    """
+    Establish registered outer and inner boundaries for a circle ridge.
+    """
 
     outer_boundary.set(
         "id",
@@ -219,7 +266,6 @@ def _compose_integrated_ridge(
         )
     )
 
-    registered_inset = ridge_width / shape_size
     inner_radius = outer_radius - registered_inset
 
     ET.SubElement(
@@ -233,9 +279,60 @@ def _compose_integrated_ridge(
         },
     )
 
-    tree.write(
-        output,
-        encoding="unicode",
+
+def _compose_square_ridge(
+    root: ET.Element,
+    outer_boundary: ET.Element,
+    *,
+    registered_inset: float,
+) -> None:
+    """
+    Establish registered outer and inner boundaries for a square ridge.
+
+    Ridge width is measured inward from every side, so the inner square loses
+    twice the registered inset from both its width and height.
+    """
+
+    outer_boundary.set(
+        "id",
+        "shape-boundary",
+    )
+
+    outer_x = float(
+        outer_boundary.get(
+            "x",
+            "0.0",
+        )
+    )
+    outer_y = float(
+        outer_boundary.get(
+            "y",
+            "0.0",
+        )
+    )
+    outer_width = float(
+        outer_boundary.get(
+            "width",
+            "0.0",
+        )
+    )
+    outer_height = float(
+        outer_boundary.get(
+            "height",
+            "0.0",
+        )
+    )
+
+    ET.SubElement(
+        root,
+        SVG_RECT,
+        {
+            "id": "ridge-inner-boundary",
+            "x": str(outer_x + registered_inset),
+            "y": str(outer_y + registered_inset),
+            "width": str(outer_width - (2.0 * registered_inset)),
+            "height": str(outer_height - (2.0 * registered_inset)),
+        },
     )
 
 

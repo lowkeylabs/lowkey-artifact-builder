@@ -94,6 +94,29 @@ def _write_registered_structure(
     )
 
 
+def _write_registered_square_structure(
+    path: Path,
+) -> None:
+    """
+    Write representative registered square Shape structure.
+    """
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    path.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="-0.5 -0.5 1.0 1.0">'
+            '<rect x="-0.5" y="-0.5" width="1.0" height="1.0" />'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+
 def _configure_shape_resolver(
     context: Mock,
     *,
@@ -691,6 +714,145 @@ def test_compose_circle_zero_width_produces_no_ridge_partition(
 
     assert len(circles) == 1
     assert circles[0].get("r") == "0.5"
+
+
+def test_compose_square_ridge_preserves_outer_boundary(
+    tmp_path: Path,
+) -> None:
+    """
+    A square ridge preserves the complete registered Shape boundary.
+
+    Ridge width is measured inward from the complete square envelope.
+    A 5 mm ridge on a 100 mm square therefore leaves the outer registered
+    envelope unchanged at 1x1 while producing a 0.9x0.9 inner boundary.
+    """
+
+    structure_input = tmp_path / "structure.svg"
+    output = tmp_path / "composition.svg"
+
+    _write_registered_square_structure(
+        structure_input,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.input.return_value = structure_input
+    context.output.return_value = output
+
+    _configure_shape_resolver(
+        context,
+        shape_size=100.0,
+        ridge_width=5.0,
+        ridge_style="integrated",
+    )
+
+    compose.execute(
+        context,
+    )
+
+    root = ET.parse(
+        output,
+    ).getroot()
+
+    outer_boundary = root.find(
+        '{http://www.w3.org/2000/svg}rect[@id="shape-boundary"]',
+    )
+    ridge_inner_boundary = root.find(
+        '{http://www.w3.org/2000/svg}rect[@id="ridge-inner-boundary"]',
+    )
+
+    assert outer_boundary is not None
+    assert ridge_inner_boundary is not None
+
+    assert float(outer_boundary.get("x", "0.0")) == -0.5
+    assert float(outer_boundary.get("y", "0.0")) == -0.5
+    assert float(outer_boundary.get("width", "0.0")) == 1.0
+    assert float(outer_boundary.get("height", "0.0")) == 1.0
+
+    assert float(ridge_inner_boundary.get("x", "0.0")) == -0.45
+    assert float(ridge_inner_boundary.get("y", "0.0")) == -0.45
+    assert float(ridge_inner_boundary.get("width", "0.0")) == 0.9
+    assert float(ridge_inner_boundary.get("height", "0.0")) == 0.9
+
+
+def test_compose_square_ridge_style_preserves_registered_boundaries(
+    tmp_path: Path,
+) -> None:
+    """
+    Square ridge style does not change registered ridge geometry.
+
+    Integrated and separate construction use identical outer and inner
+    registered boundaries. Style affects later physical component
+    partitioning rather than registered Shape geometry.
+    """
+
+    boundaries_by_style: dict[
+        str,
+        tuple[
+            tuple[float, float, float, float],
+            tuple[float, float, float, float],
+        ],
+    ] = {}
+
+    for ridge_style in (
+        "integrated",
+        "separate",
+    ):
+        structure_input = tmp_path / f"structure-{ridge_style}.svg"
+        output = tmp_path / f"composition-{ridge_style}.svg"
+
+        _write_registered_square_structure(
+            structure_input,
+        )
+
+        context = Mock(
+            spec=StageContext,
+        )
+        context.input.return_value = structure_input
+        context.output.return_value = output
+
+        _configure_shape_resolver(
+            context,
+            shape_size=100.0,
+            ridge_width=5.0,
+            ridge_style=ridge_style,
+        )
+
+        compose.execute(
+            context,
+        )
+
+        root = ET.parse(
+            output,
+        ).getroot()
+
+        outer = root.find(
+            '{http://www.w3.org/2000/svg}rect[@id="shape-boundary"]',
+        )
+        inner = root.find(
+            '{http://www.w3.org/2000/svg}rect[@id="ridge-inner-boundary"]',
+        )
+
+        assert outer is not None
+        assert inner is not None
+
+        boundaries_by_style[ridge_style] = (
+            (
+                float(outer.get("x", "0.0")),
+                float(outer.get("y", "0.0")),
+                float(outer.get("width", "0.0")),
+                float(outer.get("height", "0.0")),
+            ),
+            (
+                float(inner.get("x", "0.0")),
+                float(inner.get("y", "0.0")),
+                float(inner.get("width", "0.0")),
+                float(inner.get("height", "0.0")),
+            ),
+        )
+
+    assert boundaries_by_style["integrated"] == boundaries_by_style["separate"]
 
 
 # =========================================================
