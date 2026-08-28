@@ -15,6 +15,7 @@ extrusion belong to downstream Shape stages.
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ from lowkey_artifact_builder.engine import StageContext
 SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 SVG_CIRCLE = f"{{{SVG_NAMESPACE}}}circle"
 SVG_RECT = f"{{{SVG_NAMESPACE}}}rect"
+SVG_POLYGON = f"{{{SVG_NAMESPACE}}}polygon"
 
 ET.register_namespace(
     "",
@@ -197,7 +199,7 @@ def _compose_ridge(
     Integrated and separate ridge styles share these registered boundaries.
     Their different physical component partitioning belongs downstream.
 
-    Circle and square registered structures are supported by this slice.
+    Circle, square, and regular-polygon registered structures are supported.
     """
 
     tree = ET.parse(
@@ -232,6 +234,23 @@ def _compose_ridge(
         _compose_square_ridge(
             root,
             square,
+            registered_inset=registered_inset,
+        )
+
+        tree.write(
+            output,
+            encoding="unicode",
+        )
+        return
+
+    polygon = root.find(
+        SVG_POLYGON,
+    )
+
+    if polygon is not None:
+        _compose_polygon_ridge(
+            root,
+            polygon,
             registered_inset=registered_inset,
         )
 
@@ -333,6 +352,279 @@ def _compose_square_ridge(
             "width": str(outer_width - (2.0 * registered_inset)),
             "height": str(outer_height - (2.0 * registered_inset)),
         },
+    )
+
+
+def _compose_polygon_ridge(
+    root: ET.Element,
+    outer_boundary: ET.Element,
+    *,
+    registered_inset: float,
+) -> None:
+    """
+    Establish registered outer and inner boundaries for a polygon ridge.
+
+    Each outer edge is translated inward by registered_inset along its
+    perpendicular normal. Adjacent translated edge lines are intersected to
+    establish the vertices of the inner polygon.
+
+    This preserves parallel corresponding edges and gives ridge width its
+    perpendicular edge-distance semantics rather than treating the ridge as
+    a radial scale of the outer polygon.
+    """
+
+    outer_points = _read_polygon_points(
+        outer_boundary,
+    )
+
+    inner_points = _inset_polygon(
+        outer_points,
+        inset=registered_inset,
+    )
+
+    outer_boundary.set(
+        "id",
+        "shape-boundary",
+    )
+
+    ET.SubElement(
+        root,
+        SVG_POLYGON,
+        {
+            "id": "ridge-inner-boundary",
+            "points": _format_polygon_points(
+                inner_points,
+            ),
+        },
+    )
+
+
+# =========================================================
+# Polygon composition helpers
+# =========================================================
+
+
+def _read_polygon_points(
+    polygon: ET.Element,
+) -> tuple[tuple[float, float], ...]:
+    """
+    Read registered vertices from an SVG polygon element.
+    """
+
+    points = polygon.get(
+        "points",
+    )
+
+    if points is None:
+        raise ValueError("Registered polygon structure requires polygon points.")
+
+    vertices = tuple(
+        _parse_polygon_point(
+            point,
+        )
+        for point in points.split()
+    )
+
+    if len(vertices) < 3:
+        raise ValueError("Registered polygon structure requires at least 3 vertices.")
+
+    return vertices
+
+
+def _parse_polygon_point(
+    point: str,
+) -> tuple[float, float]:
+    """
+    Parse one SVG polygon point.
+    """
+
+    coordinates = point.split(
+        ",",
+    )
+
+    if len(coordinates) != 2:
+        raise ValueError("Registered polygon structure contains an invalid polygon point.")
+
+    return (
+        float(coordinates[0]),
+        float(coordinates[1]),
+    )
+
+
+def _format_polygon_points(
+    points: tuple[tuple[float, float], ...],
+) -> str:
+    """
+    Format registered polygon vertices for SVG persistence.
+    """
+
+    return " ".join(f"{x},{y}" for x, y in points)
+
+
+def _inset_polygon(
+    points: tuple[tuple[float, float], ...],
+    *,
+    inset: float,
+) -> tuple[tuple[float, float], ...]:
+    """
+    Construct an inward edge-offset polygon.
+
+    Each edge is represented by an inward-translated parallel line. The
+    intersection of each edge with its following edge produces one vertex of
+    the inset polygon.
+    """
+
+    orientation = _polygon_orientation(
+        points,
+    )
+
+    offset_lines = tuple(
+        _offset_edge_line(
+            points[index],
+            points[(index + 1) % len(points)],
+            inset=inset,
+            orientation=orientation,
+        )
+        for index in range(len(points))
+    )
+
+    return tuple(
+        _intersect_lines(
+            offset_lines[(index - 1) % len(offset_lines)],
+            offset_lines[index],
+        )
+        for index in range(len(offset_lines))
+    )
+
+
+def _polygon_orientation(
+    points: tuple[tuple[float, float], ...],
+) -> float:
+    """
+    Return the signed orientation of a polygon.
+
+    Positive values indicate counterclockwise vertex order and negative
+    values indicate clockwise vertex order.
+    """
+
+    signed_area_twice = sum(
+        (start[0] * end[1] - end[0] * start[1])
+        for start, end in (
+            (
+                points[index],
+                points[(index + 1) % len(points)],
+            )
+            for index in range(len(points))
+        )
+    )
+
+    if math.isclose(
+        signed_area_twice,
+        0.0,
+        abs_tol=1.0e-12,
+    ):
+        raise ValueError("Registered polygon structure has zero area.")
+
+    return signed_area_twice
+
+
+def _offset_edge_line(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    *,
+    inset: float,
+    orientation: float,
+) -> tuple[
+    tuple[float, float],
+    tuple[float, float],
+]:
+    """
+    Translate one polygon edge inward by a perpendicular registered distance.
+
+    The polygon orientation determines which perpendicular normal points
+    toward the polygon interior.
+    """
+
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+
+    length = math.hypot(
+        dx,
+        dy,
+    )
+
+    if math.isclose(
+        length,
+        0.0,
+        abs_tol=1.0e-12,
+    ):
+        raise ValueError("Registered polygon structure contains a zero-length edge.")
+
+    if orientation > 0.0:
+        normal_x = -dy / length
+        normal_y = dx / length
+    else:
+        normal_x = dy / length
+        normal_y = -dx / length
+
+    offset_x = normal_x * inset
+    offset_y = normal_y * inset
+
+    return (
+        (
+            start[0] + offset_x,
+            start[1] + offset_y,
+        ),
+        (
+            end[0] + offset_x,
+            end[1] + offset_y,
+        ),
+    )
+
+
+def _intersect_lines(
+    first: tuple[
+        tuple[float, float],
+        tuple[float, float],
+    ],
+    second: tuple[
+        tuple[float, float],
+        tuple[float, float],
+    ],
+) -> tuple[float, float]:
+    """
+    Return the intersection of two infinite lines.
+
+    Adjacent edges of a valid regular polygon are nonparallel, so their inward
+    offset lines must have one unique intersection.
+    """
+
+    first_start, first_end = first
+    second_start, second_end = second
+
+    first_dx = first_end[0] - first_start[0]
+    first_dy = first_end[1] - first_start[1]
+
+    second_dx = second_end[0] - second_start[0]
+    second_dy = second_end[1] - second_start[1]
+
+    denominator = first_dx * second_dy - first_dy * second_dx
+
+    if math.isclose(
+        denominator,
+        0.0,
+        abs_tol=1.0e-12,
+    ):
+        raise ValueError("Registered polygon structure contains parallel adjacent edges.")
+
+    delta_x = second_start[0] - first_start[0]
+    delta_y = second_start[1] - first_start[1]
+
+    first_parameter = (delta_x * second_dy - delta_y * second_dx) / denominator
+
+    return (
+        first_start[0] + first_parameter * first_dx,
+        first_start[1] + first_parameter * first_dy,
     )
 
 

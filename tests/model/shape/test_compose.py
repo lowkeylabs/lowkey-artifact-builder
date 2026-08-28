@@ -8,9 +8,12 @@ Tests for Shape registered-Artwork composition.
 from __future__ import annotations
 
 import json
+import math
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import Mock, call
+
+import pytest
 
 from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.engine.bootstrap import build_stage_registry
@@ -114,6 +117,70 @@ def _write_registered_square_structure(
             "</svg>"
         ),
         encoding="utf-8",
+    )
+
+
+def _write_registered_polygon_structure(
+    path: Path,
+    *,
+    number_of_sides: int = 8,
+    rotation: float = 22.5,
+) -> None:
+    """
+    Write representative registered regular-polygon Shape structure.
+    """
+
+    from lowkey_artifact_builder.model.models.shape.stages import structure
+
+    geometry = structure.create_polygon_geometry(
+        number_of_sides=number_of_sides,
+        rotation=rotation,
+    )
+
+    document = structure.create_polygon_svg(
+        geometry,
+    )
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    document.write(
+        path,
+        encoding="unicode",
+    )
+
+
+def _polygon_points(
+    element: ET.Element,
+) -> tuple[tuple[float, float], ...]:
+    """
+    Read registered polygon vertices from an SVG polygon element.
+    """
+
+    points = element.get(
+        "points",
+    )
+
+    assert points is not None
+
+    vertices: list[tuple[float, float]] = []
+
+    for point in points.split():
+        x_text, y_text = point.split(
+            ",",
+        )
+
+        vertices.append(
+            (
+                float(x_text),
+                float(y_text),
+            )
+        )
+
+    return tuple(
+        vertices,
     )
 
 
@@ -853,6 +920,276 @@ def test_compose_square_ridge_style_preserves_registered_boundaries(
         )
 
     assert boundaries_by_style["integrated"] == boundaries_by_style["separate"]
+
+
+def test_compose_polygon_ridge_preserves_outer_boundary(
+    tmp_path: Path,
+) -> None:
+    """
+    A polygon ridge preserves the complete registered Shape boundary.
+
+    Ridge composition adds an inner polygon boundary without changing the
+    normalized and rotated outer polygon produced by structural geometry.
+    """
+
+    structure_input = tmp_path / "structure.svg"
+    output = tmp_path / "composition.svg"
+
+    _write_registered_polygon_structure(
+        structure_input,
+        number_of_sides=8,
+        rotation=22.5,
+    )
+
+    original_root = ET.parse(
+        structure_input,
+    ).getroot()
+
+    original_polygon = original_root.find(
+        "{http://www.w3.org/2000/svg}polygon",
+    )
+
+    assert original_polygon is not None
+
+    original_points = _polygon_points(
+        original_polygon,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.input.return_value = structure_input
+    context.output.return_value = output
+
+    _configure_shape_resolver(
+        context,
+        shape_size=100.0,
+        ridge_width=5.0,
+        ridge_style="integrated",
+    )
+
+    compose.execute(
+        context,
+    )
+
+    root = ET.parse(
+        output,
+    ).getroot()
+
+    outer_boundary = root.find(
+        '{http://www.w3.org/2000/svg}polygon[@id="shape-boundary"]',
+    )
+    ridge_inner_boundary = root.find(
+        '{http://www.w3.org/2000/svg}polygon[@id="ridge-inner-boundary"]',
+    )
+
+    assert outer_boundary is not None
+    assert ridge_inner_boundary is not None
+
+    outer_points = _polygon_points(
+        outer_boundary,
+    )
+
+    assert len(outer_points) == len(original_points)
+
+    for actual, expected in zip(
+        outer_points,
+        original_points,
+        strict=True,
+    ):
+        assert actual == pytest.approx(
+            expected,
+        )
+
+
+def test_compose_polygon_ridge_offsets_edges_perpendicularly(
+    tmp_path: Path,
+) -> None:
+    """
+    Polygon ridge width is a perpendicular inward edge offset.
+
+    Every inner ridge edge remains parallel to its corresponding outer edge
+    and is separated from that edge by ridge_width / shape_size registered
+    units.
+    """
+
+    structure_input = tmp_path / "structure.svg"
+    output = tmp_path / "composition.svg"
+
+    _write_registered_polygon_structure(
+        structure_input,
+        number_of_sides=8,
+        rotation=17.0,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.input.return_value = structure_input
+    context.output.return_value = output
+
+    _configure_shape_resolver(
+        context,
+        shape_size=100.0,
+        ridge_width=5.0,
+        ridge_style="integrated",
+    )
+
+    compose.execute(
+        context,
+    )
+
+    root = ET.parse(
+        output,
+    ).getroot()
+
+    outer = root.find(
+        '{http://www.w3.org/2000/svg}polygon[@id="shape-boundary"]',
+    )
+    inner = root.find(
+        '{http://www.w3.org/2000/svg}polygon[@id="ridge-inner-boundary"]',
+    )
+
+    assert outer is not None
+    assert inner is not None
+
+    outer_points = _polygon_points(
+        outer,
+    )
+    inner_points = _polygon_points(
+        inner,
+    )
+
+    assert len(inner_points) == len(outer_points)
+
+    registered_inset = 0.05
+
+    for index in range(len(outer_points)):
+        outer_start = outer_points[index]
+        outer_end = outer_points[(index + 1) % len(outer_points)]
+
+        inner_start = inner_points[index]
+        inner_end = inner_points[(index + 1) % len(inner_points)]
+
+        outer_dx = outer_end[0] - outer_start[0]
+        outer_dy = outer_end[1] - outer_start[1]
+
+        inner_dx = inner_end[0] - inner_start[0]
+        inner_dy = inner_end[1] - inner_start[1]
+
+        cross_product = outer_dx * inner_dy - outer_dy * inner_dx
+
+        assert cross_product == pytest.approx(
+            0.0,
+            abs=1.0e-9,
+        )
+
+        outer_length = math.hypot(
+            outer_dx,
+            outer_dy,
+        )
+
+        distance = (
+            abs(
+                outer_dx * (inner_start[1] - outer_start[1])
+                - outer_dy * (inner_start[0] - outer_start[0])
+            )
+            / outer_length
+        )
+
+        assert distance == pytest.approx(
+            registered_inset,
+        )
+
+
+def test_compose_polygon_ridge_style_preserves_registered_boundaries(
+    tmp_path: Path,
+) -> None:
+    """
+    Polygon ridge style does not change registered ridge geometry.
+
+    Integrated and separate construction use identical outer and inner
+    registered boundaries. Style affects later physical component
+    partitioning rather than registered Shape geometry.
+    """
+
+    boundaries_by_style: dict[
+        str,
+        tuple[
+            tuple[tuple[float, float], ...],
+            tuple[tuple[float, float], ...],
+        ],
+    ] = {}
+
+    for ridge_style in (
+        "integrated",
+        "separate",
+    ):
+        structure_input = tmp_path / f"structure-{ridge_style}.svg"
+        output = tmp_path / f"composition-{ridge_style}.svg"
+
+        _write_registered_polygon_structure(
+            structure_input,
+            number_of_sides=6,
+            rotation=30.0,
+        )
+
+        context = Mock(
+            spec=StageContext,
+        )
+        context.input.return_value = structure_input
+        context.output.return_value = output
+
+        _configure_shape_resolver(
+            context,
+            shape_size=100.0,
+            ridge_width=5.0,
+            ridge_style=ridge_style,
+        )
+
+        compose.execute(
+            context,
+        )
+
+        root = ET.parse(
+            output,
+        ).getroot()
+
+        outer = root.find(
+            '{http://www.w3.org/2000/svg}polygon[@id="shape-boundary"]',
+        )
+        inner = root.find(
+            '{http://www.w3.org/2000/svg}polygon[@id="ridge-inner-boundary"]',
+        )
+
+        assert outer is not None
+        assert inner is not None
+
+        boundaries_by_style[ridge_style] = (
+            _polygon_points(
+                outer,
+            ),
+            _polygon_points(
+                inner,
+            ),
+        )
+
+    integrated = boundaries_by_style["integrated"]
+    separate = boundaries_by_style["separate"]
+
+    for integrated_boundary, separate_boundary in zip(
+        integrated,
+        separate,
+        strict=True,
+    ):
+        for integrated_point, separate_point in zip(
+            integrated_boundary,
+            separate_boundary,
+            strict=True,
+        ):
+            assert integrated_point == pytest.approx(
+                separate_point,
+            )
 
 
 # =========================================================
