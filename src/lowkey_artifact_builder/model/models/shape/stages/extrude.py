@@ -5,7 +5,10 @@ The extrude stage is the Shape physical-dimensionalization boundary.
 
 It consumes registered composed Shape geometry, applies the configured
 physical X/Y size and Z dimensions, and renders the resulting manufacturing
-geometry as an independently printable STL component.
+geometry as independently printable STL components.
+
+The stage records those physical components in a persistent products.json
+manifest consumed by downstream packaging.
 
 Final 3MF assembly belongs to the downstream package stage.
 """
@@ -15,6 +18,7 @@ Final 3MF assembly belongs to the downstream package stage.
 
 from __future__ import annotations
 
+import json
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +34,12 @@ from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
 
 SHAPE_BOUNDARY_ID = "shape-boundary"
 RIDGE_INNER_BOUNDARY_ID = "ridge-inner-boundary"
+
+BASE_COMPONENT_NAME = "base"
+BASE_COMPONENT_PATH = "base.stl"
+
+RIDGE_COMPONENT_NAME = "ridge"
+RIDGE_COMPONENT_PATH = "ridge.stl"
 
 
 # =========================================================
@@ -101,12 +111,24 @@ def execute(
 
     The stage produces:
 
-        base
-            Independently printable physical Shape structural STL.
+        manifest
+            Persistent products.json manifest describing independently
+            printable physical Shape components.
 
-    An integrated ridge remains part of the base structural component.
+    A composition without a ridge produces one physical component:
 
-    Packaging the physical component into artifact.3mf belongs to the
+        base.stl
+
+    An integrated ridge produces two physical components:
+
+        base.stl
+        ridge.stl
+
+    Structural integration determines how those components assemble. It does
+    not erase the independent physical identity required by downstream
+    packaging and printing.
+
+    Packaging the physical components into artifact.3mf belongs to the
     downstream package stage.
     """
 
@@ -114,8 +136,8 @@ def execute(
         "compose.composition",
     )
 
-    base = context.output(
-        "base",
+    manifest = context.output(
+        "manifest",
     )
 
     shape_size = context.resolver(
@@ -138,22 +160,49 @@ def execute(
         raise ExtrudeError(f"Registered Shape composition does not exist: {composition}")
 
     try:
-        source = _build_scad(
+        ridge = _load_circle_ridge(
             composition,
-            shape_size=shape_size,
-            shape_base_raise=shape_base_raise,
-            shape_outer_ridge_raise=shape_outer_ridge_raise,
-            shape_outer_ridge_style=shape_outer_ridge_style,
         )
 
-        render_stl_source(
-            source,
-            base,
+        manifest.parent.mkdir(
+            parents=True,
+            exist_ok=True,
         )
 
-        if not base.is_file():
+        if ridge is None:
+            components = _render_no_ridge_components(
+                composition,
+                manifest.parent,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+            )
+
+        elif shape_outer_ridge_style == "integrated":
+            components = _render_integrated_circle_ridge_components(
+                ridge,
+                manifest.parent,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+                shape_outer_ridge_raise=shape_outer_ridge_raise,
+            )
+
+        else:
+            components = _render_baseline_components(
+                composition,
+                manifest.parent,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+            )
+
+        _write_component_manifest(
+            manifest,
+            components,
+        )
+
+        if not manifest.is_file():
             raise ExtrudeError(
-                f"Shape extrusion completed without creating the expected base STL: {base}"
+                "Shape extrusion completed without creating the expected "
+                f"component manifest: {manifest}"
             )
 
     except ExtrudeError:
@@ -171,6 +220,198 @@ def execute(
 
 
 # =========================================================
+# Physical component production
+# =========================================================
+
+
+def _render_no_ridge_components(
+    composition: Path,
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+) -> tuple[
+    tuple[str, str],
+    ...,
+]:
+    """
+    Render physical components for a Shape without an outer ridge.
+    """
+
+    base = output_directory / BASE_COMPONENT_PATH
+
+    source = _build_base_scad(
+        _scad_path(
+            composition,
+        ),
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+    )
+
+    render_stl_source(
+        source,
+        base,
+    )
+
+    _require_component(
+        base,
+        component_name=BASE_COMPONENT_NAME,
+    )
+
+    return (
+        (
+            BASE_COMPONENT_NAME,
+            BASE_COMPONENT_PATH,
+        ),
+    )
+
+
+def _render_baseline_components(
+    composition: Path,
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+) -> tuple[
+    tuple[str, str],
+    ...,
+]:
+    """
+    Render the baseline physical base component.
+
+    This preserves the existing fallback behavior for ridge styles whose
+    physical partitioning has not yet been established by the current slice.
+    """
+
+    return _render_no_ridge_components(
+        composition,
+        output_directory,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+    )
+
+
+def _render_integrated_circle_ridge_components(
+    ridge: RegisteredCircleRidge,
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> tuple[
+    tuple[str, str],
+    ...,
+]:
+    """
+    Render independently printable components for an integrated circle ridge.
+
+    The base remains the complete Shape footprint through shape_base_raise.
+
+    The ridge is the perimeter annulus above the base, extending from:
+
+        Z = shape_base_raise
+
+    through:
+
+        Z = shape_base_raise + shape_outer_ridge_raise
+
+    This preserves the previously established positive integrated assembled
+    geometry while retaining independent ridge component identity.
+    """
+
+    base = output_directory / BASE_COMPONENT_PATH
+    ridge_output = output_directory / RIDGE_COMPONENT_PATH
+
+    base_source = _build_circle_base_scad(
+        ridge.outer,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+    )
+
+    ridge_source = _build_integrated_circle_ridge_component_scad(
+        ridge,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+        shape_outer_ridge_raise=shape_outer_ridge_raise,
+    )
+
+    render_stl_source(
+        base_source,
+        base,
+    )
+
+    render_stl_source(
+        ridge_source,
+        ridge_output,
+    )
+
+    _require_component(
+        base,
+        component_name=BASE_COMPONENT_NAME,
+    )
+
+    _require_component(
+        ridge_output,
+        component_name=RIDGE_COMPONENT_NAME,
+    )
+
+    return (
+        (
+            BASE_COMPONENT_NAME,
+            BASE_COMPONENT_PATH,
+        ),
+        (
+            RIDGE_COMPONENT_NAME,
+            RIDGE_COMPONENT_PATH,
+        ),
+    )
+
+
+def _require_component(
+    path: Path,
+    *,
+    component_name: str,
+) -> None:
+    """
+    Require one rendered physical Shape component to exist.
+    """
+
+    if not path.is_file():
+        raise ExtrudeError(
+            f"Shape extrusion completed without creating the expected {component_name} STL: {path}"
+        )
+
+
+def _write_component_manifest(
+    path: Path,
+    components: tuple[
+        tuple[str, str],
+        ...,
+    ],
+) -> None:
+    """
+    Write the physical-component manifest for Shape extrusion.
+    """
+
+    path.write_text(
+        json.dumps(
+            {
+                "components": [
+                    {
+                        "name": name,
+                        "path": component_path,
+                    }
+                    for name, component_path in components
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+# =========================================================
 # OpenSCAD construction
 # =========================================================
 
@@ -184,7 +425,7 @@ def _build_scad(
     shape_outer_ridge_style: str,
 ) -> str:
     """
-    Build OpenSCAD source for physical Shape extrusion.
+    Build OpenSCAD source for complete physical Shape extrusion.
 
     Registered Shape composition occupies a canonical 1x1 envelope centered
     about the origin.
@@ -195,6 +436,10 @@ def _build_scad(
     An integrated circle ridge composition contains semantic outer and inner
     ridge boundaries. Those registered boundaries are dimensionalized using
     shape_size.
+
+    This helper retains the complete assembled representation used by the
+    dimensionalization tests. Stage execution separately renders independently
+    printable physical components.
 
     This slice establishes positive integrated circle ridge raise. Zero and
     negative integrated raise and separate ridge partitioning are established
@@ -252,6 +497,89 @@ def _build_base_scad(
         "    scale([shape_size, shape_size, 1])\n"
         "        translate([-0.5, -1.5, 0])\n"
         f'            import("{source}", dpi = 25.4);\n'
+    )
+
+
+def _build_circle_base_scad(
+    circle: RegisteredCircle,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for a physical circle base.
+
+    The complete registered outer Shape boundary is extruded from Z=0 through
+    shape_base_raise.
+    """
+
+    x = circle.cx * shape_size
+    y = circle.cy * shape_size
+    radius = circle.radius * shape_size
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        "\n"
+        f"// {SHAPE_BOUNDARY_ID}\n"
+        "linear_extrude(\n"
+        "    height = shape_base_raise,\n"
+        "    center = false\n"
+        ")\n"
+        f"    translate([{x:g}, {y:g}, 0])\n"
+        f"        circle(r = {radius:g}, $fn = 256);\n"
+    )
+
+
+def _build_integrated_circle_ridge_component_scad(
+    ridge: RegisteredCircleRidge,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for the independently printable integrated ridge.
+
+    For the positive integrated-ridge slice, the ridge component occupies the
+    registered perimeter annulus from the base top through the complete
+    assembled ridge height.
+    """
+
+    outer_x = ridge.outer.cx * shape_size
+    outer_y = ridge.outer.cy * shape_size
+    outer_radius = ridge.outer.radius * shape_size
+
+    inner_x = ridge.inner.cx * shape_size
+    inner_y = ridge.inner.cy * shape_size
+    inner_radius = ridge.inner.radius * shape_size
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        "\n"
+        f"// {SHAPE_BOUNDARY_ID}\n"
+        "module registered_shape_boundary() {\n"
+        f"    translate([{outer_x:g}, {outer_y:g}, 0])\n"
+        f"        circle(r = {outer_radius:g}, $fn = 256);\n"
+        "}\n"
+        "\n"
+        f"// {RIDGE_INNER_BOUNDARY_ID}\n"
+        "module registered_ridge_inner_boundary() {\n"
+        f"    translate([{inner_x:g}, {inner_y:g}, 0])\n"
+        f"        circle(r = {inner_radius:g}, $fn = 256);\n"
+        "}\n"
+        "\n"
+        "translate([0, 0, shape_base_raise])\n"
+        "    linear_extrude(\n"
+        "        height = shape_outer_ridge_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        difference() {\n"
+        "            registered_shape_boundary();\n"
+        "            registered_ridge_inner_boundary();\n"
+        "        }\n"
     )
 
 

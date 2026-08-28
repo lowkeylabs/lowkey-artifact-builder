@@ -7,6 +7,7 @@ Tests for Shape physical extrusion.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import Mock, call
 
@@ -149,6 +150,20 @@ def _stl_bounds(
         max(ys),
         min(zs),
         max(zs),
+    )
+
+
+def _read_manifest(
+    path: Path,
+) -> dict:
+    """
+    Read a Shape physical-component manifest.
+    """
+
+    return json.loads(
+        path.read_text(
+            encoding="utf-8",
+        )
     )
 
 
@@ -433,20 +448,21 @@ def test_extruded_integrated_ridge_has_complete_physical_envelope(
 # =========================================================
 
 
-def test_extrude_stage_materializes_declared_base_stl(
+def test_extrude_stage_materializes_declared_component_manifest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Shape extrusion materializes its declared physical base product.
+    Shape extrusion materializes its declared physical-component manifest.
 
-    Input and output locations come exclusively from StageContext.
-    Physical ridge height and structural style are resolved at the
-    dimensionalization boundary.
+    Physical STL components are members of the manifest rather than
+    independently declared stage products. This permits component membership
+    to vary according to Shape structure while retaining one stable,
+    independently verifiable stage product.
     """
 
     composition = tmp_path / "arbitrary-input" / "composition.svg"
-    output = tmp_path / "arbitrary-output" / "base.stl"
+    manifest = tmp_path / "arbitrary-output" / "products.json"
 
     _write_composition(
         composition,
@@ -466,7 +482,7 @@ def test_extrude_stage_materializes_declared_base_stl(
     )
     context.resolver = resolver
     context.input.return_value = composition
-    context.output.return_value = output
+    context.output.return_value = manifest
 
     rendered_sources: list[str] = []
     rendered_outputs: list[Path] = []
@@ -505,7 +521,7 @@ def test_extrude_stage_materializes_declared_base_stl(
         "compose.composition",
     )
     context.output.assert_called_once_with(
-        "base",
+        "manifest",
     )
 
     assert resolver.call_args_list == [
@@ -515,25 +531,45 @@ def test_extrude_stage_materializes_declared_base_stl(
         call("shape_outer_ridge_style"),
     ]
 
+    assert manifest.is_file()
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    assert data["components"] == [
+        {
+            "name": "base",
+            "path": "base.stl",
+        },
+    ]
+
     assert rendered_outputs == [
-        output,
+        manifest.parent / "base.stl",
     ]
 
     assert len(rendered_sources) == 1
     assert str(composition.resolve()) in rendered_sources[0]
 
-    assert output.is_file()
 
-
-def test_extrude_stage_rejects_missing_registered_composition(
+def test_no_ridge_component_manifest_contains_only_base(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Shape extrusion requires its declared registered composition input.
+    A Shape without a ridge has exactly one physical structural component.
+
+    Ridge existence is represented by the registered composition produced
+    upstream. When no ridge partition exists, extrusion records only the
+    physical base component.
     """
 
-    composition = tmp_path / "missing.svg"
-    output = tmp_path / "base.stl"
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_composition(
+        composition,
+    )
 
     resolver = Mock(
         side_effect={
@@ -549,7 +585,226 @@ def test_extrude_stage_rejects_missing_registered_composition(
     )
     context.resolver = resolver
     context.input.return_value = composition
-    context.output.return_value = output
+    context.output.return_value = manifest
+
+    def fake_render_stl_source(
+        source: str,
+        target: Path,
+    ) -> None:
+        target.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        target.write_text(
+            "stl",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    assert tuple(component["name"] for component in data["components"]) == ("base",)
+
+    assert (manifest.parent / "base.stl").is_file()
+    assert not (manifest.parent / "ridge.stl").exists()
+
+
+def test_integrated_ridge_component_manifest_contains_base_and_ridge(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    An integrated ridge remains a distinct physical component.
+
+    Structural integration determines the assembled geometry but does not
+    erase ridge component identity. Base and ridge remain independently
+    identifiable so downstream packaging can preserve independent printing
+    properties such as color.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "integrated",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    rendered_outputs: list[Path] = []
+
+    def fake_render_stl_source(
+        source: str,
+        target: Path,
+    ) -> None:
+        target.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        target.write_text(
+            "stl",
+            encoding="utf-8",
+        )
+
+        rendered_outputs.append(
+            target,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    assert data["components"] == [
+        {
+            "name": "base",
+            "path": "base.stl",
+        },
+        {
+            "name": "ridge",
+            "path": "ridge.stl",
+        },
+    ]
+
+    assert rendered_outputs == [
+        manifest.parent / "base.stl",
+        manifest.parent / "ridge.stl",
+    ]
+
+    assert (manifest.parent / "base.stl").is_file()
+    assert (manifest.parent / "ridge.stl").is_file()
+
+
+def test_integrated_ridge_components_preserve_physical_partition(
+    tmp_path: Path,
+) -> None:
+    """
+    Integrated ridge component geometry preserves the intended partition.
+
+    For a 100 mm circle with a 2 mm base and a +1 mm ridge:
+
+        base  -> complete 100 mm circle from Z=0 through Z=2
+        ridge -> 100/90 mm perimeter from Z=2 through Z=3
+
+    Independent component identity therefore preserves the intended assembled
+    geometry rather than changing the structural meaning of an integrated
+    ridge.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "integrated",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    base = manifest.parent / "base.stl"
+    ridge = manifest.parent / "ridge.stl"
+
+    assert base.is_file()
+    assert ridge.is_file()
+
+    base_bounds = _stl_bounds(
+        base,
+    )
+    ridge_bounds = _stl_bounds(
+        ridge,
+    )
+
+    assert base_bounds[0] == pytest.approx(-50.0)
+    assert base_bounds[1] == pytest.approx(50.0)
+    assert base_bounds[2] == pytest.approx(-50.0)
+    assert base_bounds[3] == pytest.approx(50.0)
+    assert base_bounds[4] == pytest.approx(0.0)
+    assert base_bounds[5] == pytest.approx(2.0)
+
+    assert ridge_bounds[0] == pytest.approx(-50.0)
+    assert ridge_bounds[1] == pytest.approx(50.0)
+    assert ridge_bounds[2] == pytest.approx(-50.0)
+    assert ridge_bounds[3] == pytest.approx(50.0)
+    assert ridge_bounds[4] == pytest.approx(2.0)
+    assert ridge_bounds[5] == pytest.approx(3.0)
+
+
+def test_extrude_stage_rejects_missing_registered_composition(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape extrusion requires its declared registered composition input.
+    """
+
+    composition = tmp_path / "missing.svg"
+    manifest = tmp_path / "products.json"
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "integrated",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
 
     with pytest.raises(
         extrude.ExtrudeError,
@@ -559,7 +814,7 @@ def test_extrude_stage_rejects_missing_registered_composition(
             context,
         )
 
-    assert not output.exists()
+    assert not manifest.exists()
 
 
 # =========================================================

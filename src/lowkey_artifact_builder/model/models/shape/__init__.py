@@ -6,7 +6,7 @@ registered Artwork geometry.
 
 The current declaration establishes registered structural Shape production,
 registered composition, physical dimensionalization, optional outer-ridge
-policy, and final artifact packaging.
+policy, physical-component discovery, and final artifact packaging.
 """
 # File: src/lowkey_artifact_builder/model/models/shape/__init__.py
 # Copyright 2026 LowKeyLabs LLC
@@ -68,7 +68,10 @@ MODEL = ModelSpec(
         StageSpec(
             id=30,
             name="extrude",
-            description=("Dimensionalize and extrude registered Shape geometry."),
+            description=(
+                "Dimensionalize registered Shape geometry and produce "
+                "independently printable physical components."
+            ),
             dependencies=("compose",),
             parameters=(
                 "shape_size",
@@ -78,9 +81,11 @@ MODEL = ModelSpec(
             ),
             products=(
                 ProductSpec(
-                    name="base",
-                    path="base.stl",
-                    description=("Physical structural Shape base geometry."),
+                    name="manifest",
+                    path="products.json",
+                    description=(
+                        "Manifest describing independently printable physical Shape components."
+                    ),
                 ),
             ),
         ),

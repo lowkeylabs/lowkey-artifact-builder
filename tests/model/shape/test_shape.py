@@ -264,21 +264,24 @@ def test_shape_extrude_consumes_physical_structural_parameters() -> None:
     )
 
 
-def test_shape_extrude_produces_physical_base_stl() -> None:
+def test_shape_extrude_produces_physical_component_manifest() -> None:
     """
-    Shape extrusion produces persistent physical manufacturing geometry.
+    Shape extrusion declares one persistent manifest describing its physical
+    manufacturing components.
 
-    The structural base remains an independently printable STL component.
-    Final 3MF assembly belongs to the downstream package stage.
+    Component membership varies with Shape structure. A no-ridge Shape has
+    only a base component, while a Shape with a ridge has distinct base and
+    ridge component geometry. The manifest provides the stable declared
+    product through which downstream packaging discovers those components.
     """
 
     extrude_stage = _extrude_stage()
 
-    assert tuple(product.name for product in extrude_stage.products) == ("base",)
+    assert tuple(product.name for product in extrude_stage.products) == ("manifest",)
 
     product = extrude_stage.products[0]
 
-    assert product.path == "base.stl"
+    assert product.path == "products.json"
 
 
 def test_shape_extrude_does_not_produce_final_artifact() -> None:
