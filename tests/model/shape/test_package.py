@@ -8,6 +8,7 @@ Tests for Shape physical-component packaging.
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 from unittest.mock import Mock, call
@@ -16,6 +17,7 @@ import pytest
 
 from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.engine.bootstrap import build_stage_registry
+from lowkey_artifact_builder.formats.threemf import CORE_NS
 from lowkey_artifact_builder.model.models.shape import stages
 from lowkey_artifact_builder.model.models.shape.stages import package
 
@@ -59,6 +61,8 @@ def _write_component_manifest(
         tuple[
             str,
             str,
+            str,
+            tuple[int, int, int],
         ],
         ...,
     ],
@@ -69,6 +73,9 @@ def _write_component_manifest(
     Component paths are relative to the manifest so packaging can discover
     physical manufacturing geometry without constructing artifact workspace
     paths.
+
+    Semantic component colors are supplied by extrusion and must remain
+    available to downstream packaging without re-resolving Shape color policy.
     """
 
     path.parent.mkdir(
@@ -83,8 +90,12 @@ def _write_component_manifest(
                     {
                         "name": name,
                         "path": component_path,
+                        "color": {
+                            "name": color_name,
+                            "rgb": list(rgb),
+                        },
                     }
-                    for name, component_path in components
+                    for name, component_path, color_name, rgb in components
                 ],
             }
         ),
@@ -113,6 +124,8 @@ def _write_base_manifest(
             (
                 "base",
                 "base.stl",
+                "white",
+                (255, 255, 255),
             ),
         ),
     )
@@ -147,15 +160,37 @@ def _write_base_and_ridge_manifest(
             (
                 "base",
                 "base.stl",
+                "white",
+                (255, 255, 255),
             ),
             (
                 "ridge",
                 "ridge.stl",
+                "white",
+                (255, 255, 255),
             ),
         ),
     )
 
     return manifest
+
+
+def _read_model(
+    artifact: Path,
+) -> ET.Element:
+    """
+    Read the primary model document from a packaged Shape artifact.
+    """
+
+    with zipfile.ZipFile(
+        artifact,
+        mode="r",
+    ) as archive:
+        data = archive.read(
+            "3D/3dmodel.model",
+        )
+
+    return ET.fromstring(data)
 
 
 # =========================================================
@@ -353,10 +388,14 @@ def test_package_stage_uses_semantic_component_names(
             (
                 "base",
                 "arbitrary-base-name.stl",
+                "white",
+                (255, 255, 255),
             ),
             (
                 "ridge",
                 "arbitrary-ridge-name.stl",
+                "white",
+                (255, 255, 255),
             ),
         ),
     )
@@ -388,15 +427,181 @@ def test_package_stage_uses_semantic_component_names(
     assert "example-arbitrary-ridge-name" not in model
 
 
+def test_package_stage_preserves_base_component_color(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape packaging preserves base color identity supplied by extrusion.
+
+    Packaging consumes component metadata rather than independently resolving
+    Shape color policy.
+    """
+
+    component_directory = tmp_path / "extrude"
+
+    base = component_directory / "base.stl"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    _write_component_stl(
+        base,
+        solid_name="shape-base",
+    )
+
+    _write_component_manifest(
+        manifest,
+        (
+            (
+                "base",
+                "base.stl",
+                "red",
+                (220, 38, 38),
+            ),
+        ),
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "example"
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    package.execute(
+        context,
+    )
+
+    model = _read_model(
+        artifact,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    assert len(objects) == 1
+    assert objects[0].get("name") == "example-base"
+
+    assert len(materials) == 1
+
+    base_color = materials[0].find(
+        f"{{{CORE_NS}}}base",
+    )
+
+    assert base_color is not None
+    assert base_color.get("name") == "red"
+    assert base_color.get("displaycolor") == "#DC2626"
+
+    assert objects[0].get("pid") == materials[0].get("id")
+    assert objects[0].get("pindex") == "0"
+
+
+def test_package_stage_preserves_distinct_component_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape packaging preserves independent base and ridge color identities.
+
+    Each independently printable component retains the semantic color supplied
+    by extrusion without packaging assigning either component to a physical
+    printer head.
+    """
+
+    component_directory = tmp_path / "extrude"
+
+    base = component_directory / "base.stl"
+    ridge = component_directory / "ridge.stl"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    _write_component_stl(
+        base,
+        solid_name="shape-base",
+    )
+
+    _write_component_stl(
+        ridge,
+        solid_name="shape-ridge",
+    )
+
+    _write_component_manifest(
+        manifest,
+        (
+            (
+                "base",
+                "base.stl",
+                "white",
+                (255, 255, 255),
+            ),
+            (
+                "ridge",
+                "ridge.stl",
+                "red",
+                (220, 38, 38),
+            ),
+        ),
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "example"
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    package.execute(
+        context,
+    )
+
+    model = _read_model(
+        artifact,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    assert [object_.get("name") for object_ in objects] == [
+        "example-base",
+        "example-ridge",
+    ]
+
+    colors = {
+        material.get("id"): material.find(
+            f"{{{CORE_NS}}}base",
+        )
+        for material in materials
+    }
+
+    base_color = colors[objects[0].get("pid")]
+    ridge_color = colors[objects[1].get("pid")]
+
+    assert base_color is not None
+    assert base_color.get("name") == "white"
+    assert base_color.get("displaycolor") == "#FFFFFF"
+
+    assert ridge_color is not None
+    assert ridge_color.get("name") == "red"
+    assert ridge_color.get("displaycolor") == "#DC2626"
+
+
 def test_package_stage_does_not_resolve_geometry_parameters(
     tmp_path: Path,
 ) -> None:
     """
-    Shape packaging does not construct or dimensionalize geometry.
+    Shape packaging does not construct, dimensionalize, or recolor geometry.
 
-    Physical Shape parameters belong to upstream production stages.
-    Packaging consumes only the physical-component manifest and the
-    components it describes.
+    Physical Shape parameters and semantic component colors belong to upstream
+    production stages. Packaging consumes only the physical-component manifest
+    and the components it describes.
     """
 
     manifest = _write_base_manifest(
@@ -483,6 +688,8 @@ def test_package_stage_rejects_missing_manifest_component(
             (
                 component_name,
                 component_path,
+                "white",
+                (255, 255, 255),
             ),
         ),
     )
