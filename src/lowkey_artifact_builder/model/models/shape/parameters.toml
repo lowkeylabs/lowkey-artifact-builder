@@ -68,6 +68,13 @@ shape_size = 100.0
 
 shape_base_raise = 2.0
 
+#
+# Semantic printing color of the structural base.
+#
+# Color names are resolved through the shared color catalog.
+#
+
+shape_base_color = "white"
 
 # =========================================================
 # Outer ridge

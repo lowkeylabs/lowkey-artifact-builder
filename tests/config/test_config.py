@@ -578,13 +578,16 @@ def test_shape_model_defaults_are_resolved(
     tmp_path: Path,
 ) -> None:
     """
-    Shape parameters.toml contributes structural defaults.
+    Shape parameters.toml contributes structural and color defaults.
 
     The baseline Shape defaults to circle geometry with polygon defaults
     available for side count and rotation. Physical size and base thickness
-    have model defaults. Outer-ridge width defaults to zero so the existing
-    no-ridge Shape remains the default artifact. Ridge raise defaults to
-    1 mm and integrated is the default ridge style if a ridge is enabled.
+    have model defaults. The base color defaults to white.
+
+    Outer-ridge width defaults to zero so the existing no-ridge Shape remains
+    the default artifact. Ridge raise defaults to 1 mm and integrated is the
+    default ridge style if a ridge is enabled. Ridge color is derived from the
+    resolved base color rather than independently defaulted.
     """
 
     resolver = get_resolver(
@@ -599,10 +602,12 @@ def test_shape_model_defaults_are_resolved(
 
     assert resolver("shape_size") == 100.0
     assert resolver("shape_base_raise") == 2.0
+    assert resolver("shape_base_color") == "white"
 
     assert resolver("shape_outer_ridge_width") == 0.0
     assert resolver("shape_outer_ridge_raise") == 1.0
     assert resolver("shape_outer_ridge_style") == "integrated"
+    assert resolver("shape_outer_ridge_color") == "white"
 
     assert resolver.source("shape_geometry") == "model"
     assert resolver.source("shape_sides") == "model"
@@ -610,10 +615,12 @@ def test_shape_model_defaults_are_resolved(
 
     assert resolver.source("shape_size") == "model"
     assert resolver.source("shape_base_raise") == "model"
+    assert resolver.source("shape_base_color") == "model"
 
     assert resolver.source("shape_outer_ridge_width") == "model"
     assert resolver.source("shape_outer_ridge_raise") == "model"
     assert resolver.source("shape_outer_ridge_style") == "model"
+    assert resolver.source("shape_outer_ridge_color") == "derived"
 
 
 # =========================================================
@@ -707,6 +714,95 @@ def test_artifact_parameters_table_overrides_top_level(
 
     assert resolver("artwork_raise") == 1.2
     assert resolver.source("artwork_raise") == "artifact"
+
+
+def test_shape_base_color_may_be_overridden(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact configuration may override the Shape base color.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "parameters": {
+                "shape_base_color": "red",
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert resolver("shape_base_color") == "red"
+    assert resolver.source("shape_base_color") == "artifact"
+
+
+def test_shape_outer_ridge_color_may_override_base_color(
+    tmp_path: Path,
+) -> None:
+    """
+    An explicit ridge color overrides its derived base-color default.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "parameters": {
+                "shape_base_color": "white",
+                "shape_outer_ridge_color": "red",
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert resolver("shape_base_color") == "white"
+    assert resolver("shape_outer_ridge_color") == "red"
+
+    assert resolver.source("shape_base_color") == "artifact"
+    assert resolver.source("shape_outer_ridge_color") == "artifact (overrides derived)"
+
+
+def test_shape_explicit_ridge_color_is_independent_of_base_color(
+    tmp_path: Path,
+) -> None:
+    """
+    An explicit ridge color does not follow a separately resolved base color.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "parameters": {
+                "shape_base_color": "black",
+                "shape_outer_ridge_color": "red",
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert resolver("shape_base_color") == "black"
+    assert resolver("shape_outer_ridge_color") == "red"
+
+    assert resolver.source("shape_base_color") == "artifact"
+    assert resolver.source("shape_outer_ridge_color") == "artifact (overrides derived)"
 
 
 # =========================================================
@@ -937,6 +1033,39 @@ def test_configured_value_can_override_derivation(
     ]
 
     assert resolver.source("artwork_colors") == "artifact (overrides derived)"
+
+
+def test_shape_outer_ridge_color_derives_from_resolved_base_color(
+    tmp_path: Path,
+) -> None:
+    """
+    The default ridge color follows the resolved base color.
+
+    The ridge default is a derived configuration relationship rather
+    than an independent literal model default.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "parameters": {
+                "shape_base_color": "black",
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert resolver("shape_base_color") == "black"
+    assert resolver("shape_outer_ridge_color") == "black"
+
+    assert resolver.source("shape_base_color") == "artifact"
+    assert resolver.source("shape_outer_ridge_color") == "derived"
 
 
 # =========================================================
