@@ -1968,3 +1968,268 @@ def test_negative_integrated_and_separate_ridges_have_equivalent_assembled_geome
         50.0,
         abs=0.01,
     )
+
+
+def test_zero_raise_separate_square_ridge_is_flush_with_base(
+    tmp_path: Path,
+) -> None:
+    """
+    A zero-raise separate square ridge remains a physical component.
+
+    Ridge existence is determined by registered ridge width rather than raise.
+    For a 100 mm square with a 5 mm ridge and 2 mm base:
+
+        base  -> 90x90 mm from Z=0 through Z=2
+        ridge -> surrounding perimeter from Z=0 through Z=2
+
+    The complete assembled surface is therefore flush at Z=2.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_square_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 0.0,
+            "shape_outer_ridge_style": "separate",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    base = manifest.parent / "base.stl"
+    ridge = manifest.parent / "ridge.stl"
+
+    assert base.is_file()
+    assert ridge.is_file()
+
+    assert _stl_bounds(base) == pytest.approx(
+        (
+            -45.0,
+            45.0,
+            -45.0,
+            45.0,
+            0.0,
+            2.0,
+        )
+    )
+
+    assert _stl_bounds(ridge) == pytest.approx(
+        (
+            -50.0,
+            50.0,
+            -50.0,
+            50.0,
+            0.0,
+            2.0,
+        )
+    )
+
+
+def test_negative_raise_integrated_square_ridge_recesses_base_perimeter(
+    tmp_path: Path,
+) -> None:
+    """
+    A negative integrated square ridge recesses the base perimeter.
+
+    For a 100 mm square with a 5 mm ridge, 2 mm base, and -0.5 mm
+    ridge raise:
+
+        interior 90x90 mm -> Z=0 through Z=2
+        perimeter         -> Z=0 through Z=1.5
+
+    No independently printable ridge-color component exists above the base.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_square_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": -0.5,
+            "shape_outer_ridge_style": "integrated",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    base = manifest.parent / "base.stl"
+    ridge = manifest.parent / "ridge.stl"
+
+    assert base.is_file()
+    assert not ridge.exists()
+
+    bounds = _stl_bounds(
+        base,
+    )
+
+    assert bounds == pytest.approx(
+        (
+            -50.0,
+            50.0,
+            -50.0,
+            50.0,
+            0.0,
+            2.0,
+        )
+    )
+
+    vertices_at_base_top: list[tuple[float, float]] = []
+
+    for line in base.read_text(
+        encoding="utf-8",
+    ).splitlines():
+        fields = line.strip().split()
+
+        if len(fields) != 4 or fields[0] != "vertex":
+            continue
+
+        x = float(fields[1])
+        y = float(fields[2])
+        z = float(fields[3])
+
+        if z == pytest.approx(2.0):
+            vertices_at_base_top.append(
+                (
+                    x,
+                    y,
+                )
+            )
+
+    assert vertices_at_base_top
+
+    assert max(
+        abs(coordinate) for vertex in vertices_at_base_top for coordinate in vertex
+    ) == pytest.approx(45.0)
+
+
+def test_negative_integrated_and_separate_square_ridges_have_equivalent_assembled_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Integrated and separate negative square ridges describe the same assembly.
+
+    With a 2 mm base and -0.5 mm ridge raise, both styles describe:
+
+        interior 90x90 mm -> Z=0 through Z=2
+        perimeter         -> Z=0 through Z=1.5
+
+    Ridge style changes component partitioning, not assembled geometry.
+    """
+
+    composition = tmp_path / "composition.svg"
+
+    _write_square_ridge_composition(
+        composition,
+    )
+
+    ridge = extrude._load_ridge(
+        composition,
+    )
+
+    assert isinstance(
+        ridge,
+        extrude.RegisteredSquareRidge,
+    )
+
+    integrated_source = extrude._build_integrated_square_ridge_scad(
+        ridge,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_outer_ridge_raise=-0.5,
+    )
+
+    integrated = tmp_path / "integrated.stl"
+
+    extrude.render_stl_source(
+        integrated_source,
+        integrated,
+    )
+
+    separate_base_source = extrude._build_rectangle_base_scad(
+        ridge.inner,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+    )
+
+    separate_ridge_source = extrude._build_separate_square_ridge_component_scad(
+        ridge,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_outer_ridge_raise=-0.5,
+    )
+
+    separate_base = tmp_path / "separate-base.stl"
+    separate_ridge = tmp_path / "separate-ridge.stl"
+
+    extrude.render_stl_source(
+        separate_base_source,
+        separate_base,
+    )
+    extrude.render_stl_source(
+        separate_ridge_source,
+        separate_ridge,
+    )
+
+    assert _stl_bounds(integrated) == pytest.approx(
+        (
+            -50.0,
+            50.0,
+            -50.0,
+            50.0,
+            0.0,
+            2.0,
+        )
+    )
+
+    assert _stl_bounds(separate_base) == pytest.approx(
+        (
+            -45.0,
+            45.0,
+            -45.0,
+            45.0,
+            0.0,
+            2.0,
+        )
+    )
+
+    assert _stl_bounds(separate_ridge) == pytest.approx(
+        (
+            -50.0,
+            50.0,
+            -50.0,
+            50.0,
+            0.0,
+            1.5,
+        )
+    )

@@ -564,10 +564,11 @@ def _render_integrated_square_ridge_components(
 
     base = output_directory / BASE_COMPONENT_PATH
 
-    base_source = _build_rectangle_base_scad(
-        ridge.outer,
+    base_source = _build_integrated_square_base_scad(
+        ridge,
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+        shape_outer_ridge_raise=shape_outer_ridge_raise,
     )
 
     render_stl_source(
@@ -944,6 +945,65 @@ def _build_integrated_circle_base_scad(
         f"    translate([{inner_x:g}, {inner_y:g}, 0])\n"
         f"        circle(r = {inner_radius:g}, $fn = 256);\n"
         "}\n"
+        "\n"
+        "union() {\n"
+        "    linear_extrude(\n"
+        "        height = shape_base_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        registered_ridge_inner_boundary();\n"
+        "\n"
+        "    linear_extrude(\n"
+        "        height = shape_base_raise + shape_outer_ridge_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        difference() {\n"
+        "            registered_shape_boundary();\n"
+        "            registered_ridge_inner_boundary();\n"
+        "        }\n"
+        "}\n"
+    )
+
+
+def _build_integrated_square_base_scad(
+    ridge: RegisteredSquareRidge,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for the base material of an integrated square ridge.
+
+    For zero or positive ridge raise, base material occupies the complete
+    Shape footprint through shape_base_raise.
+
+    For negative ridge raise, the interior occupies the complete base height
+    while the perimeter occupies only the reduced assembled ridge height:
+
+        interior  -> Z=0 through shape_base_raise
+        perimeter -> Z=0 through
+                     shape_base_raise + shape_outer_ridge_raise
+    """
+
+    if shape_outer_ridge_raise >= 0.0:
+        return _build_rectangle_base_scad(
+            ridge.outer,
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+        )
+
+    boundaries = _build_square_boundary_modules(
+        ridge,
+        shape_size=shape_size,
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        "\n"
+        f"{boundaries}"
         "\n"
         "union() {\n"
         "    linear_extrude(\n"
