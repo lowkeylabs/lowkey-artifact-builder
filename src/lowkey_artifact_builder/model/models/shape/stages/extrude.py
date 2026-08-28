@@ -409,16 +409,41 @@ def _render_separate_circle_ridge_components(
         shape_base_raise + shape_outer_ridge_raise
 
     Base and ridge therefore occupy adjacent, nonoverlapping X/Y regions.
+
+    At the minimum valid ridge raise, the ridge remains semantically defined
+    by its registered nonzero width but has zero physical volume. In that
+    case no ridge STL component is materialized.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
-    ridge_output = output_directory / RIDGE_COMPONENT_PATH
 
     base_source = _build_circle_base_scad(
         ridge.inner,
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
     )
+
+    render_stl_source(
+        base_source,
+        base,
+    )
+
+    _require_component(
+        base,
+        component_name=BASE_COMPONENT_NAME,
+    )
+
+    assembled_ridge_height = shape_base_raise + shape_outer_ridge_raise
+
+    if assembled_ridge_height == 0.0:
+        return (
+            (
+                BASE_COMPONENT_NAME,
+                BASE_COMPONENT_PATH,
+            ),
+        )
+
+    ridge_output = output_directory / RIDGE_COMPONENT_PATH
 
     ridge_source = _build_separate_circle_ridge_component_scad(
         ridge,
@@ -428,18 +453,8 @@ def _render_separate_circle_ridge_components(
     )
 
     render_stl_source(
-        base_source,
-        base,
-    )
-
-    render_stl_source(
         ridge_source,
         ridge_output,
-    )
-
-    _require_component(
-        base,
-        component_name=BASE_COMPONENT_NAME,
     )
 
     _require_component(

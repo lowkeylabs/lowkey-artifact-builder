@@ -1283,6 +1283,170 @@ def test_integrated_ridge_components_preserve_physical_partition(
     assert ridge_bounds[5] == pytest.approx(3.0)
 
 
+def test_integrated_ridge_accepts_minimum_raise(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    An integrated ridge accepts the minimum raise producing zero perimeter height.
+
+    At shape_outer_ridge_raise = -shape_base_raise, the registered ridge
+    continues to exist while its perimeter has zero physical height.
+    The interior base remains at shape_base_raise.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": -2.0,
+            "shape_outer_ridge_style": "integrated",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    rendered_sources: list[str] = []
+    rendered_outputs: list[Path] = []
+
+    def fake_render_stl_source(
+        source: str,
+        target: Path,
+    ) -> None:
+        rendered_sources.append(source)
+        rendered_outputs.append(target)
+
+        target.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        target.write_text(
+            "stl",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    assert data["components"] == [
+        {
+            "name": "base",
+            "path": "base.stl",
+        },
+    ]
+
+    assert rendered_outputs == [
+        manifest.parent / "base.stl",
+    ]
+
+    assert len(rendered_sources) == 1
+    assert "shape_base_raise + shape_outer_ridge_raise" in rendered_sources[0]
+
+
+def test_separate_ridge_accepts_minimum_raise_without_physical_ridge_volume(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A separate ridge accepts the minimum raise producing zero physical height.
+
+    At shape_outer_ridge_raise = -shape_base_raise, the ridge remains
+    semantically defined by its registered nonzero width, but it has no
+    dimensionalized physical volume to materialize as an STL component.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": -2.0,
+            "shape_outer_ridge_style": "separate",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    rendered_outputs: list[Path] = []
+
+    def fake_render_stl_source(
+        source: str,
+        target: Path,
+    ) -> None:
+        rendered_outputs.append(target)
+
+        target.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        target.write_text(
+            "stl",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    assert data["components"] == [
+        {
+            "name": "base",
+            "path": "base.stl",
+        },
+    ]
+
+    assert rendered_outputs == [
+        manifest.parent / "base.stl",
+    ]
+
+    assert (manifest.parent / "base.stl").is_file()
+    assert not (manifest.parent / "ridge.stl").exists()
+
+
 @pytest.mark.parametrize(
     "ridge_style",
     [
