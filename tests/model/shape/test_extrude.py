@@ -153,6 +153,50 @@ def _stl_bounds(
     )
 
 
+def _stl_radii_at_z(
+    path: Path,
+    z: float,
+    *,
+    tolerance: float = 0.001,
+) -> tuple[float, ...]:
+    """
+    Return the physical X/Y radii of STL vertices at a specified Z height.
+
+    This permits tests to inspect where distinct horizontal surfaces terminate
+    without assuming that an arbitrary radius is represented by mesh vertices.
+    """
+
+    radii: list[float] = []
+
+    for line in path.read_text(
+        encoding="utf-8",
+    ).splitlines():
+        fields = line.strip().split()
+
+        if len(fields) != 4 or fields[0] != "vertex":
+            continue
+
+        x = float(fields[1])
+        y = float(fields[2])
+        vertex_z = float(fields[3])
+
+        if abs(vertex_z - z) > tolerance:
+            continue
+
+        radii.append(
+            (x**2 + y**2) ** 0.5,
+        )
+
+    if not radii:
+        raise AssertionError(
+            f"STL contains no readable vertices at Z={z}: {path}",
+        )
+
+    return tuple(
+        radii,
+    )
+
+
 def _read_manifest(
     path: Path,
 ) -> dict:
@@ -678,6 +722,228 @@ def test_zero_raise_separate_ridge_is_flush_with_base(
     assert ridge_bounds[3] == pytest.approx(50.0)
     assert ridge_bounds[4] == pytest.approx(0.0)
     assert ridge_bounds[5] == pytest.approx(2.0)
+
+
+def test_negative_raise_integrated_ridge_recesses_base_perimeter(
+    tmp_path: Path,
+) -> None:
+    """
+    A negative integrated circle ridge recesses the base perimeter.
+
+    For a 100 mm Shape with a 2 mm base and a -0.5 mm integrated ridge raise:
+
+        interior top  -> Z=2.0
+        perimeter top -> Z=1.5
+
+    The registered ridge region continues to exist because ridge existence is
+    determined by ridge width rather than ridge raise. The recessed perimeter
+    remains base material and the complete Shape retains its 100 mm envelope.
+    """
+
+    composition = tmp_path / "composition.svg"
+    output = tmp_path / "assembled.stl"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    source = extrude._build_scad(
+        composition,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_outer_ridge_raise=-0.5,
+        shape_outer_ridge_style="integrated",
+    )
+
+    extrude.render_stl_source(
+        source,
+        output,
+    )
+
+    bounds = _stl_bounds(
+        output,
+    )
+
+    assert bounds[0] == pytest.approx(-50.0)
+    assert bounds[1] == pytest.approx(50.0)
+    assert bounds[2] == pytest.approx(-50.0)
+    assert bounds[3] == pytest.approx(50.0)
+    assert bounds[4] == pytest.approx(0.0)
+    assert bounds[5] == pytest.approx(2.0)
+
+    interior_top_radii = _stl_radii_at_z(
+        output,
+        2.0,
+    )
+
+    assert max(interior_top_radii) == pytest.approx(
+        45.0,
+        abs=0.1,
+    )
+
+    perimeter_top_radii = _stl_radii_at_z(
+        output,
+        1.5,
+    )
+
+    assert max(perimeter_top_radii) == pytest.approx(
+        50.0,
+        abs=0.1,
+    )
+
+
+def test_negative_raise_integrated_ridge_produces_only_base_component(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A negative integrated ridge produces no independent ridge-color component.
+
+    Integrated ridge color applies only to ridge geometry above the base top.
+    With a negative ridge raise, the complete perimeter lies below that top
+    and remains base material. Extrusion therefore materializes only base.stl.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": -0.5,
+            "shape_outer_ridge_style": "integrated",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    rendered_outputs: list[Path] = []
+
+    def fake_render_stl_source(
+        source: str,
+        target: Path,
+    ) -> None:
+        target.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        target.write_text(
+            "stl",
+            encoding="utf-8",
+        )
+
+        rendered_outputs.append(
+            target,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    assert data["components"] == [
+        {
+            "name": "base",
+            "path": "base.stl",
+        },
+    ]
+
+    assert rendered_outputs == [
+        manifest.parent / "base.stl",
+    ]
+
+    assert (manifest.parent / "base.stl").is_file()
+    assert not (manifest.parent / "ridge.stl").exists()
+
+
+def test_negative_raise_separate_ridge_is_shorter_than_base(
+    tmp_path: Path,
+) -> None:
+    """
+    A negative separate circle ridge is shorter than its adjacent base.
+
+    For a 100 mm Shape with a 5 mm separate ridge, 2 mm base, and
+    -0.5 mm ridge raise:
+
+        base  -> 90 mm circle from Z=0 through Z=2.0
+        ridge -> 100/90 mm perimeter from Z=0 through Z=1.5
+
+    The ridge remains an independently printable component because its
+    existence is determined by its nonzero registered width.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": -0.5,
+            "shape_outer_ridge_style": "separate",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    base = manifest.parent / "base.stl"
+    ridge = manifest.parent / "ridge.stl"
+
+    assert base.is_file()
+    assert ridge.is_file()
+
+    base_bounds = _stl_bounds(
+        base,
+    )
+    ridge_bounds = _stl_bounds(
+        ridge,
+    )
+
+    assert base_bounds[0] == pytest.approx(-45.0)
+    assert base_bounds[1] == pytest.approx(45.0)
+    assert base_bounds[2] == pytest.approx(-45.0)
+    assert base_bounds[3] == pytest.approx(45.0)
+    assert base_bounds[4] == pytest.approx(0.0)
+    assert base_bounds[5] == pytest.approx(2.0)
+
+    assert ridge_bounds[0] == pytest.approx(-50.0)
+    assert ridge_bounds[1] == pytest.approx(50.0)
+    assert ridge_bounds[2] == pytest.approx(-50.0)
+    assert ridge_bounds[3] == pytest.approx(50.0)
+    assert ridge_bounds[4] == pytest.approx(0.0)
+    assert ridge_bounds[5] == pytest.approx(1.5)
 
 
 # =========================================================

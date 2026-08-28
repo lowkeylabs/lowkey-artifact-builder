@@ -313,30 +313,19 @@ def _render_integrated_circle_ridge_components(
     """
     Render independently printable components for an integrated circle ridge.
 
-    The base remains the complete Shape footprint through shape_base_raise.
+    The integrated ridge remains base material through the base top.
 
-    The ridge is the perimeter annulus above the base, extending from:
+    When ridge raise is positive, the base retains the complete Shape
+    footprint through shape_base_raise and the ridge component occupies only
+    the perimeter volume above the base.
 
-        Z = shape_base_raise
-
-    through:
-
-        Z = shape_base_raise + shape_outer_ridge_raise
-
-    This preserves the positive integrated assembled geometry while retaining
-    independent ridge component identity.
+    When ridge raise is zero or negative, no independently colored ridge
+    volume exists above the base and only the base component is produced.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
-    ridge_output = output_directory / RIDGE_COMPONENT_PATH
 
-    base_source = _build_circle_base_scad(
-        ridge.outer,
-        shape_size=shape_size,
-        shape_base_raise=shape_base_raise,
-    )
-
-    ridge_source = _build_integrated_circle_ridge_component_scad(
+    base_source = _build_integrated_circle_base_scad(
         ridge,
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
@@ -348,14 +337,31 @@ def _render_integrated_circle_ridge_components(
         base,
     )
 
-    render_stl_source(
-        ridge_source,
-        ridge_output,
-    )
-
     _require_component(
         base,
         component_name=BASE_COMPONENT_NAME,
+    )
+
+    if shape_outer_ridge_raise <= 0.0:
+        return (
+            (
+                BASE_COMPONENT_NAME,
+                BASE_COMPONENT_PATH,
+            ),
+        )
+
+    ridge_output = output_directory / RIDGE_COMPONENT_PATH
+
+    ridge_source = _build_integrated_circle_ridge_component_scad(
+        ridge,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+        shape_outer_ridge_raise=shape_outer_ridge_raise,
+    )
+
+    render_stl_source(
+        ridge_source,
+        ridge_output,
     )
 
     _require_component(
@@ -611,6 +617,78 @@ def _build_circle_base_scad(
     )
 
 
+def _build_integrated_circle_base_scad(
+    ridge: RegisteredCircleRidge,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for the base material of an integrated circle ridge.
+
+    For zero or positive ridge raise, base material occupies the complete
+    Shape footprint through shape_base_raise.
+
+    For negative ridge raise, the interior occupies the complete base height
+    while the perimeter occupies only the reduced assembled ridge height:
+
+        interior  -> Z=0 through shape_base_raise
+        perimeter -> Z=0 through
+                     shape_base_raise + shape_outer_ridge_raise
+    """
+
+    if shape_outer_ridge_raise >= 0.0:
+        return _build_circle_base_scad(
+            ridge.outer,
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+        )
+
+    outer_x = ridge.outer.cx * shape_size
+    outer_y = ridge.outer.cy * shape_size
+    outer_radius = ridge.outer.radius * shape_size
+
+    inner_x = ridge.inner.cx * shape_size
+    inner_y = ridge.inner.cy * shape_size
+    inner_radius = ridge.inner.radius * shape_size
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        "\n"
+        f"// {SHAPE_BOUNDARY_ID}\n"
+        "module registered_shape_boundary() {\n"
+        f"    translate([{outer_x:g}, {outer_y:g}, 0])\n"
+        f"        circle(r = {outer_radius:g}, $fn = 256);\n"
+        "}\n"
+        "\n"
+        f"// {RIDGE_INNER_BOUNDARY_ID}\n"
+        "module registered_ridge_inner_boundary() {\n"
+        f"    translate([{inner_x:g}, {inner_y:g}, 0])\n"
+        f"        circle(r = {inner_radius:g}, $fn = 256);\n"
+        "}\n"
+        "\n"
+        "union() {\n"
+        "    linear_extrude(\n"
+        "        height = shape_base_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        registered_ridge_inner_boundary();\n"
+        "\n"
+        "    linear_extrude(\n"
+        "        height = shape_base_raise + shape_outer_ridge_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        difference() {\n"
+        "            registered_shape_boundary();\n"
+        "            registered_ridge_inner_boundary();\n"
+        "        }\n"
+        "}\n"
+    )
+
+
 def _build_integrated_circle_ridge_component_scad(
     ridge: RegisteredCircleRidge,
     *,
@@ -621,9 +699,8 @@ def _build_integrated_circle_ridge_component_scad(
     """
     Build OpenSCAD source for the independently printable integrated ridge.
 
-    For the positive integrated-ridge slice, the ridge component occupies the
-    registered perimeter annulus from the base top through the complete
-    assembled ridge height.
+    A positive integrated ridge component occupies the registered perimeter
+    annulus above the base top through the complete assembled ridge height.
     """
 
     outer_x = ridge.outer.cx * shape_size
@@ -721,17 +798,17 @@ def _build_integrated_circle_ridge_scad(
     shape_outer_ridge_raise: float,
 ) -> str:
     """
-    Build OpenSCAD source for a positive integrated circle ridge.
+    Build OpenSCAD source for complete integrated circle ridge geometry.
 
-    The complete outer circle occupies Z=0 through shape_base_raise.
+    The interior occupies Z=0 through shape_base_raise.
 
-    The perimeter between the outer and inner registered circles occupies
-    Z=0 through:
+    The perimeter occupies Z=0 through:
 
         shape_base_raise + shape_outer_ridge_raise
 
-    Registered circle coordinates are converted directly to physical
-    millimeters using shape_size.
+    Positive ridge raise therefore raises the perimeter above the interior,
+    zero raise leaves both surfaces flush, and negative raise recesses the
+    perimeter below the interior.
     """
 
     outer_x = ridge.outer.cx * shape_size
@@ -764,7 +841,7 @@ def _build_integrated_circle_ridge_scad(
         "        height = shape_base_raise,\n"
         "        center = false\n"
         "    )\n"
-        "        registered_shape_boundary();\n"
+        "        registered_ridge_inner_boundary();\n"
         "\n"
         "    linear_extrude(\n"
         "        height = shape_base_raise + shape_outer_ridge_raise,\n"

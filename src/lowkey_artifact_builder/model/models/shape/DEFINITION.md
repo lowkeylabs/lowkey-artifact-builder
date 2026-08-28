@@ -346,27 +346,64 @@ and:
 the ridge inner boundary
 ```
 
-The dimensionalized base occupies:
+The dimensionalized integrated ridge is partitioned according to its
+relationship to the top of the base.
+
+The base material occupies the integrated ridge region from:
+
 
 ```
 Z = 0
 ```
 
-through:
+through the lesser of:
+
+
+```
+shape_base_raise
+```
+
+and:
+
+```
+shape_base_raise + shape_outer_ridge_raise
+```
+
+When:
+
+
+```
+shape_outer_ridge_raise > 0
+```
+
+
+the base retains the complete Shape X/Y envelope through:
+
 
 ```
 Z = shape_base_raise
 ```
 
-The dimensionalized integrated ridge extends from the top of the base to:
+
+and the portion of the ridge above the base occupies:
+
+
+```
+Z = shape_base_raise
+```
+
+through:
+
 
 ```
 Z = shape_base_raise + shape_outer_ridge_raise
 ```
 
-when `shape_outer_ridge_raise` is positive.
+Only this portion above the base is represented using the independently
+assigned outer-ridge color.
 
 Conceptually, for:
+
 
 ```
 shape_base_raise = 2
@@ -375,18 +412,14 @@ shape_outer_ridge_raise = 1
 
 the integrated structure has:
 
-```
-base       -> Z = 0 through 2
-ridge top  -> Z = 3
-```
-
-The complete assembled structural height at the ridge is:
 
 ```
-shape_base_raise + shape_outer_ridge_raise
+base -> Z = 0 through 2
+ridge color -> perimeter from Z = 2 through 3
 ```
 
 When:
+
 
 ```
 shape_outer_ridge_raise = 0
@@ -394,7 +427,17 @@ shape_outer_ridge_raise = 0
 
 the ridge top is flush with the top of the base.
 
+The ridge's registered X/Y region continues to exist, but there is no
+physical ridge-color volume above the base. The complete dimensionalized
+structure is therefore base material through:
+
+
+```
+Z = shape_base_raise
+```
+
 When:
+
 
 ```
 shape_outer_ridge_raise < 0
@@ -403,12 +446,54 @@ shape_outer_ridge_raise < 0
 the ridge top lies below the top surface of the base while the ridge's
 registered X/Y region continues to exist.
 
+The integrated perimeter then occupies base material from:
+
+
+```
+Z = 0
+```
+
+through:
+
+
+```
+Z = shape_base_raise + shape_outer_ridge_raise
+```
+
+while the interior base continues through:
+
+
+```
+Z = shape_base_raise
+```
+
+No independently colored ridge volume is produced because no portion of
+the integrated ridge extends above the base top.
+
+Conceptually, for:
+
+
+```
+shape_base_raise = 2
+shape_outer_ridge_raise = -0.5
+```
+
+the integrated structure has:
+
+
+```
+interior base -> Z = 0 through 2
+perimeter base -> Z = 0 through 1.5
+ridge-color volume -> none
+```
+
 The base and integrated ridge belong to the same assembled structural
 geometry.
 
 Their color assignments remain independent semantic properties. An
 integrated ridge may therefore be assigned a color different from the
-base even though the ridge is structurally integrated with it.
+base, but that ridge color applies only to physical ridge geometry above
+the base top.
 
 ## Separate Outer Ridge
 
