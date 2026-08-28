@@ -51,6 +51,67 @@ def _write_composition(
     )
 
 
+def _stl_bounds(
+    path: Path,
+) -> tuple[
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+]:
+    """
+    Return X/Y/Z bounds from an ASCII STL produced by OpenSCAD.
+
+    The tuple contains:
+
+        min_x, max_x, min_y, max_y, min_z, max_z
+    """
+
+    vertices: list[
+        tuple[
+            float,
+            float,
+            float,
+        ]
+    ] = []
+
+    for line in path.read_text(
+        encoding="utf-8",
+    ).splitlines():
+        fields = line.strip().split()
+
+        if len(fields) != 4 or fields[0] != "vertex":
+            continue
+
+        vertices.append(
+            (
+                float(fields[1]),
+                float(fields[2]),
+                float(fields[3]),
+            )
+        )
+
+    if not vertices:
+        raise AssertionError(
+            f"STL contains no readable vertices: {path}",
+        )
+
+    xs = tuple(vertex[0] for vertex in vertices)
+    ys = tuple(vertex[1] for vertex in vertices)
+    zs = tuple(vertex[2] for vertex in vertices)
+
+    return (
+        min(xs),
+        max(xs),
+        min(ys),
+        max(ys),
+        min(zs),
+        max(zs),
+    )
+
+
 # =========================================================
 # Physical dimensionalization
 # =========================================================
@@ -136,6 +197,105 @@ def test_build_scad_preserves_centered_registered_origin(
 
     assert str(composition.resolve()) in source
     assert "center = false" in source
+
+
+# =========================================================
+# Physical STL geometry
+# =========================================================
+
+
+@pytest.mark.parametrize(
+    ("shape_size", "expected_min", "expected_max"),
+    [
+        (50.0, -25.0, 25.0),
+        (100.0, -50.0, 50.0),
+        (150.0, -75.0, 75.0),
+    ],
+)
+def test_extruded_base_has_configured_physical_xy_extent(
+    tmp_path: Path,
+    shape_size: float,
+    expected_min: float,
+    expected_max: float,
+) -> None:
+    """
+    Extruded Shape geometry has the configured physical X/Y extent.
+
+    Registered composition spans the canonical -0.5 through +0.5
+    envelope. Physical dimensionalization scales that unit envelope
+    directly to shape_size while preserving its centered origin.
+    """
+
+    composition = tmp_path / "composition.svg"
+    output = tmp_path / "base.stl"
+
+    _write_composition(
+        composition,
+    )
+
+    source = extrude._build_scad(
+        composition,
+        shape_size=shape_size,
+        shape_base_raise=2.0,
+    )
+
+    extrude.render_stl_source(
+        source,
+        output,
+    )
+
+    bounds = _stl_bounds(
+        output,
+    )
+
+    print(bounds)
+
+    assert bounds[0] == pytest.approx(expected_min)
+    assert bounds[1] == pytest.approx(expected_max)
+    assert bounds[2] == pytest.approx(expected_min)
+    assert bounds[3] == pytest.approx(expected_max)
+
+
+@pytest.mark.parametrize(
+    "shape_base_raise",
+    [
+        1.0,
+        2.0,
+        3.5,
+    ],
+)
+def test_extruded_base_has_configured_physical_z_extent(
+    tmp_path: Path,
+    shape_base_raise: float,
+) -> None:
+    """
+    Extruded Shape geometry occupies Z=0 through shape_base_raise.
+    """
+
+    composition = tmp_path / "composition.svg"
+    output = tmp_path / "base.stl"
+
+    _write_composition(
+        composition,
+    )
+
+    source = extrude._build_scad(
+        composition,
+        shape_size=100.0,
+        shape_base_raise=shape_base_raise,
+    )
+
+    extrude.render_stl_source(
+        source,
+        output,
+    )
+
+    bounds = _stl_bounds(
+        output,
+    )
+
+    assert bounds[4] == pytest.approx(0.0)
+    assert bounds[5] == pytest.approx(shape_base_raise)
 
 
 # =========================================================

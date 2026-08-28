@@ -129,12 +129,20 @@ def _build_scad(
     """
     Build OpenSCAD source for physical Shape base extrusion.
 
-    The registered composition uses the canonical unit Shape envelope
-    centered about the origin. shape_size dimensionalizes that envelope
-    uniformly in X/Y and shape_base_raise supplies its physical Z thickness.
+    Registered Shape composition occupies a canonical 1x1 envelope centered
+    about the origin.
+
+    OpenSCAD applies SVG physical-unit semantics while importing SVG geometry.
+    Using 25.4 DPI makes one SVG user unit correspond to one millimeter.
+    The imported canonical envelope is translated back around the Shape origin
+    before shape_size introduces the final physical X/Y extent.
+
+    shape_base_raise supplies the physical Z thickness.
     """
 
-    source = composition.resolve()
+    source = _scad_path(
+        composition,
+    )
 
     return (
         f"shape_size = {shape_size:g};\n"
@@ -145,7 +153,8 @@ def _build_scad(
         "    center = false\n"
         ")\n"
         "    scale([shape_size, shape_size, 1])\n"
-        f'        import("{source}");\n'
+        "        translate([-0.5, -1.5, 0])\n"
+        f'            import("{source}", dpi = 25.4);\n'
     )
 
 
