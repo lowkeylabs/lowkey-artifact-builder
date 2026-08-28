@@ -152,13 +152,6 @@ def execute(
         context.resolver("shape_outer_ridge_style"),
     )
 
-    if ridge_width == 0.0:
-        shutil.copyfile(
-            structure_input,
-            output,
-        )
-        return
-
     if ridge_style in {
         "integrated",
         "separate",
@@ -196,22 +189,52 @@ def _compose_ridge(
     converted into a registered-space inset that establishes the ridge's
     inner boundary.
 
+    Ridge existence is determined solely by ridge width. Zero width preserves
+    the registered Shape boundary without creating a ridge partition, while
+    negative width is invalid.
+
     Integrated and separate ridge styles share these registered boundaries.
     Their different physical component partitioning belongs downstream.
 
     Circle, square, and regular-polygon registered structures are supported.
     """
 
+    if ridge_width < 0.0:
+        raise ValueError("shape_outer_ridge_width must be nonnegative.")
+
     tree = ET.parse(
         structure_input,
     )
     root = tree.getroot()
 
-    registered_inset = ridge_width / shape_size
-
     circle = root.find(
         SVG_CIRCLE,
     )
+    square = root.find(
+        SVG_RECT,
+    )
+    polygon = root.find(
+        SVG_POLYGON,
+    )
+
+    outer_boundary = circle if circle is not None else square if square is not None else polygon
+
+    if outer_boundary is None:
+        raise ValueError("Ridge composition requires supported registered Shape structure.")
+
+    outer_boundary.set(
+        "id",
+        "shape-boundary",
+    )
+
+    if ridge_width == 0.0:
+        tree.write(
+            output,
+            encoding="unicode",
+        )
+        return
+
+    registered_inset = ridge_width / shape_size
 
     if circle is not None:
         _compose_circle_ridge(
@@ -220,47 +243,26 @@ def _compose_ridge(
             registered_inset=registered_inset,
         )
 
-        tree.write(
-            output,
-            encoding="unicode",
-        )
-        return
-
-    square = root.find(
-        SVG_RECT,
-    )
-
-    if square is not None:
+    elif square is not None:
         _compose_square_ridge(
             root,
             square,
             registered_inset=registered_inset,
         )
 
-        tree.write(
-            output,
-            encoding="unicode",
-        )
-        return
+    else:
+        assert polygon is not None
 
-    polygon = root.find(
-        SVG_POLYGON,
-    )
-
-    if polygon is not None:
         _compose_polygon_ridge(
             root,
             polygon,
             registered_inset=registered_inset,
         )
 
-        tree.write(
-            output,
-            encoding="unicode",
-        )
-        return
-
-    raise ValueError("Ridge composition requires supported registered Shape structure.")
+    tree.write(
+        output,
+        encoding="unicode",
+    )
 
 
 def _compose_circle_ridge(
@@ -753,7 +755,9 @@ def _load_manifest(
         "r",
         encoding="utf-8",
     ) as stream:
-        manifest = json.load(stream)
+        manifest = json.load(
+            stream,
+        )
 
     if not isinstance(
         manifest,

@@ -1237,3 +1237,78 @@ def test_engine_bootstrap_discovers_shape_compose_implementation() -> None:
     )
 
     assert implementation is compose.execute
+
+
+def test_zero_outer_ridge_width_preserves_structure_without_ridge(
+    tmp_path: Path,
+) -> None:
+    """
+    Zero outer-ridge width produces no registered ridge partition.
+
+    Ridge existence is determined solely by shape_outer_ridge_width.
+    Composition therefore preserves the structural Shape boundary without
+    introducing a ridge inner boundary when the configured width is zero.
+    """
+
+    structure_path = tmp_path / "structure.svg"
+    composition_path = tmp_path / "composition.svg"
+
+    _write_registered_polygon_structure(
+        structure_path,
+        number_of_sides=8,
+        rotation=22.5,
+    )
+
+    compose._compose_ridge(
+        structure_path,
+        composition_path,
+        shape_size=100.0,
+        ridge_width=0.0,
+    )
+
+    root = ET.parse(
+        composition_path,
+    ).getroot()
+
+    shape_boundary = root.find(
+        ".//*[@id='shape-boundary']",
+    )
+    ridge_inner_boundary = root.find(
+        ".//*[@id='ridge-inner-boundary']",
+    )
+
+    assert shape_boundary is not None
+    assert ridge_inner_boundary is None
+
+
+def test_negative_outer_ridge_width_is_rejected(
+    tmp_path: Path,
+) -> None:
+    """
+    Negative outer-ridge width is invalid Shape geometry.
+
+    Ridge width is a nonnegative physical dimension and must be rejected
+    before registered ridge geometry is produced.
+    """
+
+    structure_path = tmp_path / "structure.svg"
+    composition_path = tmp_path / "composition.svg"
+
+    _write_registered_polygon_structure(
+        structure_path,
+        number_of_sides=8,
+        rotation=22.5,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="ridge",
+    ):
+        compose._compose_ridge(
+            structure_path,
+            composition_path,
+            shape_size=100.0,
+            ridge_width=-1.0,
+        )
+
+    assert not composition_path.exists()
