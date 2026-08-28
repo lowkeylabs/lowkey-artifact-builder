@@ -1547,3 +1547,230 @@ def test_engine_bootstrap_discovers_shape_extrude_implementation() -> None:
     )
 
     assert implementation is extrude.execute
+
+
+def test_positive_integrated_and_separate_ridges_have_equivalent_assembled_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Positive integrated and separate ridges describe the same assembled geometry.
+
+    Ridge style changes component partitioning, not the intended physical
+    Shape. For a 100 mm circle with a 5 mm ridge, 2 mm base, and +1 mm raise,
+    both styles have a 90 mm interior at 2 mm and a 100 mm perimeter at 3 mm.
+    """
+
+    composition = tmp_path / "composition.svg"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    integrated = tmp_path / "integrated.stl"
+
+    ridge = extrude._load_circle_ridge(
+        composition,
+    )
+
+    assert ridge is not None
+
+    integrated_source = extrude._build_integrated_circle_ridge_scad(
+        ridge,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_outer_ridge_raise=1.0,
+    )
+
+    extrude.render_stl_source(
+        integrated_source,
+        integrated,
+    )
+
+    separate_base = tmp_path / "separate-base.stl"
+    separate_ridge = tmp_path / "separate-ridge.stl"
+
+    separate_base_source = extrude._build_circle_base_scad(
+        ridge.inner,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+    )
+
+    separate_ridge_source = extrude._build_separate_circle_ridge_component_scad(
+        ridge,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_outer_ridge_raise=1.0,
+    )
+
+    extrude.render_stl_source(
+        separate_base_source,
+        separate_base,
+    )
+
+    extrude.render_stl_source(
+        separate_ridge_source,
+        separate_ridge,
+    )
+
+    integrated_bounds = _stl_bounds(
+        integrated,
+    )
+    separate_base_bounds = _stl_bounds(
+        separate_base,
+    )
+    separate_ridge_bounds = _stl_bounds(
+        separate_ridge,
+    )
+
+    assert integrated_bounds == pytest.approx(
+        (
+            -50.0,
+            50.0,
+            -50.0,
+            50.0,
+            0.0,
+            3.0,
+        )
+    )
+
+    assert separate_base_bounds == pytest.approx(
+        (
+            -45.0,
+            45.0,
+            -45.0,
+            45.0,
+            0.0,
+            2.0,
+        )
+    )
+
+    assert separate_ridge_bounds == pytest.approx(
+        (
+            -50.0,
+            50.0,
+            -50.0,
+            50.0,
+            50.0 * 0.0,
+            3.0,
+        )
+    )
+
+    integrated_base_radii = _stl_radii_at_z(
+        integrated,
+        2.0,
+    )
+    integrated_ridge_radii = _stl_radii_at_z(
+        integrated,
+        3.0,
+    )
+
+    assert min(integrated_base_radii) == pytest.approx(
+        45.0,
+        abs=0.01,
+    )
+    assert max(integrated_ridge_radii) == pytest.approx(
+        50.0,
+        abs=0.01,
+    )
+
+
+def test_negative_integrated_and_separate_ridges_have_equivalent_assembled_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Negative integrated and separate ridges describe the same assembled geometry.
+
+    With a 2 mm base and -0.5 mm ridge raise, both constructions have a
+    90 mm interior reaching Z=2 and a 5 mm perimeter reaching Z=1.5.
+    """
+
+    composition = tmp_path / "composition.svg"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    ridge = extrude._load_circle_ridge(
+        composition,
+    )
+
+    assert ridge is not None
+
+    integrated = tmp_path / "integrated.stl"
+
+    integrated_source = extrude._build_integrated_circle_ridge_scad(
+        ridge,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_outer_ridge_raise=-0.5,
+    )
+
+    extrude.render_stl_source(
+        integrated_source,
+        integrated,
+    )
+
+    separate_base = tmp_path / "separate-base.stl"
+    separate_ridge = tmp_path / "separate-ridge.stl"
+
+    extrude.render_stl_source(
+        extrude._build_circle_base_scad(
+            ridge.inner,
+            shape_size=100.0,
+            shape_base_raise=2.0,
+        ),
+        separate_base,
+    )
+
+    extrude.render_stl_source(
+        extrude._build_separate_circle_ridge_component_scad(
+            ridge,
+            shape_size=100.0,
+            shape_base_raise=2.0,
+            shape_outer_ridge_raise=-0.5,
+        ),
+        separate_ridge,
+    )
+
+    integrated_interior_radii = _stl_radii_at_z(
+        integrated,
+        2.0,
+    )
+    integrated_perimeter_radii = _stl_radii_at_z(
+        integrated,
+        1.5,
+    )
+
+    separate_base_top_radii = _stl_radii_at_z(
+        separate_base,
+        2.0,
+    )
+    separate_ridge_top_radii = _stl_radii_at_z(
+        separate_ridge,
+        1.5,
+    )
+
+    assert max(integrated_interior_radii) == pytest.approx(
+        max(separate_base_top_radii),
+        abs=0.01,
+    )
+
+    assert min(integrated_perimeter_radii) == pytest.approx(
+        min(separate_ridge_top_radii),
+        abs=0.01,
+    )
+
+    assert max(integrated_perimeter_radii) == pytest.approx(
+        max(separate_ridge_top_radii),
+        abs=0.01,
+    )
+
+    assert max(integrated_interior_radii) == pytest.approx(
+        45.0,
+        abs=0.01,
+    )
+
+    assert max(integrated_perimeter_radii) == pytest.approx(
+        50.0,
+        abs=0.01,
+    )
