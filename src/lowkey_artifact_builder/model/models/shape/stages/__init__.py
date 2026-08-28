@@ -17,6 +17,7 @@ from typing import Protocol
 
 from .compose import execute as execute_compose
 from .extrude import execute as execute_extrude
+from .package import execute as execute_package
 from .structure import execute as execute_structure
 
 # =========================================================
@@ -76,6 +77,12 @@ def register_stage_implementations(
         "shape",
         "extrude",
         execute_extrude,
+    )
+
+    registry.register(
+        "shape",
+        "package",
+        execute_package,
     )
 
 
