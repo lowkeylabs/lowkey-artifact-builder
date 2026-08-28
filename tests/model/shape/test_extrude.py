@@ -92,6 +92,48 @@ def _write_integrated_ridge_composition(
     )
 
 
+def _write_square_ridge_composition(
+    path: Path,
+) -> None:
+    """
+    Write registered square composition containing an outer ridge boundary.
+
+    The complete Shape boundary is 1x1. A 5 mm ridge on a 100 mm Shape
+    has a registered inset of 0.05 on every side, giving the ridge an
+    inner boundary of 0.9x0.9.
+    """
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    path.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="-0.5 -0.5 1.0 1.0"
+>
+    <rect
+        id="shape-boundary"
+        x="-0.5"
+        y="-0.5"
+        width="1.0"
+        height="1.0"
+    />
+    <rect
+        id="ridge-inner-boundary"
+        x="-0.45"
+        y="-0.45"
+        width="0.9"
+        height="0.9"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+
 def _stl_bounds(
     path: Path,
 ) -> tuple[
@@ -944,6 +986,158 @@ def test_negative_raise_separate_ridge_is_shorter_than_base(
     assert ridge_bounds[3] == pytest.approx(50.0)
     assert ridge_bounds[4] == pytest.approx(0.0)
     assert ridge_bounds[5] == pytest.approx(1.5)
+
+
+def test_positive_integrated_square_ridge_has_complete_physical_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    A positive integrated square ridge preserves the complete Shape envelope.
+
+    For a 100 mm square with a 5 mm ridge, 2 mm base, and +1 mm ridge
+    raise, the base occupies the complete 100x100 mm envelope through Z=2
+    and the perimeter reaches the assembled ridge height of Z=3.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_square_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "integrated",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    base = manifest.parent / "base.stl"
+    ridge = manifest.parent / "ridge.stl"
+
+    assert base.is_file()
+    assert ridge.is_file()
+
+    base_bounds = _stl_bounds(
+        base,
+    )
+    ridge_bounds = _stl_bounds(
+        ridge,
+    )
+
+    assert base_bounds == pytest.approx(
+        (
+            -50.0,
+            50.0,
+            -50.0,
+            50.0,
+            0.0,
+            2.0,
+        )
+    )
+
+    assert ridge_bounds == pytest.approx(
+        (
+            -50.0,
+            50.0,
+            -50.0,
+            50.0,
+            2.0,
+            3.0,
+        )
+    )
+
+
+def test_positive_separate_square_ridge_partitions_base_and_ridge(
+    tmp_path: Path,
+) -> None:
+    """
+    A positive separate square ridge partitions the assembled Shape in X/Y.
+
+    For a 100 mm square with a 5 mm ridge, 2 mm base, and +1 mm ridge
+    raise:
+
+        base  -> 90x90 mm from Z=0 through Z=2
+        ridge -> 100x100 mm outer envelope from Z=0 through Z=3
+
+    The components occupy adjacent, nonoverlapping registered X/Y regions.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_square_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "separate",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    base = manifest.parent / "base.stl"
+    ridge = manifest.parent / "ridge.stl"
+
+    assert base.is_file()
+    assert ridge.is_file()
+
+    base_bounds = _stl_bounds(
+        base,
+    )
+    ridge_bounds = _stl_bounds(
+        ridge,
+    )
+
+    assert base_bounds == pytest.approx(
+        (
+            -45.0,
+            45.0,
+            -45.0,
+            45.0,
+            0.0,
+            2.0,
+        )
+    )
+
+    assert ridge_bounds == pytest.approx(
+        (
+            -50.0,
+            50.0,
+            -50.0,
+            50.0,
+            0.0,
+            3.0,
+        )
+    )
 
 
 # =========================================================

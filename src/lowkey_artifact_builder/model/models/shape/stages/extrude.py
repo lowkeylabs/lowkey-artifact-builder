@@ -68,6 +68,31 @@ class RegisteredCircleRidge:
     inner: RegisteredCircle
 
 
+@dataclass(frozen=True)
+class RegisteredRectangle:
+    """
+    One rectangle expressed in registered Shape coordinates.
+    """
+
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+@dataclass(frozen=True)
+class RegisteredSquareRidge:
+    """
+    Registered square geometry defining an outer ridge partition.
+    """
+
+    outer: RegisteredRectangle
+    inner: RegisteredRectangle
+
+
+RegisteredRidge = RegisteredCircleRidge | RegisteredSquareRidge
+
+
 # =========================================================
 # Errors
 # =========================================================
@@ -119,10 +144,8 @@ def execute(
 
         base.stl
 
-    A composition with an integrated or separate ridge produces:
-
-        base.stl
-        ridge.stl
+    A composition with an integrated or separate ridge produces physical
+    components according to the configured ridge style and raise.
 
     Ridge style determines how the complete assembled structural geometry is
     partitioned between those components.
@@ -159,9 +182,10 @@ def execute(
         raise ExtrudeError(f"Registered Shape composition does not exist: {composition}")
 
     try:
-        ridge = _load_circle_ridge(
+        ridge = _load_ridge(
             composition,
         )
+
         if ridge is not None:
             _validate_ridge_height(
                 shape_base_raise=shape_base_raise,
@@ -181,30 +205,27 @@ def execute(
                 shape_base_raise=shape_base_raise,
             )
 
-        elif shape_outer_ridge_style == "integrated":
-            components = _render_integrated_circle_ridge_components(
+        elif isinstance(
+            ridge,
+            RegisteredCircleRidge,
+        ):
+            components = _render_circle_ridge_components(
                 ridge,
                 manifest.parent,
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
-            )
-
-        elif shape_outer_ridge_style == "separate":
-            components = _render_separate_circle_ridge_components(
-                ridge,
-                manifest.parent,
-                shape_size=shape_size,
-                shape_base_raise=shape_base_raise,
-                shape_outer_ridge_raise=shape_outer_ridge_raise,
+                shape_outer_ridge_style=shape_outer_ridge_style,
             )
 
         else:
-            components = _render_baseline_components(
-                composition,
+            components = _render_square_ridge_components(
+                ridge,
                 manifest.parent,
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
+                shape_outer_ridge_raise=shape_outer_ridge_raise,
+                shape_outer_ridge_style=shape_outer_ridge_style,
             )
 
         _write_component_manifest(
@@ -291,9 +312,6 @@ def _render_baseline_components(
 ]:
     """
     Render the baseline physical base component.
-
-    This preserves the existing fallback behavior for ridge styles whose
-    physical partitioning has not been established.
     """
 
     return _render_no_ridge_components(
@@ -302,6 +320,80 @@ def _render_baseline_components(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
     )
+
+
+def _render_circle_ridge_components(
+    ridge: RegisteredCircleRidge,
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+    shape_outer_ridge_style: str,
+) -> tuple[
+    tuple[str, str],
+    ...,
+]:
+    """
+    Dispatch physical circle ridge component production by ridge style.
+    """
+
+    if shape_outer_ridge_style == "integrated":
+        return _render_integrated_circle_ridge_components(
+            ridge,
+            output_directory,
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+            shape_outer_ridge_raise=shape_outer_ridge_raise,
+        )
+
+    if shape_outer_ridge_style == "separate":
+        return _render_separate_circle_ridge_components(
+            ridge,
+            output_directory,
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+            shape_outer_ridge_raise=shape_outer_ridge_raise,
+        )
+
+    raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
+
+
+def _render_square_ridge_components(
+    ridge: RegisteredSquareRidge,
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+    shape_outer_ridge_style: str,
+) -> tuple[
+    tuple[str, str],
+    ...,
+]:
+    """
+    Dispatch physical square ridge component production by ridge style.
+    """
+
+    if shape_outer_ridge_style == "integrated":
+        return _render_integrated_square_ridge_components(
+            ridge,
+            output_directory,
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+            shape_outer_ridge_raise=shape_outer_ridge_raise,
+        )
+
+    if shape_outer_ridge_style == "separate":
+        return _render_separate_square_ridge_components(
+            ridge,
+            output_directory,
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+            shape_outer_ridge_raise=shape_outer_ridge_raise,
+        )
+
+    raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
 
 
 def _render_integrated_circle_ridge_components(
@@ -317,15 +409,6 @@ def _render_integrated_circle_ridge_components(
 ]:
     """
     Render independently printable components for an integrated circle ridge.
-
-    The integrated ridge remains base material through the base top.
-
-    When ridge raise is positive, the base retains the complete Shape
-    footprint through shape_base_raise and the ridge component occupies only
-    the perimeter volume above the base.
-
-    When ridge raise is zero or negative, no independently colored ridge
-    volume exists above the base and only the base component is produced.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
@@ -399,20 +482,6 @@ def _render_separate_circle_ridge_components(
 ]:
     """
     Render independently printable components for a separate circle ridge.
-
-    The base occupies the region inside the registered ridge inner boundary
-    and extends from Z=0 through shape_base_raise.
-
-    The ridge occupies the surrounding registered perimeter annulus and
-    extends from Z=0 through the complete assembled ridge height:
-
-        shape_base_raise + shape_outer_ridge_raise
-
-    Base and ridge therefore occupy adjacent, nonoverlapping X/Y regions.
-
-    At the minimum valid ridge raise, the ridge remains semantically defined
-    by its registered nonzero width but has zero physical volume. In that
-    case no ridge STL component is materialized.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
@@ -446,6 +515,160 @@ def _render_separate_circle_ridge_components(
     ridge_output = output_directory / RIDGE_COMPONENT_PATH
 
     ridge_source = _build_separate_circle_ridge_component_scad(
+        ridge,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+        shape_outer_ridge_raise=shape_outer_ridge_raise,
+    )
+
+    render_stl_source(
+        ridge_source,
+        ridge_output,
+    )
+
+    _require_component(
+        ridge_output,
+        component_name=RIDGE_COMPONENT_NAME,
+    )
+
+    return (
+        (
+            BASE_COMPONENT_NAME,
+            BASE_COMPONENT_PATH,
+        ),
+        (
+            RIDGE_COMPONENT_NAME,
+            RIDGE_COMPONENT_PATH,
+        ),
+    )
+
+
+def _render_integrated_square_ridge_components(
+    ridge: RegisteredSquareRidge,
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> tuple[
+    tuple[str, str],
+    ...,
+]:
+    """
+    Render independently printable components for an integrated square ridge.
+
+    For positive ridge raise, the base occupies the complete square footprint
+    through the base top and the ridge component occupies only the perimeter
+    volume above that top.
+    """
+
+    base = output_directory / BASE_COMPONENT_PATH
+
+    base_source = _build_rectangle_base_scad(
+        ridge.outer,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+    )
+
+    render_stl_source(
+        base_source,
+        base,
+    )
+
+    _require_component(
+        base,
+        component_name=BASE_COMPONENT_NAME,
+    )
+
+    if shape_outer_ridge_raise <= 0.0:
+        return (
+            (
+                BASE_COMPONENT_NAME,
+                BASE_COMPONENT_PATH,
+            ),
+        )
+
+    ridge_output = output_directory / RIDGE_COMPONENT_PATH
+
+    ridge_source = _build_integrated_square_ridge_component_scad(
+        ridge,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+        shape_outer_ridge_raise=shape_outer_ridge_raise,
+    )
+
+    render_stl_source(
+        ridge_source,
+        ridge_output,
+    )
+
+    _require_component(
+        ridge_output,
+        component_name=RIDGE_COMPONENT_NAME,
+    )
+
+    return (
+        (
+            BASE_COMPONENT_NAME,
+            BASE_COMPONENT_PATH,
+        ),
+        (
+            RIDGE_COMPONENT_NAME,
+            RIDGE_COMPONENT_PATH,
+        ),
+    )
+
+
+def _render_separate_square_ridge_components(
+    ridge: RegisteredSquareRidge,
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> tuple[
+    tuple[str, str],
+    ...,
+]:
+    """
+    Render independently printable components for a separate square ridge.
+
+    The base occupies the registered inner square while the ridge occupies
+    the surrounding registered perimeter from Z=0 through the assembled
+    ridge height.
+    """
+
+    base = output_directory / BASE_COMPONENT_PATH
+
+    base_source = _build_rectangle_base_scad(
+        ridge.inner,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+    )
+
+    render_stl_source(
+        base_source,
+        base,
+    )
+
+    _require_component(
+        base,
+        component_name=BASE_COMPONENT_NAME,
+    )
+
+    assembled_ridge_height = shape_base_raise + shape_outer_ridge_raise
+
+    if assembled_ridge_height == 0.0:
+        return (
+            (
+                BASE_COMPONENT_NAME,
+                BASE_COMPONENT_PATH,
+            ),
+        )
+
+    ridge_output = output_directory / RIDGE_COMPONENT_PATH
+
+    ridge_source = _build_separate_square_ridge_component_scad(
         ridge,
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
@@ -525,9 +748,6 @@ def _validate_ridge_height(
 ) -> None:
     """
     Validate that an outer ridge has a nonnegative physical height.
-
-    Ridge raise is measured relative to the base top, so the complete
-    assembled ridge height must be greater than or equal to zero.
     """
 
     if shape_base_raise + shape_outer_ridge_raise < 0.0:
@@ -558,20 +778,10 @@ def _build_scad(
     A composition without a ridge partition is extruded uniformly through
     shape_base_raise.
 
-    An integrated circle ridge composition contains semantic outer and inner
-    ridge boundaries. Those registered boundaries are dimensionalized using
-    shape_size.
-
-    This helper retains the complete assembled representation used by the
-    dimensionalization tests. Stage execution separately renders independently
-    printable physical components.
-
-    Positive integrated and separate circle ridge component partitioning is
-    established. Zero and negative ridge raise semantics are established by
-    later slices.
+    Registered ridge boundaries are dimensionalized using shape_size.
     """
 
-    ridge = _load_circle_ridge(
+    ridge = _load_ridge(
         composition,
     )
 
@@ -584,8 +794,20 @@ def _build_scad(
             shape_base_raise=shape_base_raise,
         )
 
-    if shape_outer_ridge_style == "integrated":
-        return _build_integrated_circle_ridge_scad(
+    if isinstance(
+        ridge,
+        RegisteredCircleRidge,
+    ):
+        if shape_outer_ridge_style == "integrated":
+            return _build_integrated_circle_ridge_scad(
+                ridge,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+                shape_outer_ridge_raise=shape_outer_ridge_raise,
+            )
+
+    elif shape_outer_ridge_style == "integrated":
+        return _build_integrated_square_ridge_scad(
             ridge,
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
@@ -633,9 +855,6 @@ def _build_circle_base_scad(
 ) -> str:
     """
     Build OpenSCAD source for a physical circle base.
-
-    The supplied registered circle boundary is dimensionalized using
-    shape_size and extruded from Z=0 through shape_base_raise.
     """
 
     x = circle.cx * shape_size
@@ -655,6 +874,34 @@ def _build_circle_base_scad(
     )
 
 
+def _build_rectangle_base_scad(
+    rectangle: RegisteredRectangle,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for a physical registered rectangle base.
+    """
+
+    x = rectangle.x * shape_size
+    y = rectangle.y * shape_size
+    width = rectangle.width * shape_size
+    height = rectangle.height * shape_size
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        "\n"
+        "linear_extrude(\n"
+        "    height = shape_base_raise,\n"
+        "    center = false\n"
+        ")\n"
+        f"    translate([{x:g}, {y:g}, 0])\n"
+        f"        square([{width:g}, {height:g}], center = false);\n"
+    )
+
+
 def _build_integrated_circle_base_scad(
     ridge: RegisteredCircleRidge,
     *,
@@ -664,16 +911,6 @@ def _build_integrated_circle_base_scad(
 ) -> str:
     """
     Build OpenSCAD source for the base material of an integrated circle ridge.
-
-    For zero or positive ridge raise, base material occupies the complete
-    Shape footprint through shape_base_raise.
-
-    For negative ridge raise, the interior occupies the complete base height
-    while the perimeter occupies only the reduced assembled ridge height:
-
-        interior  -> Z=0 through shape_base_raise
-        perimeter -> Z=0 through
-                     shape_base_raise + shape_outer_ridge_raise
     """
 
     if shape_outer_ridge_raise >= 0.0:
@@ -736,9 +973,6 @@ def _build_integrated_circle_ridge_component_scad(
 ) -> str:
     """
     Build OpenSCAD source for the independently printable integrated ridge.
-
-    A positive integrated ridge component occupies the registered perimeter
-    annulus above the base top through the complete assembled ridge height.
     """
 
     outer_x = ridge.outer.cx * shape_size
@@ -786,10 +1020,7 @@ def _build_separate_circle_ridge_component_scad(
     shape_outer_ridge_raise: float,
 ) -> str:
     """
-    Build OpenSCAD source for an independently printable separate ridge.
-
-    The ridge occupies the registered perimeter annulus from Z=0 through the
-    complete assembled ridge height.
+    Build OpenSCAD source for an independently printable separate circle ridge.
     """
 
     outer_x = ridge.outer.cx * shape_size
@@ -837,16 +1068,6 @@ def _build_integrated_circle_ridge_scad(
 ) -> str:
     """
     Build OpenSCAD source for complete integrated circle ridge geometry.
-
-    The interior occupies Z=0 through shape_base_raise.
-
-    The perimeter occupies Z=0 through:
-
-        shape_base_raise + shape_outer_ridge_raise
-
-    Positive ridge raise therefore raises the perimeter above the interior,
-    zero raise leaves both surfaces flush, and negative raise recesses the
-    perimeter below the interior.
     """
 
     outer_x = ridge.outer.cx * shape_size
@@ -893,20 +1114,167 @@ def _build_integrated_circle_ridge_scad(
     )
 
 
+def _build_integrated_square_ridge_component_scad(
+    ridge: RegisteredSquareRidge,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for a positive integrated square ridge component.
+    """
+
+    boundaries = _build_square_boundary_modules(
+        ridge,
+        shape_size=shape_size,
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        "\n"
+        f"{boundaries}"
+        "\n"
+        "translate([0, 0, shape_base_raise])\n"
+        "    linear_extrude(\n"
+        "        height = shape_outer_ridge_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        difference() {\n"
+        "            registered_shape_boundary();\n"
+        "            registered_ridge_inner_boundary();\n"
+        "        }\n"
+    )
+
+
+def _build_separate_square_ridge_component_scad(
+    ridge: RegisteredSquareRidge,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for an independently printable separate square ridge.
+    """
+
+    boundaries = _build_square_boundary_modules(
+        ridge,
+        shape_size=shape_size,
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        "\n"
+        f"{boundaries}"
+        "\n"
+        "linear_extrude(\n"
+        "    height = shape_base_raise + shape_outer_ridge_raise,\n"
+        "    center = false\n"
+        ")\n"
+        "    difference() {\n"
+        "        registered_shape_boundary();\n"
+        "        registered_ridge_inner_boundary();\n"
+        "    }\n"
+    )
+
+
+def _build_integrated_square_ridge_scad(
+    ridge: RegisteredSquareRidge,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for complete integrated square ridge geometry.
+    """
+
+    boundaries = _build_square_boundary_modules(
+        ridge,
+        shape_size=shape_size,
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        "\n"
+        f"{boundaries}"
+        "\n"
+        "union() {\n"
+        "    linear_extrude(\n"
+        "        height = shape_base_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        registered_ridge_inner_boundary();\n"
+        "\n"
+        "    linear_extrude(\n"
+        "        height = shape_base_raise + shape_outer_ridge_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        difference() {\n"
+        "            registered_shape_boundary();\n"
+        "            registered_ridge_inner_boundary();\n"
+        "        }\n"
+        "}\n"
+    )
+
+
+def _build_square_boundary_modules(
+    ridge: RegisteredSquareRidge,
+    *,
+    shape_size: float,
+) -> str:
+    """
+    Build OpenSCAD modules for registered square ridge boundaries.
+    """
+
+    outer_x = ridge.outer.x * shape_size
+    outer_y = ridge.outer.y * shape_size
+    outer_width = ridge.outer.width * shape_size
+    outer_height = ridge.outer.height * shape_size
+
+    inner_x = ridge.inner.x * shape_size
+    inner_y = ridge.inner.y * shape_size
+    inner_width = ridge.inner.width * shape_size
+    inner_height = ridge.inner.height * shape_size
+
+    return (
+        f"// {SHAPE_BOUNDARY_ID}\n"
+        "module registered_shape_boundary() {\n"
+        f"    translate([{outer_x:g}, {outer_y:g}, 0])\n"
+        f"        square([{outer_width:g}, {outer_height:g}], center = false);\n"
+        "}\n"
+        "\n"
+        f"// {RIDGE_INNER_BOUNDARY_ID}\n"
+        "module registered_ridge_inner_boundary() {\n"
+        f"    translate([{inner_x:g}, {inner_y:g}, 0])\n"
+        f"        square([{inner_width:g}, {inner_height:g}], center = false);\n"
+        "}\n"
+    )
+
+
 # =========================================================
 # Registered composition inspection
 # =========================================================
 
 
-def _load_circle_ridge(
+def _load_ridge(
     composition: Path,
-) -> RegisteredCircleRidge | None:
+) -> RegisteredRidge | None:
     """
-    Load a registered circle ridge partition from Shape composition.
+    Load a registered ridge partition from Shape composition.
 
     Ridge existence has already been established during registered
     composition. Extrusion consumes the resulting semantic boundaries rather
     than resolving shape_outer_ridge_width again.
+
+    Circle and square semantic ridge boundaries are supported.
 
     A composition without ridge semantic boundaries returns None.
     """
@@ -946,6 +1314,66 @@ def _load_circle_ridge(
             "without a ridge inner boundary."
         )
 
+    outer_kind = _local_name(
+        outer_element.tag,
+    )
+    inner_kind = _local_name(
+        inner_element.tag,
+    )
+
+    if outer_kind != inner_kind:
+        raise ValueError(
+            "Registered Shape outer and ridge inner boundaries must use matching geometry."
+        )
+
+    if outer_kind == "circle":
+        return _load_circle_ridge_elements(
+            outer_element,
+            inner_element,
+        )
+
+    if outer_kind == "rect":
+        return _load_square_ridge_elements(
+            outer_element,
+            inner_element,
+        )
+
+    raise ValueError(f"Unsupported registered ridge boundary geometry: {outer_kind!r}.")
+
+
+def _load_circle_ridge(
+    composition: Path,
+) -> RegisteredCircleRidge | None:
+    """
+    Load a registered circle ridge partition from Shape composition.
+
+    This circle-specific helper is retained for existing tests and callers.
+    """
+
+    ridge = _load_ridge(
+        composition,
+    )
+
+    if ridge is None:
+        return None
+
+    if not isinstance(
+        ridge,
+        RegisteredCircleRidge,
+    ):
+        raise ValueError("Registered ridge composition does not contain circle boundaries.")
+
+    return ridge
+
+
+def _load_circle_ridge_elements(
+    outer_element: ET.Element,
+    inner_element: ET.Element,
+) -> RegisteredCircleRidge:
+    """
+    Load semantic registered circle ridge boundaries.
+    """
+
     outer = _load_registered_circle(
         outer_element,
         boundary_name=SHAPE_BOUNDARY_ID,
@@ -960,6 +1388,44 @@ def _load_circle_ridge(
         raise ValueError("Registered ridge inner boundary exceeds the Shape outer boundary.")
 
     return RegisteredCircleRidge(
+        outer=outer,
+        inner=inner,
+    )
+
+
+def _load_square_ridge_elements(
+    outer_element: ET.Element,
+    inner_element: ET.Element,
+) -> RegisteredSquareRidge:
+    """
+    Load semantic registered square ridge boundaries.
+    """
+
+    outer = _load_registered_rectangle(
+        outer_element,
+        boundary_name=SHAPE_BOUNDARY_ID,
+    )
+
+    inner = _load_registered_rectangle(
+        inner_element,
+        boundary_name=RIDGE_INNER_BOUNDARY_ID,
+    )
+
+    if outer.width != outer.height:
+        raise ValueError("Registered Shape square boundary must have equal width and height.")
+
+    if inner.width != inner.height:
+        raise ValueError("Registered ridge inner square boundary must have equal width and height.")
+
+    if (
+        inner.x < outer.x
+        or inner.y < outer.y
+        or inner.x + inner.width > outer.x + outer.width
+        or inner.y + inner.height > outer.y + outer.height
+    ):
+        raise ValueError("Registered ridge inner boundary exceeds the Shape outer boundary.")
+
+    return RegisteredSquareRidge(
         outer=outer,
         inner=inner,
     )
@@ -1012,6 +1478,60 @@ def _load_registered_circle(
     )
 
 
+def _load_registered_rectangle(
+    element: ET.Element,
+    *,
+    boundary_name: str,
+) -> RegisteredRectangle:
+    """
+    Load one semantic registered rectangle boundary.
+    """
+
+    if (
+        _local_name(
+            element.tag,
+        )
+        != "rect"
+    ):
+        raise ValueError(f"Registered boundary {boundary_name!r} must be an SVG rect.")
+
+    x = _float_attribute(
+        element,
+        "x",
+        boundary_name=boundary_name,
+        default=0.0,
+    )
+
+    y = _float_attribute(
+        element,
+        "y",
+        boundary_name=boundary_name,
+        default=0.0,
+    )
+
+    width = _float_attribute(
+        element,
+        "width",
+        boundary_name=boundary_name,
+    )
+
+    height = _float_attribute(
+        element,
+        "height",
+        boundary_name=boundary_name,
+    )
+
+    if width <= 0.0 or height <= 0.0:
+        raise ValueError(f"Registered boundary {boundary_name!r} must have positive dimensions.")
+
+    return RegisteredRectangle(
+        x=x,
+        y=y,
+        width=width,
+        height=height,
+    )
+
+
 def _float_attribute(
     element: ET.Element,
     name: str,
@@ -1058,10 +1578,6 @@ def _scad_path(
 ) -> str:
     """
     Return a filesystem path suitable for an OpenSCAD string literal.
-
-    OpenSCAD accepts forward slashes on supported platforms. Converting here
-    also avoids introducing platform-specific backslash escaping into the
-    generated source.
     """
 
     return path.resolve().as_posix()
