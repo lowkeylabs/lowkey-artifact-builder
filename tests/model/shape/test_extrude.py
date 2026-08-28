@@ -2996,3 +2996,235 @@ def test_separate_ridge_manifest_preserves_semantic_color(
             },
         },
     ]
+
+
+def test_ridge_color_does_not_create_component_without_ridge(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Ridge color configuration does not create physical ridge geometry.
+
+    A registered composition without a ridge produces only the base component
+    even when an independent ridge color is configured.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_composition(
+        composition,
+    )
+
+    resolver = _make_extrude_resolver(
+        shape_base_color="white",
+        shape_outer_ridge_color="red",
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    def fake_render_stl_source(
+        source: str,
+        target: Path,
+    ) -> None:
+        target.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        target.write_text(
+            "stl",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    assert data["components"] == [
+        {
+            "name": "base",
+            "path": "base.stl",
+            "color": {
+                "name": "white",
+                "rgb": [
+                    255,
+                    255,
+                    255,
+                ],
+            },
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    "shape_outer_ridge_raise",
+    [
+        0.0,
+        -0.5,
+    ],
+)
+def test_integrated_nonpositive_ridge_has_no_independent_color_component(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    shape_outer_ridge_raise: float,
+) -> None:
+    """
+    A nonpositive integrated ridge has no independently colored ridge volume.
+
+    The registered ridge remains structurally meaningful, but its configured
+    color cannot manufacture a physical component above the base top.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    resolver = _make_extrude_resolver(
+        shape_base_color="white",
+        shape_outer_ridge_color="red",
+        shape_outer_ridge_raise=shape_outer_ridge_raise,
+        shape_outer_ridge_style="integrated",
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    def fake_render_stl_source(
+        source: str,
+        target: Path,
+    ) -> None:
+        target.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        target.write_text(
+            "stl",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    assert data["components"] == [
+        {
+            "name": "base",
+            "path": "base.stl",
+            "color": {
+                "name": "white",
+                "rgb": [
+                    255,
+                    255,
+                    255,
+                ],
+            },
+        },
+    ]
+
+
+def test_zero_height_separate_ridge_has_no_independent_color_component(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A zero-height separate ridge has no physical color component.
+
+    The ridge remains semantically defined, but color metadata does not cause
+    zero-volume physical geometry to be emitted.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    resolver = _make_extrude_resolver(
+        shape_base_raise=2.0,
+        shape_base_color="white",
+        shape_outer_ridge_color="red",
+        shape_outer_ridge_raise=-2.0,
+        shape_outer_ridge_style="separate",
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    def fake_render_stl_source(
+        source: str,
+        target: Path,
+    ) -> None:
+        target.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        target.write_text(
+            "stl",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    assert data["components"] == [
+        {
+            "name": "base",
+            "path": "base.stl",
+            "color": {
+                "name": "white",
+                "rgb": [
+                    255,
+                    255,
+                    255,
+                ],
+            },
+        },
+    ]
