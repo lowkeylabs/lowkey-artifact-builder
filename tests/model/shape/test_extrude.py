@@ -2424,3 +2424,173 @@ def test_negative_integrated_and_separate_square_ridges_have_equivalent_assemble
             1.5,
         )
     )
+
+
+def test_zero_raise_separate_polygon_ridge_is_flush_with_base(
+    tmp_path: Path,
+) -> None:
+    """
+    A zero-raise separate polygon ridge remains a physical ridge component.
+
+    Ridge existence is determined by ridge width rather than ridge raise.
+    The base and ridge therefore remain adjacent independently printable
+    components whose top surfaces are both at the base height.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_polygon_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 0.0,
+            "shape_outer_ridge_style": "separate",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    base = manifest.parent / "base.stl"
+    ridge = manifest.parent / "ridge.stl"
+
+    assert base.is_file()
+    assert ridge.is_file()
+
+    base_bounds = _stl_bounds(
+        base,
+    )
+    ridge_bounds = _stl_bounds(
+        ridge,
+    )
+
+    assert base_bounds[4] == pytest.approx(0.0)
+    assert base_bounds[5] == pytest.approx(2.0)
+
+    assert ridge_bounds[4] == pytest.approx(0.0)
+    assert ridge_bounds[5] == pytest.approx(2.0)
+
+
+def test_negative_raise_separate_polygon_ridge_is_shorter_than_base(
+    tmp_path: Path,
+) -> None:
+    """
+    A negative separate polygon ridge remains independently printable.
+
+    The base retains the configured base height while the surrounding
+    polygon ridge terminates at the reduced assembled ridge height.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_polygon_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": -0.5,
+            "shape_outer_ridge_style": "separate",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    base = manifest.parent / "base.stl"
+    ridge = manifest.parent / "ridge.stl"
+
+    assert base.is_file()
+    assert ridge.is_file()
+
+    base_bounds = _stl_bounds(
+        base,
+    )
+    ridge_bounds = _stl_bounds(
+        ridge,
+    )
+
+    assert base_bounds[4] == pytest.approx(0.0)
+    assert base_bounds[5] == pytest.approx(2.0)
+
+    assert ridge_bounds[4] == pytest.approx(0.0)
+    assert ridge_bounds[5] == pytest.approx(1.5)
+
+
+def test_negative_raise_integrated_polygon_ridge_recesses_base_perimeter(
+    tmp_path: Path,
+) -> None:
+    """
+    A negative integrated polygon ridge recesses the base perimeter.
+
+    The polygon interior remains at the complete base height while the
+    registered perimeter terminates at the reduced assembled ridge height.
+    No independently colored ridge volume exists above the base.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_polygon_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": -0.5,
+            "shape_outer_ridge_style": "integrated",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    base = manifest.parent / "base.stl"
+
+    assert base.is_file()
+    assert not (manifest.parent / "ridge.stl").exists()
+
+    bounds = _stl_bounds(
+        base,
+    )
+
+    assert bounds[0] == pytest.approx(-50.0)
+    assert bounds[1] == pytest.approx(50.0)
+    assert bounds[2] == pytest.approx(-50.0)
+    assert bounds[3] == pytest.approx(50.0)
+    assert bounds[4] == pytest.approx(0.0)
+    assert bounds[5] == pytest.approx(2.0)
