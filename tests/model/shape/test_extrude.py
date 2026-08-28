@@ -248,7 +248,7 @@ def test_extruded_base_has_configured_physical_xy_extent(
         output,
     )
 
-    print(bounds)
+    # print(bounds)
 
     assert bounds[0] == pytest.approx(expected_min)
     assert bounds[1] == pytest.approx(expected_max)
