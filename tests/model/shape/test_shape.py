@@ -259,6 +259,7 @@ def test_shape_extrude_consumes_physical_structural_parameters() -> None:
     assert extrude_stage.parameters == (
         "shape_size",
         "shape_base_raise",
+        "shape_base_color",
         "shape_outer_ridge_raise",
         "shape_outer_ridge_style",
     )

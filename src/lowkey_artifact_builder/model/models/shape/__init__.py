@@ -76,6 +76,7 @@ MODEL = ModelSpec(
             parameters=(
                 "shape_size",
                 "shape_base_raise",
+                "shape_base_color",
                 "shape_outer_ridge_raise",
                 "shape_outer_ridge_style",
             ),

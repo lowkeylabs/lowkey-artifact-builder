@@ -23,6 +23,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
+from lowkey_artifact_builder.colors import PaletteColor, resolve_palette_color
 from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
     render_stl_source,
@@ -150,6 +151,9 @@ def execute(
         shape_base_raise
             Physical Z thickness of the structural base in millimeters.
 
+        shape_base_color
+            Semantic printing color of the structural base.
+
         shape_outer_ridge_raise
             Physical change in ridge height relative to the base top.
 
@@ -172,6 +176,9 @@ def execute(
     Ridge style determines how the complete assembled structural geometry is
     partitioned between those components.
 
+    Physical component metadata preserves semantic printing-color identity
+    for downstream packaging.
+
     Packaging the physical components into artifact.3mf belongs to the
     downstream package stage.
     """
@@ -190,6 +197,13 @@ def execute(
 
     shape_base_raise = context.resolver(
         "shape_base_raise",
+    )
+
+    shape_base_color = resolve_palette_color(
+        context.resolver(
+            "shape_base_color",
+        ),
+        context.resolver.colors,
     )
 
     shape_outer_ridge_raise = context.resolver(
@@ -274,6 +288,7 @@ def execute(
         _write_component_manifest(
             manifest,
             components,
+            base_color=shape_base_color,
         )
 
         if not manifest.is_file():
@@ -946,9 +961,14 @@ def _write_component_manifest(
         tuple[str, str],
         ...,
     ],
+    *,
+    base_color: PaletteColor,
 ) -> None:
     """
     Write the physical-component manifest for Shape extrusion.
+
+    Physical components preserve their structural identity together with
+    resolved semantic printing-color metadata.
     """
 
     path.write_text(
@@ -958,6 +978,18 @@ def _write_component_manifest(
                     {
                         "name": name,
                         "path": component_path,
+                        **(
+                            {
+                                "color": {
+                                    "name": base_color.name,
+                                    "rgb": list(
+                                        base_color.rgb,
+                                    ),
+                                },
+                            }
+                            if name == BASE_COMPONENT_NAME
+                            else {}
+                        ),
                     }
                     for name, component_path in components
                 ],

@@ -298,6 +298,34 @@ def _read_manifest(
     )
 
 
+def _make_extrude_resolver(
+    *,
+    shape_size: float = 100.0,
+    shape_base_raise: float = 2.0,
+    shape_base_color: str = "white",
+    shape_outer_ridge_raise: float = 1.0,
+    shape_outer_ridge_style: str = "integrated",
+    colors: dict[str, object] | None = None,
+) -> Mock:
+    """
+    Create a resolver satisfying the Shape extrude-stage parameter contract.
+    """
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": shape_size,
+            "shape_base_raise": shape_base_raise,
+            "shape_base_color": shape_base_color,
+            "shape_outer_ridge_raise": shape_outer_ridge_raise,
+            "shape_outer_ridge_style": shape_outer_ridge_style,
+        }.__getitem__,
+    )
+
+    resolver.colors = {} if colors is None else colors
+
+    return resolver
+
+
 # =========================================================
 # Physical dimensionalization
 # =========================================================
@@ -596,13 +624,8 @@ def test_separate_ridge_base_uses_registered_inner_boundary(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "separate",
-        }.__getitem__,
+    resolver = _make_extrude_resolver(
+        shape_outer_ridge_style="separate",
     )
 
     context = Mock(
@@ -655,13 +678,8 @@ def test_separate_ridge_occupies_registered_perimeter_at_assembled_height(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "separate",
-        }.__getitem__,
+    resolver = _make_extrude_resolver(
+        shape_outer_ridge_style="separate",
     )
 
     context = Mock(
@@ -763,13 +781,9 @@ def test_zero_raise_separate_ridge_is_flush_with_base(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": 0.0,
-            "shape_outer_ridge_style": "separate",
-        }.__getitem__,
+    resolver = _make_extrude_resolver(
+        shape_outer_ridge_raise=0.0,
+        shape_outer_ridge_style="separate",
     )
 
     context = Mock(
@@ -898,13 +912,8 @@ def test_negative_raise_integrated_ridge_produces_only_base_component(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": -0.5,
-            "shape_outer_ridge_style": "integrated",
-        }.__getitem__,
+    resolver = _make_extrude_resolver(
+        shape_outer_ridge_raise=-0.5,
     )
 
     context = Mock(
@@ -951,6 +960,14 @@ def test_negative_raise_integrated_ridge_produces_only_base_component(
         {
             "name": "base",
             "path": "base.stl",
+            "color": {
+                "name": "white",
+                "rgb": [
+                    255,
+                    255,
+                    255,
+                ],
+            },
         },
     ]
 
@@ -985,13 +1002,9 @@ def test_negative_raise_separate_ridge_is_shorter_than_base(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": -0.5,
-            "shape_outer_ridge_style": "separate",
-        }.__getitem__,
+    resolver = _make_extrude_resolver(
+        shape_outer_ridge_raise=-0.5,
+        shape_outer_ridge_style="separate",
     )
 
     context = Mock(
@@ -1051,14 +1064,7 @@ def test_positive_integrated_square_ridge_has_complete_physical_geometry(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "integrated",
-        }.__getitem__,
-    )
+    resolver = _make_extrude_resolver()
 
     context = Mock(
         spec=StageContext,
@@ -1129,13 +1135,8 @@ def test_positive_separate_square_ridge_partitions_base_and_ridge(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "separate",
-        }.__getitem__,
+    resolver = _make_extrude_resolver(
+        shape_outer_ridge_style="separate",
     )
 
     context = Mock(
@@ -1202,14 +1203,7 @@ def test_positive_integrated_polygon_ridge_has_complete_physical_geometry(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "integrated",
-        }.__getitem__,
-    )
+    resolver = _make_extrude_resolver()
 
     context = Mock(
         spec=StageContext,
@@ -1276,13 +1270,8 @@ def test_positive_separate_polygon_ridge_partitions_physical_geometry(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "separate",
-        }.__getitem__,
+    resolver = _make_extrude_resolver(
+        shape_outer_ridge_style="separate",
     )
 
     context = Mock(
@@ -1357,14 +1346,7 @@ def test_extrude_stage_materializes_declared_component_manifest(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "integrated",
-        }.__getitem__,
-    )
+    resolver = _make_extrude_resolver()
 
     context = Mock(
         spec=StageContext,
@@ -1416,6 +1398,7 @@ def test_extrude_stage_materializes_declared_component_manifest(
     assert resolver.call_args_list == [
         call("shape_size"),
         call("shape_base_raise"),
+        call("shape_base_color"),
         call("shape_outer_ridge_raise"),
         call("shape_outer_ridge_style"),
     ]
@@ -1430,6 +1413,14 @@ def test_extrude_stage_materializes_declared_component_manifest(
         {
             "name": "base",
             "path": "base.stl",
+            "color": {
+                "name": "white",
+                "rgb": [
+                    255,
+                    255,
+                    255,
+                ],
+            },
         },
     ]
 
@@ -1460,14 +1451,7 @@ def test_no_ridge_component_manifest_contains_only_base(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "integrated",
-        }.__getitem__,
-    )
+    resolver = _make_extrude_resolver()
 
     context = Mock(
         spec=StageContext,
@@ -1529,14 +1513,7 @@ def test_integrated_ridge_component_manifest_contains_base_and_ridge(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "integrated",
-        }.__getitem__,
-    )
+    resolver = _make_extrude_resolver()
 
     context = Mock(
         spec=StageContext,
@@ -1582,6 +1559,14 @@ def test_integrated_ridge_component_manifest_contains_base_and_ridge(
         {
             "name": "base",
             "path": "base.stl",
+            "color": {
+                "name": "white",
+                "rgb": [
+                    255,
+                    255,
+                    255,
+                ],
+            },
         },
         {
             "name": "ridge",
@@ -1621,14 +1606,7 @@ def test_integrated_ridge_components_preserve_physical_partition(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "integrated",
-        }.__getitem__,
-    )
+    resolver = _make_extrude_resolver()
 
     context = Mock(
         spec=StageContext,
@@ -1688,13 +1666,8 @@ def test_integrated_ridge_accepts_minimum_raise(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": -2.0,
-            "shape_outer_ridge_style": "integrated",
-        }.__getitem__,
+    resolver = _make_extrude_resolver(
+        shape_outer_ridge_raise=-2.0,
     )
 
     context = Mock(
@@ -1741,6 +1714,14 @@ def test_integrated_ridge_accepts_minimum_raise(
         {
             "name": "base",
             "path": "base.stl",
+            "color": {
+                "name": "white",
+                "rgb": [
+                    255,
+                    255,
+                    255,
+                ],
+            },
         },
     ]
 
@@ -1771,13 +1752,9 @@ def test_separate_ridge_accepts_minimum_raise_without_physical_ridge_volume(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": -2.0,
-            "shape_outer_ridge_style": "separate",
-        }.__getitem__,
+    resolver = _make_extrude_resolver(
+        shape_outer_ridge_raise=-2.0,
+        shape_outer_ridge_style="separate",
     )
 
     context = Mock(
@@ -1822,6 +1799,14 @@ def test_separate_ridge_accepts_minimum_raise_without_physical_ridge_volume(
         {
             "name": "base",
             "path": "base.stl",
+            "color": {
+                "name": "white",
+                "rgb": [
+                    255,
+                    255,
+                    255,
+                ],
+            },
         },
     ]
 
@@ -1859,13 +1844,9 @@ def test_extrude_rejects_ridge_raise_below_negative_base_raise(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": -2.5,
-            "shape_outer_ridge_style": ridge_style,
-        }.__getitem__,
+    resolver = _make_extrude_resolver(
+        shape_outer_ridge_raise=-2.5,
+        shape_outer_ridge_style=ridge_style,
     )
 
     context = Mock(
@@ -2184,13 +2165,9 @@ def test_zero_raise_separate_square_ridge_is_flush_with_base(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": 0.0,
-            "shape_outer_ridge_style": "separate",
-        }.__getitem__,
+    resolver = _make_extrude_resolver(
+        shape_outer_ridge_raise=0.0,
+        shape_outer_ridge_style="separate",
     )
 
     context = Mock(
@@ -2255,13 +2232,8 @@ def test_negative_raise_integrated_square_ridge_recesses_base_perimeter(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": -0.5,
-            "shape_outer_ridge_style": "integrated",
-        }.__getitem__,
+    resolver = _make_extrude_resolver(
+        shape_outer_ridge_raise=-0.5,
     )
 
     context = Mock(
@@ -2445,13 +2417,9 @@ def test_zero_raise_separate_polygon_ridge_is_flush_with_base(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": 0.0,
-            "shape_outer_ridge_style": "separate",
-        }.__getitem__,
+    resolver = _make_extrude_resolver(
+        shape_outer_ridge_raise=0.0,
+        shape_outer_ridge_style="separate",
     )
 
     context = Mock(
@@ -2502,13 +2470,9 @@ def test_negative_raise_separate_polygon_ridge_is_shorter_than_base(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": -0.5,
-            "shape_outer_ridge_style": "separate",
-        }.__getitem__,
+    resolver = _make_extrude_resolver(
+        shape_outer_ridge_raise=-0.5,
+        shape_outer_ridge_style="separate",
     )
 
     context = Mock(
@@ -2560,13 +2524,8 @@ def test_negative_raise_integrated_polygon_ridge_recesses_base_perimeter(
         composition,
     )
 
-    resolver = Mock(
-        side_effect={
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": -0.5,
-            "shape_outer_ridge_style": "integrated",
-        }.__getitem__,
+    resolver = _make_extrude_resolver(
+        shape_outer_ridge_raise=-0.5,
     )
 
     context = Mock(
@@ -2756,3 +2715,84 @@ def test_load_ridge_rejects_inner_boundary_without_shape_boundary(
         _load_ridge(
             composition,
         )
+
+
+def test_base_component_manifest_preserves_semantic_color(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Shape extrusion preserves semantic color identity for the base component.
+
+    Physical components identify both their structural role and their
+    resolved semantic printing color.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_composition(
+        composition,
+    )
+
+    resolver = _make_extrude_resolver(
+        shape_base_color="red",
+        colors={
+            "red": {
+                "rgb": [
+                    220,
+                    38,
+                    38,
+                ],
+            },
+        },
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    def fake_render_stl_source(
+        source: str,
+        target: Path,
+    ) -> None:
+        target.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        target.write_text(
+            "stl",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    assert data["components"] == [
+        {
+            "name": "base",
+            "path": "base.stl",
+            "color": {
+                "name": "red",
+                "rgb": [
+                    220,
+                    38,
+                    38,
+                ],
+            },
+        },
+    ]
