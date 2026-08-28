@@ -272,10 +272,10 @@ structural work.
 
 Implement the optional outer ridge incrementally.
 
-The Shape definition distinguishes the assembled structural geometry from its
-partitioning into independently printable components.
+The Shape definition distinguishes the complete assembled structural geometry
+from its partitioning into independently printable components.
 
-An enabled outer ridge is controlled by:
+An outer ridge is controlled by:
 
 ```text
 shape_outer_ridge_width
@@ -296,26 +296,94 @@ The default ridge style is:
 integrated
 ```
 
-First establish the parameter and declaration contract without changing the
-working no-ridge Shape-to-3MF pipeline.
+Ridge existence is determined solely by:
+
+```text
+shape_outer_ridge_width
+```
+
+A ridge exists when:
+
+```text
+shape_outer_ridge_width > 0
+```
+
+and does not exist when:
+
+```text
+shape_outer_ridge_width = 0
+```
+
+A negative ridge width is invalid.
+
+`shape_outer_ridge_raise` does not determine whether a ridge exists.
+
+The default ridge raise is:
+
+```text
+1 mm
+```
+
+for both ridge styles.
+
+Ridge raise represents a change in height relative to the top of the base.
+The complete assembled ridge height is therefore:
+
+```text
+shape_base_raise + shape_outer_ridge_raise
+```
+
+for both integrated and separate ridge styles.
+
+Ridge raise may be positive, zero, or negative.
+
+The minimum valid ridge raise is:
+
+```text
+-shape_base_raise
+```
+
+so that the complete assembled ridge height is never negative.
+
+First establish these parameter and declaration contracts without disrupting
+the working no-ridge Shape-to-3MF pipeline.
 
 Common ridge tests should establish that:
 
 * ridge geometry follows the selected Shape boundary;
 * ridge width is measured inward from the complete Shape boundary;
+* ridge width is a physical dimension represented during registered composition
+  as a relative relationship between `shape_outer_ridge_width` and
+  `shape_size`;
 * the ridge never increases `shape_size`;
 * zero ridge width disables the ridge;
-* ridge style has no geometric effect when the ridge is disabled;
-* the ridge's inner boundary determines the remaining interior region.
+* negative ridge width is invalid;
+* ridge raise does not determine ridge existence;
+* ridge style, raise, and color have no effect on produced ridge geometry when
+  ridge width is zero;
+* the ridge's inner boundary determines the registered interior region;
+* integrated and separate ridge styles use the same ridge outer boundary and
+  ridge inner boundary;
+* ridge style does not change the registered interior region;
+* ridge raise does not change the registered interior region;
+* the complete assembled ridge height is
+  `shape_base_raise + shape_outer_ridge_raise`;
+* ridge raise may be positive, zero, or negative;
+* a ridge raise less than `-shape_base_raise` is invalid.
 
 For an integrated ridge, tests should establish that:
 
 * the base retains the complete Shape X/Y envelope;
-* the ridge occupies the perimeter between the complete Shape boundary and
-  the ridge inner boundary;
-* the base extends from `Z = 0` through `Z = shape_base_raise`;
-* the ridge extends from `Z = shape_base_raise` through
-  `Z = shape_base_raise + shape_outer_ridge_raise`;
+* the ridge occupies the perimeter region between the complete Shape boundary
+  and the ridge inner boundary;
+* the base and ridge belong to the same assembled structural geometry;
+* the interior base surface has height `shape_base_raise`;
+* the perimeter ridge region has complete assembled height
+  `shape_base_raise + shape_outer_ridge_raise`;
+* a positive ridge raise places the perimeter ridge top above the base top;
+* a zero ridge raise places the perimeter ridge top flush with the base top;
+* a negative ridge raise places the perimeter ridge top below the base top
+  while the registered ridge X/Y region continues to exist;
 * base and ridge form one independently printable structural component.
 
 For a separate ridge, tests should establish that:
@@ -327,11 +395,16 @@ For a separate ridge, tests should establish that:
 * the base extends from `Z = 0` through `Z = shape_base_raise`;
 * the ridge extends from `Z = 0` through
   `Z = shape_base_raise + shape_outer_ridge_raise`;
+* a positive ridge raise makes the ridge taller than the base;
+* a zero ridge raise makes the ridge and base equal in height;
+* a negative ridge raise makes the ridge shorter than the base;
+* at `shape_outer_ridge_raise = -shape_base_raise`, the separate ridge has zero
+  physical height but remains semantically defined by its nonzero width;
 * base and ridge remain independently printable components through packaging.
 
 For otherwise identical Shape parameters, tests should establish that
-integrated and separate ridge styles produce equivalent assembled structural
-geometry.
+integrated and separate ridge styles describe equivalent intended assembled
+structural geometry.
 
 Changing ridge style must not change:
 
@@ -339,14 +412,29 @@ Changing ridge style must not change:
 * the ridge outer boundary;
 * the ridge inner boundary;
 * the registered interior region;
-* the complete assembled structural height.
+* the complete assembled ridge height;
+* the intended complete assembled physical geometry.
 
-It changes the partitioning of the assembled geometry into printable
-components.
+Changing ridge style changes the partitioning of that geometry into structural
+regions and independently printable components.
 
-Implement one geometry first, preferably circle. Establish integrated and
-separate semantics and their assembled equivalence before generalizing the
-behavior to square and octagon.
+Ridge color is independent from ridge style. The outer ridge defaults to the
+base color but may be assigned a different color for either integrated or
+separate construction. Introduce the corresponding configuration and
+implementation only when the base-color mechanism is established rather than
+inventing a separate color mechanism solely for the ridge.
+
+Implement one geometry first, preferably circle.
+
+For circle, establish:
+
+1. registered ridge-boundary semantics;
+2. integrated physical ridge semantics;
+3. separate physical ridge semantics;
+4. positive, zero, and negative raise semantics;
+5. assembled equivalence between integrated and separate styles.
+
+Then generalize the established ridge behavior to square and octagon.
 
 Preserve the completed no-ridge Shape-to-3MF pipeline throughout this work.
 
