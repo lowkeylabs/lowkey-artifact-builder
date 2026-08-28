@@ -2191,6 +2191,27 @@ It does not execute geometry transformations.
 
 ---
 
+## Printer colors and color catalog
+
+`printer_colors` is an ordered printer configuration. Each position corresponds
+to the printer head at the same ordinal position. The first entry identifies
+the color loaded on printer head 1, the second entry identifies the color
+loaded on printer head 2, and so on.
+
+Duplicate color names are permitted because multiple printer heads may contain
+the same color.
+
+Color definitions are maintained separately as catalog data. A color name may
+identify metadata such as manufacturer, filament name, and RGB representation.
+The color catalog is reference data rather than an ordinary resolved parameter.
+
+Models may reference colors by semantic color name and resolve those names
+through the shared color catalog. Model-specific rules governing color
+selection, assignment, inheritance, and use belong in the model's
+`DEFINITION.md`.
+
+---
+
 ## Model registry
 
 Responsible for:

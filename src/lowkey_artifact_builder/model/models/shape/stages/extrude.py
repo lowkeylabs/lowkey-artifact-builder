@@ -1852,10 +1852,7 @@ def _load_ridge(
         )
 
     if inner_element is None:
-        raise ValueError(
-            "Registered ridge composition contains a Shape outer boundary "
-            "without a ridge inner boundary."
-        )
+        return None
 
     outer_kind = _local_name(
         outer_element.tag,

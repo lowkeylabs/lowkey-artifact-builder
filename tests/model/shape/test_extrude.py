@@ -17,6 +17,7 @@ from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.engine.bootstrap import build_stage_registry
 from lowkey_artifact_builder.model.models.shape import stages
 from lowkey_artifact_builder.model.models.shape.stages import extrude
+from lowkey_artifact_builder.model.models.shape.stages.extrude import _load_ridge
 
 # =========================================================
 # Test support
@@ -2691,3 +2692,67 @@ def test_negative_polygon_ridge_styles_have_equivalent_assembled_geometry(
     assert _stl_bounds(integrated) == pytest.approx(
         _stl_bounds(separate),
     )
+
+
+def test_load_ridge_treats_shape_boundary_without_inner_boundary_as_no_ridge(
+    tmp_path: Path,
+) -> None:
+    """
+    A registered Shape boundary without a ridge inner boundary
+    represents a Shape without an outer ridge.
+    """
+
+    composition = tmp_path / "composition.svg"
+
+    composition.write_text(
+        """
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="-0.5 -0.5 1 1">
+  <circle
+      id="shape-boundary"
+      cx="0"
+      cy="0"
+      r="0.5" />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    ridge = _load_ridge(
+        composition,
+    )
+
+    assert ridge is None
+
+
+def test_load_ridge_rejects_inner_boundary_without_shape_boundary(
+    tmp_path: Path,
+) -> None:
+    """
+    A ridge inner boundary without its Shape outer boundary
+    is an invalid registered composition.
+    """
+
+    composition = tmp_path / "composition.svg"
+
+    composition.write_text(
+        """
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="-0.5 -0.5 1 1">
+  <circle
+      id="ridge-inner-boundary"
+      cx="0"
+      cy="0"
+      r="0.45" />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="ridge inner boundary without a Shape outer boundary",
+    ):
+        _load_ridge(
+            composition,
+        )

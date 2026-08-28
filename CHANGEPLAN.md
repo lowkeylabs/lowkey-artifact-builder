@@ -2,35 +2,41 @@
 
 This document tracks the remaining incremental work required to bring
 `lowkey-artifact-builder` into conformance with its permanent specifications
-and to implement the next production model.
+and to complete the initial integration between the Shape and Artwork models.
 
 The permanent normative specifications are:
 
 ```text
 ARCHITECTURE.md
+
 src/lowkey_artifact_builder/model/models/artwork/DEFINITION.md
+
 src/lowkey_artifact_builder/model/models/shape/DEFINITION.md
 ```
 
 `CHANGEPLAN.md` is not a normative specification. It records the current
 implementation path from repository HEAD toward those specifications.
 
-Completed historical migration phases have been removed from this document.
-The current repository already contains the graph, resolver, product-state,
-resumability, execution-event, independent-stage-execution, and cross-artifact
-dependency foundations established by those earlier phases.
+Completed historical phases have been removed from this document.
 
-Before selecting each implementation slice, compare the current repository
-against the permanent specifications rather than assuming this plan remains
-complete.
+The current repository already contains the graph, resolver, product-state,
+resumability, execution-event, independent-stage-execution, cross-model,
+cross-artifact, registered-geometry, Shape structural-geometry, outer-ridge,
+extrusion, and packaging foundations established by earlier work.
+
+The current Shape implementation can produce a complete printable
+`artifact.3mf` containing structural Shape geometry without incorporated
+Artwork.
+
+Before selecting each implementation slice, compare repository HEAD against
+the permanent specifications rather than assuming this plan remains complete.
 
 ## Status
 
 ```text
-Phase 11 — Complete
-Phase 12 — Started
-Phase 13 — Not started
-Phase 14 — Not started
+Phase 1 — Not started
+Phase 2 — Not started
+Phase 3 — Not started
 ```
 
 # Development Method
@@ -51,467 +57,434 @@ For each slice:
 10. Reevaluate repository HEAD before selecting the next slice.
 
 A slice should normally establish one new capability or invariant rather than
-implement an entire model, stage sequence, or architectural subsystem.
+implement an entire phase or architectural subsystem.
 
 Tests should preferentially express semantic contracts and invariants rather
 than incidental implementation details.
 
 The existing Artwork model remains the primary regression baseline.
 
-# Phase 11 — Registered Geometry and Architectural Alignment
+The completed structural Shape-to-3MF path remains the Shape regression
+baseline.
 
-Phase 11 establishes the remaining contracts needed before substantial Shape
-implementation and begins exercising registered geometry through the Shape
-model.
+# Phase 1 — Shape Component Colors
 
-The objective is not to redesign working engine infrastructure. It is to close
-specific gaps between repository HEAD and the permanent specifications and
-then introduce Shape in independently testable slices.
+Complete the color semantics required by the Shape model.
 
-## 11.1 Specification and Implementation Alignment
+Shape already produces structural base and outer-ridge geometry. This phase
+associates semantic printing colors with those components and preserves those
+color identities through extrusion and packaging.
 
-Reconcile known differences between current implementation terminology and the
-permanent specifications.
+Color is a property of a model component.
 
-In particular:
+A model does not assign a component to a physical printer head.
 
-* Align `StageSpec` documentation and tests with the architectural meaning of
-  numeric stage IDs:
-
-  * stage name is semantic identity;
-  * numeric stage ID is a presentation ordinal;
-  * stage IDs do not determine dependencies or execution order;
-  * stage IDs may change when deterministic model ordering changes.
-* Remove documentation or implementation assumptions that treat a model as
-  being defined by a distinguished final 3MF.
-* Review model and engine terminology for other remnants of superseded
-  architecture.
-* Resolve `artwork_overlap`:
-
-  * determine whether it remains part of Artwork semantics;
-  * if it is obsolete, remove it from configuration and affected code/tests;
-  * if it is required, define its semantics in `artwork/DEFINITION.md` before
-    relying upon it.
-* Keep the Artwork implementation conformant with `artwork/DEFINITION.md`.
-
-Do not perform broad cleanup merely because older terminology exists. Change
-code or documentation when it conflicts with a current architectural or model
-contract.
-
-## 11.2 Artwork Conformance Evidence
-
-Strengthen executable evidence for the important reusable-geometry invariants
-already specified by the Artwork model.
-
-Tests should demonstrate, where not already adequately covered, that:
-
-* raster processing is independent of physical `artwork_size`;
-* vector processing is independent of physical `artwork_size` and
-  `artwork_raise`;
-* vector products share one registered coordinate system;
-* the vector manifest records `registered_extent`;
-* semantic color identity survives raster and vector processing;
-* all registered layers retain their registration;
-* standalone extrusion applies one common physical X/Y transformation;
-* standalone extrusion introduces physical Z through `artwork_raise`;
-* registered vector Artwork can be requested without realizing Artwork
-  extrusion or packaging.
-
-Prefer tests of existing observable behavior over implementation rewrites.
-
-## 11.3 Registered Geometry Consumer Contract
-
-Use the first Shape dependencies to exercise the architectural contract for
-registered geometry.
-
-Establish tests demonstrating that a consumer can:
-
-* depend logically on registered vector Artwork;
-* receive the Artwork vector manifest through normal dependency resolution;
-* discover component membership through the manifest rather than directory
-  scanning;
-* obtain the common registered coordinate extent;
-* treat the component payload as opaque;
-* preserve registration by applying one common transformation to every
-  component.
-
-Do not introduce generated filesystem paths into Shape configuration or Shape
-implementation.
-
-## 11.4 Shape Model Declaration
-
-Expand the Shape model only far enough to represent behavior being
-implemented.
-
-The eventual Shape model must support the semantics defined by
-`shape/DEFINITION.md`, including:
-
-* circle geometry;
-* square geometry;
-* octagon geometry;
-* physical `shape_size`;
-* physical `shape_base_raise`;
-* optional integrated or separately printable outer ridge;
-* optional registered Artwork;
-* final multicomponent 3MF packaging.
-
-Do not declare speculative stages merely to make the model look complete.
-
-Introduce stages, parameters, dependencies, and products as the corresponding
-behavior becomes testable.
-
-Stage numeric IDs should follow deterministic presentation order rather than
-being treated as permanent semantic identifiers.
-
-## 11.5 First Shape Production Slice
-
-The first production capability establishes the smallest complete Shape
-invariant:
-
-> A Shape can produce structural geometry without Artwork.
-
-The completed production sequence is:
-
-1. Declare the minimum Shape stage/product contract.
-2. Establish canonical registered circle geometry.
-3. Extend canonical registered geometry to square and octagon.
-4. Establish common physical `shape_size` envelope semantics.
-5. Establish physical base-thickness semantics through `shape_base_raise`.
-6. Establish the registered composition boundary required before physical
-   dimensionalization.
-7. Dimensionalize/extrude registered Shape geometry into a structural base.
-8. Package the resulting component into a valid 3MF.
-9. Establish acceptance coverage proving a Shape without Artwork is a complete
-   valid artifact.
-
-Steps 1–9 are implemented at current HEAD.
-
-The resulting baseline Shape pipeline is complete:
+Conceptually:
 
 ```text
-registered structure
-        ↓
-registered composition
-        ↓
-   physical base
-        ↓
-   artifact.3mf
+Shape component
+      │
+      ├── role
+      │     base
+      │     ridge
+      │
+      └── semantic color
+            white
+            red
+            black
+            ...
+                  │
+                  ▼
+            dimensionalization
+                  │
+                  ▼
+          printable component
+                  │
+                  ▼
+             packaging
+                  │
+                  ▼
+            artifact.3mf
 ```
 
-A Shape containing only its structural base, without Artwork or an outer
-ridge, is therefore a complete valid printable artifact.
+The packaged component must retain sufficient semantic color identity for the
+slicer or user to associate that component with the appropriate physical
+printer head later.
 
-This baseline must remain working as subsequent structural and Artwork
-capabilities are added.
+The model and generic build engine do not perform that printer-head
+assignment.
 
-# Phase 12 — Shape Structural Geometry
+## 1.1 Complete Shape Color Specification
 
-Complete the structural portion of the initial Shape model defined by
-`shape/DEFINITION.md`.
+Before implementing Shape color behavior, reconcile the Shape definition with
+the color mechanism required by its existing semantics.
 
-Registered circle, square, and octagon geometry, physical base geometry, the
-registered-composition boundary, physical dimensionalization, packaging, and
-the complete no-ridge Shape-to-3MF pipeline were established incrementally
-during Phase 11.
+The Shape definition already requires:
 
-Those completed behaviors form the structural regression baseline for
-Phase 12 and must not be reimplemented or disrupted while optional structural
-features are added.
+* an independently assignable base color;
+* an independently assignable outer-ridge color;
+* the outer-ridge color to default to the base color;
+* integrated and separate ridges to support independent color assignment;
+* color distinctions to remain representable through dimensionalization and
+  packaging.
 
-Phase 12 continues from the remaining structural behavior at repository HEAD,
-beginning with the optional outer ridge.
-
-## 12.1 Common Shape Geometry Semantics
-
-Shape supports:
-
-* circle;
-* square;
-* octagon.
-
-For every geometry, `shape_size` means the overall physical X/Y envelope:
+The definition names:
 
 ```text
-circle   -> diameter
-square   -> side length
-octagon  -> bounding-box width and height
+shape_outer_ridge_color
 ```
 
-A Shape with:
+but the current specification must also identify the parameter controlling the
+base color.
+
+Define:
 
 ```text
-shape_size = 100
+shape_base_color
 ```
 
-fits within a 100 mm × 100 mm envelope regardless of geometry.
+in `shape/DEFINITION.md`.
 
-These semantics are implemented and tested at current HEAD.
+The specification must establish:
 
-Keep geometry policy in the Shape model and reusable mechanical
-transformations outside model-specific code where practical.
+* `shape_base_color` identifies the semantic printing color of the Shape base;
+* `shape_outer_ridge_color` identifies the semantic printing color of the
+  outer ridge;
+* Shape colors are semantic color names;
+* semantic color names are resolved through the shared color catalog;
+* the default `shape_outer_ridge_color` is the resolved
+  `shape_base_color`;
+* explicitly configuring `shape_outer_ridge_color` overrides that default;
+* color does not alter registered or physical geometry;
+* color does not determine ridge existence;
+* color does not determine ridge style;
+* Shape does not assign colors to physical printer heads.
 
-## 12.2 Base Geometry
+Select and document the default base color before implementing it.
 
-For every supported Shape geometry:
+Do not invent a Shape-specific RGB or filament representation.
 
-* a base always exists;
-* the base follows the selected Shape boundary in the baseline no-ridge case;
-* its physical X/Y extent is controlled by `shape_size`;
-* it extends from `Z = 0` through `Z = shape_base_raise`.
-
-These baseline base semantics are implemented and tested at current HEAD.
-
-A separately printable outer ridge intentionally changes the base component's
-X/Y boundary as defined by 12.3. That behavior does not invalidate the
-baseline base semantics established here.
-
-The completed no-ridge base remains the regression baseline for subsequent
-structural work.
-
-## 12.3 Outer Ridge
-
-Implement the optional outer ridge incrementally.
-
-The Shape definition distinguishes the complete assembled structural geometry
-from its partitioning into independently printable components.
-
-An outer ridge is controlled by:
+Shape should use the shared color semantics already provided by:
 
 ```text
-shape_outer_ridge_width
-shape_outer_ridge_raise
-shape_outer_ridge_style
+src/lowkey_artifact_builder/colors.py
 ```
 
-Supported ridge styles are:
+## 1.2 Shape Color Configuration and Resolution
+
+Add the minimum Shape configuration required by the permanent definition.
+
+Tests should establish that:
+
+* `shape_base_color` has the defined model default;
+* `shape_base_color` may be overridden normally;
+* `shape_outer_ridge_color` defaults to the resolved
+  `shape_base_color`;
+* changing the base color changes the default ridge color;
+* explicitly configuring the ridge color makes it independent of later base
+  color resolution;
+* configured Shape color names resolve through the shared color catalog;
+* invalid color names fail through the normal shared color-resolution
+  mechanism;
+* Shape color configuration does not require knowledge of printer-head
+  positions.
+
+Use the existing configuration derivation mechanism when appropriate rather
+than duplicating default-resolution behavior inside Shape stages.
+
+In particular, the semantic relationship:
 
 ```text
-integrated
-separate
+shape_outer_ridge_color defaults to shape_base_color
 ```
 
-The default ridge style is:
+should be represented as a resolved configuration relationship rather than by
+copying one literal default value into two independent parameters.
+
+## 1.3 Color-Aware Shape Components
+
+Associate semantic color identity with the physical components produced by
+Shape extrusion.
+
+Use the existing shared color abstraction where appropriate:
 
 ```text
-integrated
+PaletteColor
+
+resolve_palette_color()
 ```
 
-Ridge existence is determined solely by:
+Shape does not need perceptual color matching because Shape already knows the
+semantic color requested for each structural component.
+
+Shape therefore should not use Artwork-specific matching behavior such as:
 
 ```text
-shape_outer_ridge_width
+MeasuredColor
+assign_colors()
+color_distance()
 ```
 
-A ridge exists when:
+Tests should establish that the extrusion product or its manifest identifies
+each physical component by both:
+
+* structural role;
+* semantic color.
+
+For example, conceptually:
 
 ```text
-shape_outer_ridge_width > 0
+base
+    color = white
+
+ridge
+    color = red
 ```
 
-and does not exist when:
+The physical filename may preserve both identities when appropriate, for
+example:
+
+```text
+base-white.stl
+ridge-red.stl
+```
+
+Exact persistent naming must remain centralized and tested rather than inferred
+by downstream directory scanning.
+
+Color metadata should include the shared semantic color identity and the RGB
+representation needed by downstream packaging where that representation is
+part of the established component contract.
+
+## 1.4 Ridge Color Semantics
+
+Apply Shape's existing ridge-color semantics to the physical component
+partition already established by the Shape model.
+
+Tests must cover the meaningful structural cases.
+
+### No ridge
+
+When:
 
 ```text
 shape_outer_ridge_width = 0
 ```
 
-A negative ridge width is invalid.
+there is no physical ridge component or ridge-color volume.
 
-`shape_outer_ridge_raise` does not determine whether a ridge exists.
+The base retains its configured color.
 
-The default ridge raise is:
+Ridge color configuration does not create geometry.
 
-```text
-1 mm
-```
+### Separate ridge
 
-for both ridge styles.
-
-Ridge raise represents a change in height relative to the top of the base.
-The complete assembled ridge height is therefore:
+When the ridge is separately printable and has physical volume:
 
 ```text
-shape_base_raise + shape_outer_ridge_raise
+base
+    -> shape_base_color
+
+ridge
+    -> shape_outer_ridge_color
 ```
 
-for both integrated and separate ridge styles.
+Base and ridge may use the same or different colors.
 
-Ridge raise may be positive, zero, or negative.
+Their colors do not alter their established geometry.
 
-The minimum valid ridge raise is:
+### Integrated ridge with positive raise
+
+When:
 
 ```text
--shape_base_raise
+shape_outer_ridge_style = integrated
+shape_outer_ridge_raise > 0
 ```
 
-so that the complete assembled ridge height is never negative.
+the base material retains the base color.
 
-First establish these parameter and declaration contracts without disrupting
-the working no-ridge Shape-to-3MF pipeline.
+Only the physical ridge volume above the base top receives the independently
+assigned ridge color.
 
-Common ridge tests should establish that:
-
-* ridge geometry follows the selected Shape boundary;
-* ridge width is measured inward from the complete Shape boundary;
-* ridge width is a physical dimension represented during registered composition
-  as a relative relationship between `shape_outer_ridge_width` and
-  `shape_size`;
-* the ridge never increases `shape_size`;
-* zero ridge width disables the ridge;
-* negative ridge width is invalid;
-* ridge raise does not determine ridge existence;
-* ridge style, raise, and color have no effect on produced ridge geometry when
-  ridge width is zero;
-* the ridge's inner boundary determines the registered interior region;
-* integrated and separate ridge styles use the same ridge outer boundary and
-  ridge inner boundary;
-* ridge style does not change the registered interior region;
-* ridge raise does not change the registered interior region;
-* the complete assembled ridge height is
-  `shape_base_raise + shape_outer_ridge_raise`;
-* ridge raise may be positive, zero, or negative;
-* a ridge raise less than `-shape_base_raise` is invalid.
-
-For an integrated ridge, tests should establish that:
-
-* the base retains the complete Shape X/Y envelope;
-* the ridge occupies the perimeter region between the complete Shape boundary
-  and the ridge inner boundary;
-* the base and ridge belong to the same assembled structural geometry;
-* the interior base surface has height `shape_base_raise`;
-* the perimeter ridge region has complete assembled height
-  `shape_base_raise + shape_outer_ridge_raise`;
-* a positive ridge raise places the perimeter ridge top above the base top;
-* a zero ridge raise places the perimeter ridge top flush with the base top;
-* a negative ridge raise places the perimeter ridge top below the base top
-  while the registered ridge X/Y region continues to exist;
-* base and ridge form one independently printable structural component.
-
-For a separate ridge, tests should establish that:
-
-* the ridge retains the complete Shape outer boundary;
-* the ridge inner boundary is inset by `shape_outer_ridge_width`;
-* the base outer boundary becomes the ridge inner boundary;
-* base and ridge occupy adjacent, nonoverlapping X/Y regions;
-* the base extends from `Z = 0` through `Z = shape_base_raise`;
-* the ridge extends from `Z = 0` through
-  `Z = shape_base_raise + shape_outer_ridge_raise`;
-* a positive ridge raise makes the ridge taller than the base;
-* a zero ridge raise makes the ridge and base equal in height;
-* a negative ridge raise makes the ridge shorter than the base;
-* at `shape_outer_ridge_raise = -shape_base_raise`, the separate ridge has zero
-  physical height but remains semantically defined by its nonzero width;
-* base and ridge remain independently printable components through packaging.
-
-For otherwise identical Shape parameters, tests should establish that
-integrated and separate ridge styles describe equivalent intended assembled
-structural geometry.
-
-Changing ridge style must not change:
-
-* the complete Shape outer envelope;
-* the ridge outer boundary;
-* the ridge inner boundary;
-* the registered interior region;
-* the complete assembled ridge height;
-* the intended complete assembled physical geometry.
-
-Changing ridge style changes the partitioning of that geometry into structural
-regions and independently printable components.
-
-Ridge color is independent from ridge style. The outer ridge defaults to the
-base color but may be assigned a different color for either integrated or
-separate construction. Introduce the corresponding configuration and
-implementation only when the base-color mechanism is established rather than
-inventing a separate color mechanism solely for the ridge.
-
-Implement one geometry first, preferably circle.
-
-For circle, establish:
-
-1. registered ridge-boundary semantics;
-2. integrated physical ridge semantics;
-3. separate physical ridge semantics;
-4. positive, zero, and negative raise semantics;
-5. assembled equivalence between integrated and separate styles.
-
-Then generalize the established ridge behavior to square and octagon.
-
-Preserve the completed no-ridge Shape-to-3MF pipeline throughout this work.
-
-## 12.4 Reusable Operations
-
-As Shape implementation begins sharing mechanical transformations with
-Artwork or repeating transformations across Shape geometries, extract
-model-independent operations where the duplication demonstrates a real common
-contract.
-
-Likely reusable operations include:
-
-* scale;
-* translate;
-* fit;
-* inset/offset;
-* extrusion;
-* packaging or component assembly where genuinely model-independent.
-
-The architectural separation is:
+Conceptually:
 
 ```text
-model stage
-    -> owns model policy and semantics
+base
+    Z = 0 through shape_base_raise
+    color = shape_base_color
 
-reusable operation
-    -> owns model-independent transformation mechanics
+upper ridge
+    Z = shape_base_raise
+        through
+        shape_base_raise + shape_outer_ridge_raise
+    color = shape_outer_ridge_color
 ```
 
-Do not introduce an operation framework merely to rename existing functions.
+### Integrated ridge with zero or negative raise
 
-Extract reusable operations when at least two model contexts establish the
-common behavior.
+When:
 
-A reusable operation must not depend on model-specific configuration
-namespaces or global artifact filesystem layout.
+```text
+shape_outer_ridge_raise <= 0
+```
 
-# Phase 13 — Shape and Registered Artwork Composition
+no independently colored ridge volume exists above the base.
 
-Add optional Artwork consumption to Shape.
+The established structural geometry remains unchanged.
 
-This phase exercises the central Phase 11 architecture: reusable registered
-geometry is interpreted once and dimensionalized by the downstream consumer.
+The semantic ridge region may continue to exist in registered geometry, but
+color configuration must not manufacture an otherwise nonexistent physical
+ridge-color component.
 
-## 13.1 Artwork Dependency Binding
+### Zero-height separate ridge
 
-Declare Shape's dependency on the registered vector Artwork product.
+At:
+
+```text
+shape_outer_ridge_raise = -shape_base_raise
+```
+
+the separate ridge remains semantically defined but has zero physical volume.
+
+Packaging must not invent physical ridge geometry merely to represent its
+color.
+
+## 1.5 Preserve Color Identity Through Packaging
+
+Extend Shape packaging so that semantic component/color identity survives into
+the Shape `artifact.3mf`.
+
+Tests should verify that:
+
+* the base remains identifiable by role and semantic color;
+* a physically present independent ridge remains identifiable by role and
+  semantic color;
+* an integrated positive ridge with a distinct physical upper-ridge component
+  retains its ridge color identity;
+* absent or zero-volume ridge-color geometry is not invented during packaging;
+* base and ridge may share a semantic color;
+* base and ridge may use different semantic colors;
+* packaging consumes component metadata rather than independently re-resolving
+  Shape color policy;
+* packaging does not assign physical printer heads.
+
+The resulting 3MF should expose independently printable objects with useful
+component/color identities so that the slicer can subsequently associate those
+objects with the appropriate loaded printer colors.
+
+Where Artwork and Shape demonstrate the same model-independent packaging
+requirement, prefer a shared operation or format capability rather than
+duplicating packaging mechanics.
+
+Do not generalize merely because two implementations contain superficially
+similar code. Extract only a demonstrated common contract.
+
+## 1.6 Shape Color Acceptance
+
+Add end-to-end evidence that a colored structural Shape produces a valid
+multicomponent `artifact.3mf`.
+
+At minimum demonstrate:
+
+* a base-only Shape with a configured color;
+* a Shape whose separate ridge uses a color different from the base;
+* a Shape whose positive integrated ridge uses a color different from the
+  base;
+* the packaged objects preserve their semantic role/color identities;
+* changing colors does not change the intended assembled geometry.
+
+Completion of Phase 1 means the structural Shape model conforms to its
+base/ridge color semantics and produces a packaged artifact in which every
+physical structural component has the appropriate semantic color identity.
+
+# Phase 2 — Shape and Registered Artwork Composition
+
+Add optional registered Artwork consumption to Shape.
+
+This phase exercises the central architecture:
+
+> Source Artwork is interpreted once as reusable registered geometry and is
+> subsequently fitted, dimensionalized, and manufactured by a downstream
+> Shape without repeating upstream interpretation merely because the physical
+> Shape changes.
+
+Shape consumes the registered Artwork product.
+
+Shape does not consume the standalone Artwork 3MF.
+
+## 2.1 Artwork Dependency Contract
+
+Review the Artwork definition and current vector-product manifest before
+declaring Shape's dependency.
+
+Establish the exact product contract Shape consumes.
+
+The contract must provide sufficient information for Shape to:
+
+* discover Artwork component membership;
+* identify the common registered coordinate system;
+* determine the registered Artwork envelope;
+* preserve registration;
+* retain semantic component/color identity;
+* locate the component payloads through resolved product information rather
+  than generated global paths.
+
+If the existing Artwork vector product already satisfies this contract, use it
+without changing Artwork.
+
+If the contract is incomplete relative to the permanent Artwork definition,
+strengthen the producer contract before adding Shape-specific assumptions.
+
+## 2.2 Artwork Dependency Binding
+
+Declare Shape's optional dependency on registered vector Artwork.
 
 Tests must demonstrate that:
 
-* Shape may bind to Artwork belonging to another artifact;
+* Shape can exist and build without Artwork;
+* Shape may bind to registered Artwork belonging to the same artifact;
+* Shape may bind to registered Artwork belonging to another artifact;
 * the dependency is represented by logical product identity;
-* dependency resolution supplies the vector manifest to Shape;
+* dependency resolution supplies the registered Artwork product to Shape;
 * requesting Shape realizes only the required Artwork dependency closure;
 * Artwork `prepare`, `raster`, and `vector` execute when necessary;
 * Artwork `extrude` and `package` are not required;
 * current upstream vector Artwork is reused without unnecessary execution.
 
-This should use the existing cross-model and cross-artifact dependency
-mechanisms rather than adding Shape-specific engine behavior.
+Use the existing cross-model and cross-artifact dependency mechanisms.
 
-## 13.2 Interior Region
+Do not introduce Shape-specific behavior into the generic engine.
 
-Make Shape expose or calculate the region available for Artwork.
+Do not place generated filesystem paths in Shape configuration.
 
-Tests should establish:
+## 2.3 Shape Interior Region
 
-* without a ridge, the interior region is bounded by the Shape boundary;
-* with a ridge, the interior region is bounded by the ridge's inner boundary;
-* integrated and separate ridge styles produce the same interior region for
-  otherwise identical ridge dimensions;
-* changing ridge width changes available Artwork space without changing
-  `shape_size`.
+Use Shape's registered structural geometry to define the region available for
+incorporated Artwork.
 
-## 13.3 Registered Artwork Fitting
+Tests should establish that:
 
-Implement contain-style fitting of registered Artwork into the Shape interior.
+* without a ridge, the available region is bounded by the Shape boundary;
+* with a ridge, the available region is bounded by the ridge inner boundary;
+* integrated and separate ridge styles expose the same Artwork region for
+  otherwise identical ridge geometry;
+* changing ridge width changes the available Artwork region;
+* changing ridge style alone does not;
+* changing ridge raise alone does not;
+* changing Shape color does not;
+* changing `shape_size` changes later physical dimensionalization rather than
+  the registered interior geometry.
+
+The interior-region contract should remain registered and nonphysical until the
+downstream dimensionalization operation introduces physical size.
+
+## 2.4 Registered Artwork Fitting
+
+Fit registered Artwork into the available Shape interior.
+
+Use contain-style fitting unless the Shape definition is intentionally changed
+before implementation.
 
 Tests must demonstrate that incorporated Artwork is:
 
@@ -519,74 +492,170 @@ Tests must demonstrate that incorporated Artwork is:
 * uniformly scaled;
 * aspect-ratio preserving;
 * completely contained within the available interior region;
-* transformed using one common transformation for every registered component.
+* transformed using one common transformation for every registered component;
+* still represented in the same registered Shape coordinate system after
+  composition.
 
-The consumer must use the registered geometry contract rather than
-independently calculating and fitting each color layer.
+The consumer must treat Artwork as registered geometry rather than fitting
+individual color components independently.
 
-Changing Shape size or ridge dimensions must not require Artwork rasterization
-or vectorization to be repeated unless those upstream products are otherwise
-stale.
+Changing Shape geometry, size, ridge dimensions, ridge style, or structural
+colors must not require Artwork rasterization or vectorization to be repeated
+unless the upstream Artwork product is otherwise stale.
 
-## 13.4 Artwork Z Semantics
+## 2.5 Registered Composition Product
 
-Before implementing physical composition of Artwork with the Shape base,
-define the Z semantics required by `shape/DEFINITION.md`.
+The Shape composition stage should produce a registered composition containing:
 
-Determine and document:
+```text
+structural Shape geometry
+        +
+registered Artwork geometry
+```
+
+The resulting product must preserve:
+
+* the Shape coordinate system;
+* Shape structural boundaries;
+* Artwork component registration;
+* Artwork semantic color identity;
+* component membership;
+* the relationship between the Shape interior and fitted Artwork.
+
+The registered composition remains conceptually distinct from physical
+manufacturing geometry.
+
+Consumers should use its declared product/manifest contract rather than infer
+members by scanning files.
+
+## 2.6 Artwork Physical Z Semantics
+
+Before implementing physical extrusion of incorporated Artwork, verify that
+`shape/DEFINITION.md` completely specifies the required Artwork Z semantics.
+
+The permanent specification must determine:
 
 * where incorporated Artwork begins in Z;
-* its extrusion height;
+* Artwork extrusion height;
 * its relationship to the base top;
 * its relationship to the outer ridge;
-* whether Artwork Z semantics differ between integrated and separate ridge
-  component partitioning;
-* whether any overlap required for printable/manifold construction is a
-  geometric operation or a model parameter;
-* how independently printable color components remain physically associated
-  with the structural Shape.
+* how independently printable Artwork color components remain physically
+  associated with the Shape;
+* whether any required physical overlap is a geometric operation or explicit
+  model parameter;
+* whether ridge partitioning changes Artwork Z semantics.
 
-Update `shape/DEFINITION.md` before implementation if these decisions extend
-its normative semantics.
+If any of these semantics remain undefined, update `shape/DEFINITION.md`
+before implementing them.
 
-Then implement the decisions test-first.
+Do not allow current Artwork standalone extrusion behavior to silently define
+Shape's incorporated-Artwork semantics.
 
-## 13.5 Shape Packaging
+## 2.7 Dimensionalize Incorporated Artwork
 
-Package structural Shape geometry and optional Artwork components into the
-declared Shape `artifact.3mf`.
+Dimensionalize the complete registered Shape composition.
+
+Tests must establish that:
+
+* one physical X/Y transformation is applied consistently to all registered
+  Artwork components;
+* the transformation corresponds to `shape_size`;
+* Artwork retains its registration after dimensionalization;
+* Artwork physical Z follows the Shape definition;
+* Artwork components remain independently printable by semantic color;
+* Shape structural colors remain independent from Artwork colors;
+* components sharing the same semantic color are allowed to remain distinct
+  semantic/structural components;
+* geometry does not depend on printer-head assignment.
+
+Physical dimensionalization belongs to Shape because Shape owns the physical
+manufacturing dimensions of the composed object.
+
+## 2.8 Shape Packaging with Artwork
+
+Package structural Shape components and incorporated Artwork components into
+the declared Shape:
+
+```text
+artifact.3mf
+```
 
 Tests should verify:
 
-* Shape without Artwork packages successfully;
+* Shape without Artwork still packages successfully;
 * Shape with Artwork packages successfully;
-* structural components are present;
-* an integrated ridge remains part of the base structural component;
-* a separate ridge remains independently printable from the base;
+* structural components remain present;
+* base color identity survives packaging;
+* physical ridge color identity survives packaging;
 * Artwork color components remain independently printable;
-* semantic component/color identity survives composition and packaging;
-* packaging does not require the standalone Artwork 3MF.
+* Artwork semantic color identity survives packaging;
+* component names provide useful semantic role/color identity;
+* packaging does not require the standalone Artwork 3MF;
+* packaging does not assign components to printer heads.
 
-# Phase 14 — Composition Acceptance and Generalization
+The resulting 3MF should provide the slicer with independently identifiable
+colored objects from which physical printer-head assignments can be made.
 
-Use the completed Shape model to exercise the broader architectural scenarios
-that motivated registered geometry and composition.
+## 2.9 Shape + Artwork Acceptance
 
-## 14.1 Same Artwork, Different Physical Shapes
+Add end-to-end acceptance coverage for at least:
 
-Demonstrate that one registered Artwork product can feed Shapes with
-different:
+```text
+source PNG
+    ↓
+Artwork prepare
+    ↓
+Artwork raster
+    ↓
+Artwork vector
+    ↓
+registered Artwork
+    ↓
+Shape composition
+    ↓
+Shape dimensionalization/extrusion
+    ↓
+Shape artifact.3mf
+```
+
+Acceptance evidence should demonstrate:
+
+* the standalone Artwork extrusion and package stages are not required;
+* Shape introduces the physical manufacturing dimensions;
+* Artwork registration is preserved;
+* structural and Artwork color identities survive into the packaged Shape;
+* the resulting 3MF is valid and printable as a multicomponent artifact.
+
+Completion of Phase 2 means registered Artwork can be reused as a genuine
+upstream manufacturing asset by Shape.
+
+# Phase 3 — Architectural Acceptance and Generalization
+
+Use the completed colored Shape + Artwork model to validate the broader
+architecture and extract only common mechanics demonstrated by actual use.
+
+## 3.1 Same Artwork, Different Shapes
+
+Demonstrate that one registered Artwork product can feed Shape realizations
+with different:
 
 * geometry;
+* polygon side count;
+* polygon rotation;
 * `shape_size`;
 * base thickness;
 * ridge dimensions;
-* ridge styles.
+* ridge styles;
+* base colors;
+* ridge colors.
 
 The upstream registered vector Artwork must remain reusable and
 dimension-independent.
 
-## 14.2 Cross-Artifact Shape Composition
+Physical Shape changes must not cause unnecessary Artwork rasterization or
+vectorization.
+
+## 3.2 Cross-Artifact Shape Composition
 
 Build a Shape artifact that consumes registered Artwork belonging to another
 artifact.
@@ -597,45 +666,126 @@ Verify end-to-end that:
 * the resolver supplies the canonical upstream product;
 * only required upstream stages are realized;
 * current upstream products are reused;
-* no generated filesystem path appears in artifact configuration.
+* no generated filesystem path appears in artifact configuration;
+* semantic color identities survive the cross-artifact composition.
 
-## 14.3 Architecture Acceptance Scenarios
+## 3.3 Architecture Acceptance Scenarios
 
-Use the relevant scenarios in `ARCHITECTURE.md` as acceptance criteria.
+Review the acceptance scenarios in `ARCHITECTURE.md` against repository HEAD.
 
-At minimum, preserve or establish executable evidence for:
+Maintain or establish executable evidence for the scenarios already supported
+by the current models, including:
 
 * standalone Artwork;
 * registered Artwork reused by another manufactured object;
 * different physical sizes using the same registered Artwork;
 * circular structural composition;
+* polygon structural composition;
 * optional integrated structural ridge;
 * optional separately printable structural ridge;
 * equivalent assembled geometry across ridge styles;
+* independently assigned structural colors;
+* preserved Artwork color identity;
+* cross-model reuse;
 * cross-artifact reuse.
 
-Do not force ornament, keychain, multiple-Artwork composition, arbitrary
-placement, labels, or hangers into the initial Shape implementation merely to
-complete every future architecture scenario.
+Do not force ornament, keychain, labels, hangers, multiple-Artwork composition,
+or arbitrary placement into Shape merely to make every future architecture
+scenario executable.
 
-Those should become subsequent model definitions or deliberate extensions once
-the Shape foundation is stable.
+Those capabilities should be introduced through subsequent model definitions
+or deliberate Shape extensions when their semantics are ready to be specified.
 
-## 14.4 Reevaluate Abstractions
+## 3.4 Reevaluate Shared Color and Component Contracts
 
-After Shape and Artwork both use the new mechanics, reevaluate the codebase for
-demonstrated common operations.
+After Artwork and Shape both produce and package semantically colored
+components, review their implementations for demonstrated common contracts.
+
+Potential shared concepts include:
+
+* semantic component identity;
+* semantic color identity;
+* RGB metadata representation;
+* component-manifest serialization;
+* component-manifest validation;
+* 3MF component naming;
+* 3MF packaging.
+
+Preserve the distinction between:
+
+```text
+model policy
+    decides what a component means
+    decides which semantic color belongs to it
+
+shared color infrastructure
+    resolves semantic color names
+    provides common color representations
+
+shared packaging mechanics
+    preserve component/color identity
+
+slicer
+    assigns packaged objects to physical printer heads
+```
+
+Do not move model color-selection policy into generic color or packaging code.
+
+Do not add printer-head assignment to Artwork, Shape, the generic engine, or
+the generic color subsystem.
+
+## 3.5 Reevaluate Shared Geometry Operations
+
+After Shape and Artwork both exercise the required geometry mechanics,
+reevaluate the codebase for demonstrated common operations.
+
+Likely candidates include:
+
+* scale;
+* translate;
+* fit;
+* inset/offset;
+* extrusion;
+* registered-component transformation;
+* packaging/component assembly.
 
 At that point:
 
-* extract duplicated model-independent geometry mechanics;
+* extract duplicated model-independent mechanics;
 * keep model policy in model stages;
 * avoid inheritance between model pipelines;
 * avoid one model invoking another model's stage implementation;
 * retain `StageContext` as the independent stage execution boundary;
 * keep the generic engine free of Shape- and Artwork-specific behavior.
 
-Do not generalize ahead of demonstrated reuse.
+In particular, remove model-to-model stage reuse when the two model contexts
+have demonstrated the reusable mechanical contract that should replace it.
+
+Do not introduce an operation framework merely to rename functions.
+
+## 3.6 Completion Review
+
+When the preceding work is complete, perform a fresh repository-wide
+conformance review against:
+
+```text
+ARCHITECTURE.md
+
+src/lowkey_artifact_builder/model/models/artwork/DEFINITION.md
+
+src/lowkey_artifact_builder/model/models/shape/DEFINITION.md
+```
+
+Do not evaluate completion against historical phases in this file.
+
+Identify any remaining meaningful differences between permanent
+specifications and repository HEAD.
+
+If no differences remain within the implemented model scope, remove
+`CHANGEPLAN.md`.
+
+If differences remain, replace this plan with a new plan containing only the
+remaining work and restart phase numbering as appropriate.
 
 # Continuous Activities
 
@@ -647,23 +797,26 @@ Throughout all phases:
 * keep `CHANGEPLAN.md` synchronized with discovered remaining work;
 * preserve working Artwork behavior unless an intentional specification change
   requires otherwise;
+* preserve the completed structural Shape-to-3MF pipeline;
 * add tests before production implementation for each behavioral slice;
 * prefer invariant and contract tests over implementation-specific tests;
 * maintain unit tests for specifications and value objects;
 * maintain integration tests for graph, resolver, dependency, and execution
   behavior;
 * maintain end-to-end Artwork regression coverage;
-* add end-to-end Shape coverage incrementally;
-* preserve the completed no-ridge Shape-to-3MF pipeline as the Shape regression
-  baseline while optional structural and Artwork features are added;
+* extend end-to-end Shape coverage incrementally;
 * keep products logically addressed and canonically resolved;
 * keep registered geometry independent of manufacturing size until the
   responsible downstream operation introduces that size;
 * preserve registration through common transformations;
+* preserve semantic component/color identity through manifests and packaging;
+* keep model color policy independent of physical printer-head assignment;
 * consume dynamic collections through manifests rather than filesystem scans;
 * keep engine behavior model-independent;
 * keep model implementations free of global filesystem policy;
 * keep structured execution events semantic and presentation-independent;
+* extract reusable operations only after multiple model contexts demonstrate
+  the common mechanical contract;
 * run the complete project quality suite after every completed slice;
 * remove obsolete code and tests once replacement behavior is established;
 * update a model `DEFINITION.md` before implementing a deliberate change to
