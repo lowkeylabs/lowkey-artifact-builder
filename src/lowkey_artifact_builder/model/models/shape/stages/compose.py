@@ -16,11 +16,20 @@ from __future__ import annotations
 
 import json
 import shutil
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from lowkey_artifact_builder.engine import StageContext
+
+SVG_NAMESPACE = "http://www.w3.org/2000/svg"
+SVG_CIRCLE = f"{{{SVG_NAMESPACE}}}circle"
+
+ET.register_namespace(
+    "",
+    SVG_NAMESPACE,
+)
 
 # =========================================================
 # Registered Artwork
@@ -113,15 +122,13 @@ def execute(
     """
     Execute registered Shape composition.
 
-    Composition consumes the registered structural Shape product through
-    StageContext and materializes the declared registered composition product
-    through StageContext.
+    Composition consumes registered Shape structure and establishes structural
+    partition geometry in the same registered coordinate system.
 
-    This initial executable composition boundary preserves the registered
-    structural geometry unchanged. It does not introduce physical dimensions.
+    Physical ridge width is interpreted relative to physical Shape size so the
+    resulting partition boundary can be represented in registered space.
 
-    Registered Artwork incorporation is introduced separately once optional
-    Artwork dependency semantics are established.
+    Physical Z dimensions remain downstream.
     """
 
     structure_input = context.input(
@@ -132,9 +139,103 @@ def execute(
         "composition",
     )
 
+    shape_size = float(
+        context.resolver("shape_size"),
+    )
+    ridge_width = float(
+        context.resolver("shape_outer_ridge_width"),
+    )
+    ridge_style = str(
+        context.resolver("shape_outer_ridge_style"),
+    )
+
+    if ridge_width == 0.0:
+        shutil.copyfile(
+            structure_input,
+            output,
+        )
+        return
+
+    if ridge_style == "integrated":
+        _compose_integrated_ridge(
+            structure_input,
+            output,
+            shape_size=shape_size,
+            ridge_width=ridge_width,
+        )
+        return
+
+    # Separate ridge composition is established in a subsequent slice.
     shutil.copyfile(
         structure_input,
         output,
+    )
+
+
+# =========================================================
+# Structural composition
+# =========================================================
+
+
+def _compose_integrated_ridge(
+    structure_input: Path,
+    output: Path,
+    *,
+    shape_size: float,
+    ridge_width: float,
+) -> None:
+    """
+    Compose an integrated ridge in registered Shape space.
+
+    The complete Shape boundary remains unchanged. The physical ridge width is
+    converted into a registered-space inset that establishes the ridge's inner
+    boundary.
+
+    This slice supports the registered circle structure. Other Shape
+    geometries are introduced separately.
+    """
+
+    tree = ET.parse(
+        structure_input,
+    )
+    root = tree.getroot()
+
+    outer_boundary = root.find(
+        SVG_CIRCLE,
+    )
+
+    if outer_boundary is None:
+        raise ValueError("Integrated circle ridge requires registered circle structure.")
+
+    outer_boundary.set(
+        "id",
+        "shape-boundary",
+    )
+
+    outer_radius = float(
+        outer_boundary.get(
+            "r",
+            "0.0",
+        )
+    )
+
+    registered_inset = ridge_width / shape_size
+    inner_radius = outer_radius - registered_inset
+
+    ET.SubElement(
+        root,
+        SVG_CIRCLE,
+        {
+            "id": "ridge-inner-boundary",
+            "cx": outer_boundary.get("cx", "0.0"),
+            "cy": outer_boundary.get("cy", "0.0"),
+            "r": str(inner_radius),
+        },
+    )
+
+    tree.write(
+        output,
+        encoding="unicode",
     )
 
 

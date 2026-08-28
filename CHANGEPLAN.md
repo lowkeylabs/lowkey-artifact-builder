@@ -305,7 +305,6 @@ Common ridge tests should establish that:
 * ridge width is measured inward from the complete Shape boundary;
 * the ridge never increases `shape_size`;
 * zero ridge width disables the ridge;
-* zero ridge raise disables the ridge;
 * ridge style has no geometric effect when the ridge is disabled;
 * the ridge's inner boundary determines the remaining interior region.
 

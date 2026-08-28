@@ -94,6 +94,31 @@ def _write_registered_structure(
     )
 
 
+def _configure_shape_resolver(
+    context: Mock,
+    *,
+    shape_size: float = 100.0,
+    ridge_width: float = 0.0,
+    ridge_style: str = "integrated",
+) -> Mock:
+    """
+    Configure representative Shape composition parameters.
+    """
+
+    resolver = Mock()
+
+    values = {
+        "shape_size": shape_size,
+        "shape_outer_ridge_width": ridge_width,
+        "shape_outer_ridge_style": ridge_style,
+    }
+
+    resolver.side_effect = values.__getitem__
+    context.resolver = resolver
+
+    return resolver
+
+
 # =========================================================
 # Registered Artwork manifest
 # =========================================================
@@ -305,6 +330,9 @@ def test_registered_artwork_fit_centers_common_extent() -> None:
         available_height=80.0,
     )
 
+    assert transform.scale == 5.0
+    assert transform.width == 80.0
+    assert transform.height == 60.0
     assert transform.translate_x == 0.0
     assert transform.translate_y == 10.0
 
@@ -361,7 +389,7 @@ def test_registered_artwork_components_share_one_transform(
         placement.transform,
     )
 
-    assert tuple(component.component for component in placement.components) == artwork.components
+    assert tuple(component.component for component in placement.components) == (artwork.components)
 
 
 # =========================================================
@@ -391,6 +419,10 @@ def test_compose_stage_materializes_registered_composition(
     )
     context.input.return_value = structure_input
     context.output.return_value = output
+
+    _configure_shape_resolver(
+        context,
+    )
 
     compose.execute(
         context,
@@ -429,6 +461,10 @@ def test_compose_stage_preserves_registered_shape_geometry(
     context.input.return_value = structure_input
     context.output.return_value = output
 
+    _configure_shape_resolver(
+        context,
+    )
+
     compose.execute(
         context,
     )
@@ -451,13 +487,15 @@ def test_compose_stage_preserves_registered_shape_geometry(
     assert circle.get("r") == "0.5"
 
 
-def test_compose_stage_does_not_resolve_physical_parameters(
+def test_compose_stage_resolves_only_registered_partition_parameters(
     tmp_path: Path,
 ) -> None:
     """
-    Registered composition does not perform physical dimensionalization.
+    Registered composition resolves only parameters needed for partitioning.
 
-    Physical Shape dimensions belong to the downstream extrusion boundary.
+    Shape size and ridge width establish the ridge inset in registered space.
+    Ridge style establishes structural partition policy. Physical Z dimensions
+    remain downstream.
     """
 
     structure_input = tmp_path / "structure.svg"
@@ -467,20 +505,192 @@ def test_compose_stage_does_not_resolve_physical_parameters(
         structure_input,
     )
 
-    resolver = Mock()
-
     context = Mock(
         spec=StageContext,
     )
-    context.resolver = resolver
     context.input.return_value = structure_input
     context.output.return_value = output
+
+    resolver = _configure_shape_resolver(
+        context,
+    )
 
     compose.execute(
         context,
     )
 
-    assert resolver.call_args_list == []
+    assert resolver.call_args_list == [
+        call("shape_size"),
+        call("shape_outer_ridge_width"),
+        call("shape_outer_ridge_style"),
+    ]
+
+
+# =========================================================
+# Registered outer-ridge composition
+# =========================================================
+
+
+def test_compose_circle_integrated_ridge_preserves_outer_boundary(
+    tmp_path: Path,
+) -> None:
+    """
+    An integrated ridge does not change the registered outer Shape boundary.
+
+    Ridge width is measured inward from the complete Shape boundary, while
+    the base retains the complete registered circle envelope. Registered
+    boundaries retain semantic identity for downstream dimensionalization.
+    """
+
+    structure_input = tmp_path / "structure.svg"
+    output = tmp_path / "composition.svg"
+
+    _write_registered_structure(
+        structure_input,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.input.return_value = structure_input
+    context.output.return_value = output
+
+    _configure_shape_resolver(
+        context,
+        shape_size=100.0,
+        ridge_width=5.0,
+        ridge_style="integrated",
+    )
+
+    compose.execute(
+        context,
+    )
+
+    root = ET.parse(
+        output,
+    ).getroot()
+
+    outer_boundary = root.find(
+        '{http://www.w3.org/2000/svg}circle[@id="shape-boundary"]',
+    )
+    ridge_inner_boundary = root.find(
+        '{http://www.w3.org/2000/svg}circle[@id="ridge-inner-boundary"]',
+    )
+
+    assert outer_boundary is not None
+    assert ridge_inner_boundary is not None
+
+    assert outer_boundary.get("cx") == "0.0"
+    assert outer_boundary.get("cy") == "0.0"
+    assert float(outer_boundary.get("r", "0.0")) == 0.5
+
+    assert ridge_inner_boundary.get("cx") == "0.0"
+    assert ridge_inner_boundary.get("cy") == "0.0"
+    assert float(ridge_inner_boundary.get("r", "0.0")) == 0.45
+
+
+def test_compose_circle_ridge_width_is_relative_to_shape_size(
+    tmp_path: Path,
+) -> None:
+    """
+    Physical ridge width is converted into a registered-space inset.
+
+    Proportionally equal physical ridge widths produce the same registered
+    ridge geometry regardless of the later physical Shape size.
+    """
+
+    radii_by_dimensions: list[list[float]] = []
+
+    for index, (shape_size, ridge_width) in enumerate(
+        (
+            (100.0, 5.0),
+            (200.0, 10.0),
+        )
+    ):
+        structure_input = tmp_path / f"structure-{index}.svg"
+        output = tmp_path / f"composition-{index}.svg"
+
+        _write_registered_structure(
+            structure_input,
+        )
+
+        context = Mock(
+            spec=StageContext,
+        )
+        context.input.return_value = structure_input
+        context.output.return_value = output
+
+        _configure_shape_resolver(
+            context,
+            shape_size=shape_size,
+            ridge_width=ridge_width,
+            ridge_style="integrated",
+        )
+
+        compose.execute(
+            context,
+        )
+
+        root = ET.parse(
+            output,
+        ).getroot()
+
+        circles = root.findall(
+            "{http://www.w3.org/2000/svg}circle",
+        )
+
+        radii_by_dimensions.append(sorted(float(circle.get("r", "0.0")) for circle in circles))
+
+    assert radii_by_dimensions == [
+        [0.45, 0.5],
+        [0.45, 0.5],
+    ]
+
+
+def test_compose_circle_zero_width_produces_no_ridge_partition(
+    tmp_path: Path,
+) -> None:
+    """
+    Zero ridge width disables the outer ridge.
+
+    Ridge style does not create registered ridge geometry when the configured
+    ridge width is zero.
+    """
+
+    structure_input = tmp_path / "structure.svg"
+    output = tmp_path / "composition.svg"
+
+    _write_registered_structure(
+        structure_input,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.input.return_value = structure_input
+    context.output.return_value = output
+
+    _configure_shape_resolver(
+        context,
+        shape_size=100.0,
+        ridge_width=0.0,
+        ridge_style="integrated",
+    )
+
+    compose.execute(
+        context,
+    )
+
+    root = ET.parse(
+        output,
+    ).getroot()
+
+    circles = root.findall(
+        "{http://www.w3.org/2000/svg}circle",
+    )
+
+    assert len(circles) == 1
+    assert circles[0].get("r") == "0.5"
 
 
 # =========================================================
