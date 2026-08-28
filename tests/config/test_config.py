@@ -580,8 +580,9 @@ def test_shape_model_defaults_are_resolved(
     """
     Shape parameters.toml contributes structural defaults.
 
-    The baseline Shape defaults to circle geometry with physical size and
-    base thickness. Outer-ridge width defaults to zero so the existing
+    The baseline Shape defaults to circle geometry with polygon defaults
+    available for side count and rotation. Physical size and base thickness
+    have model defaults. Outer-ridge width defaults to zero so the existing
     no-ridge Shape remains the default artifact. Ridge raise defaults to
     1 mm and integrated is the default ridge style if a ridge is enabled.
     """
@@ -593,6 +594,9 @@ def test_shape_model_defaults_are_resolved(
     )
 
     assert resolver("shape_geometry") == "circle"
+    assert resolver("shape_sides") == 8
+    assert resolver("shape_rotation") == 0.0
+
     assert resolver("shape_size") == 100.0
     assert resolver("shape_base_raise") == 2.0
 
@@ -601,6 +605,9 @@ def test_shape_model_defaults_are_resolved(
     assert resolver("shape_outer_ridge_style") == "integrated"
 
     assert resolver.source("shape_geometry") == "model"
+    assert resolver.source("shape_sides") == "model"
+    assert resolver.source("shape_rotation") == "model"
+
     assert resolver.source("shape_size") == "model"
     assert resolver.source("shape_base_raise") == "model"
 

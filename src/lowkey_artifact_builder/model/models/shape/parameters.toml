@@ -11,8 +11,41 @@
 #
 # Registered structural geometry.
 #
+# Supported values:
+#
+#     circle
+#     square
+#     polygon
+#
 
 shape_geometry = "circle"
+
+
+#
+# Number of sides used when shape_geometry is "polygon".
+#
+# The minimum valid value is 3.
+#
+# The default of 8 produces a regular octagon.
+#
+# This value has no geometric effect for circle or square geometry.
+#
+
+shape_sides = 8
+
+
+#
+# Counterclockwise rotation of regular polygon geometry, in degrees.
+#
+# Zero places one polygon vertex on the positive Y axis.
+#
+# For a polygon with n sides, a rotation of 180 / n degrees places
+# the center of one side on the positive Y axis.
+#
+# This value has no geometric effect for circle or square geometry.
+#
+
+shape_rotation = 0.0
 
 
 # =========================================================
@@ -21,6 +54,9 @@ shape_geometry = "circle"
 
 #
 # Overall physical X/Y envelope of the Shape, in millimeters.
+#
+# For polygon geometry, the rotated polygon is uniformly normalized so
+# that its greatest X/Y extent corresponds to this physical size.
 #
 
 shape_size = 100.0
@@ -40,6 +76,9 @@ shape_base_raise = 2.0
 #
 # Physical width of the optional outer ridge, measured inward
 # from the complete Shape boundary, in millimeters.
+#
+# For polygon geometry, width is measured perpendicular to each
+# polygon edge.
 #
 # Zero disables the ridge. Positive width enables the ridge.
 #
