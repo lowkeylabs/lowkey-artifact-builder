@@ -560,6 +560,126 @@ def test_separate_ridge_occupies_registered_perimeter_at_assembled_height(
     assert bounds[5] == pytest.approx(3.0)
 
 
+def test_zero_raise_integrated_ridge_is_flush_with_base(
+    tmp_path: Path,
+) -> None:
+    """
+    A zero-raise integrated circle ridge is flush with the base top.
+
+    Ridge existence is determined by ridge width rather than ridge raise.
+    For a 100 mm Shape with a 2 mm base and a zero ridge raise, the
+    registered perimeter region therefore continues to exist while its
+    complete assembled height equals the base height:
+
+        interior top  -> Z=2
+        perimeter top -> Z=2
+
+    The complete assembled Shape retains its 100 mm X/Y envelope.
+    """
+
+    composition = tmp_path / "composition.svg"
+    output = tmp_path / "assembled.stl"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    source = extrude._build_scad(
+        composition,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_outer_ridge_raise=0.0,
+        shape_outer_ridge_style="integrated",
+    )
+
+    extrude.render_stl_source(
+        source,
+        output,
+    )
+
+    bounds = _stl_bounds(
+        output,
+    )
+
+    assert bounds[0] == pytest.approx(-50.0)
+    assert bounds[1] == pytest.approx(50.0)
+    assert bounds[2] == pytest.approx(-50.0)
+    assert bounds[3] == pytest.approx(50.0)
+    assert bounds[4] == pytest.approx(0.0)
+    assert bounds[5] == pytest.approx(2.0)
+
+
+def test_zero_raise_separate_ridge_is_flush_with_base(
+    tmp_path: Path,
+) -> None:
+    """
+    A zero-raise separate circle ridge has the same height as the base.
+
+    Ridge existence is determined by ridge width rather than ridge raise.
+    For a 100 mm Shape with a 5 mm separate ridge and a 2 mm base:
+
+        base  -> 90 mm circle from Z=0 through Z=2
+        ridge -> 100/90 mm perimeter from Z=0 through Z=2
+
+    Base and ridge remain adjacent, independently printable components while
+    their top surfaces are flush.
+    """
+
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 0.0,
+            "shape_outer_ridge_style": "separate",
+        }.__getitem__,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    context.input.return_value = composition
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    base = manifest.parent / "base.stl"
+    ridge = manifest.parent / "ridge.stl"
+
+    assert base.is_file()
+    assert ridge.is_file()
+
+    base_bounds = _stl_bounds(
+        base,
+    )
+    ridge_bounds = _stl_bounds(
+        ridge,
+    )
+
+    assert base_bounds[0] == pytest.approx(-45.0)
+    assert base_bounds[1] == pytest.approx(45.0)
+    assert base_bounds[2] == pytest.approx(-45.0)
+    assert base_bounds[3] == pytest.approx(45.0)
+    assert base_bounds[4] == pytest.approx(0.0)
+    assert base_bounds[5] == pytest.approx(2.0)
+
+    assert ridge_bounds[0] == pytest.approx(-50.0)
+    assert ridge_bounds[1] == pytest.approx(50.0)
+    assert ridge_bounds[2] == pytest.approx(-50.0)
+    assert ridge_bounds[3] == pytest.approx(50.0)
+    assert ridge_bounds[4] == pytest.approx(0.0)
+    assert ridge_bounds[5] == pytest.approx(2.0)
+
+
 # =========================================================
 # Extrude stage execution
 # =========================================================
