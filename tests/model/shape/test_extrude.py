@@ -26,7 +26,7 @@ def _write_composition(
     path: Path,
 ) -> None:
     """
-    Write representative registered Shape composition geometry.
+    Write representative registered Shape composition geometry without a ridge.
     """
 
     path.parent.mkdir(
@@ -44,6 +44,46 @@ def _write_composition(
         cx="0.0"
         cy="0.0"
         r="0.5"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+
+def _write_integrated_ridge_composition(
+    path: Path,
+) -> None:
+    """
+    Write registered circle composition containing an outer ridge boundary.
+
+    The complete Shape boundary has radius 0.5. A 5 mm ridge on a
+    100 mm Shape has a registered inset of 0.05, giving the ridge an
+    inner radius of 0.45.
+    """
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    path.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="-0.5 -0.5 1.0 1.0"
+>
+    <circle
+        id="shape-boundary"
+        cx="0.0"
+        cy="0.0"
+        r="0.5"
+    />
+    <circle
+        id="ridge-inner-boundary"
+        cx="0.0"
+        cy="0.0"
+        r="0.45"
     />
 </svg>
 """.strip(),
@@ -138,6 +178,8 @@ def test_build_scad_scales_registered_composition_to_shape_size(
         composition,
         shape_size=100.0,
         shape_base_raise=2.0,
+        shape_outer_ridge_raise=1.0,
+        shape_outer_ridge_style="integrated",
     )
 
     assert "shape_size = 100;" in source
@@ -165,6 +207,8 @@ def test_build_scad_uses_shape_base_raise_as_physical_z(
         composition,
         shape_size=100.0,
         shape_base_raise=2.5,
+        shape_outer_ridge_raise=1.0,
+        shape_outer_ridge_style="integrated",
     )
 
     assert "shape_base_raise = 2.5;" in source
@@ -193,10 +237,49 @@ def test_build_scad_preserves_centered_registered_origin(
         composition,
         shape_size=100.0,
         shape_base_raise=2.0,
+        shape_outer_ridge_raise=1.0,
+        shape_outer_ridge_style="integrated",
     )
 
     assert str(composition.resolve()) in source
     assert "center = false" in source
+
+
+def test_build_scad_integrated_ridge_preserves_distinct_physical_heights(
+    tmp_path: Path,
+) -> None:
+    """
+    Integrated ridge dimensionalization preserves distinct interior and
+    perimeter heights.
+
+    The registered ridge inner boundary partitions the complete Shape into:
+
+        interior  -> shape_base_raise
+        perimeter -> shape_base_raise + shape_outer_ridge_raise
+
+    The physical representation must therefore retain both height semantics
+    rather than uniformly extruding the complete composition to one height.
+    """
+
+    composition = tmp_path / "composition.svg"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    source = extrude._build_scad(
+        composition,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_outer_ridge_raise=1.0,
+        shape_outer_ridge_style="integrated",
+    )
+
+    assert "shape_base_raise = 2;" in source
+    assert "shape_outer_ridge_raise = 1;" in source
+    assert "shape_base_raise + shape_outer_ridge_raise" in source
+    assert "shape-boundary" in source
+    assert "ridge-inner-boundary" in source
 
 
 # =========================================================
@@ -237,6 +320,8 @@ def test_extruded_base_has_configured_physical_xy_extent(
         composition,
         shape_size=shape_size,
         shape_base_raise=2.0,
+        shape_outer_ridge_raise=1.0,
+        shape_outer_ridge_style="integrated",
     )
 
     extrude.render_stl_source(
@@ -247,8 +332,6 @@ def test_extruded_base_has_configured_physical_xy_extent(
     bounds = _stl_bounds(
         output,
     )
-
-    # print(bounds)
 
     assert bounds[0] == pytest.approx(expected_min)
     assert bounds[1] == pytest.approx(expected_max)
@@ -269,7 +352,10 @@ def test_extruded_base_has_configured_physical_z_extent(
     shape_base_raise: float,
 ) -> None:
     """
-    Extruded Shape geometry occupies Z=0 through shape_base_raise.
+    A no-ridge Shape occupies Z=0 through shape_base_raise.
+
+    Ridge parameters do not create ridge geometry when the registered
+    composition contains no ridge partition.
     """
 
     composition = tmp_path / "composition.svg"
@@ -283,6 +369,8 @@ def test_extruded_base_has_configured_physical_z_extent(
         composition,
         shape_size=100.0,
         shape_base_raise=shape_base_raise,
+        shape_outer_ridge_raise=1.0,
+        shape_outer_ridge_style="integrated",
     )
 
     extrude.render_stl_source(
@@ -298,6 +386,48 @@ def test_extruded_base_has_configured_physical_z_extent(
     assert bounds[5] == pytest.approx(shape_base_raise)
 
 
+def test_extruded_integrated_ridge_has_complete_physical_envelope(
+    tmp_path: Path,
+) -> None:
+    """
+    A positive integrated circle ridge reaches the configured assembled height.
+
+    A 100 mm Shape with a 2 mm base and +1 mm integrated ridge retains the
+    complete 100 mm X/Y envelope and reaches 3 mm at the perimeter.
+    """
+
+    composition = tmp_path / "composition.svg"
+    output = tmp_path / "base.stl"
+
+    _write_integrated_ridge_composition(
+        composition,
+    )
+
+    source = extrude._build_scad(
+        composition,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_outer_ridge_raise=1.0,
+        shape_outer_ridge_style="integrated",
+    )
+
+    extrude.render_stl_source(
+        source,
+        output,
+    )
+
+    bounds = _stl_bounds(
+        output,
+    )
+
+    assert bounds[0] == pytest.approx(-50.0)
+    assert bounds[1] == pytest.approx(50.0)
+    assert bounds[2] == pytest.approx(-50.0)
+    assert bounds[3] == pytest.approx(50.0)
+    assert bounds[4] == pytest.approx(0.0)
+    assert bounds[5] == pytest.approx(3.0)
+
+
 # =========================================================
 # Extrude stage execution
 # =========================================================
@@ -311,6 +441,8 @@ def test_extrude_stage_materializes_declared_base_stl(
     Shape extrusion materializes its declared physical base product.
 
     Input and output locations come exclusively from StageContext.
+    Physical ridge height and structural style are resolved at the
+    dimensionalization boundary.
     """
 
     composition = tmp_path / "arbitrary-input" / "composition.svg"
@@ -324,6 +456,8 @@ def test_extrude_stage_materializes_declared_base_stl(
         side_effect={
             "shape_size": 100.0,
             "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "integrated",
         }.__getitem__,
     )
 
@@ -377,6 +511,8 @@ def test_extrude_stage_materializes_declared_base_stl(
     assert resolver.call_args_list == [
         call("shape_size"),
         call("shape_base_raise"),
+        call("shape_outer_ridge_raise"),
+        call("shape_outer_ridge_style"),
     ]
 
     assert rendered_outputs == [
@@ -403,6 +539,8 @@ def test_extrude_stage_rejects_missing_registered_composition(
         side_effect={
             "shape_size": 100.0,
             "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "integrated",
         }.__getitem__,
     )
 
