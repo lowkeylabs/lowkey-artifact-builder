@@ -119,6 +119,56 @@ class PlacedRegisteredArtwork:
 # =========================================================
 
 
+def registered_interior_region(
+    composition: Path,
+) -> ET.Element:
+    """
+    Return the boundary defining the registered Shape interior region.
+
+    The innermost existing ridge boundary defines the interior region.
+    When no ridge boundary exists, the registered Shape boundary defines
+    the interior region.
+    """
+
+    root = ET.parse(
+        composition,
+    ).getroot()
+
+    ridge_boundaries = tuple(
+        element for element in root if element.get("id") == "ridge-inner-boundary"
+    )
+
+    if ridge_boundaries:
+        return ridge_boundaries[-1]
+
+    shape_boundary = next(
+        (element for element in root if element.get("id") == "shape-boundary"),
+        None,
+    )
+
+    if shape_boundary is not None:
+        return shape_boundary
+
+    shape_boundary = next(
+        (
+            element
+            for element in root
+            if element.tag
+            in {
+                SVG_CIRCLE,
+                SVG_RECT,
+                SVG_POLYGON,
+            }
+        ),
+        None,
+    )
+
+    if shape_boundary is None:
+        raise ValueError("Registered Shape composition requires a Shape boundary.")
+
+    return shape_boundary
+
+
 def execute(
     context: StageContext,
 ) -> None:

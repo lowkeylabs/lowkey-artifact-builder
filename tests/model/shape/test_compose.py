@@ -340,6 +340,66 @@ def test_load_registered_artwork_reads_common_registered_extent(
 
 
 # =========================================================
+# Registered Shape interior region
+# =========================================================
+
+
+def test_shape_interior_without_ridge_is_shape_boundary(
+    tmp_path: Path,
+) -> None:
+    """
+    Without a ridge, the registered Shape boundary defines the interior region.
+    """
+
+    structure = tmp_path / "structure.svg"
+
+    _write_registered_structure(
+        structure,
+    )
+
+    interior = compose.registered_interior_region(
+        structure,
+    )
+
+    assert interior.tag == "{http://www.w3.org/2000/svg}circle"
+    assert float(interior.get("cx", "nan")) == 0.0
+    assert float(interior.get("cy", "nan")) == 0.0
+    assert float(interior.get("r", "nan")) == 0.5
+
+
+def test_shape_interior_with_ridge_is_innermost_ridge_boundary(
+    tmp_path: Path,
+) -> None:
+    """
+    The innermost existing ridge boundary defines the registered interior region.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+
+    _write_registered_structure(
+        structure,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=100.0,
+        ridge_width=5.0,
+    )
+
+    interior = compose.registered_interior_region(
+        composition,
+    )
+
+    assert interior.get("id") == "ridge-inner-boundary"
+    assert interior.tag == "{http://www.w3.org/2000/svg}circle"
+    assert float(interior.get("cx", "nan")) == 0.0
+    assert float(interior.get("cy", "nan")) == 0.0
+    assert float(interior.get("r", "nan")) == pytest.approx(0.45)
+
+
+# =========================================================
 # Registered Artwork placement
 # =========================================================
 

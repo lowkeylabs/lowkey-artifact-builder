@@ -888,11 +888,14 @@ its color has no effect on produced ridge geometry.
 
 Shape defines a registered interior region available for Artwork.
 
-Without an outer ridge, the interior region is bounded by the registered
+The interior region is bounded by the innermost existing ridge boundary.
+
+When no ridge exists, the interior region is bounded by the registered
 Shape boundary.
 
-With an outer ridge, the interior region is bounded by the registered
-inner boundary of the ridge.
+In the initial Shape model, which supports only the outer ridge, an
+existing outer ridge's inner boundary therefore defines the interior
+region.
 
 Ridge existence for purposes of determining the interior region depends
 only on:
@@ -1569,8 +1572,9 @@ A conforming initial Shape implementation satisfies the following:
     envelope, ridge boundaries, registered interior region, and intended
     assembled ridge height for otherwise identical Shape parameters.
 
-36. The inner boundary of an existing outer ridge defines the available
-    registered interior region.
+36. The innermost existing ridge boundary defines the available registered
+    interior region; when no ridge exists, the registered Shape boundary
+    defines the interior region.
 
 37. Ridge raise does not change the registered ridge inner boundary or
     registered interior region.
