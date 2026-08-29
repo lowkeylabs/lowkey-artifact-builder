@@ -46,6 +46,7 @@ def _configure_compose_inputs(
         inputs["artwork.vector.manifest"] = artwork_manifest
 
     context.input.side_effect = inputs.__getitem__
+    context.has_input.side_effect = inputs.__contains__
 
 
 def _configure_compose_outputs(
@@ -1322,8 +1323,11 @@ def test_compose_stage_materializes_registered_composition(
 
     assert context.input.call_args_list == [
         call("structure.structure"),
-        call("artwork.vector.manifest"),
     ]
+
+    context.has_input.assert_called_once_with(
+        "artwork.vector.manifest",
+    )
 
     assert context.output.call_args_list == [
         call("composition"),

@@ -479,6 +479,19 @@ class StageContext:
 
     outputs: Mapping[str, Path]
 
+    def has_input(
+        self,
+        name: str,
+    ) -> bool:
+        """
+        Return whether an input filesystem resource is available.
+
+        This allows stages to inspect optional input participation without
+        requesting an absent input or interpreting filesystem paths.
+        """
+
+        return name in self.inputs
+
     def input(
         self,
         name: str,

@@ -245,16 +245,17 @@ def execute(
     artwork: RegisteredArtwork | None = None
     artwork_transform: RegisteredArtworkTransform | None = None
 
-    try:
+    if context.has_input(
+        "artwork.vector.manifest",
+    ):
         artwork_manifest = context.input(
             "artwork.vector.manifest",
         )
-    except KeyError:
-        pass
-    else:
+
         artwork = load_registered_artwork(
             artwork_manifest,
         )
+
         artwork_transform = fit_registered_artwork_to_shape(
             artwork,
             composition=composition_output,

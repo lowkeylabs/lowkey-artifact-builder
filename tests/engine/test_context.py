@@ -8,6 +8,7 @@ Tests for independent stage context construction.
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -994,3 +995,66 @@ def test_create_stage_context_combines_explicit_bindings(
     assert context.resolver("artwork_pixels") == 2048
 
     assert context.outputs["manifest"] == explicit_output
+
+
+def test_stage_context_reports_available_input() -> None:
+    """
+    StageContext reports whether a resolved input participates.
+
+    Stages may inspect optional dependency participation without using
+    exception handling or interpreting filesystem paths.
+    """
+
+    context = StageContext(
+        artifact_id="example",
+        model_name="shape",
+        stage_name="compose",
+        project_root=Path("/project"),
+        artifact_dir=Path("/project/artifacts/example"),
+        working_dir=Path("/project/artifacts/example/shape/default/20-compose"),
+        resolver=Mock(),
+        inputs={
+            "structure.structure": Path("/project/structure.svg"),
+            "artwork.vector.manifest": Path("/project/artwork/products.json"),
+        },
+        outputs={},
+    )
+
+    assert context.has_input(
+        "artwork.vector.manifest",
+    )
+
+
+def test_stage_context_reports_unavailable_input() -> None:
+    """
+    StageContext reports when an optional input does not participate.
+
+    Absence remains distinct from requesting an absent input, which continues
+    to raise StageContextError through input().
+    """
+
+    context = StageContext(
+        artifact_id="example",
+        model_name="shape",
+        stage_name="compose",
+        project_root=Path("/project"),
+        artifact_dir=Path("/project/artifacts/example"),
+        working_dir=Path("/project/artifacts/example/shape/default/20-compose"),
+        resolver=Mock(),
+        inputs={
+            "structure.structure": Path("/project/structure.svg"),
+        },
+        outputs={},
+    )
+
+    assert not context.has_input(
+        "artwork.vector.manifest",
+    )
+
+    with pytest.raises(
+        StageContextError,
+        match="has no input",
+    ):
+        context.input(
+            "artwork.vector.manifest",
+        )
