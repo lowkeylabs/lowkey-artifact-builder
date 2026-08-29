@@ -2310,6 +2310,146 @@ def test_product_dependency_build_plan_excludes_downstream_producer_stages(
 # =========================================================
 
 
+def test_shape_build_plan_resolves_bound_registered_artwork(
+    tmp_path: Path,
+) -> None:
+    """
+    A configured Shape Artwork binding participates in Shape planning.
+
+    Shape consumes the registered Artwork vector manifest through logical
+    product identity rather than a generated filesystem path.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "product_dependencies": {
+                "manifest": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "manifest",
+                    "artifact": "artwork-source",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="manifest",
+    )
+
+    assert plan.product_dependencies == (dependency,)
+
+    assert len(plan.product_dependency_bindings) == 1
+
+    binding = plan.product_dependency_bindings[0]
+
+    assert binding == ProductDependencyBinding(
+        dependency=dependency,
+        artifact="artwork-source",
+        realization="default",
+    )
+
+    assert binding.product_ref == ProductRef(
+        artifact="artwork-source",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="manifest",
+    )
+
+    assert len(plan.planned_product_dependencies) == 1
+
+    planned_dependency = plan.planned_product_dependencies[0]
+
+    assert planned_dependency.binding == binding
+
+    assert planned_dependency.path == (
+        tmp_path
+        / "artifacts"
+        / "artwork-source"
+        / "artwork"
+        / "default"
+        / "30-vector"
+        / "products.json"
+    )
+
+
+def test_shape_registered_artwork_dependency_plans_only_vector_closure(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape consumption of registered Artwork requires only its reusable
+    registered producer closure.
+
+    Artwork prepare, raster, and vector are prerequisites. Standalone Artwork
+    extrusion and packaging are not required merely because Shape consumes
+    registered Artwork.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "product_dependencies": {
+                "manifest": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "manifest",
+                    "artifact": "artwork-source",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    write_artifact_config(
+        "artwork-source",
+        {
+            "model": "artwork",
+            "source": "source.png",
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert len(plan.planned_product_dependencies) == 1
+
+    producer_plan = create_product_dependency_build_plan(
+        plan.planned_product_dependencies[0],
+        project_root=tmp_path,
+    )
+
+    assert producer_plan.artifact_id == "artwork-source"
+    assert producer_plan.model_name == "artwork"
+    assert producer_plan.realization_name == "default"
+
+    assert tuple(stage.name for stage in producer_plan.stages) == (
+        "prepare",
+        "raster",
+        "vector",
+    )
+
+    assert "extrude" not in {stage.name for stage in producer_plan.stages}
+
+    assert "package" not in {stage.name for stage in producer_plan.stages}
+
+
 def test_create_build_plan_plans_complete_shape_without_product_dependencies(
     tmp_path: Path,
 ) -> None:
