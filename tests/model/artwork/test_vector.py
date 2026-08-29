@@ -15,6 +15,7 @@ products whose locations are determined by the declared vector manifest.
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
@@ -507,6 +508,187 @@ def test_vector_manifest_describes_stage_local_products(
 # =========================================================
 # Registered-geometry tests
 # =========================================================
+
+
+def test_registered_envelope_uses_same_crop_as_vector_layers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    The Artwork envelope and every vector layer use one common registration.
+    """
+
+    raster_directory = tmp_path / "raster"
+
+    first_raster = raster_directory / "first.png"
+    second_raster = raster_directory / "second.png"
+
+    _write_raster(
+        first_raster,
+        box=(2, 4, 8, 10),
+    )
+
+    _write_raster(
+        second_raster,
+        box=(12, 10, 18, 16),
+    )
+
+    raster_manifest = raster_directory / "products.json"
+
+    _write_raster_manifest(
+        raster_manifest,
+        [
+            {
+                "index": 1,
+                "path": first_raster.name,
+                "name": "white",
+                "color": _color(
+                    255,
+                    255,
+                    255,
+                ),
+            },
+            {
+                "index": 2,
+                "path": second_raster.name,
+                "name": "black",
+                "color": _color(
+                    0,
+                    0,
+                    0,
+                ),
+            },
+        ],
+    )
+
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "raster.manifest": raster_manifest,
+            "prepare.envelope": prepared_envelope,
+        },
+        outputs={
+            "manifest": vector_manifest,
+        },
+        resolver=_resolver(),
+    )
+
+    envelope_crops: list[vector.RasterCrop] = []
+    layer_crops: list[vector.RasterCrop] = []
+
+    def fake_register_envelope(
+        source: Path,
+        output: Path,
+        *,
+        crop: vector.RasterCrop,
+    ) -> None:
+        envelope_crops.append(
+            crop,
+        )
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_text(
+            "<svg/>",
+            encoding="utf-8",
+        )
+
+    def fake_trace_mask(
+        source: Path,
+        output: Path,
+        *,
+        crop: vector.RasterCrop,
+    ) -> None:
+        layer_crops.append(
+            crop,
+        )
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_text(
+            "<svg/>",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        vector,
+        "_register_envelope",
+        fake_register_envelope,
+    )
+
+    monkeypatch.setattr(
+        vector,
+        "_trace_mask",
+        fake_trace_mask,
+    )
+
+    vector.execute(
+        context,  # type: ignore[arg-type]
+    )
+
+    expected = vector.RasterCrop(
+        x=2,
+        y=2,
+        size=16,
+    )
+
+    assert envelope_crops == [
+        expected,
+    ]
+
+    assert layer_crops == [
+        expected,
+        expected,
+    ]
+
+
+def test_registered_envelope_records_common_coordinate_system(
+    tmp_path: Path,
+) -> None:
+    """
+    The persistent Artwork envelope records the common registered crop.
+    """
+
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
+    registered_envelope = tmp_path / "vector" / "envelope.svg"
+
+    crop = vector.RasterCrop(
+        x=2,
+        y=3,
+        size=14,
+    )
+
+    vector._register_envelope(
+        prepared_envelope,
+        registered_envelope,
+        crop=crop,
+    )
+
+    root = ET.parse(
+        registered_envelope,
+    ).getroot()
+
+    assert root.get("viewBox") == "2 3 14 14"
+    assert root.get("width") == "14"
+    assert root.get("height") == "14"
 
 
 def test_vector_generation_is_independent_of_physical_size(
