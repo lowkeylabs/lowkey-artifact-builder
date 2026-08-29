@@ -654,6 +654,131 @@ def test_registered_artwork_centers_within_rectangular_shape_interior(
     assert transform.translate_y == pytest.approx(-0.45)
 
 
+def test_registered_artwork_fits_inside_circular_shape_interior(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork is contained by the actual circular Shape interior.
+
+    Fitting uses circular containment rather than the circle's rectangular
+    bounding box, so no occupied Artwork corner extends outside the Shape.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    _write_registered_structure(
+        structure,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=100.0,
+        ridge_width=5.0,
+    )
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 16 12">'
+            '<rect x="2" y="1" width="12" height="10"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=16.0,
+            height=12.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    expected_scale = 0.45 / math.hypot(
+        6.0,
+        5.0,
+    )
+
+    assert transform.scale == pytest.approx(expected_scale)
+    assert transform.width == pytest.approx(
+        12.0 * expected_scale,
+    )
+    assert transform.height == pytest.approx(
+        10.0 * expected_scale,
+    )
+
+
+def test_registered_artwork_centers_within_circular_shape_interior(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork occupancy is centered on the circular Shape interior.
+
+    The common transform accounts for the Artwork envelope's registered
+    offset while preserving registration of the complete Artwork collection.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    _write_registered_structure(
+        structure,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=100.0,
+        ridge_width=5.0,
+    )
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 16 12">'
+            '<rect x="2" y="1" width="12" height="10"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=16.0,
+            height=12.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    expected_scale = 0.45 / math.hypot(
+        6.0,
+        5.0,
+    )
+
+    assert transform.translate_x == pytest.approx(
+        -(8.0 * expected_scale),
+    )
+    assert transform.translate_y == pytest.approx(
+        -(6.0 * expected_scale),
+    )
+
+
 def test_registered_artwork_fit_uses_envelope_occupancy(
     tmp_path: Path,
 ) -> None:
