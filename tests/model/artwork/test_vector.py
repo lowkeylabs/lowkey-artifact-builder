@@ -5,10 +5,10 @@ These tests characterize the storage boundary between the build engine
 and the vector-stage implementation.
 
 The vector stage must consume only the paths supplied through
-StageContext. Dynamic SVG products are stage-local products whose
-locations are determined by the declared vector manifest.
+StageContext. Dynamic registered Artwork products are stage-local
+products whose locations are determined by the declared vector manifest.
 """
-# File: tests/model/test_vector.py
+# File: tests/model/artwork/test_vector.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 
@@ -154,6 +154,31 @@ def _write_raster_manifest(
     )
 
 
+def _write_prepared_envelope(
+    path: Path,
+) -> None:
+    """
+    Write a minimal prepared Artwork envelope.
+    """
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    path.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'width="20" '
+            'height="20" '
+            'viewBox="0 0 20 20">'
+            '<rect x="5" y="5" width="10" height="10"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+
 def _resolver() -> StubResolver:
     """
     Return standard vector-stage configuration.
@@ -172,8 +197,8 @@ def test_vector_uses_declared_raster_manifest(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    The vector stage consumes the raster manifest supplied by
-    StageContext without reconstructing its filesystem location.
+    The vector stage consumes declared inputs supplied by StageContext
+    without reconstructing their filesystem locations.
     """
 
     raster_directory = tmp_path / "deliberately" / "unrelated" / "raster-input"
@@ -203,11 +228,18 @@ def test_vector_uses_declared_raster_manifest(
         ],
     )
 
+    prepared_envelope = tmp_path / "another" / "unrelated" / "prepared-envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
     vector_manifest = tmp_path / "completely-different" / "vector-output" / "manifest.json"
 
     context = StubContext(
         inputs={
             "raster.manifest": raster_manifest,
+            "prepare.envelope": prepared_envelope,
         },
         outputs={
             "manifest": vector_manifest,
@@ -223,7 +255,9 @@ def test_vector_uses_declared_raster_manifest(
         *,
         crop: vector.RasterCrop,
     ) -> None:
-        traced_sources.append(source)
+        traced_sources.append(
+            source,
+        )
 
         output.parent.mkdir(
             parents=True,
@@ -241,7 +275,9 @@ def test_vector_uses_declared_raster_manifest(
         fake_trace_mask,
     )
 
-    vector.execute(context)  # type: ignore[arg-type]
+    vector.execute(
+        context,  # type: ignore[arg-type]
+    )
 
     assert traced_sources == [
         raster,
@@ -302,6 +338,12 @@ def test_vector_places_dynamic_svgs_beside_declared_manifest(
         ],
     )
 
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
     output_directory = tmp_path / "arbitrary" / "vector-products"
 
     vector_manifest = output_directory / "custom-name.json"
@@ -309,6 +351,7 @@ def test_vector_places_dynamic_svgs_beside_declared_manifest(
     context = StubContext(
         inputs={
             "raster.manifest": raster_manifest,
+            "prepare.envelope": prepared_envelope,
         },
         outputs={
             "manifest": vector_manifest,
@@ -324,7 +367,9 @@ def test_vector_places_dynamic_svgs_beside_declared_manifest(
         *,
         crop: vector.RasterCrop,
     ) -> None:
-        traced_outputs.append(output)
+        traced_outputs.append(
+            output,
+        )
 
         output.parent.mkdir(
             parents=True,
@@ -342,7 +387,9 @@ def test_vector_places_dynamic_svgs_beside_declared_manifest(
         fake_trace_mask,
     )
 
-    vector.execute(context)  # type: ignore[arg-type]
+    vector.execute(
+        context,  # type: ignore[arg-type]
+    )
 
     assert traced_outputs == [
         output_directory / "color-1.svg",
@@ -357,7 +404,7 @@ def test_vector_manifest_describes_stage_local_products(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    The vector manifest records dynamic SVG products using filenames
+    The vector manifest records registered Artwork products using filenames
     relative to the manifest rather than canonical artifact paths.
     """
 
@@ -388,11 +435,18 @@ def test_vector_manifest_describes_stage_local_products(
         ],
     )
 
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
     vector_manifest = tmp_path / "wherever" / "vectors" / "products.json"
 
     context = StubContext(
         inputs={
             "raster.manifest": raster_manifest,
+            "prepare.envelope": prepared_envelope,
         },
         outputs={
             "manifest": vector_manifest,
@@ -422,7 +476,9 @@ def test_vector_manifest_describes_stage_local_products(
         fake_trace_mask,
     )
 
-    vector.execute(context)  # type: ignore[arg-type]
+    vector.execute(
+        context,  # type: ignore[arg-type]
+    )
 
     data = json.loads(
         vector_manifest.read_text(
@@ -432,6 +488,7 @@ def test_vector_manifest_describes_stage_local_products(
 
     assert data == {
         "registered_extent": 10,
+        "envelope": "envelope.svg",
         "products": [
             {
                 "index": 1,
@@ -490,11 +547,18 @@ def test_vector_generation_is_independent_of_physical_size(
         ],
     )
 
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
     vector_manifest = tmp_path / "vector" / "products.json"
 
     context = StubContext(
         inputs={
             "raster.manifest": raster_manifest,
+            "prepare.envelope": prepared_envelope,
         },
         outputs={
             "manifest": vector_manifest,
@@ -530,7 +594,9 @@ def test_vector_generation_is_independent_of_physical_size(
         fake_trace_mask,
     )
 
-    vector.execute(context)  # type: ignore[arg-type]
+    vector.execute(
+        context,  # type: ignore[arg-type]
+    )
 
     assert observed_crop == vector.RasterCrop(
         x=5,
@@ -579,11 +645,18 @@ def test_vector_manifest_records_registered_extent(
         ],
     )
 
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
     vector_manifest = tmp_path / "vector" / "products.json"
 
     context = StubContext(
         inputs={
             "raster.manifest": raster_manifest,
+            "prepare.envelope": prepared_envelope,
         },
         outputs={
             "manifest": vector_manifest,
@@ -613,7 +686,9 @@ def test_vector_manifest_records_registered_extent(
         fake_trace_mask,
     )
 
-    vector.execute(context)  # type: ignore[arg-type]
+    vector.execute(
+        context,  # type: ignore[arg-type]
+    )
 
     data = json.loads(
         vector_manifest.read_text(
@@ -680,11 +755,18 @@ def test_vector_layers_share_one_registered_coordinate_system(
         ],
     )
 
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
     vector_manifest = tmp_path / "vector" / "products.json"
 
     context = StubContext(
         inputs={
             "raster.manifest": raster_manifest,
+            "prepare.envelope": prepared_envelope,
         },
         outputs={
             "manifest": vector_manifest,
@@ -730,7 +812,9 @@ def test_vector_layers_share_one_registered_coordinate_system(
         fake_trace_mask,
     )
 
-    vector.execute(context)  # type: ignore[arg-type]
+    vector.execute(
+        context,  # type: ignore[arg-type]
+    )
 
     assert len(observed) == 2
 
@@ -819,11 +903,18 @@ def test_vector_registration_is_based_on_union_of_all_layers(
         ],
     )
 
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
     vector_manifest = tmp_path / "vector" / "products.json"
 
     context = StubContext(
         inputs={
             "raster.manifest": raster_manifest,
+            "prepare.envelope": prepared_envelope,
         },
         outputs={
             "manifest": vector_manifest,
@@ -839,7 +930,9 @@ def test_vector_registration_is_based_on_union_of_all_layers(
         *,
         crop: vector.RasterCrop,
     ) -> None:
-        crops.append(crop)
+        crops.append(
+            crop,
+        )
 
         output.parent.mkdir(
             parents=True,
@@ -857,7 +950,9 @@ def test_vector_registration_is_based_on_union_of_all_layers(
         fake_trace_mask,
     )
 
-    vector.execute(context)  # type: ignore[arg-type]
+    vector.execute(
+        context,  # type: ignore[arg-type]
+    )
 
     assert crops == [
         vector.RasterCrop(
@@ -919,6 +1014,12 @@ def test_vector_manifest_contains_no_physical_manufacturing_dimensions(
         ],
     )
 
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
     vector_manifest = tmp_path / "vector" / "products.json"
 
     def fake_trace_mask(
@@ -946,6 +1047,7 @@ def test_vector_manifest_contains_no_physical_manufacturing_dimensions(
     context = StubContext(
         inputs={
             "raster.manifest": raster_manifest,
+            "prepare.envelope": prepared_envelope,
         },
         outputs={
             "manifest": vector_manifest,
@@ -953,7 +1055,9 @@ def test_vector_manifest_contains_no_physical_manufacturing_dimensions(
         resolver=_resolver(),
     )
 
-    vector.execute(context)  # type: ignore[arg-type]
+    vector.execute(
+        context,  # type: ignore[arg-type]
+    )
 
     data = json.loads(
         vector_manifest.read_text(
@@ -963,6 +1067,7 @@ def test_vector_manifest_contains_no_physical_manufacturing_dimensions(
 
     assert set(data) == {
         "registered_extent",
+        "envelope",
         "products",
     }
 
@@ -973,3 +1078,193 @@ def test_vector_manifest_contains_no_physical_manufacturing_dimensions(
             "name",
             "color",
         }
+
+
+def test_registered_vector_artwork_exposes_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Registered vector Artwork exposes its registered envelope.
+    """
+
+    raster_directory = tmp_path / "raster"
+
+    raster = raster_directory / "layer.png"
+
+    _write_raster(
+        raster,
+        box=(5, 5, 15, 15),
+    )
+
+    raster_manifest = raster_directory / "products.json"
+
+    _write_raster_manifest(
+        raster_manifest,
+        [
+            {
+                "index": 1,
+                "path": raster.name,
+                "name": "white",
+                "color": _color(
+                    255,
+                    255,
+                    255,
+                ),
+            },
+        ],
+    )
+
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "raster.manifest": raster_manifest,
+            "prepare.envelope": prepared_envelope,
+        },
+        outputs={
+            "manifest": vector_manifest,
+        },
+        resolver=_resolver(),
+    )
+
+    def fake_trace_mask(
+        source: Path,
+        output: Path,
+        *,
+        crop: vector.RasterCrop,
+    ) -> None:
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_text(
+            "<svg/>",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        vector,
+        "_trace_mask",
+        fake_trace_mask,
+    )
+
+    vector.execute(
+        context,  # type: ignore[arg-type]
+    )
+
+    data = json.loads(
+        vector_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert "envelope" in data
+
+    envelope = vector_manifest.parent / data["envelope"]
+
+    assert envelope.is_file()
+
+
+def test_registered_vector_artwork_envelope_is_stage_local(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Registered Artwork locates its envelope relative to the vector manifest.
+    """
+
+    raster_directory = tmp_path / "raster"
+
+    raster = raster_directory / "layer.png"
+
+    _write_raster(
+        raster,
+        box=(5, 5, 15, 15),
+    )
+
+    raster_manifest = raster_directory / "products.json"
+
+    _write_raster_manifest(
+        raster_manifest,
+        [
+            {
+                "index": 1,
+                "path": raster.name,
+                "name": "white",
+                "color": _color(
+                    255,
+                    255,
+                    255,
+                ),
+            },
+        ],
+    )
+
+    prepared_envelope = tmp_path / "somewhere" / "prepare" / "envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
+    vector_manifest = tmp_path / "somewhere-else" / "registered-artwork" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "raster.manifest": raster_manifest,
+            "prepare.envelope": prepared_envelope,
+        },
+        outputs={
+            "manifest": vector_manifest,
+        },
+        resolver=_resolver(),
+    )
+
+    def fake_trace_mask(
+        source: Path,
+        output: Path,
+        *,
+        crop: vector.RasterCrop,
+    ) -> None:
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_text(
+            "<svg/>",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        vector,
+        "_trace_mask",
+        fake_trace_mask,
+    )
+
+    vector.execute(
+        context,  # type: ignore[arg-type]
+    )
+
+    data = json.loads(
+        vector_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    envelope = Path(
+        data["envelope"],
+    )
+
+    assert not envelope.is_absolute()
+
+    assert (vector_manifest.parent / envelope) == (vector_manifest.parent / "envelope.svg")
+
+    assert (vector_manifest.parent / envelope).is_file()

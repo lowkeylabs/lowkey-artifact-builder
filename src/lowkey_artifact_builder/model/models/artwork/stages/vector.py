@@ -14,9 +14,13 @@ Each cropped raster layer is traced by Inkscape. All resulting SVG
 documents retain the common coordinate system established by the
 registered raster crop.
 
-The vector manifest records that common registered coordinate extent so
-that downstream consumers can dimensionalize the registered geometry
-without inspecting individual SVG documents.
+The prepared Artwork envelope is registered into that same coordinate
+system and published as part of Registered Artwork.
+
+The vector manifest records the common registered coordinate extent and
+the registered envelope so that downstream consumers can dimensionalize
+and place the registered geometry without inspecting individual SVG
+documents.
 
 Physical dimensionalization is the responsibility of a downstream
 consumer.
@@ -162,15 +166,23 @@ def execute(
         raster.manifest
             Manifest describing registered raster color layers.
 
+        prepare.envelope
+            Prepared Artwork envelope in source coordinates.
+
     The stage produces:
 
         manifest
-            Manifest describing the dynamically generated registered
+            Manifest describing the reusable Registered Artwork,
+            including its registered envelope and dynamically generated
             vector color layers.
     """
 
     raster_manifest = context.input(
         "raster.manifest",
+    )
+
+    prepared_envelope = context.input(
+        "prepare.envelope",
     )
 
     vector_manifest = context.output(
@@ -180,15 +192,30 @@ def execute(
     if not raster_manifest.is_file():
         raise VectorError(f"Raster product manifest does not exist: {raster_manifest}")
 
+    if not prepared_envelope.is_file():
+        raise VectorError(f"Prepared Artwork envelope does not exist: {prepared_envelope}")
+
     vector_manifest.parent.mkdir(
         parents=True,
         exist_ok=True,
     )
 
     try:
-        layers = _load_raster_manifest(raster_manifest)
+        layers = _load_raster_manifest(
+            raster_manifest,
+        )
 
-        crop = _common_crop(layers)
+        crop = _common_crop(
+            layers,
+        )
+
+        registered_envelope = vector_manifest.parent / "envelope.svg"
+
+        _register_envelope(
+            prepared_envelope,
+            registered_envelope,
+            crop=crop,
+        )
 
         vector_layers: list[
             tuple[
@@ -217,6 +244,7 @@ def execute(
             vector_manifest,
             vector_layers,
             registered_extent=crop.size,
+            envelope=registered_envelope,
         )
 
     except (
@@ -258,7 +286,9 @@ def _load_raster_manifest(
     ) as exc:
         raise VectorError(f"Could not read raster manifest: {manifest}") from exc
 
-    products = data.get("products")
+    products = data.get(
+        "products",
+    )
 
     if not isinstance(
         products,
@@ -278,13 +308,21 @@ def _load_raster_manifest(
         ):
             raise VectorError("Raster manifest contains an invalid product.")
 
-        index = product.get("index")
+        index = product.get(
+            "index",
+        )
 
-        filename = product.get("path")
+        filename = product.get(
+            "path",
+        )
 
-        name = product.get("name")
+        name = product.get(
+            "name",
+        )
 
-        color_data = product.get("color")
+        color_data = product.get(
+            "color",
+        )
 
         if (
             isinstance(
@@ -367,7 +405,9 @@ def _load_raster_manifest(
     if len(names) != len(set(names)):
         raise VectorError("Raster product color names must be unique.")
 
-    result.sort(key=lambda layer: layer.index)
+    result.sort(
+        key=lambda layer: layer.index,
+    )
 
     return result
 
@@ -381,7 +421,9 @@ def _color_component(
     Return one validated RGB component.
     """
 
-    value = color.get(name)
+    value = color.get(
+        name,
+    )
 
     if (
         isinstance(
@@ -429,8 +471,12 @@ def _common_crop(
 
     try:
         for layer in layers:
-            with Image.open(layer.path) as image:
-                rgba = image.convert("RGBA")
+            with Image.open(
+                layer.path,
+            ) as image:
+                rgba = image.convert(
+                    "RGBA",
+                )
 
             try:
                 if size is None:
@@ -439,7 +485,9 @@ def _common_crop(
                 elif rgba.size != size:
                     raise VectorError("Raster color layers do not have identical dimensions.")
 
-                alpha = rgba.getchannel("A")
+                alpha = rgba.getchannel(
+                    "A",
+                )
 
                 try:
                     if union_alpha is None:
@@ -544,8 +592,12 @@ def _crop_raster(
     All layers use the same crop, preserving registration.
     """
 
-    with Image.open(source) as image:
-        rgba = image.convert("RGBA")
+    with Image.open(
+        source,
+    ) as image:
+        rgba = image.convert(
+            "RGBA",
+        )
 
     try:
         if (
@@ -561,27 +613,17 @@ def _crop_raster(
         )
 
         try:
-            alpha = cropped.getchannel("A")
+            alpha = cropped.getchannel(
+                "A",
+            )
 
             try:
-                #
-                # Raster masks produced by the preceding stage should
-                # already be categorical. Treat every nonzero alpha
-                # value as geometry so no antialiased alpha values are
-                # passed to Inkscape.
-                #
                 mask = alpha.point(
                     [255] + [0] * 255,
                     mode="1",
                 )
 
                 try:
-                    #
-                    # Convert back to an ordinary 8-bit grayscale image.
-                    #
-                    # Geometry is black and background is white.
-                    # Every output pixel is fully opaque.
-                    #
                     tracing_image = mask.convert(
                         "L",
                     )
@@ -606,6 +648,66 @@ def _crop_raster(
 
     finally:
         rgba.close()
+
+
+# =========================================================
+# Registered envelope
+# =========================================================
+
+
+def _register_envelope(
+    source: Path,
+    output: Path,
+    *,
+    crop: RasterCrop,
+) -> None:
+    """
+    Register the prepared Artwork envelope with the vector coordinate system.
+
+    The prepared envelope is expressed in source-image coordinates. Vector
+    layers are generated from a common square crop of those same coordinates.
+
+    Assigning the crop as the SVG viewBox makes the envelope use that same
+    registered coordinate system without altering its geometry.
+    """
+
+    tree = load(
+        source,
+    )
+
+    root = tree.getroot()
+
+    root.set(
+        "viewBox",
+        " ".join(
+            (
+                str(crop.x),
+                str(crop.y),
+                str(crop.size),
+                str(crop.size),
+            )
+        ),
+    )
+
+    root.set(
+        "width",
+        str(crop.size),
+    )
+
+    root.set(
+        "height",
+        str(crop.size),
+    )
+
+    output.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    save(
+        tree,
+        output,
+    )
 
 
 # =========================================================
@@ -684,7 +786,9 @@ def _trace_mask(
     )
 
     with tempfile.TemporaryDirectory() as directory:
-        temporary = Path(directory)
+        temporary = Path(
+            directory,
+        )
 
         tracing_image = temporary / "mask.png"
 
@@ -739,9 +843,13 @@ def _remove_raster_images(
     root = tree.getroot()
 
     for parent in root.iter():
-        for child in list(parent):
+        for child in list(
+            parent,
+        ):
             if child.tag == image_tag:
-                parent.remove(child)
+                parent.remove(
+                    child,
+                )
 
 
 # =========================================================
@@ -759,13 +867,16 @@ def _write_manifest(
     ],
     *,
     registered_extent: int,
+    envelope: Path,
 ) -> None:
     """
-    Write the vector product manifest.
+    Write the Registered Artwork product manifest.
 
     registered_extent records the common square coordinate extent shared
-    by every generated vector layer. Downstream consumers use this value
-    to dimensionalize the registered geometry.
+    by the registered envelope and every generated vector color layer.
+
+    Envelope and dynamic-product paths are relative to the manifest's
+    stage-local product location.
     """
 
     products = [
@@ -784,6 +895,7 @@ def _write_manifest(
 
     data = {
         "registered_extent": registered_extent,
+        "envelope": envelope.name,
         "products": products,
     }
 
