@@ -50,6 +50,18 @@ class RegisteredExtent:
 
 
 @dataclass(frozen=True)
+class RegisteredBounds:
+    """
+    Bounds of occupied geometry in a registered coordinate system.
+    """
+
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+@dataclass(frozen=True)
 class RegisteredArtworkComponent:
     """
     One component declared by a registered Artwork manifest.
@@ -689,6 +701,106 @@ def _intersect_lines(
 # =========================================================
 
 
+def registered_artwork_envelope_bounds(
+    artwork: RegisteredArtwork,
+) -> RegisteredBounds:
+    """
+    Return the occupied bounds declared by the registered Artwork envelope.
+
+    The Artwork envelope is interpreted in the common registered coordinate
+    system. Component geometry is not inspected independently.
+    """
+
+    root = ET.parse(
+        artwork.envelope,
+    ).getroot()
+
+    envelope = next(
+        iter(root),
+        None,
+    )
+
+    if envelope is None:
+        raise ValueError("Registered Artwork envelope requires geometry.")
+
+    return _registered_element_bounds(
+        envelope,
+    )
+
+
+def _registered_element_bounds(
+    element: ET.Element,
+) -> RegisteredBounds:
+    """
+    Return registered bounds for supported envelope geometry.
+    """
+
+    if element.tag == SVG_RECT:
+        return RegisteredBounds(
+            x=float(element.get("x", "0.0")),
+            y=float(element.get("y", "0.0")),
+            width=float(element.get("width", "0.0")),
+            height=float(element.get("height", "0.0")),
+        )
+
+    if element.tag == SVG_CIRCLE:
+        center_x = float(
+            element.get(
+                "cx",
+                "0.0",
+            )
+        )
+        center_y = float(
+            element.get(
+                "cy",
+                "0.0",
+            )
+        )
+        radius = float(
+            element.get(
+                "r",
+                "0.0",
+            )
+        )
+
+        return RegisteredBounds(
+            x=center_x - radius,
+            y=center_y - radius,
+            width=2.0 * radius,
+            height=2.0 * radius,
+        )
+
+    if element.tag == SVG_POLYGON:
+        points = _read_polygon_points(
+            element,
+        )
+
+        x_coordinates = tuple(point[0] for point in points)
+        y_coordinates = tuple(point[1] for point in points)
+
+        minimum_x = min(
+            x_coordinates,
+        )
+        maximum_x = max(
+            x_coordinates,
+        )
+        minimum_y = min(
+            y_coordinates,
+        )
+        maximum_y = max(
+            y_coordinates,
+        )
+
+        return RegisteredBounds(
+            x=minimum_x,
+            y=minimum_y,
+            width=maximum_x - minimum_x,
+            height=maximum_y - minimum_y,
+        )
+
+    raise ValueError("Registered Artwork envelope contains unsupported geometry.")
+
+
 def fit_registered_artwork(
     artwork: RegisteredArtwork,
     *,
@@ -698,25 +810,30 @@ def fit_registered_artwork(
     """
     Fit registered Artwork uniformly within an available region.
 
-    One scale is derived from the common registered extent. The transformed
-    extent is centered within the available region.
+    The Artwork envelope defines occupied geometry while registered_extent
+    defines the common coordinate system. One uniform transformation fits
+    and centers the occupied envelope within the available region.
 
     Individual component payloads are not inspected or independently fitted.
     """
 
-    registered_width = artwork.registered_extent.width
-    registered_height = artwork.registered_extent.height
-
-    scale = min(
-        available_width / registered_width,
-        available_height / registered_height,
+    bounds = registered_artwork_envelope_bounds(
+        artwork,
     )
 
-    width = registered_width * scale
-    height = registered_height * scale
+    scale = min(
+        available_width / bounds.width,
+        available_height / bounds.height,
+    )
 
-    translate_x = (available_width - width) / 2.0
-    translate_y = (available_height - height) / 2.0
+    width = bounds.width * scale
+    height = bounds.height * scale
+
+    target_x = (available_width - width) / 2.0
+    target_y = (available_height - height) / 2.0
+
+    translate_x = target_x - (bounds.x * scale)
+    translate_y = target_y - (bounds.y * scale)
 
     return RegisteredArtworkTransform(
         scale=scale,

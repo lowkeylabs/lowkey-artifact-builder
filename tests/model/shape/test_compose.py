@@ -547,20 +547,34 @@ def test_shape_interior_with_ridge_is_innermost_ridge_boundary(
 # =========================================================
 
 
-def test_registered_artwork_transform_is_derived_from_common_extent() -> None:
+def test_registered_artwork_fit_uses_envelope_occupancy(
+    tmp_path: Path,
+) -> None:
     """
-    Artwork fitting derives one transform from the common registered extent.
+    Artwork fitting uses its occupied envelope rather than registered_extent.
 
-    The transform is based on the registered collection as a whole rather
-    than on bounds calculated independently for individual components.
+    registered_extent defines the common coordinate system; the envelope
+    defines the region that must fit within the Shape interior.
     """
+
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 16 12">'
+            '<rect x="4" y="3" width="8" height="6"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
 
     artwork = compose.RegisteredArtwork(
         registered_extent=compose.RegisteredExtent(
             width=16.0,
             height=12.0,
         ),
-        envelope=Path("envelope.svg"),
+        envelope=envelope,
         components=(),
     )
 
@@ -570,25 +584,84 @@ def test_registered_artwork_transform_is_derived_from_common_extent() -> None:
         available_height=80.0,
     )
 
-    assert transform.scale == 5.0
+    assert transform.scale == 10.0
     assert transform.width == 80.0
     assert transform.height == 60.0
 
 
-def test_registered_artwork_fit_preserves_aspect_ratio() -> None:
+def test_registered_artwork_fit_centers_envelope_occupancy(
+    tmp_path: Path,
+) -> None:
     """
-    Registered Artwork uses uniform contain-style scaling.
+    Artwork fitting centers the occupied envelope within the available region.
 
-    The limiting interior dimension determines one X/Y scale so Artwork is
-    completely contained without stretching.
+    Envelope position within registered_extent participates in the common
+    transform so the occupied Artwork, rather than the coordinate extent,
+    is centered.
     """
+
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 16 12">'
+            '<rect x="2" y="3" width="8" height="6"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
 
     artwork = compose.RegisteredArtwork(
         registered_extent=compose.RegisteredExtent(
             width=16.0,
             height=12.0,
         ),
-        envelope=Path("envelope.svg"),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork(
+        artwork,
+        available_width=80.0,
+        available_height=80.0,
+    )
+
+    assert transform.scale == 10.0
+    assert transform.width == 80.0
+    assert transform.height == 60.0
+    assert transform.translate_x == -20.0
+    assert transform.translate_y == -20.0
+
+
+def test_registered_artwork_fit_preserves_aspect_ratio(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork uses uniform contain-style scaling.
+
+    The limiting interior dimension determines one X/Y scale from the occupied
+    envelope so Artwork is completely contained without stretching.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 16 12">'
+            '<rect x="4" y="3" width="8" height="6"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=16.0,
+            height=12.0,
+        ),
+        envelope=envelope,
         components=(),
     )
 
@@ -598,39 +671,9 @@ def test_registered_artwork_fit_preserves_aspect_ratio() -> None:
         available_height=36.0,
     )
 
-    assert transform.scale == 3.0
+    assert transform.scale == 6.0
     assert transform.width == 48.0
     assert transform.height == 36.0
-
-
-def test_registered_artwork_fit_centers_common_extent() -> None:
-    """
-    Registered Artwork is centered within the available region.
-
-    Translation is calculated from the transformed common registered extent,
-    not independently for individual components.
-    """
-
-    artwork = compose.RegisteredArtwork(
-        registered_extent=compose.RegisteredExtent(
-            width=16.0,
-            height=12.0,
-        ),
-        envelope=Path("envelope.svg"),
-        components=(),
-    )
-
-    transform = compose.fit_registered_artwork(
-        artwork,
-        available_width=80.0,
-        available_height=80.0,
-    )
-
-    assert transform.scale == 5.0
-    assert transform.width == 80.0
-    assert transform.height == 60.0
-    assert transform.translate_x == 0.0
-    assert transform.translate_y == 10.0
 
 
 def test_registered_artwork_components_share_one_transform(
@@ -643,12 +686,24 @@ def test_registered_artwork_components_share_one_transform(
     destroy registration between the component layers.
     """
 
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 16 12">'
+            '<rect x="2" y="1" width="12" height="10"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
     artwork = compose.RegisteredArtwork(
         registered_extent=compose.RegisteredExtent(
             width=16.0,
             height=12.0,
         ),
-        envelope=tmp_path / Path("envelope.svg"),
+        envelope=envelope,
         components=(
             compose.RegisteredArtworkComponent(
                 index=1,
@@ -686,7 +741,7 @@ def test_registered_artwork_components_share_one_transform(
         placement.transform,
     )
 
-    assert tuple(component.component for component in placement.components) == (artwork.components)
+    assert tuple(component.component for component in placement.components) == artwork.components
 
 
 # =========================================================
