@@ -344,6 +344,74 @@ def test_load_registered_artwork_reads_common_registered_extent(
 # =========================================================
 
 
+def test_square_interior_with_ridge_uses_inner_boundary(
+    tmp_path: Path,
+) -> None:
+    """
+    A square ridge's inner boundary defines the registered interior region.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+
+    _write_registered_square_structure(
+        structure,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=100.0,
+        ridge_width=5.0,
+    )
+
+    interior = compose.registered_interior_region(
+        composition,
+    )
+
+    assert interior.get("id") == "ridge-inner-boundary"
+    assert interior.tag == "{http://www.w3.org/2000/svg}rect"
+    assert float(interior.get("x", "nan")) == pytest.approx(-0.45)
+    assert float(interior.get("y", "nan")) == pytest.approx(-0.45)
+    assert float(interior.get("width", "nan")) == pytest.approx(0.9)
+    assert float(interior.get("height", "nan")) == pytest.approx(0.9)
+
+
+def test_polygon_interior_with_ridge_uses_inner_boundary(
+    tmp_path: Path,
+) -> None:
+    """
+    A polygon ridge's inner boundary defines the registered interior region.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+
+    _write_registered_polygon_structure(
+        structure,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=100.0,
+        ridge_width=5.0,
+    )
+
+    interior = compose.registered_interior_region(
+        composition,
+    )
+
+    assert interior.get("id") == "ridge-inner-boundary"
+    assert interior.tag == "{http://www.w3.org/2000/svg}polygon"
+
+    inner_points = _polygon_points(
+        interior,
+    )
+
+    assert len(inner_points) == 8
+
+
 def test_shape_interior_without_ridge_is_shape_boundary(
     tmp_path: Path,
 ) -> None:
