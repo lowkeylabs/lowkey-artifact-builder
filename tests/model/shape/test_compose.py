@@ -547,6 +547,113 @@ def test_shape_interior_with_ridge_is_innermost_ridge_boundary(
 # =========================================================
 
 
+def test_registered_artwork_fits_into_rectangular_shape_interior(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork fits within the actual rectangular Shape interior.
+
+    Shape placement derives the available region from registered structural
+    geometry rather than requiring callers to independently supply dimensions.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    _write_registered_square_structure(
+        structure,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=100.0,
+        ridge_width=5.0,
+    )
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 16 12">'
+            '<rect x="2" y="1" width="12" height="10"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=16.0,
+            height=12.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    placement = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    assert placement.scale == pytest.approx(0.075)
+    assert placement.width == pytest.approx(0.9)
+    assert placement.height == pytest.approx(0.75)
+
+
+def test_registered_artwork_centers_within_rectangular_shape_interior(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork is centered in the registered Shape interior.
+
+    Placement accounts for both the Shape interior origin and the Artwork
+    envelope's position in its own registered coordinate system.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    _write_registered_square_structure(
+        structure,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=100.0,
+        ridge_width=5.0,
+    )
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 16 12">'
+            '<rect x="2" y="1" width="12" height="10"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=16.0,
+            height=12.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    assert transform.translate_x == pytest.approx(-0.6)
+    assert transform.translate_y == pytest.approx(-0.45)
+
+
 def test_registered_artwork_fit_uses_envelope_occupancy(
     tmp_path: Path,
 ) -> None:

@@ -844,6 +844,69 @@ def fit_registered_artwork(
     )
 
 
+def fit_registered_artwork_to_shape(
+    artwork: RegisteredArtwork,
+    *,
+    composition: Path,
+) -> RegisteredArtworkTransform:
+    """
+    Fit registered Artwork within a rectangular Shape interior.
+
+    The Shape composition determines the available registered region.
+    Artwork occupancy is determined by its registered envelope.
+
+    This operation currently supports rectangular Shape interiors only.
+    """
+
+    interior = registered_interior_region(
+        composition,
+    )
+
+    if interior.tag != SVG_RECT:
+        raise ValueError(
+            "Registered Artwork fitting currently requires a rectangular Shape interior."
+        )
+
+    interior_x = float(
+        interior.get(
+            "x",
+            "0.0",
+        )
+    )
+    interior_y = float(
+        interior.get(
+            "y",
+            "0.0",
+        )
+    )
+    interior_width = float(
+        interior.get(
+            "width",
+            "0.0",
+        )
+    )
+    interior_height = float(
+        interior.get(
+            "height",
+            "0.0",
+        )
+    )
+
+    transform = fit_registered_artwork(
+        artwork,
+        available_width=interior_width,
+        available_height=interior_height,
+    )
+
+    return RegisteredArtworkTransform(
+        scale=transform.scale,
+        width=transform.width,
+        height=transform.height,
+        translate_x=transform.translate_x + interior_x,
+        translate_y=transform.translate_y + interior_y,
+    )
+
+
 def place_registered_artwork(
     artwork: RegisteredArtwork,
     *,
