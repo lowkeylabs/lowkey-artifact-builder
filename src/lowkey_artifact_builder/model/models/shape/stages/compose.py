@@ -197,6 +197,9 @@ def execute(
     Physical ridge width is interpreted relative to physical Shape size so the
     resulting partition boundary can be represented in registered space.
 
+    The persistent composition manifest records the registered products
+    available to downstream stages without requiring filesystem discovery.
+
     Physical Z dimensions remain downstream.
     """
 
@@ -204,8 +207,11 @@ def execute(
         "structure.structure",
     )
 
-    output = context.output(
+    composition_output = context.output(
         "composition",
+    )
+    manifest_output = context.output(
+        "manifest",
     )
 
     shape_size = float(
@@ -224,15 +230,50 @@ def execute(
     }:
         _compose_ridge(
             structure_input,
-            output,
+            composition_output,
             shape_size=shape_size,
             ridge_width=ridge_width,
         )
-        return
 
-    shutil.copyfile(
-        structure_input,
-        output,
+    else:
+        shutil.copyfile(
+            structure_input,
+            composition_output,
+        )
+
+    _write_composition_manifest(
+        manifest_output,
+        composition=composition_output,
+    )
+
+
+def _write_composition_manifest(
+    path: Path,
+    *,
+    composition: Path,
+) -> None:
+    """
+    Write the persistent registered Shape composition manifest.
+
+    The manifest declares registered composition membership explicitly so
+    downstream stages do not discover dynamic products by scanning the
+    compose-stage directory.
+
+    Artwork is explicitly absent until registered Artwork participates in
+    this composition.
+    """
+
+    manifest = {
+        "composition": composition.name,
+        "artwork": None,
+    }
+
+    path.write_text(
+        json.dumps(
+            manifest,
+            indent=2,
+        ),
+        encoding="utf-8",
     )
 
 

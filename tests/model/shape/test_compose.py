@@ -1135,6 +1135,101 @@ def test_registered_artwork_components_share_one_transform(
 # =========================================================
 
 
+def test_compose_stage_materializes_registered_composition_manifest(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape composition materializes its declared persistent manifest.
+
+    The manifest provides the stable downstream contract for discovering
+    registered composition products without scanning the stage directory.
+    """
+
+    structure_input = tmp_path / "structure.svg"
+    composition_output = tmp_path / "composition.svg"
+    manifest_output = tmp_path / "products.json"
+
+    _write_registered_structure(
+        structure_input,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.input.return_value = structure_input
+
+    outputs = {
+        "composition": composition_output,
+        "manifest": manifest_output,
+    }
+    context.output.side_effect = outputs.__getitem__
+
+    _configure_shape_resolver(
+        context,
+    )
+
+    compose.execute(
+        context,
+    )
+
+    assert composition_output.is_file()
+    assert manifest_output.is_file()
+
+    assert context.output.call_args_list == [
+        call("composition"),
+        call("manifest"),
+    ]
+
+
+def test_compose_stage_manifest_declares_structural_composition(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape-only composition records its structural registered geometry.
+
+    Downstream stages locate the persistent composition through the manifest
+    rather than reconstructing its filename or scanning stage outputs.
+    """
+
+    structure_input = tmp_path / "structure.svg"
+    composition_output = tmp_path / "composition.svg"
+    manifest_output = tmp_path / "products.json"
+
+    _write_registered_structure(
+        structure_input,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.input.return_value = structure_input
+
+    outputs = {
+        "composition": composition_output,
+        "manifest": manifest_output,
+    }
+    context.output.side_effect = outputs.__getitem__
+
+    _configure_shape_resolver(
+        context,
+    )
+
+    compose.execute(
+        context,
+    )
+
+    manifest = json.loads(
+        manifest_output.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert manifest == {
+        "composition": "composition.svg",
+        "artwork": None,
+    }
+
+
 def test_compose_stage_materializes_registered_composition(
     tmp_path: Path,
 ) -> None:
