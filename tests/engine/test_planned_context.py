@@ -808,3 +808,117 @@ def test_create_planned_stage_context_matches_plan_for_every_stage(
         assert context.inputs == expected_inputs
 
         assert context.outputs == {product.name: product.path for product in stage.products}
+
+
+def test_shape_compose_context_receives_bound_registered_artwork(
+    tmp_path: Path,
+) -> None:
+    """
+    Bound registered Artwork is exposed directly to Shape compose.
+
+    Planned context supplies both the Shape-local structural input and the
+    logically bound Artwork vector manifest.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "product_dependencies": {
+                "manifest": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "manifest",
+                    "artifact": "artwork-source",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    stage = _stage_by_name(
+        plan,
+        "compose",
+    )
+
+    context = create_planned_stage_context(
+        plan,
+        stage,
+    )
+
+    assert context.inputs == {
+        "structure.structure": (
+            tmp_path
+            / "artifacts"
+            / "shape-example"
+            / "shape"
+            / "default"
+            / "10-structure"
+            / "structure.svg"
+        ),
+        "artwork.vector.manifest": (
+            tmp_path
+            / "artifacts"
+            / "artwork-source"
+            / "artwork"
+            / "default"
+            / "30-vector"
+            / "products.json"
+        ),
+    }
+
+
+def test_shape_registered_artwork_is_exposed_only_to_compose(
+    tmp_path: Path,
+) -> None:
+    """
+    A bound Artwork dependency is exposed only to the Shape stage declaring it.
+
+    Downstream Shape stages consume Shape-local products rather than receiving
+    the upstream Artwork producer product implicitly.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "product_dependencies": {
+                "manifest": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "manifest",
+                    "artifact": "artwork-source",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    for stage_name in (
+        "structure",
+        "extrude",
+        "package",
+    ):
+        stage = _stage_by_name(
+            plan,
+            stage_name,
+        )
+
+        context = create_planned_stage_context(
+            plan,
+            stage,
+        )
+
+        assert "artwork.vector.manifest" not in context.inputs
