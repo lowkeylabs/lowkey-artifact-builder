@@ -143,6 +143,10 @@ def execute(
         compose.composition
             Registered composed Shape geometry.
 
+        compose.manifest
+            Persistent registered-composition manifest describing whether
+            Artwork participates in the composition.
+
     The stage resolves:
 
         shape_size
@@ -162,6 +166,11 @@ def execute(
 
         shape_outer_ridge_style
             Structural partitioning style of the outer ridge.
+
+        shape_artwork_raise
+            Physical height of incorporated Artwork above the Shape base.
+            This parameter is required only when Artwork participates in
+            the registered composition.
 
     The stage produces:
 
@@ -190,6 +199,10 @@ def execute(
         "compose.composition",
     )
 
+    composition_manifest = context.input(
+        "compose.manifest",
+    )
+
     manifest = context.output(
         "manifest",
     )
@@ -210,7 +223,9 @@ def execute(
     )
 
     shape_outer_ridge_color = resolve_palette_color(
-        context.resolver("shape_outer_ridge_color"),
+        context.resolver(
+            "shape_outer_ridge_color",
+        ),
         context.resolver.colors,
     )
 
@@ -225,7 +240,24 @@ def execute(
     if not composition.is_file():
         raise ExtrudeError(f"Registered Shape composition does not exist: {composition}")
 
+    if not composition_manifest.is_file():
+        raise ExtrudeError(
+            f"Registered Shape composition manifest does not exist: {composition_manifest}"
+        )
+
     try:
+        if _composition_has_artwork(
+            composition_manifest,
+        ):
+            shape_artwork_raise = context.resolver(
+                "shape_artwork_raise",
+            )
+
+            if shape_artwork_raise <= 0.0:
+                raise ValueError(
+                    "shape_artwork_raise must be greater than zero when Artwork is incorporated."
+                )
+
         ridge = _load_ridge(
             composition,
         )
@@ -1846,6 +1878,30 @@ def _scad_polygon_points(
 # =========================================================
 # Registered composition inspection
 # =========================================================
+
+
+def _composition_has_artwork(
+    manifest: Path,
+) -> bool:
+    """
+    Return whether the persistent registered composition incorporates Artwork.
+
+    Artwork participation is recorded explicitly by the compose-stage
+    manifest. A null Artwork member represents a structural-only Shape.
+    """
+
+    data = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    return (
+        data.get(
+            "artwork",
+        )
+        is not None
+    )
 
 
 def _load_ridge(

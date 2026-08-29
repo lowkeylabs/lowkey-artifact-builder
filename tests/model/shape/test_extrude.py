@@ -298,6 +298,42 @@ def _read_manifest(
     )
 
 
+def _write_composition_manifest(
+    path: Path,
+    *,
+    artwork: dict[str, object] | None = None,
+) -> None:
+    """
+    Write the persistent registered-composition manifest used by extrusion.
+    """
+
+    path.write_text(
+        json.dumps(
+            {
+                "composition": "composition.svg",
+                "artwork": artwork,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _configure_extrude_context_inputs(
+    context: Mock,
+    *,
+    composition: Path,
+    composition_manifest: Path,
+) -> None:
+    """
+    Configure the declared compose-stage inputs consumed by Shape extrusion.
+    """
+
+    context.input.side_effect = {
+        "compose.composition": composition,
+        "compose.manifest": composition_manifest,
+    }.__getitem__
+
+
 def _make_extrude_resolver(
     *,
     shape_size: float = 100.0,
@@ -306,6 +342,7 @@ def _make_extrude_resolver(
     shape_outer_ridge_raise: float = 1.0,
     shape_outer_ridge_style: str = "integrated",
     shape_outer_ridge_color: str = "white",
+    shape_artwork_raise: float = 1.0,
     colors: dict[str, object] | None = None,
 ) -> Mock:
     """
@@ -320,6 +357,7 @@ def _make_extrude_resolver(
             "shape_outer_ridge_raise": shape_outer_ridge_raise,
             "shape_outer_ridge_style": shape_outer_ridge_style,
             "shape_outer_ridge_color": shape_outer_ridge_color,
+            "shape_artwork_raise": shape_artwork_raise,
         }.__getitem__,
     )
 
@@ -562,6 +600,7 @@ def test_extruded_base_has_configured_physical_z_extent(
     assert bounds[5] == pytest.approx(shape_base_raise)
 
 
+@pytest.mark.slow
 def test_extruded_integrated_ridge_has_complete_physical_envelope(
     tmp_path: Path,
 ) -> None:
@@ -620,10 +659,15 @@ def test_separate_ridge_base_uses_registered_inner_boundary(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_integrated_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -634,7 +678,11 @@ def test_separate_ridge_base_uses_registered_inner_boundary(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     extrude.execute(
@@ -674,10 +722,15 @@ def test_separate_ridge_occupies_registered_perimeter_at_assembled_height(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_integrated_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -688,7 +741,11 @@ def test_separate_ridge_occupies_registered_perimeter_at_assembled_height(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     extrude.execute(
@@ -711,6 +768,7 @@ def test_separate_ridge_occupies_registered_perimeter_at_assembled_height(
     assert bounds[5] == pytest.approx(3.0)
 
 
+@pytest.mark.slow
 def test_zero_raise_integrated_ridge_is_flush_with_base(
     tmp_path: Path,
 ) -> None:
@@ -760,6 +818,7 @@ def test_zero_raise_integrated_ridge_is_flush_with_base(
     assert bounds[5] == pytest.approx(2.0)
 
 
+@pytest.mark.slow
 def test_zero_raise_separate_ridge_is_flush_with_base(
     tmp_path: Path,
 ) -> None:
@@ -777,10 +836,15 @@ def test_zero_raise_separate_ridge_is_flush_with_base(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_integrated_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -792,7 +856,11 @@ def test_zero_raise_separate_ridge_is_flush_with_base(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     extrude.execute(
@@ -827,6 +895,7 @@ def test_zero_raise_separate_ridge_is_flush_with_base(
     assert ridge_bounds[5] == pytest.approx(2.0)
 
 
+@pytest.mark.slow
 def test_negative_raise_integrated_ridge_recesses_base_perimeter(
     tmp_path: Path,
 ) -> None:
@@ -908,10 +977,15 @@ def test_negative_raise_integrated_ridge_produces_only_base_component(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_integrated_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -922,7 +996,11 @@ def test_negative_raise_integrated_ridge_produces_only_base_component(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     rendered_outputs: list[Path] = []
@@ -998,10 +1076,15 @@ def test_negative_raise_separate_ridge_is_shorter_than_base(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_integrated_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -1013,7 +1096,11 @@ def test_negative_raise_separate_ridge_is_shorter_than_base(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     extrude.execute(
@@ -1048,6 +1135,7 @@ def test_negative_raise_separate_ridge_is_shorter_than_base(
     assert ridge_bounds[5] == pytest.approx(1.5)
 
 
+@pytest.mark.slow
 def test_positive_integrated_square_ridge_has_complete_physical_geometry(
     tmp_path: Path,
 ) -> None:
@@ -1060,10 +1148,15 @@ def test_positive_integrated_square_ridge_has_complete_physical_geometry(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_square_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver()
@@ -1072,7 +1165,11 @@ def test_positive_integrated_square_ridge_has_complete_physical_geometry(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     extrude.execute(
@@ -1115,6 +1212,7 @@ def test_positive_integrated_square_ridge_has_complete_physical_geometry(
     )
 
 
+@pytest.mark.slow
 def test_positive_separate_square_ridge_partitions_base_and_ridge(
     tmp_path: Path,
 ) -> None:
@@ -1131,10 +1229,15 @@ def test_positive_separate_square_ridge_partitions_base_and_ridge(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_square_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -1145,7 +1248,11 @@ def test_positive_separate_square_ridge_partitions_base_and_ridge(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     extrude.execute(
@@ -1199,10 +1306,15 @@ def test_positive_integrated_polygon_ridge_has_complete_physical_geometry(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_polygon_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver()
@@ -1211,7 +1323,11 @@ def test_positive_integrated_polygon_ridge_has_complete_physical_geometry(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     extrude.execute(
@@ -1266,10 +1382,15 @@ def test_positive_separate_polygon_ridge_partitions_physical_geometry(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_polygon_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -1280,7 +1401,11 @@ def test_positive_separate_polygon_ridge_partitions_physical_geometry(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     extrude.execute(
@@ -1342,10 +1467,15 @@ def test_extrude_stage_materializes_declared_component_manifest(
     """
 
     composition = tmp_path / "arbitrary-input" / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "arbitrary-output" / "products.json"
 
     _write_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver()
@@ -1354,7 +1484,11 @@ def test_extrude_stage_materializes_declared_component_manifest(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     rendered_sources: list[str] = []
@@ -1390,9 +1524,10 @@ def test_extrude_stage_materializes_declared_component_manifest(
         context,
     )
 
-    context.input.assert_called_once_with(
-        "compose.composition",
-    )
+    assert context.input.call_args_list == [
+        call("compose.composition"),
+        call("compose.manifest"),
+    ]
     context.output.assert_called_once_with(
         "manifest",
     )
@@ -1448,10 +1583,15 @@ def test_no_ridge_component_manifest_contains_only_base(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver()
@@ -1460,7 +1600,11 @@ def test_no_ridge_component_manifest_contains_only_base(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     def fake_render_stl_source(
@@ -1510,10 +1654,15 @@ def test_integrated_ridge_component_manifest_contains_base_and_ridge(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_integrated_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver()
@@ -1522,7 +1671,11 @@ def test_integrated_ridge_component_manifest_contains_base_and_ridge(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     rendered_outputs: list[Path] = []
@@ -1611,10 +1764,15 @@ def test_integrated_ridge_components_preserve_physical_partition(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_integrated_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver()
@@ -1623,7 +1781,11 @@ def test_integrated_ridge_components_preserve_physical_partition(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     extrude.execute(
@@ -1671,10 +1833,15 @@ def test_integrated_ridge_accepts_minimum_raise(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_integrated_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -1685,7 +1852,11 @@ def test_integrated_ridge_accepts_minimum_raise(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     rendered_sources: list[str] = []
@@ -1757,10 +1928,15 @@ def test_separate_ridge_accepts_minimum_raise_without_physical_ridge_volume(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_integrated_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -1772,7 +1948,11 @@ def test_separate_ridge_accepts_minimum_raise_without_physical_ridge_volume(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     rendered_outputs: list[Path] = []
@@ -1849,10 +2029,15 @@ def test_extrude_rejects_ridge_raise_below_negative_base_raise(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_integrated_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -1864,7 +2049,11 @@ def test_extrude_rejects_ridge_raise_below_negative_base_raise(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     render_stl_source = Mock()
@@ -1927,6 +2116,7 @@ def test_engine_bootstrap_discovers_shape_extrude_implementation() -> None:
     assert implementation is extrude.execute
 
 
+@pytest.mark.slow
 def test_positive_integrated_and_separate_ridges_have_equivalent_assembled_geometry(
     tmp_path: Path,
 ) -> None:
@@ -2052,6 +2242,7 @@ def test_positive_integrated_and_separate_ridges_have_equivalent_assembled_geome
     )
 
 
+@pytest.mark.slow
 def test_negative_integrated_and_separate_ridges_have_equivalent_assembled_geometry(
     tmp_path: Path,
 ) -> None:
@@ -2170,10 +2361,15 @@ def test_zero_raise_separate_square_ridge_is_flush_with_base(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_square_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -2185,7 +2381,11 @@ def test_zero_raise_separate_square_ridge_is_flush_with_base(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     extrude.execute(
@@ -2237,10 +2437,15 @@ def test_negative_raise_integrated_square_ridge_recesses_base_perimeter(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_square_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -2251,7 +2456,11 @@ def test_negative_raise_integrated_square_ridge_recesses_base_perimeter(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     extrude.execute(
@@ -2422,10 +2631,15 @@ def test_zero_raise_separate_polygon_ridge_is_flush_with_base(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_polygon_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -2437,7 +2651,11 @@ def test_zero_raise_separate_polygon_ridge_is_flush_with_base(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     extrude.execute(
@@ -2475,10 +2693,15 @@ def test_negative_raise_separate_polygon_ridge_is_shorter_than_base(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_polygon_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -2490,7 +2713,11 @@ def test_negative_raise_separate_polygon_ridge_is_shorter_than_base(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     extrude.execute(
@@ -2529,10 +2756,15 @@ def test_negative_raise_integrated_polygon_ridge_recesses_base_perimeter(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_polygon_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -2543,7 +2775,11 @@ def test_negative_raise_integrated_polygon_ridge_recesses_base_perimeter(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     extrude.execute(
@@ -2740,10 +2976,15 @@ def test_base_component_manifest_preserves_semantic_color(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -2763,7 +3004,11 @@ def test_base_component_manifest_preserves_semantic_color(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     def fake_render_stl_source(
@@ -2821,10 +3066,15 @@ def test_positive_integrated_ridge_manifest_preserves_semantic_color(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_integrated_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -2845,7 +3095,11 @@ def test_positive_integrated_ridge_manifest_preserves_semantic_color(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     def fake_render_stl_source(
@@ -2915,10 +3169,15 @@ def test_separate_ridge_manifest_preserves_semantic_color(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_integrated_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -2940,7 +3199,11 @@ def test_separate_ridge_manifest_preserves_semantic_color(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     def fake_render_stl_source(
@@ -3010,10 +3273,15 @@ def test_ridge_color_does_not_create_component_without_ridge(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -3025,7 +3293,11 @@ def test_ridge_color_does_not_create_component_without_ridge(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     def fake_render_stl_source(
@@ -3091,10 +3363,15 @@ def test_integrated_nonpositive_ridge_has_no_independent_color_component(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_integrated_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -3108,7 +3385,11 @@ def test_integrated_nonpositive_ridge_has_no_independent_color_component(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     def fake_render_stl_source(
@@ -3166,10 +3447,15 @@ def test_zero_height_separate_ridge_has_no_independent_color_component(
     """
 
     composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
     manifest = tmp_path / "products.json"
 
     _write_integrated_ridge_composition(
         composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
     )
 
     resolver = _make_extrude_resolver(
@@ -3184,7 +3470,11 @@ def test_zero_height_separate_ridge_has_no_independent_color_component(
         spec=StageContext,
     )
     context.resolver = resolver
-    context.input.return_value = composition
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
     context.output.return_value = manifest
 
     def fake_render_stl_source(
@@ -3228,3 +3518,96 @@ def test_zero_height_separate_ridge_has_no_independent_color_component(
             },
         },
     ]
+
+
+def test_execute_rejects_nonpositive_artwork_raise_when_artwork_is_incorporated(
+    tmp_path: Path,
+) -> None:
+    """
+    Incorporated Artwork must have positive physical height.
+
+    Shape owns the physical Z semantics of incorporated Artwork, so an
+    incorporated Artwork component requires shape_artwork_raise > 0.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    output_manifest = tmp_path / "products.json"
+
+    _write_composition(
+        composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
+        artwork={
+            "manifest": "artwork/products.json",
+        },
+    )
+
+    resolver = _make_extrude_resolver(
+        shape_artwork_raise=0.0,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
+    context.output.return_value = output_manifest
+
+    with pytest.raises(
+        extrude.ExtrudeError,
+        match="shape_artwork_raise",
+    ):
+        extrude.execute(
+            context,
+        )
+
+
+def test_execute_ignores_artwork_raise_when_no_artwork_is_incorporated(
+    tmp_path: Path,
+) -> None:
+    """
+    Artwork raise is irrelevant when the composition contains no Artwork.
+
+    The positivity requirement is conditional on incorporated Artwork and
+    must not impose an unnecessary constraint on structural-only Shapes.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    output_manifest = tmp_path / "products.json"
+
+    _write_composition(
+        composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
+    )
+
+    resolver = _make_extrude_resolver(
+        shape_artwork_raise=0.0,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
+    context.output.return_value = output_manifest
+
+    extrude.execute(
+        context,
+    )
+
+    assert output_manifest.is_file()
