@@ -1285,35 +1285,27 @@ def _load_registered_extent(
     manifest: dict[str, Any],
 ) -> RegisteredExtent:
     """
-    Read the common registered extent declared by the manifest.
+    Read the common registered extent declared by the Artwork manifest.
+
+    Artwork publishes one scalar extent describing its square common
+    registered coordinate system.
     """
 
     extent = manifest["registered_extent"]
 
     if not isinstance(
         extent,
-        dict,
-    ):
-        raise ValueError("Registered Artwork extent must contain an object.")
-
-    width = extent["width"]
-    height = extent["height"]
-
-    if not isinstance(
-        width,
         int | float,
     ):
-        raise ValueError("Registered Artwork extent width must be numeric.")
+        raise ValueError("Registered Artwork extent must be numeric.")
 
-    if not isinstance(
-        height,
-        int | float,
-    ):
-        raise ValueError("Registered Artwork extent height must be numeric.")
+    registered_extent = float(
+        extent,
+    )
 
     return RegisteredExtent(
-        width=float(width),
-        height=float(height),
+        width=registered_extent,
+        height=registered_extent,
     )
 
 

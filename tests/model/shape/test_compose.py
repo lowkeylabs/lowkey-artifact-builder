@@ -90,8 +90,8 @@ def _write_vector_manifest(
     envelope.write_text(
         (
             '<svg xmlns="http://www.w3.org/2000/svg" '
-            'viewBox="0 0 16 12">'
-            '<rect x="2" y="1" width="12" height="10"/>'
+            'viewBox="0 0 16 16">'
+            '<rect x="2" y="3" width="12" height="10"/>'
             "</svg>"
         ),
         encoding="utf-8",
@@ -100,10 +100,7 @@ def _write_vector_manifest(
     path.write_text(
         json.dumps(
             {
-                "registered_extent": {
-                    "width": 16.0,
-                    "height": 12.0,
-                },
+                "registered_extent": 16,
                 "envelope": "envelope.svg",
                 "products": [
                     {
@@ -111,10 +108,9 @@ def _write_vector_manifest(
                         "path": "white.svg",
                         "name": "white",
                         "color": {
-                            "r": 255,
-                            "g": 255,
-                            "b": 255,
-                            "a": 255,
+                            "red": 255,
+                            "green": 255,
+                            "blue": 255,
                         },
                     },
                     {
@@ -122,10 +118,9 @@ def _write_vector_manifest(
                         "path": "black.svg",
                         "name": "black",
                         "color": {
-                            "r": 0,
-                            "g": 0,
-                            "b": 0,
-                            "a": 255,
+                            "red": 0,
+                            "green": 0,
+                            "blue": 0,
                         },
                     },
                 ],
@@ -360,19 +355,17 @@ def test_load_registered_artwork_preserves_component_metadata(
     assert first.index == 1
     assert first.name == "white"
     assert first.color == {
-        "r": 255,
-        "g": 255,
-        "b": 255,
-        "a": 255,
+        "red": 255,
+        "green": 255,
+        "blue": 255,
     }
 
     assert second.index == 2
     assert second.name == "black"
     assert second.color == {
-        "r": 0,
-        "g": 0,
-        "b": 0,
-        "a": 255,
+        "red": 0,
+        "green": 0,
+        "blue": 0,
     }
 
 
@@ -397,7 +390,7 @@ def test_load_registered_artwork_reads_common_registered_extent(
     )
 
     assert artwork.registered_extent.width == 16.0
-    assert artwork.registered_extent.height == 12.0
+    assert artwork.registered_extent.height == 16.0
 
 
 def test_load_registered_artwork_resolves_envelope_beside_manifest(
@@ -2247,10 +2240,9 @@ def test_compose_manifest_preserves_registered_artwork_membership(
             "path": "white.svg",
             "name": "white",
             "color": {
-                "r": 255,
-                "g": 255,
-                "b": 255,
-                "a": 255,
+                "red": 255,
+                "green": 255,
+                "blue": 255,
             },
         },
         {
@@ -2258,10 +2250,9 @@ def test_compose_manifest_preserves_registered_artwork_membership(
             "path": "black.svg",
             "name": "black",
             "color": {
-                "r": 0,
-                "g": 0,
-                "b": 0,
-                "a": 255,
+                "red": 0,
+                "green": 0,
+                "blue": 0,
             },
         },
     ]
@@ -2339,3 +2330,116 @@ def test_compose_manifest_records_one_common_artwork_transform(
     }
 
     assert all("transform" not in component for component in manifest["artwork"]["components"])
+
+
+def test_load_registered_artwork_accepts_artwork_vector_extent(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape consumes the registered extent published by Artwork vectorization.
+
+    Artwork publishes one scalar extent for its square common registered
+    coordinate system. Shape must consume that producer contract directly
+    rather than requiring a Shape-specific manifest representation.
+    """
+
+    manifest = tmp_path / "products.json"
+    envelope = tmp_path / "envelope.svg"
+    component = tmp_path / "color-0.svg"
+
+    envelope.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"><rect x="2" y="3" width="10" height="8"/></svg>',
+        encoding="utf-8",
+    )
+    component.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"/>',
+        encoding="utf-8",
+    )
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 16,
+                "envelope": "envelope.svg",
+                "products": [
+                    {
+                        "index": 0,
+                        "path": "color-0.svg",
+                        "name": "white",
+                        "color": {
+                            "red": 255,
+                            "green": 255,
+                            "blue": 255,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.load_registered_artwork(
+        manifest,
+    )
+
+    assert artwork.registered_extent == compose.RegisteredExtent(
+        width=16.0,
+        height=16.0,
+    )
+
+
+def test_load_registered_artwork_preserves_artwork_vector_color_metadata(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape preserves semantic color metadata published by Artwork vectorization.
+
+    The consumer accepts Artwork's shared RGB representation without
+    translating it into a Shape-specific color schema.
+    """
+
+    manifest = tmp_path / "products.json"
+    envelope = tmp_path / "envelope.svg"
+    component = tmp_path / "color-0.svg"
+
+    envelope.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="16" height="16"/></svg>',
+        encoding="utf-8",
+    )
+    component.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"/>',
+        encoding="utf-8",
+    )
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 16,
+                "envelope": "envelope.svg",
+                "products": [
+                    {
+                        "index": 0,
+                        "path": "color-0.svg",
+                        "name": "gold",
+                        "color": {
+                            "red": 212,
+                            "green": 175,
+                            "blue": 55,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.load_registered_artwork(
+        manifest,
+    )
+
+    assert artwork.components[0].name == "gold"
+    assert artwork.components[0].color == {
+        "red": 212,
+        "green": 175,
+        "blue": 55,
+    }
