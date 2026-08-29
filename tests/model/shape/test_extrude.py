@@ -364,7 +364,7 @@ def _make_extrude_resolver(
     resolver.colors = {} if colors is None else colors
 
     return resolver
-
+    
 
 # =========================================================
 # Physical dimensionalization
@@ -3611,3 +3611,122 @@ def test_execute_ignores_artwork_raise_when_no_artwork_is_incorporated(
     )
 
     assert output_manifest.is_file()
+
+
+@pytest.mark.slow
+def test_incorporated_artwork_is_dimensionalized_above_shape_base(
+    tmp_path: Path,
+) -> None:
+    """
+    Incorporated Artwork begins at the top of the Shape base.
+
+    Shape owns Artwork physical dimensionalization. Every incorporated
+    Artwork component therefore begins at shape_base_raise and extends
+    upward by shape_artwork_raise.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    artwork_directory = tmp_path / "artwork"
+    artwork_manifest = artwork_directory / "products.json"
+    artwork_component = artwork_directory / "color-1.svg"
+    output_manifest = tmp_path / "products.json"
+
+    _write_composition(
+        composition,
+    )
+
+    artwork_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_component.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="-0.5 -0.5 1.0 1.0"
+>
+    <circle
+        cx="0.0"
+        cy="0.0"
+        r="0.25"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    artwork_manifest.write_text(
+        json.dumps(
+            {
+                "components": [
+                    {
+                        "index": 1,
+                        "path": "color-1.svg",
+                        "name": "red",
+                        "color": {
+                            "red": 220,
+                            "green": 38,
+                            "blue": 38,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
+        artwork={
+            "manifest": "artwork/products.json",
+        },
+    )
+
+    resolver = _make_extrude_resolver(
+        shape_base_raise=2.0,
+        shape_artwork_raise=1.0,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
+    context.output.return_value = output_manifest
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        output_manifest,
+    )
+
+    artwork_components = [
+        component
+        for component in data["components"]
+        if component["name"] == "artwork-1"
+    ]
+
+    assert len(artwork_components) == 1
+
+    physical_artwork = (
+        output_manifest.parent
+        / artwork_components[0]["path"]
+    )
+
+    assert physical_artwork.is_file()
+
+    bounds = _stl_bounds(
+        physical_artwork,
+    )
+
+    assert bounds[4] == pytest.approx(2.0)
+    assert bounds[5] == pytest.approx(3.0)
+
