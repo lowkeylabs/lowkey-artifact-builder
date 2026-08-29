@@ -364,7 +364,7 @@ def _make_extrude_resolver(
     resolver.colors = {} if colors is None else colors
 
     return resolver
-    
+
 
 # =========================================================
 # Physical dimensionalization
@@ -3627,18 +3627,11 @@ def test_incorporated_artwork_is_dimensionalized_above_shape_base(
 
     composition = tmp_path / "composition.svg"
     composition_manifest = tmp_path / "composition-products.json"
-    artwork_directory = tmp_path / "artwork"
-    artwork_manifest = artwork_directory / "products.json"
-    artwork_component = artwork_directory / "color-1.svg"
+    artwork_component = tmp_path / "color-1.svg"
     output_manifest = tmp_path / "products.json"
 
     _write_composition(
         composition,
-    )
-
-    artwork_directory.mkdir(
-        parents=True,
-        exist_ok=True,
     )
 
     artwork_component.write_text(
@@ -3657,30 +3650,26 @@ def test_incorporated_artwork_is_dimensionalized_above_shape_base(
         encoding="utf-8",
     )
 
-    artwork_manifest.write_text(
-        json.dumps(
-            {
-                "components": [
-                    {
-                        "index": 1,
-                        "path": "color-1.svg",
-                        "name": "red",
-                        "color": {
-                            "red": 220,
-                            "green": 38,
-                            "blue": 38,
-                        },
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-
     _write_composition_manifest(
         composition_manifest,
         artwork={
-            "manifest": "artwork/products.json",
+            "transform": {
+                "scale": 1.0,
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+            },
+            "components": [
+                {
+                    "index": 1,
+                    "path": "color-1.svg",
+                    "name": "red",
+                    "color": {
+                        "red": 220,
+                        "green": 38,
+                        "blue": 38,
+                    },
+                },
+            ],
         },
     )
 
@@ -3709,17 +3698,12 @@ def test_incorporated_artwork_is_dimensionalized_above_shape_base(
     )
 
     artwork_components = [
-        component
-        for component in data["components"]
-        if component["name"] == "artwork-1"
+        component for component in data["components"] if component["name"] == "artwork-1"
     ]
 
     assert len(artwork_components) == 1
 
-    physical_artwork = (
-        output_manifest.parent
-        / artwork_components[0]["path"]
-    )
+    physical_artwork = output_manifest.parent / artwork_components[0]["path"]
 
     assert physical_artwork.is_file()
 
@@ -3729,4 +3713,3 @@ def test_incorporated_artwork_is_dimensionalized_above_shape_base(
 
     assert bounds[4] == pytest.approx(2.0)
     assert bounds[5] == pytest.approx(3.0)
-

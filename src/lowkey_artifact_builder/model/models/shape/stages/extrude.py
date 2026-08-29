@@ -138,61 +138,10 @@ def execute(
     """
     Execute physical Shape extrusion.
 
-    The stage consumes:
+    Registered Shape structure and incorporated registered Artwork are
+    dimensionalized into independently printable physical components.
 
-        compose.composition
-            Registered composed Shape geometry.
-
-        compose.manifest
-            Persistent registered-composition manifest describing whether
-            Artwork participates in the composition.
-
-    The stage resolves:
-
-        shape_size
-            Physical X/Y extent of the Shape in millimeters.
-
-        shape_base_raise
-            Physical Z thickness of the structural base in millimeters.
-
-        shape_base_color
-            Semantic printing color of the structural base.
-
-        shape_outer_ridge_color
-            Semantic printing color of the physical outer-ridge component.
-
-        shape_outer_ridge_raise
-            Physical change in ridge height relative to the base top.
-
-        shape_outer_ridge_style
-            Structural partitioning style of the outer ridge.
-
-        shape_artwork_raise
-            Physical height of incorporated Artwork above the Shape base.
-            This parameter is required only when Artwork participates in
-            the registered composition.
-
-    The stage produces:
-
-        manifest
-            Persistent products.json manifest describing independently
-            printable physical Shape components.
-
-    A composition without a ridge produces one physical component:
-
-        base.stl
-
-    A composition with an integrated or separate ridge produces physical
-    components according to the configured ridge style and raise.
-
-    Ridge style determines how the complete assembled structural geometry is
-    partitioned between those components.
-
-    Physical component metadata preserves semantic printing-color identity
-    for downstream packaging.
-
-    Packaging the physical components into artifact.3mf belongs to the
-    downstream package stage.
+    Shape owns all physical X/Y and Z semantics of the resulting assembly.
     """
 
     composition = context.input(
@@ -246,9 +195,13 @@ def execute(
         )
 
     try:
-        if _composition_has_artwork(
+        artwork = _load_composed_artwork(
             composition_manifest,
-        ):
+        )
+
+        shape_artwork_raise = 0.0
+
+        if artwork is not None:
             shape_artwork_raise = context.resolver(
                 "shape_artwork_raise",
             )
@@ -325,11 +278,27 @@ def execute(
                 f"Unsupported registered Shape ridge geometry: {type(ridge).__name__}."
             )
 
+        artwork_components: tuple[
+            tuple[str, str, dict[str, object]],
+            ...,
+        ] = ()
+
+        if artwork is not None:
+            artwork_components = _render_artwork_components(
+                artwork,
+                composition_manifest.parent,
+                manifest.parent,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+                shape_artwork_raise=shape_artwork_raise,
+            )
+
         _write_component_manifest(
             manifest,
             components,
             base_color=shape_base_color,
             ridge_color=shape_outer_ridge_color,
+            artwork_components=artwork_components,
         )
 
         if not manifest.is_file():
@@ -355,6 +324,123 @@ def execute(
 # =========================================================
 # Physical component production
 # =========================================================
+
+
+def _render_artwork_components(
+    artwork: dict[str, object],
+    source_directory: Path,
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_artwork_raise: float,
+) -> tuple[
+    tuple[str, str, dict[str, object]],
+    ...,
+]:
+    """
+    Dimensionalize incorporated registered Artwork components.
+
+    Every Artwork component receives the same persisted registered-space
+    transform, the same Shape physical X/Y scaling, and the same physical
+    Z interval.
+    """
+
+    transform = artwork.get(
+        "transform",
+    )
+    components = artwork.get(
+        "components",
+    )
+
+    if not isinstance(
+        transform,
+        dict,
+    ):
+        raise ValueError("Registered Shape composition Artwork requires a transform.")
+
+    if not isinstance(
+        components,
+        list,
+    ):
+        raise ValueError("Registered Shape composition Artwork requires components.")
+
+    scale = float(
+        transform["scale"],
+    )
+    translate_x = float(
+        transform["translate_x"],
+    )
+    translate_y = float(
+        transform["translate_y"],
+    )
+
+    rendered: list[tuple[str, str, dict[str, object]]] = []
+
+    for component in components:
+        if not isinstance(
+            component,
+            dict,
+        ):
+            raise ValueError("Registered Artwork component must be an object.")
+
+        index = int(
+            component["index"],
+        )
+        source_path = source_directory / str(
+            component["path"],
+        )
+
+        if not source_path.is_file():
+            raise ValueError(f"Registered Artwork component does not exist: {source_path}")
+
+        color = component.get(
+            "color",
+        )
+
+        if not isinstance(
+            color,
+            dict,
+        ):
+            raise ValueError(f"Registered Artwork component {index} requires color metadata.")
+
+        component_name = f"artwork-{index}"
+        component_path = f"{component_name}.stl"
+        output_path = output_directory / component_path
+
+        source = _build_artwork_component_scad(
+            _scad_path(
+                source_path,
+            ),
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+            shape_artwork_raise=shape_artwork_raise,
+            artwork_scale=scale,
+            artwork_translate_x=translate_x,
+            artwork_translate_y=translate_y,
+        )
+
+        render_stl_source(
+            source,
+            output_path,
+        )
+
+        _require_component(
+            output_path,
+            component_name=component_name,
+        )
+
+        rendered.append(
+            (
+                component_name,
+                component_path,
+                color,
+            )
+        )
+
+    return tuple(
+        rendered,
+    )
 
 
 def _render_no_ridge_components(
@@ -1005,12 +1091,16 @@ def _write_component_manifest(
     *,
     base_color: PaletteColor,
     ridge_color: PaletteColor,
+    artwork_components: tuple[
+        tuple[str, str, dict[str, object]],
+        ...,
+    ] = (),
 ) -> None:
     """
     Write the physical-component manifest for Shape extrusion.
 
-    Physical components preserve their structural identity together with
-    resolved semantic printing-color metadata.
+    Structural and incorporated Artwork components preserve their semantic
+    printing-color identity for downstream packaging.
     """
 
     colors = {
@@ -1018,22 +1108,37 @@ def _write_component_manifest(
         RIDGE_COMPONENT_NAME: ridge_color,
     }
 
+    manifest_components: list[dict[str, object]] = [
+        {
+            "name": name,
+            "path": component_path,
+            "color": {
+                "name": colors[name].name,
+                "rgb": list(
+                    colors[name].rgb,
+                ),
+            },
+        }
+        for name, component_path in components
+    ]
+
+    for (
+        name,
+        component_path,
+        color,
+    ) in artwork_components:
+        manifest_components.append(
+            {
+                "name": name,
+                "path": component_path,
+                "color": color,
+            }
+        )
+
     path.write_text(
         json.dumps(
             {
-                "components": [
-                    {
-                        "name": name,
-                        "path": component_path,
-                        "color": {
-                            "name": colors[name].name,
-                            "rgb": list(
-                                colors[name].rgb,
-                            ),
-                        },
-                    }
-                    for name, component_path in components
-                ],
+                "components": manifest_components,
             },
             indent=2,
         )
@@ -1151,6 +1256,48 @@ def _build_scad(
         ),
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+    )
+
+
+def _build_artwork_component_scad(
+    source: str,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_artwork_raise: float,
+    artwork_scale: float,
+    artwork_translate_x: float,
+    artwork_translate_y: float,
+) -> str:
+    """
+    Build OpenSCAD source for one incorporated Artwork component.
+
+    The persisted registered Artwork transform is applied before Shape maps
+    registered coordinates into physical X/Y space. The resulting component
+    begins at the physical top of the Shape base.
+    """
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_artwork_raise = {shape_artwork_raise:g};\n"
+        f"artwork_scale = {artwork_scale:g};\n"
+        f"artwork_translate_x = {artwork_translate_x:g};\n"
+        f"artwork_translate_y = {artwork_translate_y:g};\n"
+        "\n"
+        "translate([0, 0, shape_base_raise])\n"
+        "    linear_extrude(\n"
+        "        height = shape_artwork_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        scale([shape_size, shape_size, 1])\n"
+        "            translate([\n"
+        "                artwork_translate_x,\n"
+        "                artwork_translate_y,\n"
+        "                0\n"
+        "            ])\n"
+        "                scale([artwork_scale, artwork_scale, 1])\n"
+        f'                    import("{source}", dpi = 25.4);\n'
     )
 
 
@@ -1902,6 +2049,38 @@ def _composition_has_artwork(
         )
         is not None
     )
+
+
+def _load_composed_artwork(
+    composition_manifest: Path,
+) -> dict[str, object] | None:
+    """
+    Load incorporated registered Artwork from a Shape composition manifest.
+
+    The compose stage persists component membership and one common registered
+    placement transform. Extrusion consumes that persistent contract directly.
+    """
+
+    data = json.loads(
+        composition_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    artwork = data.get(
+        "artwork",
+    )
+
+    if artwork is None:
+        return None
+
+    if not isinstance(
+        artwork,
+        dict,
+    ):
+        raise ValueError("Registered Shape composition Artwork must be an object.")
+
+    return artwork
 
 
 def _load_ridge(
