@@ -92,6 +92,8 @@ MODEL = ModelSpec(
                 "shape_outer_ridge_raise",
                 "shape_outer_ridge_style",
                 "shape_outer_ridge_color",
+                "shape_artwork_raise",
+                "shape_artwork_fill_color",
             ),
             products=(
                 ProductSpec(

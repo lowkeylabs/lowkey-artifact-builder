@@ -286,14 +286,17 @@ def test_shape_extrude_depends_on_compose_stage() -> None:
     assert extrude_stage.product_dependencies == ()
 
 
-def test_shape_extrude_consumes_physical_structural_parameters() -> None:
+def test_shape_extrude_consumes_physical_dimensionalization_parameters() -> None:
     """
-    Shape extrusion owns physical dimensionalization of structural geometry.
+    Shape extrusion owns physical dimensionalization of the complete composition.
 
-    shape_size introduces the physical X/Y envelope. shape_base_raise and
-    shape_outer_ridge_raise introduce physical Z dimensions. Ridge style
-    determines how the registered structural regions become independently
-    printable physical components.
+    Structural dimensions and colors remain extrusion policy. Incorporated
+    Artwork receives its Shape-owned physical raise here, and the optional
+    Artwork fill color determines whether a corresponding physical fill
+    component is produced.
+
+    Standalone Artwork dimensionalization parameters do not participate in
+    Shape extrusion.
     """
 
     extrude_stage = _extrude_stage()
@@ -305,6 +308,8 @@ def test_shape_extrude_consumes_physical_structural_parameters() -> None:
         "shape_outer_ridge_raise",
         "shape_outer_ridge_style",
         "shape_outer_ridge_color",
+        "shape_artwork_raise",
+        "shape_artwork_fill_color",
     )
 
 
