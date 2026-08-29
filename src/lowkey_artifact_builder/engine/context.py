@@ -326,26 +326,15 @@ def _planned_stage_inputs(
                 path=product.path,
             )
 
-    planned_product_dependencies = {
-        planned_dependency.binding.dependency: planned_dependency
-        for planned_dependency in build_plan.planned_product_dependencies
-    }
+    stage_product_dependencies = set(
+        stage.spec.product_dependencies,
+    )
 
-    for dependency in stage.spec.product_dependencies:
-        try:
-            planned_dependency = planned_product_dependencies[dependency]
+    for planned_dependency in build_plan.planned_product_dependencies:
+        dependency = planned_dependency.binding.dependency
 
-        except KeyError as exc:
-            dependency_identity = f"{dependency.model}/{dependency.stage}/{dependency.product}"
-
-            raise StageContextError(
-                f"Cannot construct context for stage "
-                f"{stage.name!r} "
-                f"of artifact {build_plan.artifact_id!r}: "
-                f"planned product dependency "
-                f"{dependency_identity!r} "
-                "is not present in the build plan."
-            ) from exc
+        if dependency not in stage_product_dependencies:
+            continue
 
         _add_planned_input(
             build_plan=build_plan,

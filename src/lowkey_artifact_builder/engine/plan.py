@@ -34,6 +34,7 @@ from lowkey_artifact_builder.config import (
     get_product_dependency_binding,
     get_realization_names,
     get_resolver,
+    has_product_dependency_binding,
 )
 from lowkey_artifact_builder.engine.catalog import (
     build_product_catalog,
@@ -168,6 +169,8 @@ def create_build_plan(
         product_dependencies=product_dependencies,
         project_root=root,
     )
+
+    product_dependencies = tuple(binding.dependency for binding in product_dependency_bindings)
 
     planned_product_dependencies = _plan_product_dependencies(
         bindings=product_dependency_bindings,
@@ -398,15 +401,19 @@ def _resolve_product_dependency_bindings(
     project_root: Path,
 ) -> tuple[ProductDependencyBinding, ...]:
     """
-    Resolve declarative product dependencies to configured producers.
+    Resolve active declarative product dependencies to configured producers.
 
-    Each declarative dependency required by the selected realization
-    graph is bound through artifact configuration to the concrete
-    producer artifact and realization that will supply the product.
+    ProductDependencySpec declares a potential dependency relationship.
+    Only dependencies with configured bindings participate in the current
+    artifact realization.
 
-    Configuration failures encountered while resolving bindings are
-    translated to BuildPlanError so callers of the planning subsystem
-    receive its public error type.
+    Once a binding is present, normal configuration validation remains
+    authoritative. Invalid configured bindings therefore fail planning
+    rather than being treated as absent.
+
+    Configuration failures encountered while inspecting or resolving
+    bindings are translated to BuildPlanError so callers of the planning
+    subsystem receive its public error type.
 
     Producer existence and producer build planning are intentionally
     outside this function's responsibility.
@@ -420,6 +427,11 @@ def _resolve_product_dependency_bindings(
                 project_root=project_root,
             )
             for dependency in product_dependencies
+            if has_product_dependency_binding(
+                artifact_id,
+                dependency,
+                project_root=project_root,
+            )
         )
 
     except ConfigError as exc:

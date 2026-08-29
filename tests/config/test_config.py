@@ -17,6 +17,7 @@ from lowkey_artifact_builder.config import (
     artifact_config_path,
     get_product_dependency_binding,
     get_resolver,
+    has_product_dependency_binding,
     load_artifact_config,
     update_artifact_config,
     write_artifact_config,
@@ -1210,6 +1211,83 @@ def test_update_artifact_config_preserves_other_product_dependency_bindings(
 
     assert config["product_dependencies"]["geometry"]["artifact"] == "replacement"
     assert config["product_dependencies"]["mask"]["artifact"] == "second"
+
+
+def test_has_product_dependency_binding_returns_false_when_unconfigured(
+    tmp_path: Path,
+) -> None:
+    """
+    An unconfigured declarative product dependency is not active.
+
+    Declaring a potential product dependency does not require every
+    artifact realization to bind that dependency.
+    """
+
+    write_artifact_config(
+        "consumer",
+        {
+            "model": "consumer",
+        },
+        project_root=tmp_path,
+    )
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="geometry",
+    )
+
+    assert (
+        has_product_dependency_binding(
+            "consumer",
+            dependency,
+            project_root=tmp_path,
+        )
+        is False
+    )
+
+
+def test_has_product_dependency_binding_returns_true_when_configured(
+    tmp_path: Path,
+) -> None:
+    """
+    A configured declarative product dependency is active.
+
+    Binding presence is determined by artifact configuration without
+    resolving or validating the complete binding.
+    """
+
+    write_artifact_config(
+        "consumer",
+        {
+            "model": "consumer",
+            "product_dependencies": {
+                "geometry": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "geometry",
+                    "artifact": "nydeli",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="geometry",
+    )
+
+    assert (
+        has_product_dependency_binding(
+            "consumer",
+            dependency,
+            project_root=tmp_path,
+        )
+        is True
+    )
 
 
 def test_get_product_dependency_binding(

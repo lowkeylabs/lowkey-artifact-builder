@@ -704,6 +704,55 @@ def get_realization_names(
     return tuple(realizations)
 
 
+def has_product_dependency_binding(
+    artifact_id: str,
+    dependency: ProductDependencySpec,
+    *,
+    project_root: Path | str | None = None,
+) -> bool:
+    """
+    Return whether an artifact configures a binding for one product dependency.
+
+    ProductDependencySpec declares a potential dependency relationship.
+    Artifact configuration activates that relationship by supplying a
+    concrete producer binding.
+
+    This function tests only whether the binding is present. Validation
+    of the configured binding remains the responsibility of
+    get_product_dependency_binding().
+    """
+
+    _validate_artifact_id(
+        artifact_id,
+    )
+
+    root = _project_root(
+        project_root,
+    )
+
+    artifact_document = load_artifact_config(
+        artifact_id,
+        project_root=root,
+    )
+
+    product_dependencies = artifact_document.get(
+        "product_dependencies",
+    )
+
+    if product_dependencies is None:
+        return False
+
+    if not isinstance(
+        product_dependencies,
+        Mapping,
+    ):
+        raise ConfigError(
+            "The [product_dependencies] section in artifact.toml must be a TOML table."
+        )
+
+    return dependency.product in product_dependencies
+
+
 def get_product_dependency_binding(
     artifact_id: str,
     dependency: ProductDependencySpec,
@@ -713,10 +762,10 @@ def get_product_dependency_binding(
     """
     Resolve one configured product dependency binding.
 
-    A ProductDependencySpec identifies the definition-level product
-    required by a consumer model. Artifact configuration binds that
-    dependency to the concrete producer artifact and realization that
-    will supply the product.
+    A ProductDependencySpec identifies a definition-level product
+    dependency declared by a consumer model. Artifact configuration binds
+    that dependency to the concrete producer artifact and realization
+    that will supply the product.
 
     Product dependency bindings are keyed by the required product name
     in the artifact's [product_dependencies] table.

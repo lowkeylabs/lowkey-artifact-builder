@@ -25,6 +25,7 @@ from lowkey_artifact_builder.config.config import (
     get_product_dependency_binding,
     get_realization_names,
     get_resolver,
+    has_product_dependency_binding,
     load_artifact_config,
     update_artifact_config,
     write_artifact_config,
@@ -41,6 +42,7 @@ __all__ = [
     "load_artifact_config",
     "update_artifact_config",
     "get_product_dependency_binding",
+    "has_product_dependency_binding",
     "write_artifact_config",
     "configure_artifact",
 ]
