@@ -37,6 +37,18 @@ def _write_vector_manifest(
         exist_ok=True,
     )
 
+    envelope = path.parent / "envelope.svg"
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 16 12">'
+            '<rect x="2" y="1" width="12" height="10"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
     path.write_text(
         json.dumps(
             {
@@ -44,6 +56,7 @@ def _write_vector_manifest(
                     "width": 16.0,
                     "height": 12.0,
                 },
+                "envelope": "envelope.svg",
                 "products": [
                     {
                         "index": 1,
@@ -339,6 +352,68 @@ def test_load_registered_artwork_reads_common_registered_extent(
     assert artwork.registered_extent.height == 12.0
 
 
+def test_load_registered_artwork_resolves_envelope_beside_manifest(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork exposes its envelope through the manifest contract.
+
+    Shape resolves the envelope relative to the supplied vector manifest
+    rather than reconstructing an Artwork stage path.
+    """
+
+    manifest = tmp_path / "arbitrary-location" / "products.json"
+
+    _write_vector_manifest(
+        manifest,
+    )
+
+    artwork = compose.load_registered_artwork(
+        manifest,
+    )
+
+    assert artwork.envelope == manifest.parent / "envelope.svg"
+
+
+def test_load_registered_artwork_requires_declared_envelope(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork requires the envelope published by its manifest.
+
+    Shape does not infer Artwork occupancy from individual component bounds.
+    """
+
+    manifest = tmp_path / "vector" / "products.json"
+
+    _write_vector_manifest(
+        manifest,
+    )
+
+    data = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    del data["envelope"]
+
+    manifest.write_text(
+        json.dumps(
+            data,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="envelope",
+    ):
+        compose.load_registered_artwork(
+            manifest,
+        )
+
+
 # =========================================================
 # Registered Shape interior region
 # =========================================================
@@ -485,6 +560,7 @@ def test_registered_artwork_transform_is_derived_from_common_extent() -> None:
             width=16.0,
             height=12.0,
         ),
+        envelope=Path("envelope.svg"),
         components=(),
     )
 
@@ -512,6 +588,7 @@ def test_registered_artwork_fit_preserves_aspect_ratio() -> None:
             width=16.0,
             height=12.0,
         ),
+        envelope=Path("envelope.svg"),
         components=(),
     )
 
@@ -539,6 +616,7 @@ def test_registered_artwork_fit_centers_common_extent() -> None:
             width=16.0,
             height=12.0,
         ),
+        envelope=Path("envelope.svg"),
         components=(),
     )
 
@@ -570,6 +648,7 @@ def test_registered_artwork_components_share_one_transform(
             width=16.0,
             height=12.0,
         ),
+        envelope=tmp_path / Path("envelope.svg"),
         components=(
             compose.RegisteredArtworkComponent(
                 index=1,

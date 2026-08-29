@@ -67,9 +67,13 @@ class RegisteredArtworkComponent:
 class RegisteredArtwork:
     """
     Registered Artwork supplied to Shape through an Artwork vector manifest.
+
+    The envelope and every component share the common registered coordinate
+    system declared by registered_extent.
     """
 
     registered_extent: RegisteredExtent
+    envelope: Path
     components: tuple[RegisteredArtworkComponent, ...]
 
 
@@ -768,11 +772,11 @@ def load_registered_artwork(
     """
     Load registered Artwork from its declared vector manifest.
 
-    Component membership is determined exclusively by the manifest.
-    Component paths are resolved relative to the manifest location.
+    The envelope and component membership are determined exclusively by the
+    manifest. Their paths are resolved relative to the manifest location.
 
-    This boundary does not inspect component payloads or independently
-    calculate their geometry.
+    This boundary does not inspect registered geometry or independently
+    calculate component bounds.
     """
 
     manifest = _load_manifest(
@@ -783,6 +787,11 @@ def load_registered_artwork(
         manifest,
     )
 
+    envelope = _load_envelope(
+        manifest,
+        manifest_path=manifest_path,
+    )
+
     components = _load_components(
         manifest,
         manifest_path=manifest_path,
@@ -790,6 +799,7 @@ def load_registered_artwork(
 
     return RegisteredArtwork(
         registered_extent=registered_extent,
+        envelope=envelope,
         components=components,
     )
 
@@ -852,6 +862,30 @@ def _load_registered_extent(
         width=float(width),
         height=float(height),
     )
+
+
+def _load_envelope(
+    manifest: dict[str, Any],
+    *,
+    manifest_path: Path,
+) -> Path:
+    """
+    Read the registered Artwork envelope declared by the manifest.
+
+    The envelope path is resolved relative to the manifest location.
+    """
+
+    relative_path = manifest.get(
+        "envelope",
+    )
+
+    if not isinstance(
+        relative_path,
+        str,
+    ):
+        raise ValueError("Registered Artwork manifest requires an envelope.")
+
+    return manifest_path.parent / relative_path
 
 
 def _load_components(
