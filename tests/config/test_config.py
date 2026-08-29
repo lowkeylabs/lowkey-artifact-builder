@@ -579,7 +579,7 @@ def test_shape_model_defaults_are_resolved(
     tmp_path: Path,
 ) -> None:
     """
-    Shape parameters.toml contributes structural and color defaults.
+    Shape parameters.toml contributes structural, color, and Artwork defaults.
 
     The baseline Shape defaults to circle geometry with polygon defaults
     available for side count and rotation. Physical size and base thickness
@@ -589,6 +589,10 @@ def test_shape_model_defaults_are_resolved(
     the default artifact. Ridge raise defaults to 1 mm and integrated is the
     default ridge style if a ridge is enabled. Ridge color is derived from the
     resolved base color rather than independently defaulted.
+
+    Incorporated Artwork defaults to a 1 mm Shape-owned physical raise.
+    Artwork fill is disabled by default through the absence of a configured
+    fill color.
     """
 
     resolver = get_resolver(
@@ -610,6 +614,9 @@ def test_shape_model_defaults_are_resolved(
     assert resolver("shape_outer_ridge_style") == "integrated"
     assert resolver("shape_outer_ridge_color") == "white"
 
+    assert resolver("shape_artwork_raise") == 1.0
+    assert not resolver.has("shape_artwork_fill_color")
+
     assert resolver.source("shape_geometry") == "model"
     assert resolver.source("shape_sides") == "model"
     assert resolver.source("shape_rotation") == "model"
@@ -622,6 +629,8 @@ def test_shape_model_defaults_are_resolved(
     assert resolver.source("shape_outer_ridge_raise") == "model"
     assert resolver.source("shape_outer_ridge_style") == "model"
     assert resolver.source("shape_outer_ridge_color") == "derived"
+
+    assert resolver.source("shape_artwork_raise") == "model"
 
 
 # =========================================================

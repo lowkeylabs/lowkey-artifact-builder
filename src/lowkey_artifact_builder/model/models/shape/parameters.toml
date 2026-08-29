@@ -121,3 +121,17 @@ shape_outer_ridge_raise = 1.0
 #
 
 shape_outer_ridge_style = "integrated"
+
+# =========================================================
+# Incorporated Artwork
+# =========================================================
+
+#
+# Physical height of incorporated Artwork above the top
+# of the Shape base, in millimeters.
+#
+# This value belongs to Shape dimensionalization and is
+# independent of standalone Artwork extrusion parameters.
+#
+
+shape_artwork_raise = 1.0
