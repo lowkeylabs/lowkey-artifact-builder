@@ -74,17 +74,41 @@ def test_shape_declares_registered_composition_stage() -> None:
     assert compose_stage.name == "compose"
 
 
-def test_shape_compose_has_no_external_product_dependencies() -> None:
+def test_shape_compose_declares_registered_artwork_dependency() -> None:
     """
-    Baseline Shape composition requires no products from another model.
+    Shape composition declares registered Artwork as its external product dependency.
 
-    A Shape without features or dependent artifacts is a complete
-    independently buildable artifact.
+    The dependency identifies the reusable Artwork vector manifest by logical
+    model, stage, and product identity without embedding artifact identity,
+    realization identity, or generated filesystem paths.
     """
 
     compose_stage = _compose_stage()
 
-    assert compose_stage.product_dependencies == ()
+    assert len(compose_stage.product_dependencies) == 1
+
+    dependency = compose_stage.product_dependencies[0]
+
+    assert dependency.model == "artwork"
+    assert dependency.stage == "vector"
+    assert dependency.product == "manifest"
+
+
+def test_shape_artwork_dependency_belongs_only_to_compose() -> None:
+    """
+    Registered Artwork enters Shape through registered composition.
+
+    Structural Shape generation remains independent of Artwork, while
+    extrusion and packaging consume the resulting Shape-local dependency
+    closure rather than declaring their own Artwork dependencies.
+    """
+
+    dependencies_by_stage = {stage.name: stage.product_dependencies for stage in MODEL.stages}
+
+    assert dependencies_by_stage["structure"] == ()
+    assert len(dependencies_by_stage["compose"]) == 1
+    assert dependencies_by_stage["extrude"] == ()
+    assert dependencies_by_stage["package"] == ()
 
 
 # =========================================================

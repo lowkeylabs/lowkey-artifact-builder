@@ -17,6 +17,7 @@ from __future__ import annotations
 from lowkey_artifact_builder.model.registry import ModelRegistry
 from lowkey_artifact_builder.model.specs import (
     ModelSpec,
+    ProductDependencySpec,
     ProductSpec,
     StageSpec,
 )
@@ -51,7 +52,13 @@ MODEL = ModelSpec(
             name="compose",
             description=("Compose registered structural Shape and Artwork geometry."),
             dependencies=("structure",),
-            product_dependencies=(),
+            product_dependencies=(
+                ProductDependencySpec(
+                    model="artwork",
+                    stage="vector",
+                    product="manifest",
+                ),
+            ),
             parameters=(
                 "shape_size",
                 "shape_outer_ridge_width",

@@ -294,22 +294,34 @@ class ProductSpec:
 )
 class ProductDependencySpec:
     """
-    Identify a declarative dependency on a model product.
+    `ProductDependencySpec` declares a product dependency that a consuming stage
+    knows how to consume.
 
-    A product dependency identifies the model, stage, and product that
-    provide a persistent product required by a consuming stage.
+    A product dependency identifies the model, stage, and product that provide a
+    persistent product compatible with the consuming stage.
 
-    ProductDependencySpec belongs to the declarative model definition.
-    It therefore identifies a producer independently of any particular
-    artifact or realization.
+    `ProductDependencySpec` belongs to the declarative model definition. It
+    therefore identifies a producer independently of any particular artifact or
+    realization.
 
-    Artifact and realization identity are runtime concerns represented
-    by ProductRef after a declarative dependency has been bound to a
-    configured artifact realization.
+    Declaring a product dependency describes a potential dependency relationship.
+    It does not by itself require every realization of the consuming model to use
+    that dependency.
 
-    ProductDependencySpec contains no filesystem information. Resolving
-    the dependency to a concrete product location belongs to planning
-    and product resolution.
+    A dependency participates in a particular artifact realization when artifact
+    configuration binds it to a concrete producer artifact and realization through
+    `ProductDependencyBinding`.
+
+    An unbound product dependency does not participate in that realization's
+    dependency closure.
+
+    Artifact and realization identity are runtime concerns represented by
+    `ProductDependencyBinding` and `ProductRef` after the declarative dependency
+    has been bound to a configured producer.
+
+    `ProductDependencySpec` contains no filesystem information. Resolving a bound
+    dependency to a concrete product location belongs to planning and product
+    resolution.
     """
 
     model: str
@@ -325,10 +337,18 @@ class ProductDependencySpec:
 )
 class ProductDependencyBinding:
     """
-    Concrete producer binding for one declarative product dependency.
+    `ProductDependencyBinding` binds one declarative product dependency to a
+    concrete producer.
 
-    The dependency supplies definition-level producer identity. Artifact
-    and realization identify the configured producer instance.
+    The dependency supplies definition-level producer identity. Artifact and
+    realization identify the configured producer instance.
+
+    A binding activates the declared dependency for a particular artifact
+    realization. The bound product and its required dependency closure therefore
+    participate in realization planning.
+
+    The absence of a binding means that the declared dependency does not
+    participate in that artifact realization.
     """
 
     dependency: ProductDependencySpec

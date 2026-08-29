@@ -2140,13 +2140,50 @@ graph.
 
 ---
 
+
 # 32. Configuration Versus Dependency Wiring
+
+Model specifications declare the product dependencies that stages know how to
+consume.
+
+A declared product dependency identifies the producer model, stage, and product
+contract independently of any particular producer artifact or realization.
+
+A product dependency binding associates that declared dependency with a
+concrete producer artifact and realization for a particular configured
+artifact.
+
+Conceptually:
+
+```text
+ProductDependencySpec
+        │
+        │ configured for an artifact realization
+        ▼
+ProductDependencyBinding
+        │
+        ▼
+ProductRef
+```
+
+A declared product dependency does not by itself require that every realization
+of the consuming model use that dependency.
+
+An unbound product dependency does not participate in that realization's
+dependency closure.
+
+A bound product dependency participates normally in dependency resolution and
+causes the required producer product and its transitive prerequisites to become
+part of the Realization Graph.
+
+This distinction allows a model to describe its complete potential dependency
+relationships while individual artifact realizations use only the relationships
+required by their configured composition.
 
 Configuration describes what should be produced and how model behavior should
 be parameterized.
 
-Normal users should not need to manually specify routine internal
-dependencies.
+Normal users should not need to manually specify routine internal dependencies.
 
 Prefer:
 
@@ -2157,10 +2194,11 @@ variant = "ridged"
 diameter = 100.0
 ```
 
-where the coaster model already knows that it requires registered artwork.
+where ordinary configuration can establish the expected registered-artwork
+binding without requiring the user to understand the internal dependency graph.
 
-Explicit logical product references should be available for advanced
-composition:
+Explicit logical product references remain available for advanced composition
+and producer selection:
 
 ```toml
 source = "another-artifact:artwork:default:vector:colors"
@@ -2171,6 +2209,7 @@ Avoid generated filesystem paths:
 ```toml
 source = "artifacts/another-artifact/artwork/default/30-vector/color-1.svg"
 ```
+
 
 ---
 
