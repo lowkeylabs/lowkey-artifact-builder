@@ -38,9 +38,13 @@ from .context import (
 from .operation import (
     execute_artifact_stage as _execute_artifact_stage,
 )
+from .plan import (
+    create_product_dependency_build_plan,
+)
 from .specs import (
     BuildPlan,
     PlannedInput,
+    PlannedProductDependency,
     PlannedStage,
     StageContext,
     StageContextError,
@@ -72,11 +76,16 @@ def execute_build(
     """
     Execute an artifact build plan.
 
-    The complete declared artifact workspace is created before any
-    stage executes.
+    Bound product dependencies are realized before the consuming
+    artifact executes. An already-existing dependency product is reused
+    directly. A missing dependency is produced through its own targeted
+    BuildPlan.
 
-    External filesystem inputs are then materialized into their
-    artifact-owned locations.
+    The complete declared artifact workspace is then created before any
+    local stage executes.
+
+    External filesystem inputs are materialized into their artifact-owned
+    locations.
 
     Stages execute in planned order. Before each stage executes, the
     engine constructs its StageContext using the same artifact-specific
@@ -86,10 +95,15 @@ def execute_build(
     implementation execution, and declared-product verification are
     delegated to the common independent stage execution boundary.
 
-    Failure to prepare the workspace, materialize an input, construct
-    an execution context, execute a stage, or produce its declared
-    products stops the build immediately.
+    Failure to realize a required product dependency, prepare the
+    workspace, materialize an input, construct an execution context,
+    execute a stage, or produce its declared products stops the build
+    immediately.
     """
+
+    _realize_product_dependencies(
+        plan,
+    )
 
     _prepare_workspace(plan)
 
@@ -168,6 +182,74 @@ def execute_artifact_stage(
         StageExecutionError,
     ) as exc:
         raise BuildError(str(exc)) from exc
+
+
+# =========================================================
+# Product dependency realization
+# =========================================================
+
+
+def _realize_product_dependencies(
+    plan: BuildPlan,
+) -> None:
+    """
+    Ensure every bound external product dependency exists.
+
+    Existing dependency products are reused directly.
+
+    A missing dependency is realized through a product-targeted producer
+    BuildPlan. Recursive execution allows the producer realization to
+    satisfy any product dependencies of its own before producing the
+    requested product.
+
+    The dependency path resolved during consumer planning remains the
+    execution authority for determining whether the required product is
+    available.
+    """
+
+    for planned_dependency in plan.planned_product_dependencies:
+        _realize_product_dependency(
+            plan,
+            planned_dependency,
+        )
+
+
+def _realize_product_dependency(
+    plan: BuildPlan,
+    planned_dependency: PlannedProductDependency,
+) -> None:
+    """
+    Ensure one planned product dependency exists.
+
+    A dependency already present at its planned path requires no producer
+    planning or execution.
+
+    Otherwise, create and execute the targeted producer plan, then verify
+    that execution materialized the exact product required by the
+    consumer.
+    """
+
+    if planned_dependency.path.is_file():
+        return
+
+    producer_plan = create_product_dependency_build_plan(
+        planned_dependency,
+        project_root=plan.project_root,
+    )
+
+    execute_build(
+        producer_plan,
+    )
+
+    if not planned_dependency.path.is_file():
+        product_ref = planned_dependency.product_ref
+
+        raise BuildError(
+            f"Cannot realize product dependency "
+            f"{product_ref}: "
+            f"producer execution did not create "
+            f"{planned_dependency.path}."
+        )
 
 
 # =========================================================

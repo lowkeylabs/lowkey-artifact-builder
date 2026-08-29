@@ -18,6 +18,7 @@ import pytest
 from lowkey_artifact_builder.engine import (
     BuildError,
     BuildPlan,
+    PlannedProductDependency,
     StageContext,
     execute_artifact_stage,
     execute_build,
@@ -27,7 +28,11 @@ from lowkey_artifact_builder.engine.registry import StageRegistry
 from lowkey_artifact_builder.engine.stage import (
     StageInputError,
 )
-from lowkey_artifact_builder.model import ProductRef
+from lowkey_artifact_builder.model import (
+    ProductDependencyBinding,
+    ProductDependencySpec,
+    ProductRef,
+)
 
 # =========================================================
 # Build workspace
@@ -431,6 +436,217 @@ def test_execute_build_target_creates_target_and_dependency_products(
     assert not (realization_dir / "40-extrude" / "products.json").exists()
 
     assert not (realization_dir / "50-package" / "artifact.3mf").exists()
+
+
+def test_execute_build_realizes_product_dependency_before_consumer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    A missing bound product dependency is realized before its consumer.
+
+    Dependency execution targets the required producer product and therefore
+    executes only the producer closure needed to make that product available.
+    """
+
+    _create_source(tmp_path)
+
+    producer_target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="manifest",
+    )
+
+    producer_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+        targets=(producer_target,),
+    )
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="manifest",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="example",
+        realization="default",
+    )
+
+    dependency_path = (
+        producer_plan.artifact_dir / "artwork" / "default" / "30-vector" / "products.json"
+    )
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=dependency_path,
+    )
+
+    consumer_plan = BuildPlan(
+        artifact_id="consumer",
+        model=producer_plan.model,
+        realization_name="default",
+        resolver=producer_plan.resolver,
+        project_root=tmp_path,
+        artifact_dir=tmp_path / "artifacts" / "consumer",
+        stages=(),
+        product_dependencies=(dependency,),
+        product_dependency_bindings=(binding,),
+        planned_product_dependencies=(planned_dependency,),
+    )
+
+    executed: list[str] = []
+
+    def implementation(
+        context: StageContext,
+    ) -> None:
+        executed.append(context.stage_name)
+
+        _create_declared_outputs(context)
+
+    _install_stage_implementation(
+        monkeypatch,
+        implementation,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.build.create_product_dependency_build_plan",
+        lambda dependency, *, project_root: producer_plan,
+        raising=False,
+    )
+
+    execute_build(
+        consumer_plan,
+    )
+
+    assert executed == [
+        "prepare",
+        "raster",
+        "vector",
+    ]
+
+    assert dependency_path.is_file()
+
+    assert not (producer_plan.artifact_dir / "artwork" / "default" / "40-extrude").exists()
+
+    assert not (producer_plan.artifact_dir / "artwork" / "default" / "50-package").exists()
+
+
+def test_execute_build_reuses_existing_product_dependency(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    An existing bound product dependency is reused without producer execution.
+
+    A current reusable product satisfies the dependency directly rather than
+    causing its producer closure to execute again.
+    """
+
+    _create_source(tmp_path)
+
+    producer_target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="manifest",
+    )
+
+    producer_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+        targets=(producer_target,),
+    )
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="manifest",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="example",
+        realization="default",
+    )
+
+    dependency_path = (
+        producer_plan.artifact_dir / "artwork" / "default" / "30-vector" / "products.json"
+    )
+
+    dependency_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    dependency_path.touch()
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=dependency_path,
+    )
+
+    consumer_plan = BuildPlan(
+        artifact_id="consumer",
+        model=producer_plan.model,
+        realization_name="default",
+        resolver=producer_plan.resolver,
+        project_root=tmp_path,
+        artifact_dir=tmp_path / "artifacts" / "consumer",
+        stages=(),
+        product_dependencies=(dependency,),
+        product_dependency_bindings=(binding,),
+        planned_product_dependencies=(planned_dependency,),
+    )
+
+    executed: list[str] = []
+
+    def implementation(
+        context: StageContext,
+    ) -> None:
+        executed.append(context.stage_name)
+
+        _create_declared_outputs(context)
+
+    _install_stage_implementation(
+        monkeypatch,
+        implementation,
+    )
+
+    producer_planning_requested = False
+
+    def create_dependency_plan(
+        dependency: PlannedProductDependency,
+        *,
+        project_root: Path,
+    ) -> BuildPlan:
+        nonlocal producer_planning_requested
+
+        producer_planning_requested = True
+
+        return producer_plan
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.build.create_product_dependency_build_plan",
+        create_dependency_plan,
+        raising=False,
+    )
+
+    execute_build(
+        consumer_plan,
+    )
+
+    assert dependency_path.is_file()
+
+    assert executed == []
+
+    assert producer_planning_requested is False
 
 
 # =========================================================
