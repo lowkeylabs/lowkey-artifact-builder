@@ -25,6 +25,53 @@ from lowkey_artifact_builder.model.models.shape.stages import compose
 # =========================================================
 
 
+def _configure_compose_inputs(
+    context: Mock,
+    *,
+    structure: Path,
+    artwork_manifest: Path | None = None,
+) -> None:
+    """
+    Configure declared Shape compose-stage inputs.
+
+    Registered Artwork participates only when its external product dependency
+    is bound into the stage context.
+    """
+
+    inputs = {
+        "structure.structure": structure,
+    }
+
+    if artwork_manifest is not None:
+        inputs["artwork.vector.manifest"] = artwork_manifest
+
+    context.input.side_effect = inputs.__getitem__
+
+
+def _configure_compose_outputs(
+    context: Mock,
+    *,
+    composition: Path,
+) -> Path:
+    """
+    Configure canonical Shape compose-stage outputs.
+
+    Return the persistent composition manifest path for tests that need to
+    inspect it.
+    """
+
+    manifest = composition.parent / f"{composition.stem}-products.json"
+
+    outputs = {
+        "composition": composition,
+        "manifest": manifest,
+    }
+
+    context.output.side_effect = outputs.__getitem__
+
+    return manifest
+
+
 def _write_vector_manifest(
     path: Path,
 ) -> None:
@@ -1156,7 +1203,10 @@ def test_compose_stage_materializes_registered_composition_manifest(
     context = Mock(
         spec=StageContext,
     )
-    context.input.return_value = structure_input
+    _configure_compose_inputs(
+        context,
+        structure=structure_input,
+    )
 
     outputs = {
         "composition": composition_output,
@@ -1202,7 +1252,10 @@ def test_compose_stage_manifest_declares_structural_composition(
     context = Mock(
         spec=StageContext,
     )
-    context.input.return_value = structure_input
+    _configure_compose_inputs(
+        context,
+        structure=structure_input,
+    )
 
     outputs = {
         "composition": composition_output,
@@ -1250,8 +1303,14 @@ def test_compose_stage_materializes_registered_composition(
     context = Mock(
         spec=StageContext,
     )
-    context.input.return_value = structure_input
-    context.output.return_value = output
+    _configure_compose_inputs(
+        context,
+        structure=structure_input,
+    )
+    _configure_compose_outputs(
+        context,
+        composition=output,
+    )
 
     _configure_shape_resolver(
         context,
@@ -1261,12 +1320,15 @@ def test_compose_stage_materializes_registered_composition(
         context,
     )
 
-    context.input.assert_called_once_with(
-        "structure.structure",
-    )
-    context.output.assert_called_once_with(
-        "composition",
-    )
+    assert context.input.call_args_list == [
+        call("structure.structure"),
+        call("artwork.vector.manifest"),
+    ]
+
+    assert context.output.call_args_list == [
+        call("composition"),
+        call("manifest"),
+    ]
 
     assert output.is_file()
 
@@ -1291,8 +1353,15 @@ def test_compose_stage_preserves_registered_shape_geometry(
     context = Mock(
         spec=StageContext,
     )
-    context.input.return_value = structure_input
-    context.output.return_value = output
+    _configure_compose_inputs(
+        context,
+        structure=structure_input,
+    )
+
+    _configure_compose_outputs(
+        context,
+        composition=output,
+    )
 
     _configure_shape_resolver(
         context,
@@ -1341,8 +1410,14 @@ def test_compose_stage_resolves_only_registered_partition_parameters(
     context = Mock(
         spec=StageContext,
     )
-    context.input.return_value = structure_input
-    context.output.return_value = output
+    _configure_compose_inputs(
+        context,
+        structure=structure_input,
+    )
+    _configure_compose_outputs(
+        context,
+        composition=output,
+    )
 
     resolver = _configure_shape_resolver(
         context,
@@ -1385,8 +1460,14 @@ def test_compose_circle_integrated_ridge_preserves_outer_boundary(
     context = Mock(
         spec=StageContext,
     )
-    context.input.return_value = structure_input
-    context.output.return_value = output
+    _configure_compose_inputs(
+        context,
+        structure=structure_input,
+    )
+    _configure_compose_outputs(
+        context,
+        composition=output,
+    )
 
     _configure_shape_resolver(
         context,
@@ -1450,8 +1531,14 @@ def test_compose_circle_ridge_width_is_relative_to_shape_size(
         context = Mock(
             spec=StageContext,
         )
-        context.input.return_value = structure_input
-        context.output.return_value = output
+        _configure_compose_inputs(
+            context,
+            structure=structure_input,
+        )
+        _configure_compose_outputs(
+            context,
+            composition=output,
+        )
 
         _configure_shape_resolver(
             context,
@@ -1500,8 +1587,14 @@ def test_compose_circle_zero_width_produces_no_ridge_partition(
     context = Mock(
         spec=StageContext,
     )
-    context.input.return_value = structure_input
-    context.output.return_value = output
+    _configure_compose_inputs(
+        context,
+        structure=structure_input,
+    )
+    _configure_compose_outputs(
+        context,
+        composition=output,
+    )
 
     _configure_shape_resolver(
         context,
@@ -1547,8 +1640,14 @@ def test_compose_square_ridge_preserves_outer_boundary(
     context = Mock(
         spec=StageContext,
     )
-    context.input.return_value = structure_input
-    context.output.return_value = output
+    _configure_compose_inputs(
+        context,
+        structure=structure_input,
+    )
+    _configure_compose_outputs(
+        context,
+        composition=output,
+    )
 
     _configure_shape_resolver(
         context,
@@ -1619,8 +1718,14 @@ def test_compose_square_ridge_style_preserves_registered_boundaries(
         context = Mock(
             spec=StageContext,
         )
-        context.input.return_value = structure_input
-        context.output.return_value = output
+        _configure_compose_inputs(
+            context,
+            structure=structure_input,
+        )
+        _configure_compose_outputs(
+            context,
+            composition=output,
+        )
 
         _configure_shape_resolver(
             context,
@@ -1701,8 +1806,14 @@ def test_compose_polygon_ridge_preserves_outer_boundary(
     context = Mock(
         spec=StageContext,
     )
-    context.input.return_value = structure_input
-    context.output.return_value = output
+    _configure_compose_inputs(
+        context,
+        structure=structure_input,
+    )
+    _configure_compose_outputs(
+        context,
+        composition=output,
+    )
 
     _configure_shape_resolver(
         context,
@@ -1768,8 +1879,14 @@ def test_compose_polygon_ridge_offsets_edges_perpendicularly(
     context = Mock(
         spec=StageContext,
     )
-    context.input.return_value = structure_input
-    context.output.return_value = output
+    _configure_compose_inputs(
+        context,
+        structure=structure_input,
+    )
+    _configure_compose_outputs(
+        context,
+        composition=output,
+    )
 
     _configure_shape_resolver(
         context,
@@ -1880,8 +1997,14 @@ def test_compose_polygon_ridge_style_preserves_registered_boundaries(
         context = Mock(
             spec=StageContext,
         )
-        context.input.return_value = structure_input
-        context.output.return_value = output
+        _configure_compose_inputs(
+            context,
+            structure=structure_input,
+        )
+        _configure_compose_outputs(
+            context,
+            composition=output,
+        )
 
         _configure_shape_resolver(
             context,
@@ -2055,3 +2178,160 @@ def test_negative_outer_ridge_width_is_rejected(
         )
 
     assert not composition_path.exists()
+
+
+def test_compose_manifest_preserves_registered_artwork_membership(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape composition persists incorporated Artwork component membership.
+
+    Dynamic Artwork membership comes from the producer manifest and is
+    retained explicitly so downstream stages never discover components by
+    scanning directories.
+    """
+
+    artwork_dir = tmp_path / "artwork"
+    artwork_dir.mkdir()
+
+    artwork_manifest = artwork_dir / "products.json"
+    _write_vector_manifest(
+        artwork_manifest,
+    )
+
+    structure_input = tmp_path / "structure.svg"
+    composition_output = tmp_path / "composition.svg"
+    manifest_output = tmp_path / "shape-products.json"
+
+    _write_registered_structure(
+        structure_input,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    inputs = {
+        "structure.structure": structure_input,
+        "artwork.vector.manifest": artwork_manifest,
+    }
+    context.input.side_effect = inputs.__getitem__
+
+    outputs = {
+        "composition": composition_output,
+        "manifest": manifest_output,
+    }
+    context.output.side_effect = outputs.__getitem__
+
+    _configure_shape_resolver(
+        context,
+    )
+
+    compose.execute(
+        context,
+    )
+
+    manifest = json.loads(
+        manifest_output.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert manifest["artwork"]["components"] == [
+        {
+            "index": 1,
+            "path": "white.svg",
+            "name": "white",
+            "color": {
+                "r": 255,
+                "g": 255,
+                "b": 255,
+                "a": 255,
+            },
+        },
+        {
+            "index": 2,
+            "path": "black.svg",
+            "name": "black",
+            "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 255,
+            },
+        },
+    ]
+
+
+def test_compose_manifest_records_one_common_artwork_transform(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape composition persists one common transformation for Artwork.
+
+    The transformation belongs to the registered Artwork collection rather
+    than to individual components so their producer-established registration
+    cannot diverge downstream.
+    """
+
+    artwork_dir = tmp_path / "artwork"
+    artwork_dir.mkdir()
+
+    artwork_manifest = artwork_dir / "products.json"
+    _write_vector_manifest(
+        artwork_manifest,
+    )
+
+    structure_input = tmp_path / "structure.svg"
+    composition_output = tmp_path / "composition.svg"
+    manifest_output = tmp_path / "shape-products.json"
+
+    _write_registered_structure(
+        structure_input,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    inputs = {
+        "structure.structure": structure_input,
+        "artwork.vector.manifest": artwork_manifest,
+    }
+    context.input.side_effect = inputs.__getitem__
+
+    outputs = {
+        "composition": composition_output,
+        "manifest": manifest_output,
+    }
+    context.output.side_effect = outputs.__getitem__
+
+    _configure_shape_resolver(
+        context,
+    )
+
+    compose.execute(
+        context,
+    )
+
+    manifest = json.loads(
+        manifest_output.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    artwork = compose.load_registered_artwork(
+        artwork_manifest,
+    )
+    expected = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition_output,
+    )
+
+    assert manifest["artwork"]["transform"] == {
+        "scale": expected.scale,
+        "translate_x": expected.translate_x,
+        "translate_y": expected.translate_y,
+    }
+
+    assert all("transform" not in component for component in manifest["artwork"]["components"])

@@ -194,11 +194,12 @@ def execute(
     Composition consumes registered Shape structure and establishes structural
     partition geometry in the same registered coordinate system.
 
+    When registered Artwork participates, its declared component membership
+    and one common placement transformation are retained by the persistent
+    composition manifest.
+
     Physical ridge width is interpreted relative to physical Shape size so the
     resulting partition boundary can be represented in registered space.
-
-    The persistent composition manifest records the registered products
-    available to downstream stages without requiring filesystem discovery.
 
     Physical Z dimensions remain downstream.
     """
@@ -241,9 +242,29 @@ def execute(
             composition_output,
         )
 
+    artwork: RegisteredArtwork | None = None
+    artwork_transform: RegisteredArtworkTransform | None = None
+
+    try:
+        artwork_manifest = context.input(
+            "artwork.vector.manifest",
+        )
+    except KeyError:
+        pass
+    else:
+        artwork = load_registered_artwork(
+            artwork_manifest,
+        )
+        artwork_transform = fit_registered_artwork_to_shape(
+            artwork,
+            composition=composition_output,
+        )
+
     _write_composition_manifest(
         manifest_output,
         composition=composition_output,
+        artwork=artwork,
+        artwork_transform=artwork_transform,
     )
 
 
@@ -251,21 +272,31 @@ def _write_composition_manifest(
     path: Path,
     *,
     composition: Path,
+    artwork: RegisteredArtwork | None = None,
+    artwork_transform: RegisteredArtworkTransform | None = None,
 ) -> None:
     """
     Write the persistent registered Shape composition manifest.
 
-    The manifest declares registered composition membership explicitly so
-    downstream stages do not discover dynamic products by scanning the
-    compose-stage directory.
-
-    Artwork is explicitly absent until registered Artwork participates in
-    this composition.
+    Structural composition and optional registered Artwork membership are
+    declared explicitly so downstream stages do not discover products by
+    scanning stage directories.
     """
+
+    artwork_manifest: dict[str, Any] | None = None
+
+    if artwork is not None:
+        if artwork_transform is None:
+            raise ValueError("Registered Artwork requires a composition transform.")
+
+        artwork_manifest = _registered_artwork_manifest(
+            artwork,
+            transform=artwork_transform,
+        )
 
     manifest = {
         "composition": composition.name,
-        "artwork": None,
+        "artwork": artwork_manifest,
     }
 
     path.write_text(
@@ -275,6 +306,37 @@ def _write_composition_manifest(
         ),
         encoding="utf-8",
     )
+
+
+def _registered_artwork_manifest(
+    artwork: RegisteredArtwork,
+    *,
+    transform: RegisteredArtworkTransform,
+) -> dict[str, Any]:
+    """
+    Serialize incorporated registered Artwork for persistent composition.
+
+    Component membership and semantic metadata are preserved while the common
+    placement transformation is recorded once for the complete registered
+    Artwork collection.
+    """
+
+    return {
+        "transform": {
+            "scale": transform.scale,
+            "translate_x": transform.translate_x,
+            "translate_y": transform.translate_y,
+        },
+        "components": [
+            {
+                "index": component.index,
+                "path": component.path.name,
+                "name": component.name,
+                "color": component.color,
+            }
+            for component in artwork.components
+        ],
+    }
 
 
 # =========================================================
