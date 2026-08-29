@@ -879,3 +879,97 @@ def test_vector_registration_is_based_on_union_of_all_layers(
     )
 
     assert data["registered_extent"] == 18
+
+
+def test_vector_manifest_contains_no_physical_manufacturing_dimensions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Reusable registered Artwork contains no physical manufacturing dimensions.
+
+    Physical X/Y size and Z extrusion semantics belong to the downstream
+    consumer rather than the registered vector product.
+    """
+
+    raster_directory = tmp_path / "raster"
+
+    raster = raster_directory / "layer.png"
+
+    _write_raster(
+        raster,
+        box=(5, 5, 15, 15),
+    )
+
+    raster_manifest = raster_directory / "products.json"
+
+    _write_raster_manifest(
+        raster_manifest,
+        [
+            {
+                "index": 1,
+                "path": raster.name,
+                "name": "white",
+                "color": _color(
+                    255,
+                    255,
+                    255,
+                ),
+            },
+        ],
+    )
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+
+    def fake_trace_mask(
+        source: Path,
+        output: Path,
+        *,
+        crop: vector.RasterCrop,
+    ) -> None:
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_text(
+            "<svg/>",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        vector,
+        "_trace_mask",
+        fake_trace_mask,
+    )
+
+    context = StubContext(
+        inputs={
+            "raster.manifest": raster_manifest,
+        },
+        outputs={
+            "manifest": vector_manifest,
+        },
+        resolver=_resolver(),
+    )
+
+    vector.execute(context)  # type: ignore[arg-type]
+
+    data = json.loads(
+        vector_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert set(data) == {
+        "registered_extent",
+        "products",
+    }
+
+    for product in data["products"]:
+        assert set(product) == {
+            "index",
+            "path",
+            "name",
+            "color",
+        }

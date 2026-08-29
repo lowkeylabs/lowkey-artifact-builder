@@ -408,229 +408,373 @@ Add optional registered Artwork consumption to Shape.
 This phase exercises the central architecture:
 
 > Source Artwork is interpreted once as reusable registered geometry and is
-> subsequently fitted, dimensionalized, and manufactured by a downstream
-> Shape without repeating upstream interpretation merely because the physical
-> Shape changes.
+> subsequently fitted, composed, dimensionalized, and manufactured by a
+> downstream Shape without repeating upstream interpretation merely because
+> the physical Shape changes.
 
-Shape consumes the registered Artwork product.
+The current repository already contains partial groundwork for this phase:
 
-Shape does not consume the standalone Artwork 3MF.
+- Artwork vectorization produces a persistent registered vector manifest.
+- The Artwork vector manifest records the common `registered_extent`.
+- The manifest identifies each vector component by relative path, semantic
+  color name, RGB representation, and stable component index.
+- Shape composition contains registered-Artwork value types and initial
+  common-transform fitting logic.
+- The build engine supports declarative product dependencies, concrete
+  artifact/realization bindings, cross-model dependencies, and cross-artifact
+  dependencies.
 
-## 2.1 Artwork Dependency Contract
+These existing capabilities are implementation groundwork, not evidence that
+Shape currently consumes Artwork.
 
-Review the Artwork definition and current vector-product manifest before
-declaring Shape's dependency.
+Shape's compose stage currently declares no Artwork product dependency and does
+not yet incorporate a bound Artwork product into its persistent composition.
 
-Establish the exact product contract Shape consumes.
+Phase 2 completes that integration without:
 
-The contract must provide sufficient information for Shape to:
+- introducing generated filesystem paths into configuration;
+- requiring standalone Artwork extrusion or packaging;
+- moving Shape-specific policy into the generic build engine;
+- coupling Shape to Artwork stage implementations;
+- or weakening the independence of registered geometry from physical
+  manufacturing dimensions.
 
-* discover Artwork component membership;
-* identify the common registered coordinate system;
-* determine the registered Artwork envelope;
-* preserve registration;
-* retain semantic component/color identity;
-* locate the component payloads through resolved product information rather
-  than generated global paths.
 
-If the existing Artwork vector product already satisfies this contract, use it
-without changing Artwork.
+## 2.1 Validate the Registered Artwork Consumer Contract
 
-If the contract is incomplete relative to the permanent Artwork definition,
-strengthen the producer contract before adding Shape-specific assumptions.
+Before declaring Shape's dependency, verify that the current Artwork vector
+product satisfies the permanent registered-Artwork contract.
 
-## 2.2 Artwork Dependency Binding
+Tests should establish that the declared Artwork vector manifest provides:
 
-Declare Shape's optional dependency on registered vector Artwork.
+- one common `registered_extent`;
+- stable component membership;
+- one vector payload path for each component;
+- component paths relative to the manifest product location;
+- semantic color identity for every component;
+- RGB representation for every component;
+- sufficient information to load all components without directory scanning;
+- no physical manufacturing size;
+- no physical Z semantics.
+
+Verify that all component payloads participate in the common coordinate system
+represented by `registered_extent`.
+
+The consumer contract belongs to registered Artwork rather than to Shape.
+Shape should consume the published registered representation rather than infer
+Artwork structure from implementation details.
+
+If the current Artwork implementation satisfies this contract, do not change
+the producer merely to support Shape.
+
+If a discrepancy exists between the current vector product and
+`artwork/DEFINITION.md`, repair the producer contract before introducing
+Shape-specific assumptions.
+
+Completion of this slice establishes the tested reusable product contract that
+Shape will consume.
+
+
+## 2.2 Declare and Bind the Optional Artwork Dependency
+
+Declare Shape composition's optional dependency on:
+
+    artwork / vector / manifest
+
+using the existing declarative product-dependency mechanism.
+
+The declarative dependency identifies the producer model, stage, and product.
+Artifact and realization identity are supplied by normal artifact dependency
+binding.
 
 Tests must demonstrate that:
 
-* Shape can exist and build without Artwork;
-* Shape may bind to registered Artwork belonging to the same artifact;
-* Shape may bind to registered Artwork belonging to another artifact;
-* the dependency is represented by logical product identity;
-* dependency resolution supplies the registered Artwork product to Shape;
-* requesting Shape realizes only the required Artwork dependency closure;
-* Artwork `prepare`, `raster`, and `vector` execute when necessary;
-* Artwork `extrude` and `package` are not required;
-* current upstream vector Artwork is reused without unnecessary execution.
+- Shape remains valid and buildable without an Artwork binding;
+- a Shape may bind registered Artwork from the same artifact;
+- a Shape may bind registered Artwork from another artifact;
+- configuration contains logical dependency identity rather than generated
+  product paths;
+- `StageContext` supplies the resolved Artwork vector manifest to Shape;
+- requesting Shape computes the required upstream Artwork dependency closure;
+- Artwork `prepare`, `raster`, and `vector` execute when required;
+- Artwork `extrude` and `package` are not prerequisites merely because Shape
+  consumes registered Artwork;
+- a current registered Artwork vector product is reused rather than rebuilt
+  unnecessarily.
 
-Use the existing cross-model and cross-artifact dependency mechanisms.
+Optionality is part of the contract. Adding registered Artwork support must not
+turn Artwork into a mandatory prerequisite for every Shape.
 
-Do not introduce Shape-specific behavior into the generic engine.
+Do not add Shape-specific dependency behavior to the generic build engine.
 
-Do not place generated filesystem paths in Shape configuration.
 
-## 2.3 Shape Interior Region
+## 2.3 Define the Shape Interior Region
 
-Use Shape's registered structural geometry to define the region available for
-incorporated Artwork.
+Define the registered region available for incorporated Artwork.
 
-Tests should establish that:
+The interior region is the portion of Shape available after structural
+boundaries such as the outer ridge have been accounted for.
 
-* without a ridge, the available region is bounded by the Shape boundary;
-* with a ridge, the available region is bounded by the ridge inner boundary;
-* integrated and separate ridge styles expose the same Artwork region for
-  otherwise identical ridge geometry;
-* changing ridge width changes the available Artwork region;
-* changing ridge style alone does not;
-* changing ridge raise alone does not;
-* changing Shape color does not;
-* changing `shape_size` changes later physical dimensionalization rather than
-  the registered interior geometry.
+Tests should establish the interior region for:
 
-The interior-region contract should remain registered and nonphysical until the
-downstream dimensionalization operation introduces physical size.
+- a Shape without an outer ridge;
+- a Shape with an integrated outer ridge;
+- a Shape with a separate outer ridge;
+- supported Shape geometries.
 
-## 2.4 Registered Artwork Fitting
+The interior-region contract must distinguish:
 
-Fit registered Artwork into the available Shape interior.
+- the complete registered Shape boundary;
+- structural ridge boundaries;
+- the region available for incorporated Artwork.
 
-Use contain-style fitting unless the Shape definition is intentionally changed
-before implementation.
+The interior region remains registered geometry.
 
-Tests must demonstrate that incorporated Artwork is:
+It must not introduce Artwork physical size or Z semantics.
 
-* centered;
-* uniformly scaled;
-* aspect-ratio preserving;
-* completely contained within the available interior region;
-* transformed using one common transformation for every registered component;
-* still represented in the same registered Shape coordinate system after
-  composition.
+Physical Shape parameters may influence registered structural boundaries where
+the Shape definition explicitly requires conversion into registered space, but
+the result of this slice remains a registered composition boundary rather than
+a manufactured object.
 
-The consumer must treat Artwork as registered geometry rather than fitting
-individual color components independently.
+Completion of this slice gives Artwork placement a defined target region rather
+than requiring it to infer available Shape geometry.
 
-Changing Shape geometry, size, ridge dimensions, ridge style, or structural
-colors must not require Artwork rasterization or vectorization to be repeated
-unless the upstream Artwork product is otherwise stale.
 
-## 2.5 Registered Composition Product
+## 2.4 Fit Registered Artwork Into Shape
 
-The Shape composition stage should produce a registered composition containing:
+Validate and complete the existing registered-Artwork fitting groundwork.
 
-```text
-structural Shape geometry
-        +
-registered Artwork geometry
-```
+Registered Artwork must be fitted using the common `registered_extent` from the
+Artwork vector manifest.
 
-The resulting product must preserve:
+One common transform must be applied to every Artwork component.
 
-* the Shape coordinate system;
-* Shape structural boundaries;
-* Artwork component registration;
-* Artwork semantic color identity;
-* component membership;
-* the relationship between the Shape interior and fitted Artwork.
+Tests should demonstrate that:
 
-The registered composition remains conceptually distinct from physical
-manufacturing geometry.
+- fitting is uniform;
+- aspect ratio is preserved;
+- all Artwork components receive the same transform;
+- component registration is preserved;
+- the transformed registered extent fits entirely within the Shape interior
+  region;
+- Artwork is centered within the available region unless later Shape
+  configuration explicitly defines another placement policy;
+- fitting does not inspect individual component bounds to independently size
+  or center components;
+- fitting introduces no physical Z dimension.
 
-Consumers should use its declared product/manifest contract rather than infer
-members by scanning files.
+Existing registered-Artwork value objects and fitting operations should be
+tested against the permanent model definitions before new abstractions are
+introduced.
 
-## 2.6 Artwork Physical Z Semantics
+If the existing groundwork satisfies the required contract, retain it and
+integrate it rather than replacing it.
 
-Before implementing physical extrusion of incorporated Artwork, verify that
-`shape/DEFINITION.md` completely specifies the required Artwork Z semantics.
 
-The permanent specification must determine:
+## 2.5 Produce Persistent Registered Composition
 
-* where incorporated Artwork begins in Z;
-* Artwork extrusion height;
-* its relationship to the base top;
-* its relationship to the outer ridge;
-* how independently printable Artwork color components remain physically
-  associated with the Shape;
-* whether any required physical overlap is a geometric operation or explicit
-  model parameter;
-* whether ridge partitioning changes Artwork Z semantics.
+Make Shape composition consume the bound Artwork vector manifest when Artwork
+is configured.
 
-If any of these semantics remain undefined, update `shape/DEFINITION.md`
-before implementing them.
+The compose stage must produce a persistent registered composition sufficient
+for downstream dimensionalization without rediscovering component structure.
 
-Do not allow current Artwork standalone extrusion behavior to silently define
-Shape's incorporated-Artwork semantics.
+The persistent composition must retain:
 
-## 2.7 Dimensionalize Incorporated Artwork
+- Shape structural geometry;
+- Shape structural partition identity;
+- incorporated Artwork component membership;
+- Artwork semantic color identity;
+- Artwork component registration;
+- the common transformation applied to incorporated Artwork;
+- enough information for downstream stages to locate every dynamic component
+  without scanning stage directories.
 
-Dimensionalize the complete registered Shape composition.
+Determine whether the current single `composition.svg` product remains a
+sufficient persistent contract once dynamic Artwork components participate.
 
-Tests must establish that:
+If multiple or variable registered components must survive composition, use a
+declared manifest or equivalent persistent product contract rather than
+encoding dynamic-product discovery in filesystem conventions.
 
-* one physical X/Y transformation is applied consistently to all registered
-  Artwork components;
-* the transformation corresponds to `shape_size`;
-* Artwork retains its registration after dimensionalization;
-* Artwork physical Z follows the Shape definition;
-* Artwork components remain independently printable by semantic color;
-* Shape structural colors remain independent from Artwork colors;
-* components sharing the same semantic color are allowed to remain distinct
-  semantic/structural components;
-* geometry does not depend on printer-head assignment.
+Tests should demonstrate that:
 
-Physical dimensionalization belongs to Shape because Shape owns the physical
-manufacturing dimensions of the composed object.
+- Shape without Artwork continues to produce valid registered composition;
+- Shape with Artwork preserves the structural Shape boundary;
+- every incorporated Artwork component survives composition;
+- semantic color identity survives composition;
+- all incorporated Artwork components remain registered after transformation;
+- downstream consumers need not inspect the Artwork producer's stage
+  directory;
+- downstream consumers need not scan the Shape compose directory.
 
-## 2.8 Shape Packaging with Artwork
+Composition remains nonphysical.
 
-Package structural Shape components and incorporated Artwork components into
-the declared Shape:
+This slice must not extrude geometry or assign physical Z dimensions.
 
-```text
-artifact.3mf
-```
 
-Tests should verify:
+## 2.6 Define Incorporated Artwork Physical Z Semantics
 
-* Shape without Artwork still packages successfully;
-* Shape with Artwork packages successfully;
-* structural components remain present;
-* base color identity survives packaging;
-* physical ridge color identity survives packaging;
-* Artwork color components remain independently printable;
-* Artwork semantic color identity survives packaging;
-* component names provide useful semantic role/color identity;
-* packaging does not require the standalone Artwork 3MF;
-* packaging does not assign components to printer heads.
+Before dimensionalizing incorporated Artwork, make its physical Z relationship
+to Shape explicit in `shape/DEFINITION.md`.
 
-The resulting 3MF should provide the slicer with independently identifiable
-colored objects from which physical printer-head assignments can be made.
+Standalone Artwork extrusion semantics do not automatically define incorporated
+Artwork semantics.
+
+The Shape model owns the physical dimensionalization of Artwork it consumes.
+
+The specification must define:
+
+- where incorporated Artwork begins relative to the Shape base;
+- the physical height of incorporated Artwork;
+- whether Artwork is raised from, embedded in, or otherwise related to the
+  structural top surface;
+- the relationship between incorporated Artwork and integrated ridge geometry;
+- the relationship between incorporated Artwork and separate ridge geometry;
+- the behavior required when physical dimensions would create invalid or
+  ambiguous geometry.
+
+Do not infer these semantics accidentally from the current standalone Artwork
+extrusion implementation.
+
+Add specification-level tests where appropriate before implementing the
+physical behavior.
+
+Completion of this slice leaves no undefined physical Z policy for incorporated
+Artwork.
+
+
+## 2.7 Dimensionalize the Complete Shape Composition
+
+Extend Shape extrusion so that it dimensionalizes the complete registered
+composition.
+
+Shape owns the physical transformation.
+
+Tests should demonstrate that:
+
+- registered Shape geometry maps consistently to `shape_size`;
+- incorporated Artwork receives the same Shape-owned physical X/Y mapping
+  implied by registered composition;
+- Artwork components remain registered with one another;
+- Artwork placement within Shape is preserved;
+- Shape base geometry retains its existing physical semantics;
+- integrated ridge geometry retains its existing physical semantics;
+- separate ridge geometry retains its existing physical semantics;
+- incorporated Artwork receives the physical Z semantics defined in 2.6;
+- Artwork semantic colors survive dimensionalization;
+- structural Shape semantic colors survive dimensionalization;
+- physical component membership follows model semantics rather than color
+  values;
+- changing semantic colors does not alter geometry.
+
+This slice must also resolve demonstrated model-to-model implementation
+coupling in physical rendering.
+
+Shape currently obtains a reusable rendering mechanic from an Artwork stage
+implementation. That violates the architectural boundary that models compose
+shared operations rather than invoke or depend on another model's stage
+implementation.
+
+Where Artwork and Shape demonstrably require the same model-independent
+rendering or dimensionalization mechanic:
+
+- extract the common mechanic into an appropriate reusable operation or format
+  capability;
+- have each model stage compose that operation independently;
+- keep model-specific policy in the model stage;
+- do not create a generic operation merely because two pieces of code happen
+  to look similar.
+
+Completion of this slice leaves no Shape dependency on an Artwork stage
+implementation.
+
+
+## 2.8 Package Shape With Incorporated Artwork
+
+Extend Shape packaging to include all physical components produced by complete
+Shape dimensionalization.
+
+Packaging must consume the upstream physical-component contract rather than
+reconstructing model policy.
+
+Tests should demonstrate final `artifact.3mf` behavior for:
+
+- Shape base components;
+- integrated ridge components when physically present;
+- separate ridge components when physically present;
+- incorporated Artwork color components;
+- shared semantic colors across multiple physical components;
+- distinct semantic colors across physical components.
+
+The final 3MF must preserve:
+
+- semantic component role;
+- semantic color identity;
+- independently printable component identity where the model requires it;
+- assembled physical registration.
+
+Packaging must not:
+
+- re-resolve Shape or Artwork color policy;
+- rediscover dynamic components by scanning directories;
+- assign physical printer heads;
+- decide whether structural or Artwork components should exist.
+
+Those decisions belong upstream.
+
 
 ## 2.9 Shape + Artwork Acceptance
 
-Add end-to-end acceptance coverage for at least:
+Add end-to-end acceptance evidence for the complete reuse path:
 
-```text
-source PNG
-    ↓
-Artwork prepare
-    ↓
-Artwork raster
-    ↓
-Artwork vector
-    ↓
-registered Artwork
-    ↓
-Shape composition
-    ↓
-Shape dimensionalization/extrusion
-    ↓
-Shape artifact.3mf
-```
+    source PNG
+        ↓
+    Artwork prepare
+        ↓
+    Artwork raster
+        ↓
+    Artwork vector
+        ↓
+    Shape compose
+        ↓
+    Shape extrude
+        ↓
+    Shape package
+        ↓
+    artifact.3mf
 
-Acceptance evidence should demonstrate:
+Acceptance tests should demonstrate at minimum:
 
-* the standalone Artwork extrusion and package stages are not required;
-* Shape introduces the physical manufacturing dimensions;
-* Artwork registration is preserved;
-* structural and Artwork color identities survive into the packaged Shape;
-* the resulting 3MF is valid and printable as a multicomponent artifact.
+- a Shape consuming registered Artwork from a source PNG;
+- Artwork interpretation stops at the reusable vector product for the
+  dependency path;
+- standalone Artwork extrusion is not required;
+- standalone Artwork packaging is not required;
+- the Shape determines the physical size of incorporated Artwork;
+- the Shape determines the physical placement of incorporated Artwork;
+- registered Artwork color components remain aligned;
+- Artwork semantic colors survive into the final 3MF;
+- Shape structural semantic colors survive into the final 3MF;
+- structural and Artwork components coexist in one valid multicomponent 3MF;
+- changing Shape physical size does not require repeating upstream Artwork
+  interpretation when the registered Artwork product remains current;
+- the final assembled geometry conforms to the Shape and Artwork model
+  definitions.
 
-Completion of Phase 2 means registered Artwork can be reused as a genuine
-upstream manufacturing asset by Shape.
+Include at least one cross-artifact case in which a Shape consumes registered
+Artwork produced by another configured artifact.
+
+The acceptance path must use normal public configuration, planning, dependency
+resolution, execution, and packaging boundaries rather than manually supplying
+generated product paths.
+
+Phase 2 is complete when a Shape can optionally consume reusable registered
+Artwork through the normal product-dependency architecture, fit and compose it
+in registered space, dimensionalize the resulting object according to Shape
+semantics, and produce a valid multicomponent `artifact.3mf` without requiring
+standalone Artwork extrusion or packaging.
 
 # Phase 3 — Architectural Acceptance and Generalization
 
