@@ -779,6 +779,160 @@ def test_registered_artwork_centers_within_circular_shape_interior(
     )
 
 
+def test_registered_artwork_fits_inside_polygon_shape_interior(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork is contained by the actual polygon Shape interior.
+
+    Fitting respects polygon edges rather than merely fitting within the
+    polygon's rectangular bounding box.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    _write_registered_polygon_structure(
+        structure,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=100.0,
+        ridge_width=5.0,
+    )
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="-1 -1 2 2">'
+            '<rect x="-1" y="-1" width="2" height="2"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=2.0,
+            height=2.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    interior = compose.registered_interior_region(
+        composition,
+    )
+    polygon = compose._read_polygon_points(
+        interior,
+    )
+
+    transformed_corners = (
+        (-transform.scale, -transform.scale),
+        (transform.scale, -transform.scale),
+        (transform.scale, transform.scale),
+        (-transform.scale, transform.scale),
+    )
+
+    for corner in transformed_corners:
+        assert _point_is_inside_convex_polygon(
+            corner,
+            polygon,
+        )
+
+
+def _point_is_inside_convex_polygon(
+    point: tuple[float, float],
+    polygon: tuple[tuple[float, float], ...],
+) -> bool:
+    """
+    Return whether a point lies inside or on a convex polygon.
+    """
+
+    signs: list[float] = []
+
+    for index, start in enumerate(polygon):
+        end = polygon[(index + 1) % len(polygon)]
+
+        edge_x = end[0] - start[0]
+        edge_y = end[1] - start[1]
+
+        point_x = point[0] - start[0]
+        point_y = point[1] - start[1]
+
+        cross = edge_x * point_y - edge_y * point_x
+
+        if not math.isclose(
+            cross,
+            0.0,
+            abs_tol=1.0e-12,
+        ):
+            signs.append(cross)
+
+    return all(sign >= 0.0 for sign in signs) or all(sign <= 0.0 for sign in signs)
+
+
+def test_registered_artwork_centers_within_polygon_shape_interior(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork occupancy is centered within the polygon Shape interior.
+
+    Polygon containment preserves one common registered transformation rather
+    than independently positioning Artwork geometry.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    _write_registered_polygon_structure(
+        structure,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=100.0,
+        ridge_width=5.0,
+    )
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="-1 -1 2 2">'
+            '<rect x="-1" y="-1" width="2" height="2"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=2.0,
+            height=2.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    assert transform.translate_x == pytest.approx(0.0)
+    assert transform.translate_y == pytest.approx(0.0)
+
+
 def test_registered_artwork_fit_uses_envelope_occupancy(
     tmp_path: Path,
 ) -> None:

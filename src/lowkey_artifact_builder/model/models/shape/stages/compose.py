@@ -954,6 +954,89 @@ def _fit_registered_artwork_to_circle(
     )
 
 
+def _fit_registered_artwork_to_polygon(
+    artwork: RegisteredArtwork,
+    *,
+    interior: ET.Element,
+) -> RegisteredArtworkTransform:
+    """
+    Fit registered Artwork within a convex polygon Shape interior.
+
+    The occupied Artwork envelope is centered on the polygon and uniformly
+    scaled until one of its corners reaches a polygon edge.
+    """
+
+    bounds = registered_artwork_envelope_bounds(
+        artwork,
+    )
+    polygon = _read_polygon_points(
+        interior,
+    )
+
+    polygon_center_x = sum(point[0] for point in polygon) / len(polygon)
+    polygon_center_y = sum(point[1] for point in polygon) / len(polygon)
+
+    half_width = bounds.width / 2.0
+    half_height = bounds.height / 2.0
+
+    corners = (
+        (-half_width, -half_height),
+        (half_width, -half_height),
+        (half_width, half_height),
+        (-half_width, half_height),
+    )
+
+    orientation = _polygon_orientation(
+        polygon,
+    )
+
+    scale = math.inf
+
+    for index, start in enumerate(polygon):
+        end = polygon[(index + 1) % len(polygon)]
+
+        edge_x = end[0] - start[0]
+        edge_y = end[1] - start[1]
+
+        if orientation > 0.0:
+            normal_x = -edge_y
+            normal_y = edge_x
+        else:
+            normal_x = edge_y
+            normal_y = -edge_x
+
+        center_distance = normal_x * (polygon_center_x - start[0]) + normal_y * (
+            polygon_center_y - start[1]
+        )
+
+        corner_distance = max(-(normal_x * corner[0] + normal_y * corner[1]) for corner in corners)
+
+        if corner_distance <= 0.0:
+            continue
+
+        scale = min(
+            scale,
+            center_distance / corner_distance,
+        )
+
+    if not math.isfinite(scale):
+        raise ValueError("Registered Artwork cannot be fitted within polygon Shape interior.")
+
+    width = bounds.width * scale
+    height = bounds.height * scale
+
+    source_center_x = bounds.x + (bounds.width / 2.0)
+    source_center_y = bounds.y + (bounds.height / 2.0)
+
+    return RegisteredArtworkTransform(
+        scale=scale,
+        width=width,
+        height=height,
+        translate_x=(polygon_center_x - (source_center_x * scale)),
+        translate_y=(polygon_center_y - (source_center_y * scale)),
+    )
+
+
 def fit_registered_artwork_to_shape(
     artwork: RegisteredArtwork,
     *,
@@ -965,7 +1048,7 @@ def fit_registered_artwork_to_shape(
     The Shape composition determines the available registered region.
     Artwork occupancy is determined by its registered envelope.
 
-    Rectangular and circular Shape interiors are currently supported.
+    Rectangular, circular, and convex polygon Shape interiors are supported.
     """
 
     interior = registered_interior_region(
@@ -980,6 +1063,12 @@ def fit_registered_artwork_to_shape(
 
     if interior.tag == SVG_CIRCLE:
         return _fit_registered_artwork_to_circle(
+            artwork,
+            interior=interior,
+        )
+
+    if interior.tag == SVG_POLYGON:
+        return _fit_registered_artwork_to_polygon(
             artwork,
             interior=interior,
         )
