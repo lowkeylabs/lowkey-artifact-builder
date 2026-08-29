@@ -195,21 +195,39 @@ def test_shape_compose_depends_on_structure_stage() -> None:
     assert compose_stage.dependencies == ("structure",)
 
 
-def test_shape_compose_produces_registered_composition() -> None:
+def test_shape_compose_produces_persistent_registered_composition() -> None:
     """
-    Shape composition produces persistent registered geometry.
+    Shape composition declares persistent registered-composition products.
 
-    The composition remains nonphysical so downstream dimensionalization can
-    apply Shape physical dimensions to the complete registered composition.
+    Registered Shape geometry remains available as composition.svg while a
+    manifest provides the persistent contract through which downstream stages
+    discover composition membership without scanning the stage directory.
     """
 
     compose_stage = _compose_stage()
 
-    assert tuple(product.name for product in compose_stage.products) == ("composition",)
+    assert tuple(product.name for product in compose_stage.products) == (
+        "composition",
+        "manifest",
+    )
 
-    product = compose_stage.products[0]
 
-    assert product.path == "composition.svg"
+def test_shape_compose_products_have_canonical_relative_paths() -> None:
+    """
+    Shape composition products use canonical stage-local relative paths.
+
+    Generated filesystem placement remains the responsibility of planning
+    and product resolution rather than the Shape model definition.
+    """
+
+    compose_stage = _compose_stage()
+
+    paths = {product.name: product.path for product in compose_stage.products}
+
+    assert paths == {
+        "composition": "composition.svg",
+        "manifest": "products.json",
+    }
 
 
 def test_shape_compose_consumes_structural_partition_parameters() -> None:

@@ -70,6 +70,11 @@ MODEL = ModelSpec(
                     path="composition.svg",
                     description=("Registered composed Shape geometry."),
                 ),
+                ProductSpec(
+                    name="manifest",
+                    path="products.json",
+                    description=("Manifest describing persistent registered Shape composition."),
+                ),
             ),
         ),
         StageSpec(
