@@ -113,6 +113,12 @@ All vector layers:
 - remain registered with one another;
 - preserve semantic color identity.
 
+The Artwork envelope uses the same registered coordinate system as the
+vector color layers and remains registered with them.
+
+The envelope represents the outer occupied region of the registered Artwork.
+It is not an independent layer and does not have semantic color identity.
+
 The common coordinate system is described by:
 
     registered_extent
@@ -131,25 +137,39 @@ Vector processing does not depend on:
 
 ## Registered Artwork
 
-The vector-stage products form the reusable registered representation of
-Artwork.
+The vector-stage products, together with the registered Artwork envelope,
+form the reusable registered representation of Artwork.
 
-Registered Artwork consists of the vector manifest and the color-layer
-products it describes.
+Registered Artwork consists of:
+
+- the vector manifest;
+- the color-layer products described by the vector manifest;
+- the Artwork envelope;
+- the common `registered_extent`.
 
 The registered representation provides a downstream consumer with:
 
 - the semantic color layers;
 - the vector product associated with each layer;
 - the color representation of each layer;
+- the Artwork envelope;
 - the common `registered_extent`.
 
-A consumer can therefore dimensionalize the Artwork without independently
-determining the bounds of each color layer.
+The envelope represents the outer occupied region of the Artwork in the
+common registered coordinate system.
+
+A consuming model may use the envelope to fit or otherwise place the Artwork
+within its own registered geometry without independently determining the
+bounds of individual color layers.
+
+The `registered_extent` defines the common registered coordinate system. The
+envelope defines the occupied region within that coordinate system.
 
 All transformations that preserve Artwork registration must be applied
-consistently to every registered color layer.
+consistently to the envelope and every registered color layer.
 
+Registered Artwork has no physical manufacturing size or physical Z
+semantics.
 
 ## Extrude
 
@@ -223,6 +243,9 @@ vector Artwork.
 The consuming model is responsible for the physical size, placement, and
 dimensionalization of the registered Artwork within its own object.
 
+When fitting registered Artwork within another model, the consumer may use the
+registered Artwork envelope to determine geometric containment while applying
+one common transformation to the envelope and all registered color layers.
 
 ## Parameters
 
@@ -331,29 +354,44 @@ A conforming Artwork implementation satisfies the following:
 
 10. The vector manifest records the common `registered_extent`.
 
-11. Registered vector Artwork has no predetermined physical manufacturing
+11. The Artwork envelope uses the same registered coordinate system as the
+    vector color layers.
+
+12. The Artwork envelope represents the outer occupied region of registered
+    Artwork.
+
+13. The `registered_extent` defines the common registered coordinate system;
+    the envelope defines the occupied region within that coordinate system.
+
+14. All registration-preserving transformations are applied consistently to
+    the Artwork envelope and every registered color layer.
+
+15. A consumer may determine Artwork containment from the registered envelope
+    without independently determining the bounds of individual color layers.
+
+16. Registered vector Artwork has no predetermined physical manufacturing
     size.
 
-12. Semantic color identity is preserved through the color-separated
+17. Semantic color identity is preserved through the color-separated
     products.
 
-13. Registered vector Artwork is a reusable intermediate product.
+18. Registered vector Artwork is a reusable intermediate product.
 
-14. Standalone physical dimensionalization begins at extrusion.
+19. Standalone physical dimensionalization begins at extrusion.
 
-15. Standalone extrusion uniformly maps `registered_extent` to
+20. Standalone extrusion uniformly maps `registered_extent` to
     `artwork_size`.
 
-16. All color layers receive the same dimensional transformation and
+21. All color layers receive the same dimensional transformation and
     remain registered.
 
-17. Standalone extrusion uses `artwork_raise` as the physical Z height.
+22. Standalone extrusion uses `artwork_raise` as the physical Z height.
 
-18. Standalone packaging produces a multicomponent printable 3MF.
+23. Standalone packaging produces a multicomponent printable 3MF.
 
-19. Artwork does not provide an underlying structural base.
+24. Artwork does not provide an underlying structural base.
 
-20. Another model can consume registered vector Artwork without requiring
+25. Another model can consume registered vector Artwork without requiring
     standalone Artwork extrusion or packaging.
 
 
