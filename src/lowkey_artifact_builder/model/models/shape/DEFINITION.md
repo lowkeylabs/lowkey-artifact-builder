@@ -379,13 +379,48 @@ shape_outer_ridge_color = "red"
 
 assigns white to the base and red to the outer ridge.
 
-Color values are semantic color names resolved through the system's common color-resolution mechanism.
+Incorporated Artwork may optionally have a Shape-owned fill color.
 
-Color assignment does not determine structural geometry, component partitioning, or whether an outer ridge exists.
+The Artwork fill color is controlled by:
+
+```text
+shape_artwork_fill_color
+```
+
+The default Artwork fill color is:
+
+```text
+none
+```
+
+The presence of a resolved Artwork fill color determines whether Artwork
+fill geometry exists.
+
+When:
+
+```text
+shape_artwork_fill_color = none
+```
+
+no Artwork fill geometry is produced.
+
+When `shape_artwork_fill_color` resolves to a color, Shape produces Artwork
+fill geometry using that semantic printing color.
+
+Artwork fill color does not determine the color of registered Artwork
+components. Those components retain the semantic colors supplied by the
+consumed registered Artwork.
+
+Color values are semantic color names resolved through the system's common
+color-resolution mechanism.
+
+Color assignment does not determine structural geometry, component
+partitioning, or whether an outer ridge exists.
 
 Likewise, structural partitioning does not determine color assignment.
 
-A color assigned to geometry that does not produce a corresponding physical component has no effect on the produced artifact.
+A color assigned to geometry that does not produce a corresponding physical
+component has no effect on the produced artifact.
 
 
 ## Outer Ridge
@@ -1158,9 +1193,10 @@ These dimensions include:
 ```text
 shape_base_raise
 shape_outer_ridge_raise
+shape_artwork_raise
 ```
 
-and the defined Z policy for incorporated Artwork.
+and the defined Z policy for optional Artwork fill.
 
 For either ridge style, the complete assembled ridge height is:
 
@@ -1230,8 +1266,105 @@ without changing the registered Artwork-to-Shape placement.
 Shape is therefore responsible for the physical size, placement, and
 dimensionalization of Artwork incorporated into the Shape.
 
-The Z semantics of incorporated Artwork must be defined before physical
-Artwork composition is considered complete.
+Shape also owns the physical Z dimensionalization of incorporated Artwork.
+
+The physical raise of incorporated Artwork is controlled by:
+
+```text
+shape_artwork_raise
+```
+
+`shape_artwork_raise` is a physical dimension measured in millimeters.
+
+Its default value is:
+
+```text
+1 mm
+```
+
+Incorporated Artwork is raised on top of the Shape base.
+
+The bottom surface of every incorporated Artwork component is located at:
+
+```text
+Z = shape_base_raise
+```
+
+and its top surface is located at:
+
+```text
+Z = shape_base_raise + shape_artwork_raise
+```
+
+`shape_artwork_raise` must be greater than zero when Artwork is incorporated.
+
+All incorporated Artwork color components receive the same physical Z
+dimensionalization.
+
+The standalone Artwork parameter:
+
+```text
+artwork_raise
+```
+
+does not determine the physical Z dimensions of Artwork incorporated into
+Shape.
+
+Shape may optionally fill the portion of the registered interior region
+outside the transformed Artwork envelope.
+
+Artwork fill existence is determined solely by:
+
+```text
+shape_artwork_fill_color
+```
+
+When no Artwork fill color is configured, no Artwork fill geometry is
+produced.
+
+When an Artwork fill color is configured, the registered fill region is:
+
+```text
+registered Shape interior region
+    minus
+transformed registered Artwork envelope
+```
+
+The Artwork envelope is therefore the boundary between incorporated Artwork
+occupancy and Shape-owned Artwork fill geometry.
+
+Shape does not determine the fill boundary by independently inspecting the
+bounds of individual Artwork color components.
+
+Artwork fill uses the same physical Z dimensionalization as incorporated
+Artwork.
+
+Its bottom surface is located at:
+
+```text
+Z = shape_base_raise
+```
+
+and its top surface is located at:
+
+```text
+Z = shape_base_raise + shape_artwork_raise
+```
+
+There is no independent Artwork-fill raise parameter.
+
+When Artwork fill exists, the incorporated Artwork and surrounding fill
+therefore form a common raised interior surface.
+
+When Artwork fill does not exist, only the incorporated Artwork components
+are raised above the base; the remainder of the interior region remains at
+the base top.
+
+Artwork fill is a distinct semantic component from the structural base even
+when its configured color is equal to the base color.
+
+Outer-ridge style does not change the Z origin or physical raise of
+incorporated Artwork or Artwork fill.
 
 ## Coordinate-Space Boundaries
 
@@ -1287,6 +1420,8 @@ shape_outer_ridge_width
 shape_outer_ridge_raise
 shape_outer_ridge_style
 shape_outer_ridge_color
+shape_artwork_raise
+shape_artwork_fill_color
 ```
 
 `shape_geometry` selects the structural geometry.
@@ -1392,8 +1527,40 @@ Its default is the resolved value of:
 shape_base_color
 ```
 
-An explicitly configured `shape_outer_ridge_color` overrides this derived default.
+An explicitly configured `shape_outer_ridge_color` overrides this derived
+default.
 
+`shape_artwork_raise` determines the physical height of Artwork incorporated
+into Shape above the top surface of the Shape base.
+
+Its default is:
+
+```text
+1 mm
+```
+
+`shape_artwork_raise` must be greater than zero when Artwork is incorporated.
+
+When Artwork is not incorporated, `shape_artwork_raise` does not cause
+Artwork geometry to be produced.
+
+`shape_artwork_fill_color` optionally selects the semantic printing color
+for the portion of the registered Shape interior outside the transformed
+Artwork envelope.
+
+Its default is:
+
+```text
+none
+```
+
+The absence of an Artwork fill color disables Artwork fill geometry.
+
+A configured Artwork fill color enables Artwork fill geometry when Artwork
+is incorporated.
+
+There is no separate boolean controlling Artwork fill existence and no
+independent Artwork-fill raise parameter.
 
 The dimensional parameters are:
 
@@ -1402,6 +1569,7 @@ shape_size
 shape_base_raise
 shape_outer_ridge_width
 shape_outer_ridge_raise
+shape_artwork_raise
 ```
 
 and are physical dimensions measured in millimeters.
@@ -1423,6 +1591,7 @@ Shape dimensionalization boundary.
 
 Artwork dependency binding is not represented by a filesystem-path
 parameter.
+
 
 ## Packaging
 
@@ -1589,7 +1758,8 @@ A conforming initial Shape implementation satisfies the following:
 
 41. The default outer-ridge color is the resolved base color.
 
-42. An explicitly configured outer-ridge color overrides its derived base-color default.
+42. An explicitly configured outer-ridge color overrides its derived
+    base-color default.
 
 43. Outer-ridge color is independent from outer-ridge structural style.
 
@@ -1639,6 +1809,39 @@ A conforming initial Shape implementation satisfies the following:
 59. Shape produces a valid printable 3MF containing its structural
     geometry and any incorporated Artwork components.
 
+60. Incorporated Artwork begins at the top surface of the Shape base at
+    `Z = shape_base_raise`.
+
+61. Incorporated Artwork has physical height determined by
+    `shape_artwork_raise`.
+
+62. The default `shape_artwork_raise` is 1 mm.
+
+63. `shape_artwork_raise` must be greater than zero when Artwork is
+    incorporated.
+
+64. All incorporated Artwork components receive the same physical Z
+    dimensionalization.
+
+65. Standalone `artwork_raise` does not determine incorporated Artwork Z
+    dimensionalization.
+
+66. Artwork fill existence is determined solely by the presence of
+    `shape_artwork_fill_color`.
+
+67. When Artwork fill exists, its registered geometry is the registered
+    Shape interior region minus the transformed registered Artwork
+    envelope.
+
+68. Artwork fill receives the same physical Z dimensionalization as
+    incorporated Artwork.
+
+69. Artwork fill remains semantically distinct from the structural base
+    even when both resolve to the same printing color.
+
+70. Outer-ridge style does not change the physical Z origin or raise of
+    incorporated Artwork or Artwork fill.
+
 
 ## Initial Scope
 
@@ -1660,6 +1863,9 @@ The initial Shape model includes:
 * optional registered Artwork;
 * centered, aspect-preserving Artwork fitting;
 * registered Shape/Artwork composition;
+* Shape-owned physical raise for incorporated Artwork;
+* optional Shape-owned Artwork fill color and geometry;
+* common physical raise for incorporated Artwork and enabled Artwork fill;
 * downstream physical dimensionalization;
 * final multicomponent 3MF packaging.
 
@@ -1673,6 +1879,8 @@ The initial Shape model does not include:
 * text or labels;
 * arbitrary Artwork positioning;
 * multiple independent Artwork placements;
+* independent Artwork-fill raise;
+* recessed or embedded Artwork;
 * arbitrary custom Shape outlines.
 
 These capabilities may be added later by deliberately extending the Shape
