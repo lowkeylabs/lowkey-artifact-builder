@@ -643,10 +643,12 @@ def test_vector_layer_geometry_is_registered_with_source_crop(
         iter(root),
     )
 
-    assert float(rectangle.get("x", "nan")) == pytest.approx(4.0)
-    assert float(rectangle.get("y", "nan")) == pytest.approx(6.0)
+    assert float(rectangle.get("x", "nan")) == pytest.approx(2.0)
+    assert float(rectangle.get("y", "nan")) == pytest.approx(3.0)
     assert float(rectangle.get("width", "nan")) == pytest.approx(4.0)
     assert float(rectangle.get("height", "nan")) == pytest.approx(5.0)
+
+    assert rectangle.get("transform") == "translate(2 3)"
 
 
 def test_registered_envelope_uses_same_crop_as_vector_layers(
@@ -1589,3 +1591,145 @@ def test_registered_vector_artwork_envelope_is_stage_local(
     assert (vector_manifest.parent / envelope) == (vector_manifest.parent / "envelope.svg")
 
     assert (vector_manifest.parent / envelope).is_file()
+
+
+def test_vector_path_geometry_is_registered_with_source_crop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Traced path geometry is restored from crop-local coordinates into the
+    common Registered Artwork coordinate system.
+    """
+
+    source = tmp_path / "source.png"
+    output = tmp_path / "color-1.svg"
+
+    _write_raster(
+        source,
+        box=(4, 6, 12, 14),
+    )
+
+    crop = vector.RasterCrop(
+        x=2,
+        y=3,
+        size=14,
+    )
+
+    def fake_run(
+        source: Path,
+        *,
+        actions: tuple[str, ...],
+    ) -> None:
+        export_action = next(action for action in actions if action.startswith("export-filename:"))
+
+        export_path = Path(
+            export_action.removeprefix("export-filename:"),
+        )
+
+        export_path.write_text(
+            (
+                '<svg xmlns="http://www.w3.org/2000/svg" '
+                'width="14" '
+                'height="14" '
+                'viewBox="0 0 14 14">'
+                '<path d="M 2,3 H 6 V 8 H 2 Z"/>'
+                "</svg>"
+            ),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        vector,
+        "run",
+        fake_run,
+    )
+
+    vector._trace_mask(
+        source,
+        output,
+        crop=crop,
+    )
+
+    root = ET.parse(
+        output,
+    ).getroot()
+
+    path = next(
+        iter(root),
+    )
+
+    assert path.get("d") == "M 2,3 H 6 V 8 H 2 Z"
+    assert path.get("transform") == "translate(2 3)"
+
+
+def test_vector_path_registration_preserves_existing_transform(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Registering traced path geometry preserves transforms already present
+    in the Inkscape vector output.
+    """
+
+    source = tmp_path / "source.png"
+    output = tmp_path / "color-1.svg"
+
+    _write_raster(
+        source,
+        box=(4, 6, 12, 14),
+    )
+
+    crop = vector.RasterCrop(
+        x=2,
+        y=3,
+        size=14,
+    )
+
+    def fake_run(
+        source: Path,
+        *,
+        actions: tuple[str, ...],
+    ) -> None:
+        export_action = next(action for action in actions if action.startswith("export-filename:"))
+
+        export_path = Path(
+            export_action.removeprefix("export-filename:"),
+        )
+
+        export_path.write_text(
+            (
+                '<svg xmlns="http://www.w3.org/2000/svg" '
+                'width="14" '
+                'height="14" '
+                'viewBox="0 0 14 14">'
+                "<path "
+                'd="M 2,3 H 6 V 8 H 2 Z" '
+                'transform="scale(0.5)"/>'
+                "</svg>"
+            ),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        vector,
+        "run",
+        fake_run,
+    )
+
+    vector._trace_mask(
+        source,
+        output,
+        crop=crop,
+    )
+
+    root = ET.parse(
+        output,
+    ).getroot()
+
+    path = next(
+        iter(root),
+    )
+
+    assert path.get("d") == "M 2,3 H 6 V 8 H 2 Z"
+    assert path.get("transform") == "translate(2 3) scale(0.5)"
