@@ -198,6 +198,213 @@ def _read_model(
 # =========================================================
 
 
+def test_package_stage_packages_incorporated_artwork_components(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape packaging preserves incorporated Artwork component membership.
+
+    Artwork dimensionalization determines the physical components upstream.
+    Packaging includes every component declared by the extrusion manifest
+    without rediscovering Artwork structure or applying Artwork policy.
+    """
+
+    component_directory = tmp_path / "extrude"
+
+    base = component_directory / "base.stl"
+    artwork_1 = component_directory / "artwork-1.stl"
+    artwork_2 = component_directory / "artwork-2.stl"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    _write_component_stl(
+        base,
+        solid_name="shape-base",
+    )
+
+    _write_component_stl(
+        artwork_1,
+        solid_name="artwork-1",
+    )
+
+    _write_component_stl(
+        artwork_2,
+        solid_name="artwork-2",
+    )
+
+    _write_component_manifest(
+        manifest,
+        (
+            (
+                "base",
+                "base.stl",
+                "white",
+                (255, 255, 255),
+            ),
+            (
+                "artwork-1",
+                "artwork-1.stl",
+                "red",
+                (220, 38, 38),
+            ),
+            (
+                "artwork-2",
+                "artwork-2.stl",
+                "blue",
+                (37, 99, 235),
+            ),
+        ),
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "example"
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    package.execute(
+        context,
+    )
+
+    model = _read_model(
+        artifact,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    assert [object_.get("name") for object_ in objects] == [
+        "example-base",
+        "example-artwork-1",
+        "example-artwork-2",
+    ]
+
+
+def test_package_stage_preserves_incorporated_artwork_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape packaging preserves incorporated Artwork semantic color identity.
+
+    Artwork colors are supplied by dimensionalization metadata and survive
+    packaging without being re-resolved or assigned to physical printer heads.
+    """
+
+    component_directory = tmp_path / "extrude"
+
+    base = component_directory / "base.stl"
+    artwork_1 = component_directory / "artwork-1.stl"
+    artwork_2 = component_directory / "artwork-2.stl"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    _write_component_stl(
+        base,
+        solid_name="shape-base",
+    )
+
+    _write_component_stl(
+        artwork_1,
+        solid_name="artwork-1",
+    )
+
+    _write_component_stl(
+        artwork_2,
+        solid_name="artwork-2",
+    )
+
+    _write_component_manifest(
+        manifest,
+        (
+            (
+                "base",
+                "base.stl",
+                "white",
+                (255, 255, 255),
+            ),
+            (
+                "artwork-1",
+                "artwork-1.stl",
+                "red",
+                (220, 38, 38),
+            ),
+            (
+                "artwork-2",
+                "artwork-2.stl",
+                "blue",
+                (37, 99, 235),
+            ),
+        ),
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "example"
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    package.execute(
+        context,
+    )
+
+    model = _read_model(
+        artifact,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    expected_colors = {
+        "example-base": (
+            "white",
+            "#FFFFFF",
+        ),
+        "example-artwork-1": (
+            "red",
+            "#DC2626",
+        ),
+        "example-artwork-2": (
+            "blue",
+            "#2563EB",
+        ),
+    }
+
+    assert set(objects_by_name) == set(expected_colors)
+
+    for object_name, expected_color in expected_colors.items():
+        object_ = objects_by_name[object_name]
+
+        material_id = object_.get(
+            "pid",
+        )
+
+        assert material_id is not None
+
+        material = materials_by_id[material_id]
+
+        color = material.find(
+            f"{{{CORE_NS}}}base",
+        )
+
+        assert color is not None
+        assert (
+            color.get("name"),
+            color.get("displaycolor"),
+        ) == expected_color
+
+
 def test_package_stage_materializes_declared_artifact(
     tmp_path: Path,
 ) -> None:
