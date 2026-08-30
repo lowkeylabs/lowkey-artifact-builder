@@ -28,6 +28,9 @@ SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 SVG_CIRCLE = f"{{{SVG_NAMESPACE}}}circle"
 SVG_RECT = f"{{{SVG_NAMESPACE}}}rect"
 SVG_POLYGON = f"{{{SVG_NAMESPACE}}}polygon"
+SVG_GROUP = f"{{{SVG_NAMESPACE}}}g"
+SVG_PATH = f"{{{SVG_NAMESPACE}}}path"
+
 
 ET.register_namespace(
     "",
@@ -282,6 +285,10 @@ def _write_composition_manifest(
     Structural composition and optional registered Artwork membership are
     declared explicitly so downstream stages do not discover products by
     scanning stage directories.
+
+    Incorporated Artwork components are materialized beside the persistent
+    composition manifest so every declared relative component path resolves
+    from the manifest's persistence boundary.
     """
 
     artwork_manifest: dict[str, Any] | None = None
@@ -289,6 +296,15 @@ def _write_composition_manifest(
     if artwork is not None:
         if artwork_transform is None:
             raise ValueError("Registered Artwork requires a composition transform.")
+
+        for component in artwork.components:
+            destination = path.parent / component.path.name
+
+            if component.path != destination:
+                shutil.copyfile(
+                    component.path,
+                    destination,
+                )
 
         artwork_manifest = _registered_artwork_manifest(
             artwork,
@@ -841,6 +857,10 @@ def _registered_element_bounds(
 ) -> RegisteredBounds:
     """
     Return registered bounds for supported envelope geometry.
+
+    Primitive registered geometry is interpreted directly. SVG groups
+    recursively combine the occupied bounds of their children and apply
+    supported registration transforms to the combined bounds.
     """
 
     if element.tag == SVG_RECT:
@@ -906,7 +926,176 @@ def _registered_element_bounds(
             height=maximum_y - minimum_y,
         )
 
+    if element.tag == SVG_PATH:
+        return _registered_linear_path_bounds(
+            element,
+        )
+
+    if element.tag == SVG_GROUP:
+        child_bounds = tuple(
+            _registered_element_bounds(
+                child,
+            )
+            for child in element
+        )
+
+        if not child_bounds:
+            raise ValueError("Registered Artwork envelope group requires geometry.")
+
+        minimum_x = min(bounds.x for bounds in child_bounds)
+        minimum_y = min(bounds.y for bounds in child_bounds)
+        maximum_x = max(bounds.x + bounds.width for bounds in child_bounds)
+        maximum_y = max(bounds.y + bounds.height for bounds in child_bounds)
+
+        bounds = RegisteredBounds(
+            x=minimum_x,
+            y=minimum_y,
+            width=maximum_x - minimum_x,
+            height=maximum_y - minimum_y,
+        )
+
+        return _apply_registered_element_transform(
+            bounds,
+            transform=element.get(
+                "transform",
+            ),
+        )
+
     raise ValueError("Registered Artwork envelope contains unsupported geometry.")
+
+
+def _registered_linear_path_bounds(
+    path: ET.Element,
+) -> RegisteredBounds:
+    """
+    Return occupied bounds for a registered linear SVG path.
+
+    Registered Artwork envelopes produced by Artwork use absolute move and
+    line commands with optional path closure. Other SVG path commands remain
+    unsupported until required by the registered Artwork contract.
+    """
+
+    data = path.get(
+        "d",
+    )
+
+    if data is None:
+        raise ValueError("Registered Artwork envelope path requires path data.")
+
+    tokens = data.replace(
+        ",",
+        " ",
+    ).split()
+
+    points: list[tuple[float, float]] = []
+
+    index = 0
+
+    while index < len(tokens):
+        command = tokens[index]
+        index += 1
+
+        if command == "Z":
+            continue
+
+        if command not in {
+            "M",
+            "L",
+        }:
+            raise ValueError("Registered Artwork envelope path contains an unsupported command.")
+
+        if index + 1 >= len(tokens):
+            raise ValueError("Registered Artwork envelope path contains incomplete coordinates.")
+
+        x = float(
+            tokens[index],
+        )
+        y = float(
+            tokens[index + 1],
+        )
+
+        points.append(
+            (
+                x,
+                y,
+            )
+        )
+
+        index += 2
+
+    if not points:
+        raise ValueError("Registered Artwork envelope path requires geometry.")
+
+    minimum_x = min(point[0] for point in points)
+    maximum_x = max(point[0] for point in points)
+    minimum_y = min(point[1] for point in points)
+    maximum_y = max(point[1] for point in points)
+
+    return RegisteredBounds(
+        x=minimum_x,
+        y=minimum_y,
+        width=maximum_x - minimum_x,
+        height=maximum_y - minimum_y,
+    )
+
+
+def _apply_registered_element_transform(
+    bounds: RegisteredBounds,
+    *,
+    transform: str | None,
+) -> RegisteredBounds:
+    """
+    Apply a supported SVG registration transform to occupied bounds.
+
+    Registered Artwork currently requires translation transforms emitted by
+    the Artwork registration boundary. Other SVG transform forms remain
+    unsupported until required by the registered Artwork contract.
+    """
+
+    if transform is None:
+        return bounds
+
+    transform = transform.strip()
+
+    if not transform.startswith(
+        "translate(",
+    ) or not transform.endswith(
+        ")",
+    ):
+        raise ValueError("Registered Artwork envelope contains an unsupported transform.")
+
+    arguments = (
+        transform[len("translate(") : -1]
+        .replace(
+            ",",
+            " ",
+        )
+        .split()
+    )
+
+    if len(arguments) == 1:
+        translate_x = float(
+            arguments[0],
+        )
+        translate_y = 0.0
+
+    elif len(arguments) == 2:
+        translate_x = float(
+            arguments[0],
+        )
+        translate_y = float(
+            arguments[1],
+        )
+
+    else:
+        raise ValueError("Registered Artwork envelope contains an invalid translation.")
+
+    return RegisteredBounds(
+        x=bounds.x + translate_x,
+        y=bounds.y + translate_y,
+        width=bounds.width,
+        height=bounds.height,
+    )
 
 
 def fit_registered_artwork(

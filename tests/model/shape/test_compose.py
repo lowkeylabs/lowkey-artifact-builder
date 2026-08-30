@@ -77,7 +77,7 @@ def _write_vector_manifest(
     path: Path,
 ) -> None:
     """
-    Write a representative registered Artwork vector manifest.
+    Write a representative registered Artwork vector product set.
     """
 
     path.parent.mkdir(
@@ -92,6 +92,30 @@ def _write_vector_manifest(
             '<svg xmlns="http://www.w3.org/2000/svg" '
             'viewBox="0 0 16 16">'
             '<rect x="2" y="3" width="12" height="10"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    white = path.parent / "white.svg"
+
+    white.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 16 16">'
+            '<rect x="2" y="3" width="6" height="10"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    black = path.parent / "black.svg"
+
+    black.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 16 16">'
+            '<rect x="8" y="3" width="6" height="10"/>'
             "</svg>"
         ),
         encoding="utf-8",
@@ -2327,6 +2351,18 @@ def test_compose_manifest_preserves_registered_artwork_membership(
         },
     ]
 
+    for component in manifest["artwork"]["components"]:
+        component_path = manifest_output.parent / component["path"]
+
+        assert component_path.is_file()
+
+    for component in manifest["artwork"]["components"]:
+        relative_path = component["path"]
+
+        assert (manifest_output.parent / relative_path).read_bytes() == (
+            artwork_manifest.parent / relative_path
+        ).read_bytes()
+
 
 def test_compose_manifest_records_one_common_artwork_transform(
     tmp_path: Path,
@@ -2513,3 +2549,161 @@ def test_load_registered_artwork_preserves_artwork_vector_color_metadata(
         "green": 175,
         "blue": 55,
     }
+
+
+def test_compose_stage_succeeds_without_registered_artwork(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork is optional for Shape composition.
+
+    Without a bound Artwork product dependency, Shape produces a valid
+    registered composition whose manifest declares no incorporated Artwork.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+
+    _write_registered_structure(
+        structure,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    _configure_compose_inputs(
+        context,
+        structure=structure,
+    )
+
+    manifest = _configure_compose_outputs(
+        context,
+        composition=composition,
+    )
+
+    _configure_shape_resolver(
+        context,
+    )
+
+    compose.execute(
+        context,
+    )
+
+    assert composition.exists()
+    assert manifest.exists()
+
+    data = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert data["composition"] == composition.name
+    assert data["artwork"] is None
+
+    context.has_input.assert_called_once_with(
+        "artwork.vector.manifest",
+    )
+
+
+def test_registered_artwork_envelope_bounds_applies_group_translation(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork envelope bounds include registration transforms.
+
+    Artwork may publish occupied envelope geometry beneath a translated SVG
+    group while retaining the common registered coordinate system. Shape
+    interprets the resulting occupied bounds in that registered coordinate
+    system.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 100 100">
+          <g transform="translate(20 30)">
+            <rect
+                x="5"
+                y="10"
+                width="40"
+                height="20"
+            />
+          </g>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    bounds = compose.registered_artwork_envelope_bounds(
+        artwork,
+    )
+
+    assert bounds == compose.RegisteredBounds(
+        x=25.0,
+        y=40.0,
+        width=40.0,
+        height=20.0,
+    )
+
+
+def test_registered_artwork_envelope_bounds_supports_linear_path(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork envelope bounds support producer linear path geometry.
+
+    Artwork may publish occupied envelope geometry as an SVG path composed of
+    absolute move and line commands. Shape interprets the path occupancy before
+    applying its registration-group transform.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 100 100">
+          <g transform="translate(-10 -20)">
+            <path
+                d="M 20 30 L 60 30 L 60 70 L 20 70 Z"
+                fill="none"
+                stroke="#000000"
+            />
+          </g>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    bounds = compose.registered_artwork_envelope_bounds(
+        artwork,
+    )
+
+    assert bounds == compose.RegisteredBounds(
+        x=10.0,
+        y=10.0,
+        width=40.0,
+        height=40.0,
+    )

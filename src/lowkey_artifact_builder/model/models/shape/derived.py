@@ -59,6 +59,23 @@ def derive_shape_outer_ridge_color(
     return shape_base_color.strip()
 
 
+def derive_shape_artwork_fill_color(
+    resolver: Resolver,
+) -> None:
+    """
+    Derive the default Artwork fill color.
+
+    By default, Shape does not produce Artwork fill geometry.
+
+    An explicitly configured shape_artwork_fill_color value overrides
+    this derivation through normal configuration resolution.
+    """
+
+    del resolver
+
+    return None
+
+
 # =========================================================
 # Registry
 # =========================================================
@@ -66,8 +83,8 @@ def derive_shape_outer_ridge_color(
 
 DERIVED = {
     "shape_outer_ridge_color": derive_shape_outer_ridge_color,
+    "shape_artwork_fill_color": derive_shape_artwork_fill_color,
 }
-
 
 # =========================================================
 # Exports
@@ -76,5 +93,6 @@ DERIVED = {
 
 __all__ = [
     "DERIVED",
+    "derive_shape_artwork_fill_color",
     "derive_shape_outer_ridge_color",
 ]

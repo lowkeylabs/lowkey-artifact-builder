@@ -263,7 +263,9 @@ def test_artwork_extrusion_passes_registered_extent_to_scad_builder(
                 "path": "color-1.svg",
                 "name": "red",
                 "color": {
-                    "hex": "#ff0000",
+                    "red": 220,
+                    "green": 38,
+                    "blue": 38,
                 },
             },
         ],

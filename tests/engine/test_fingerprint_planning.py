@@ -698,3 +698,53 @@ def test_required_fingerprints_do_not_depend_on_workspace_location(
     ) == _fingerprint_values(
         second,
     )
+
+
+def test_stage_fingerprint_ignores_unbound_product_dependency(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    An unbound product dependency does not participate in stage provenance.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    stage_spec = StageSpec(
+        id=10,
+        name="consume",
+        product_dependencies=(dependency,),
+    )
+
+    stage = PlannedStage(
+        spec=stage_spec,
+    )
+
+    build_plan = BuildPlan(
+        artifact_id="consumer-artifact",
+        model=ModelSpec(
+            name="consumer",
+            title="Consumer",
+            stages=(stage_spec,),
+        ),
+        realization_name="default",
+        resolver=test_resolver,
+        project_root=tmp_path,
+        artifact_dir=tmp_path / "artifacts" / "consumer-artifact",
+        stages=(stage,),
+        product_dependencies=(),
+        product_dependency_bindings=(),
+        planned_product_dependencies=(),
+    )
+
+    fingerprints = create_required_fingerprints(
+        build_plan,
+    )
+
+    assert tuple(
+        fingerprints,
+    ) == ("consume",)

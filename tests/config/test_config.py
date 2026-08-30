@@ -615,7 +615,9 @@ def test_shape_model_defaults_are_resolved(
     assert resolver("shape_outer_ridge_color") == "white"
 
     assert resolver("shape_artwork_raise") == 1.0
-    assert not resolver.has("shape_artwork_fill_color")
+
+    assert resolver.has("shape_artwork_fill_color")
+    assert resolver("shape_artwork_fill_color") is None
 
     assert resolver.source("shape_geometry") == "model"
     assert resolver.source("shape_sides") == "model"

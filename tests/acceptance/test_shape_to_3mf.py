@@ -7,6 +7,8 @@ End-to-end acceptance tests for Shape artifact production.
 
 from __future__ import annotations
 
+import json
+import shutil
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
@@ -15,9 +17,13 @@ import pytest
 from click.testing import CliRunner
 
 from lowkey_artifact_builder.cli._main import cli
-from lowkey_artifact_builder.config import update_artifact_config
+from lowkey_artifact_builder.config import (
+    update_artifact_config,
+    write_artifact_config,
+)
 from lowkey_artifact_builder.engine import (
     create_build_plans,
+    execute_dependency_build,
 )
 from lowkey_artifact_builder.formats.threemf import CORE_NS
 
@@ -596,3 +602,279 @@ def test_shape_component_colors_do_not_change_geometry(
     }
 
     assert white_red_meshes == red_white_meshes
+
+
+@pytest.mark.slow
+def test_shape_builds_complete_3mf_with_registered_artwork(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    Shape consumes registered Artwork and builds a complete 3MF artifact.
+
+    Building the Shape automatically produces the bound Artwork only through
+    its reusable registered vector representation. Artwork extrusion and
+    packaging are not prerequisites for Shape manufacturing.
+
+    The final Shape artifact preserves both structural Shape identity and
+    incorporated Artwork component/color identity.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    # -----------------------------------------------------
+    # Create canonical Artwork input
+    # -----------------------------------------------------
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+
+    assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
+
+    artwork_directory = project_root / "artifacts" / "source-artwork"
+
+    artwork_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_input = artwork_directory / "artifact.png"
+
+    shutil.copy2(
+        fixture_source,
+        artwork_input,
+    )
+
+    # -----------------------------------------------------
+    # Configure reusable Artwork producer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "source-artwork",
+        {
+            "model": "artwork",
+            "source": str(
+                artwork_input,
+            ),
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Configure Shape consumer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "artwork-shape",
+        {
+            "model": "shape",
+            "product_dependencies": {
+                "manifest": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "manifest",
+                    "artifact": "source-artwork",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Plan Shape
+    # -----------------------------------------------------
+
+    plans = create_build_plans(
+        "artwork-shape",
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    assert plan.artifact_id == "artwork-shape"
+    assert plan.model_name == "shape"
+    assert plan.realization_name == "default"
+
+    assert tuple(stage.spec.name for stage in plan.stages) == (
+        "structure",
+        "compose",
+        "extrude",
+        "package",
+    )
+
+    # -----------------------------------------------------
+    # Build Shape through dependency-aware orchestration
+    # -----------------------------------------------------
+
+    execute_dependency_build(
+        plan,
+    )
+
+    # -----------------------------------------------------
+    # Verify targeted Artwork production
+    # -----------------------------------------------------
+
+    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "default"
+
+    assert (artwork_root / "10-prepare" / "trace.svg").is_file()
+
+    assert (artwork_root / "20-raster" / "products.json").is_file()
+
+    artwork_vector_manifest = artwork_root / "30-vector" / "products.json"
+
+    assert artwork_vector_manifest.is_file()
+
+    # Shape consumes Artwork's registered vector representation.
+    # Standalone Artwork manufacturing is not a prerequisite.
+
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+    # -----------------------------------------------------
+    # Read registered Artwork contract
+    # -----------------------------------------------------
+
+    artwork_manifest_data = json.loads(
+        artwork_vector_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    artwork_products = artwork_manifest_data["products"]
+
+    assert isinstance(
+        artwork_products,
+        list,
+    )
+
+    assert artwork_products
+
+    # -----------------------------------------------------
+    # Locate final Shape artifact through original plan
+    # -----------------------------------------------------
+
+    package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
+
+    artifact_product = next(
+        product for product in package_stage.products if product.spec.name == "artifact"
+    )
+
+    output = artifact_product.path
+
+    assert output.is_file()
+    assert output.stat().st_size > 0
+
+    assert zipfile.is_zipfile(
+        output,
+    )
+
+    # -----------------------------------------------------
+    # Read final Shape 3MF
+    # -----------------------------------------------------
+
+    with zipfile.ZipFile(
+        output,
+    ) as archive:
+        names = set(
+            archive.namelist(),
+        )
+
+        assert "[Content_Types].xml" in names
+
+        model_name = next(
+            name for name in names if name.startswith("3D/") and name.endswith(".model")
+        )
+
+        model = ET.fromstring(
+            archive.read(
+                model_name,
+            ),
+        )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    # -----------------------------------------------------
+    # Verify structural and incorporated component identity
+    # -----------------------------------------------------
+
+    assert "artwork-shape-base" in objects_by_name
+
+    artwork_objects = {
+        name: object_
+        for name, object_ in objects_by_name.items()
+        if name is not None
+        and name.startswith(
+            "artwork-shape-artwork-",
+        )
+    }
+
+    expected_artwork_object_names = {
+        f"artwork-shape-artwork-{product['index']}" for product in artwork_products
+    }
+
+    assert (
+        set(
+            artwork_objects,
+        )
+        == expected_artwork_object_names
+    )
+
+    # -----------------------------------------------------
+    # Verify semantic colors survived complete pipeline
+    # -----------------------------------------------------
+
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    base_object = objects_by_name["artwork-shape-base"]
+
+    base_material = materials_by_id[base_object.get("pid")]
+
+    base_color = base_material.find(
+        f"{{{CORE_NS}}}base",
+    )
+
+    assert base_color is not None
+    assert base_color.get("name") == "white"
+    assert base_color.get("displaycolor") == "#FFFFFF"
+    assert base_object.get("pindex") == "0"
+
+    for product in artwork_products:
+        index = product["index"]
+
+        expected_name = product["name"]
+
+        expected_color = product["color"]
+
+        expected_display_color = (
+            f"#{expected_color['red']:02X}{expected_color['green']:02X}{expected_color['blue']:02X}"
+        )
+
+        artwork_object = artwork_objects[f"artwork-shape-artwork-{index}"]
+
+        artwork_material = materials_by_id[artwork_object.get("pid")]
+
+        artwork_color = artwork_material.find(
+            f"{{{CORE_NS}}}base",
+        )
+
+        assert artwork_color is not None
+        assert artwork_color.get("name") == expected_name
+        assert artwork_color.get("displaycolor") == expected_display_color
+        assert artwork_object.get("pindex") == "0"

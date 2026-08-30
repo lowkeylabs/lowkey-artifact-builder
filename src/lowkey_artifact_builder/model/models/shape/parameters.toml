@@ -135,3 +135,12 @@ shape_outer_ridge_style = "integrated"
 #
 
 shape_artwork_raise = 1.0
+
+#
+# Optional semantic fill color applied beneath incorporated Artwork.
+#
+# None means that no additional Artwork fill component is produced.
+#
+# Incorporated Artwork retains the semantic colors of its own
+# independently printable components.
+#

@@ -3862,7 +3862,12 @@ def test_incorporated_artwork_manifest_preserves_semantic_colors(
     tmp_path: Path,
 ) -> None:
     """
-    Dimensionalization preserves semantic colors supplied by Artwork.
+    Dimensionalization preserves Artwork semantic color identity.
+
+    Artwork supplies semantic color name and RGB identity independently of
+    physical manufacturing. Shape extrusion preserves that identity while
+    expressing it through the common physical-component color contract used
+    by downstream packaging.
     """
 
     composition = tmp_path / "composition.svg"
@@ -3890,12 +3895,6 @@ def test_incorporated_artwork_manifest_preserves_semantic_colors(
         encoding="utf-8",
     )
 
-    expected_color = {
-        "red": 220,
-        "green": 38,
-        "blue": 38,
-    }
-
     _write_composition_manifest(
         composition_manifest,
         artwork=_registered_artwork(
@@ -3904,7 +3903,11 @@ def test_incorporated_artwork_manifest_preserves_semantic_colors(
                     "index": 1,
                     "path": "color-1.svg",
                     "name": "red",
-                    "color": expected_color,
+                    "color": {
+                        "red": 220,
+                        "green": 38,
+                        "blue": 38,
+                    },
                 },
             ],
         ),
@@ -3937,7 +3940,14 @@ def test_incorporated_artwork_manifest_preserves_semantic_colors(
         component for component in data["components"] if component["name"] == "artwork-1"
     )
 
-    assert artwork_component_data["color"] == expected_color
+    assert artwork_component_data["color"] == {
+        "name": "red",
+        "rgb": [
+            220,
+            38,
+            38,
+        ],
+    }
 
 
 @pytest.mark.slow

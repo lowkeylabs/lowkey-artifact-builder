@@ -300,18 +300,18 @@ def _resolve_product_dependency_fingerprints(
     stage: PlannedStage,
 ) -> dict[str, str]:
     """
-    Resolve content fingerprints of cross-artifact product dependencies.
+    Resolve content fingerprints of bound cross-artifact product dependencies.
 
-    Only product dependencies explicitly declared by the realized stage
-    participate in its fingerprint.
+    Only product dependencies declared by the realized stage and bound in
+    the realized BuildPlan participate in its fingerprint.
 
     Planned dependency paths identify persistent producer products, but
     the paths themselves do not participate in provenance. Product
     contents are hashed directly so equivalent producer products have
     equivalent provenance across workspaces.
 
-    A required dependency that is not present in the BuildPlan fails
-    rather than silently producing incomplete provenance.
+    An unbound declared product dependency does not participate in the
+    realized stage's provenance.
     """
 
     inputs: dict[str, str] = {}
@@ -327,12 +327,7 @@ def _resolve_product_dependency_fingerprints(
         )
 
         if planned_dependency is None:
-            identity = f"{dependency.model}/{dependency.stage}/{dependency.product}"
-
-            raise ValueError(
-                f"Planned product dependency {identity!r} "
-                f"required by stage {stage.name!r} is unavailable"
-            )
+            continue
 
         identity = f"{dependency.model}.{dependency.stage}.{dependency.product}"
 

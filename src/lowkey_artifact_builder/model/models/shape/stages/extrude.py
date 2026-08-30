@@ -345,6 +345,9 @@ def _render_artwork_components(
     transform, the same Shape physical X/Y scaling, and the same physical
     Z interval.
 
+    Artwork semantic color identity is preserved while being normalized into
+    the physical-component color representation consumed by packaging.
+
     The persistent registered coordinate extent is required so downstream
     physical dimensionalization retains the Artwork coordinate-system
     contract.
@@ -407,12 +410,28 @@ def _render_artwork_components(
         index = int(
             component["index"],
         )
+
         source_path = source_directory / str(
             component["path"],
         )
 
         if not source_path.is_file():
             raise ValueError(f"Registered Artwork component does not exist: {source_path}")
+
+        color_name = component.get(
+            "name",
+        )
+
+        if (
+            not isinstance(
+                color_name,
+                str,
+            )
+            or not color_name
+        ):
+            raise ValueError(
+                f"Registered Artwork component {index} requires a semantic color name."
+            )
 
         color = component.get(
             "color",
@@ -423,6 +442,40 @@ def _render_artwork_components(
             dict,
         ):
             raise ValueError(f"Registered Artwork component {index} requires color metadata.")
+
+        red = color.get(
+            "red",
+        )
+        green = color.get(
+            "green",
+        )
+        blue = color.get(
+            "blue",
+        )
+
+        if any(
+            not isinstance(channel, int)
+            or isinstance(channel, bool)
+            or channel < 0
+            or channel > 255
+            for channel in (
+                red,
+                green,
+                blue,
+            )
+        ):
+            raise ValueError(
+                f"Registered Artwork component {index} requires valid RGB color metadata."
+            )
+
+        physical_color: dict[str, object] = {
+            "name": color_name,
+            "rgb": [
+                red,
+                green,
+                blue,
+            ],
+        }
 
         component_name = f"artwork-{index}"
         component_path = f"{component_name}.stl"
@@ -456,7 +509,7 @@ def _render_artwork_components(
             (
                 component_name,
                 component_path,
-                color,
+                physical_color,
             )
         )
 
