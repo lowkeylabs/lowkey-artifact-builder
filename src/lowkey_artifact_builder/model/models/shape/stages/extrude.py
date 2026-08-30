@@ -25,7 +25,7 @@ from pathlib import Path
 
 from lowkey_artifact_builder.colors import PaletteColor, resolve_palette_color
 from lowkey_artifact_builder.engine import StageContext
-from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
+from lowkey_artifact_builder.tools.openscad import (
     render_stl_source,
 )
 
