@@ -8,7 +8,6 @@ Registered Artwork may be dimensionalized into a standalone multicolor
 
 This document defines the semantic contract of the Artwork model.
 
-
 ## Purpose
 
 Artwork interprets raster source artwork and converts it into reusable
@@ -16,23 +15,24 @@ registered geometry.
 
 The Artwork model supports:
 
-- a raster source image;
-- a semantic color palette;
-- preparation and normalization of the source;
-- registered raster color layers;
-- registered vector color layers;
-- optional physical dimensionalization;
-- a printable multicomponent 3MF.
+* a raster source image;
+* a semantic color palette;
+* preparation and normalization of the source;
+* registered raster color layers;
+* registered vector color layers;
+* optional physical dimensionalization;
+* a printable multicomponent 3MF.
 
 Artwork deliberately separates interpretation of source artwork from
 physical dimensionalization.
-
 
 ## Source
 
 Artwork consumes one raster source:
 
-    source
+```
+source
+```
 
 The build system materializes the source into the artifact workspace
 before Artwork processing begins.
@@ -41,32 +41,34 @@ Artwork stages consume the materialized source through the build-engine
 context rather than depending on the source's original filesystem
 location.
 
-
 ## Colors
 
 Artwork uses an ordered semantic color palette:
 
-    artwork_colors
+```
+artwork_colors
+```
 
 `artwork_colors` is normally derived from the configured printer colors
 but may be explicitly configured.
 
 Each Artwork color has:
 
-- a semantic color identity; and
-- an RGB representation.
+* a semantic color identity; and
+* an RGB representation.
 
 Semantic color identity is preserved through the color-separated raster,
 vector, extrusion, and packaging products.
-
 
 ## Prepare
 
 Preparation converts the source image into normalized artwork described
 by:
 
-    trace.svg
-    envelope.svg
+```
+trace.svg
+envelope.svg
+```
 
 The trace represents the prepared multicolor artwork.
 
@@ -76,7 +78,6 @@ Pixels outside the envelope do not belong to the Artwork.
 
 Prepared artwork is reduced to the configured Artwork color palette.
 
-
 ## Raster
 
 Rasterization converts prepared artwork into registered,
@@ -84,23 +85,24 @@ color-separated raster products.
 
 Raster products:
 
-- use one common coordinate system;
-- preserve semantic color identity;
-- represent mutually exclusive color regions;
-- use `artwork_pixels` as their raster resolution;
-- are described by a raster manifest.
+* use one common coordinate system;
+* preserve semantic color identity;
+* represent mutually exclusive color regions;
+* use `artwork_pixels` as their raster resolution;
+* are described by a raster manifest.
 
 Dynamic raster products are stored relative to their manifest.
 
 Raster island cleanup is controlled by:
 
-    artwork_min_island_area
-    artwork_island_connectivity
+```
+artwork_min_island_area
+artwork_island_connectivity
+```
 
 Island area is measured in raster pixels.
 
 Raster processing does not depend on physical `artwork_size`.
-
 
 ## Vector
 
@@ -109,19 +111,22 @@ vector color layers.
 
 All vector layers:
 
-- use one common coordinate system;
-- remain registered with one another;
-- preserve semantic color identity.
+* use one common coordinate system;
+* remain registered with one another;
+* preserve semantic color identity.
 
 The Artwork envelope uses the same registered coordinate system as the
 vector color layers and remains registered with them.
 
 The envelope represents the outer occupied region of the registered Artwork.
+
 It is not an independent layer and does not have semantic color identity.
 
 The common coordinate system is described by:
 
-    registered_extent
+```
+registered_extent
+```
 
 in the vector manifest.
 
@@ -131,9 +136,10 @@ Registered vector geometry has no physical manufacturing size.
 
 Vector processing does not depend on:
 
-    artwork_size
-    artwork_raise
-
+```
+artwork_size
+artwork_raise
+```
 
 ## Registered Artwork
 
@@ -142,18 +148,18 @@ form the reusable registered representation of Artwork.
 
 Registered Artwork consists of:
 
-- the vector manifest;
-- the color-layer products described by the vector manifest;
-- the Artwork envelope;
-- the common `registered_extent`.
+* the vector manifest;
+* the color-layer products described by the vector manifest;
+* the Artwork envelope;
+* the common `registered_extent`.
 
 The registered representation provides a downstream consumer with:
 
-- the semantic color layers;
-- the vector product associated with each layer;
-- the color representation of each layer;
-- the Artwork envelope;
-- the common `registered_extent`.
+* the semantic color layers;
+* the vector product associated with each layer;
+* the color representation of each layer;
+* the Artwork envelope;
+* the common `registered_extent`.
 
 The envelope represents the outer occupied region of the Artwork in the
 common registered coordinate system.
@@ -178,12 +184,16 @@ Artwork.
 
 Extrusion introduces:
 
-    artwork_size
-    artwork_raise
+```
+artwork_size
+artwork_raise
+```
 
 The common registered coordinate system is uniformly scaled so that:
 
-    registered_extent -> artwork_size
+```
+registered_extent -> artwork_size
+```
 
 All color layers receive the same physical X/Y transformation.
 
@@ -192,21 +202,26 @@ centering individual color layers.
 
 Each color layer is extruded from:
 
-    Z = 0
+```
+Z = 0
+```
 
 through:
 
-    Z = artwork_raise
+```
+Z = artwork_raise
+```
 
 Extrusion produces independently printable color components described by
 an extrusion manifest.
-
 
 ## Package
 
 Packaging combines the dimensionalized Artwork components into:
 
-    artifact.3mf
+```
+artifact.3mf
+```
 
 The final standalone Artwork artifact is a multicomponent 3MF.
 
@@ -214,7 +229,6 @@ Semantic color components remain independently printable components.
 
 Artwork does not add an underlying structural base to the standalone
 artifact.
-
 
 ## Reuse
 
@@ -224,18 +238,32 @@ Artwork extrusion or packaging.
 For the current Artwork model, a consumer of registered vector Artwork
 requires:
 
-    artwork/prepare
-          ↓
-    artwork/raster
-          ↓
-    artwork/vector
-          ↓
-    consumer
+```
+artwork/prepare
+      │
+      ├──────────────┐
+      │              │
+      ▼              │
+artwork/raster       │
+      │              │
+      ▼              │
+artwork/vector ◄─────┘
+      │
+      ▼
+   consumer
+```
+
+The vector stage consumes both:
+
+* registered raster color layers produced by `artwork/raster`; and
+* the registered Artwork envelope produced by `artwork/prepare`.
 
 The later Artwork stages:
 
-    artwork/extrude
-    artwork/package
+```
+artwork/extrude
+artwork/package
+```
 
 are not prerequisites merely because another model consumes registered
 vector Artwork.
@@ -251,13 +279,15 @@ one common transformation to the envelope and all registered color layers.
 
 Artwork defines or consumes:
 
-    source
-    artwork_colors
-    artwork_pixels
-    artwork_min_island_area
-    artwork_island_connectivity
-    artwork_size
-    artwork_raise
+```
+source
+artwork_colors
+artwork_pixels
+artwork_min_island_area
+artwork_island_connectivity
+artwork_size
+artwork_raise
+```
 
 `source` identifies the external raster input.
 
@@ -280,40 +310,59 @@ Artwork.
 Physical `artwork_size` is intentionally absent from raster and vector
 processing.
 
-
 ## Stages
 
 Artwork defines:
 
-    10 prepare
-    20 raster
-    30 vector
-    40 extrude
-    50 package
+```
+10 prepare
+20 raster
+30 vector
+40 extrude
+50 package
+```
 
 with dependencies:
 
-    prepare
-       ↓
-    raster
-       ↓
-    vector
-       ↓
-    extrude
-       ↓
-    package
+```
+prepare
+   │
+   ├──────────────┐
+   │              │
+   ▼              │
+raster            │
+   │              │
+   ▼              │
+vector ◄──────────┘
+   │
+   ▼
+extrude
+   │
+   ▼
+package
+```
+
+The direct dependencies reflect the products consumed by each stage:
+
+* `raster` depends on `prepare`;
+* `vector` depends on `raster` for registered color layers;
+* `vector` also depends directly on `prepare` for the registered Artwork
+  envelope;
+* `extrude` depends on `vector`;
+* `package` depends on `extrude`.
 
 The principal declared products are:
 
-    prepare/trace.svg
-    prepare/envelope.svg
-    raster/products.json
-    vector/products.json
-    extrude/products.json
-    package/artifact.3mf
+```
+prepare/trace.svg
+prepare/envelope.svg
+raster/products.json
+vector/products.json
+extrude/products.json
+package/artifact.3mf
+```
 
 Product paths are local to their producing stages.
-
 
 ## Dynamic Products
 
@@ -327,7 +376,6 @@ scanning stage directories.
 
 Dynamic-product paths recorded by a manifest are relative to that
 manifest's stage-local product location.
-
 
 ## Invariants
 
@@ -394,29 +442,28 @@ A conforming Artwork implementation satisfies the following:
 25. Another model can consume registered vector Artwork without requiring
     standalone Artwork extrusion or packaging.
 
-
 ## Scope
 
 The Artwork model includes:
 
-- raster source interpretation;
-- artwork-envelope derivation;
-- semantic color separation;
-- registered raster geometry;
-- registered vector geometry;
-- standalone dimensionalization;
-- standalone multicomponent 3MF packaging;
-- reusable registered vector Artwork.
+* raster source interpretation;
+* artwork-envelope derivation;
+* semantic color separation;
+* registered raster geometry;
+* registered vector geometry;
+* standalone dimensionalization;
+* standalone multicomponent 3MF packaging;
+* reusable registered vector Artwork.
 
 Artwork does not define:
 
-- structural bases;
-- circles, squares, octagons, or other supporting Shape geometry;
-- structural ridges;
-- hangers or handles;
-- labels or text belonging to another object;
-- placement of Artwork within another model;
-- physical sizing of Artwork when consumed by another model.
+* structural bases;
+* circles, squares, octagons, or other supporting Shape geometry;
+* structural ridges;
+* hangers or handles;
+* labels or text belonging to another object;
+* placement of Artwork within another model;
+* physical sizing of Artwork when consumed by another model.
 
 Those responsibilities belong to the model consuming the registered
 Artwork.

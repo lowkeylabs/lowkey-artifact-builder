@@ -8,8 +8,8 @@ and to complete the initial integration between the Shape and Artwork models.
 
 ```text
 Phase 1 — Completed
-Phase 2 — Started
-Phase 3 — Not started
+Phase 2 — Completed
+Phase 3 — Started
 ```
 
 ## Key Documents
