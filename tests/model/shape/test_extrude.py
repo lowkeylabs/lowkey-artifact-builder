@@ -3713,3 +3713,532 @@ def test_incorporated_artwork_is_dimensionalized_above_shape_base(
 
     assert bounds[4] == pytest.approx(2.0)
     assert bounds[5] == pytest.approx(3.0)
+
+
+@pytest.mark.slow
+def test_incorporated_artwork_components_share_physical_z_dimensionalization(
+    tmp_path: Path,
+) -> None:
+    """
+    All incorporated Artwork components share one physical Z interval.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    artwork_component_1 = tmp_path / "color-1.svg"
+    artwork_component_2 = tmp_path / "color-2.svg"
+    output_manifest = tmp_path / "products.json"
+
+    _write_composition(
+        composition,
+    )
+
+    artwork_component_1.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="-0.5 -0.5 1.0 1.0"
+>
+    <circle
+        cx="-0.2"
+        cy="0.0"
+        r="0.15"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    artwork_component_2.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="-0.5 -0.5 1.0 1.0"
+>
+    <circle
+        cx="0.2"
+        cy="0.0"
+        r="0.15"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
+        artwork={
+            "transform": {
+                "scale": 1.0,
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+            },
+            "components": [
+                {
+                    "index": 1,
+                    "path": "color-1.svg",
+                    "name": "red",
+                    "color": {
+                        "red": 220,
+                        "green": 38,
+                        "blue": 38,
+                    },
+                },
+                {
+                    "index": 2,
+                    "path": "color-2.svg",
+                    "name": "blue",
+                    "color": {
+                        "red": 37,
+                        "green": 99,
+                        "blue": 235,
+                    },
+                },
+            ],
+        },
+    )
+
+    resolver = _make_extrude_resolver(
+        shape_base_raise=2.0,
+        shape_artwork_raise=1.25,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
+    context.output.return_value = output_manifest
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        output_manifest,
+    )
+
+    artwork_components = [
+        component for component in data["components"] if component["name"].startswith("artwork-")
+    ]
+
+    assert len(artwork_components) == 2
+
+    for component in artwork_components:
+        bounds = _stl_bounds(
+            output_manifest.parent / component["path"],
+        )
+
+        assert bounds[4] == pytest.approx(2.0)
+        assert bounds[5] == pytest.approx(3.25)
+
+
+def test_incorporated_artwork_manifest_preserves_semantic_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Dimensionalization preserves semantic colors supplied by Artwork.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    artwork_component = tmp_path / "color-1.svg"
+    output_manifest = tmp_path / "products.json"
+
+    _write_composition(
+        composition,
+    )
+
+    artwork_component.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="-0.5 -0.5 1.0 1.0"
+>
+    <circle
+        cx="0.0"
+        cy="0.0"
+        r="0.25"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    expected_color = {
+        "red": 220,
+        "green": 38,
+        "blue": 38,
+    }
+
+    _write_composition_manifest(
+        composition_manifest,
+        artwork={
+            "transform": {
+                "scale": 1.0,
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+            },
+            "components": [
+                {
+                    "index": 1,
+                    "path": "color-1.svg",
+                    "name": "red",
+                    "color": expected_color,
+                },
+            ],
+        },
+    )
+
+    resolver = _make_extrude_resolver(
+        shape_artwork_raise=1.0,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
+    context.output.return_value = output_manifest
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        output_manifest,
+    )
+
+    artwork_component_data = next(
+        component for component in data["components"] if component["name"] == "artwork-1"
+    )
+
+    assert artwork_component_data["color"] == expected_color
+
+
+@pytest.mark.slow
+def test_incorporated_artwork_preserves_registered_composition_transform(
+    tmp_path: Path,
+) -> None:
+    """
+    Artwork dimensionalization preserves its registered composition transform.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    artwork_component = tmp_path / "color-1.svg"
+    output_manifest = tmp_path / "products.json"
+
+    _write_composition(
+        composition,
+    )
+
+    artwork_component.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="-0.5 -0.5 1.0 1.0"
+>
+    <rect
+        x="-0.5"
+        y="-0.5"
+        width="1.0"
+        height="1.0"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
+        artwork={
+            "transform": {
+                "scale": 0.4,
+                "translate_x": 0.1,
+                "translate_y": -0.2,
+            },
+            "components": [
+                {
+                    "index": 1,
+                    "path": "color-1.svg",
+                    "name": "red",
+                    "color": {
+                        "red": 220,
+                        "green": 38,
+                        "blue": 38,
+                    },
+                },
+            ],
+        },
+    )
+
+    resolver = _make_extrude_resolver(
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_artwork_raise=1.0,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
+    context.output.return_value = output_manifest
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        output_manifest,
+    )
+
+    artwork_component_data = next(
+        component for component in data["components"] if component["name"] == "artwork-1"
+    )
+
+    bounds = _stl_bounds(
+        output_manifest.parent / artwork_component_data["path"],
+    )
+
+    assert bounds[0] == pytest.approx(-10.0)
+    assert bounds[1] == pytest.approx(30.0)
+    assert bounds[2] == pytest.approx(-40.0)
+    assert bounds[3] == pytest.approx(0.0)
+    assert bounds[4] == pytest.approx(2.0)
+    assert bounds[5] == pytest.approx(3.0)
+
+
+@pytest.mark.slow
+def test_shape_size_scales_incorporated_artwork_physical_xy_extent(
+    tmp_path: Path,
+) -> None:
+    """
+    shape_size scales Artwork without changing registered composition.
+    """
+
+    physical_bounds: list[tuple[float, float, float, float, float, float]] = []
+
+    for shape_size in (
+        50.0,
+        100.0,
+    ):
+        case_directory = tmp_path / f"shape-{shape_size:g}"
+        case_directory.mkdir()
+
+        composition = case_directory / "composition.svg"
+        composition_manifest = case_directory / "composition-products.json"
+        artwork_component = case_directory / "color-1.svg"
+        output_manifest = case_directory / "products.json"
+
+        _write_composition(
+            composition,
+        )
+
+        artwork_component.write_text(
+            """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="-0.5 -0.5 1.0 1.0"
+>
+    <rect
+        x="-0.25"
+        y="-0.125"
+        width="0.5"
+        height="0.25"
+    />
+</svg>
+""".strip(),
+            encoding="utf-8",
+        )
+
+        _write_composition_manifest(
+            composition_manifest,
+            artwork={
+                "transform": {
+                    "scale": 0.8,
+                    "translate_x": 0.0,
+                    "translate_y": 0.0,
+                },
+                "components": [
+                    {
+                        "index": 1,
+                        "path": "color-1.svg",
+                        "name": "red",
+                        "color": {
+                            "red": 220,
+                            "green": 38,
+                            "blue": 38,
+                        },
+                    },
+                ],
+            },
+        )
+
+        resolver = _make_extrude_resolver(
+            shape_size=shape_size,
+            shape_base_raise=2.0,
+            shape_artwork_raise=1.0,
+        )
+
+        context = Mock(
+            spec=StageContext,
+        )
+        context.resolver = resolver
+        _configure_extrude_context_inputs(
+            context,
+            composition=composition,
+            composition_manifest=composition_manifest,
+        )
+        context.output.return_value = output_manifest
+
+        extrude.execute(
+            context,
+        )
+
+        data = _read_manifest(
+            output_manifest,
+        )
+
+        artwork_component_data = next(
+            component for component in data["components"] if component["name"] == "artwork-1"
+        )
+
+        physical_bounds.append(
+            _stl_bounds(
+                output_manifest.parent / artwork_component_data["path"],
+            )
+        )
+
+    small_bounds, large_bounds = physical_bounds
+
+    assert large_bounds[0] == pytest.approx(
+        small_bounds[0] * 2.0,
+    )
+    assert large_bounds[1] == pytest.approx(
+        small_bounds[1] * 2.0,
+    )
+    assert large_bounds[2] == pytest.approx(
+        small_bounds[2] * 2.0,
+    )
+    assert large_bounds[3] == pytest.approx(
+        small_bounds[3] * 2.0,
+    )
+
+    assert large_bounds[4] == pytest.approx(
+        small_bounds[4],
+    )
+    assert large_bounds[5] == pytest.approx(
+        small_bounds[5],
+    )
+
+
+@pytest.mark.slow
+def test_incorporated_artwork_preserves_registered_asymmetric_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Artwork dimensionalization preserves registered X/Y geometry and orientation.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    artwork_component = tmp_path / "color-1.svg"
+    output_manifest = tmp_path / "products.json"
+
+    _write_composition(
+        composition,
+    )
+
+    artwork_component.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="-0.5 -0.5 1.0 1.0"
+>
+    <rect
+        x="-0.4"
+        y="-0.3"
+        width="0.2"
+        height="0.4"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
+        artwork={
+            "transform": {
+                "scale": 1.0,
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+            },
+            "components": [
+                {
+                    "index": 1,
+                    "path": "color-1.svg",
+                    "name": "red",
+                    "color": {
+                        "red": 220,
+                        "green": 38,
+                        "blue": 38,
+                    },
+                },
+            ],
+        },
+    )
+
+    resolver = _make_extrude_resolver(
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_artwork_raise=1.0,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
+    context.output.return_value = output_manifest
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        output_manifest,
+    )
+
+    artwork_component_data = next(
+        component for component in data["components"] if component["name"] == "artwork-1"
+    )
+
+    bounds = _stl_bounds(
+        output_manifest.parent / artwork_component_data["path"],
+    )
+
+    assert bounds[0] == pytest.approx(-40.0, abs=0.002)
+    assert bounds[1] == pytest.approx(-20.0, abs=0.002)
+    assert bounds[2] == pytest.approx(-30.0, abs=0.002)
+    assert bounds[3] == pytest.approx(10.0, abs=0.002)
+    assert bounds[4] == pytest.approx(2.0, abs=0.002)
+    assert bounds[5] == pytest.approx(3.0, abs=0.002)

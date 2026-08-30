@@ -774,8 +774,9 @@ def _trace_mask(
     Inkscape therefore receives no source colors, transparency, or
     antialiased intermediate values.
 
-    Every layer is traced from the same registered crop so relative
-    geometry is preserved without assigning physical dimensions.
+    Inkscape traces the cropped raster in crop-local coordinates. The
+    resulting vector geometry is then restored to the common Registered
+    Artwork coordinate system established by the source-raster crop.
     """
 
     output = output.resolve()
@@ -825,6 +826,11 @@ def _trace_mask(
         tree,
     )
 
+    _register_vector_layer(
+        tree,
+        crop=crop,
+    )
+
     save(
         tree,
         output,
@@ -850,6 +856,67 @@ def _remove_raster_images(
                 parent.remove(
                     child,
                 )
+
+
+def _register_vector_layer(
+    tree: ET.ElementTree[ET.Element[str]],
+    *,
+    crop: RasterCrop,
+) -> None:
+    """
+    Register one traced vector layer in the common Artwork coordinate system.
+
+    Inkscape traces the already-cropped raster in crop-local coordinates.
+    Registered Artwork instead uses the corresponding source-raster
+    coordinates.
+
+    The SVG coordinate system is therefore restored to the common crop and
+    supported crop-local geometry is translated by the crop origin.
+    """
+
+    root = tree.getroot()
+
+    root.set(
+        "viewBox",
+        " ".join(
+            (
+                str(crop.x),
+                str(crop.y),
+                str(crop.size),
+                str(crop.size),
+            )
+        ),
+    )
+
+    root.set(
+        "width",
+        str(crop.size),
+    )
+
+    root.set(
+        "height",
+        str(crop.size),
+    )
+
+    for element in root:
+        x = element.get(
+            "x",
+        )
+        y = element.get(
+            "y",
+        )
+
+        if x is not None:
+            element.set(
+                "x",
+                str(float(x) + crop.x),
+            )
+
+        if y is not None:
+            element.set(
+                "y",
+                str(float(y) + crop.y),
+            )
 
 
 # =========================================================

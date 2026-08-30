@@ -1272,9 +1272,12 @@ def _build_artwork_component_scad(
     """
     Build OpenSCAD source for one incorporated Artwork component.
 
-    The persisted registered Artwork transform is applied before Shape maps
-    registered coordinates into physical X/Y space. The resulting component
-    begins at the physical top of the Shape base.
+    OpenSCAD normalizes imported SVG coordinates into its own import coordinate
+    system. The import is first restored to Shape registered coordinates, then
+    the persistent registered Artwork placement transform is applied, and
+    finally Shape maps registered coordinates into physical X/Y space.
+
+    The resulting component begins at the physical top of the Shape base.
     """
 
     return (
@@ -1297,7 +1300,8 @@ def _build_artwork_component_scad(
         "                0\n"
         "            ])\n"
         "                scale([artwork_scale, artwork_scale, 1])\n"
-        f'                    import("{source}", dpi = 25.4);\n'
+        "                    translate([-0.5, -1.5, 0])\n"
+        f'                        import("{source}", dpi = 25.4);\n'
     )
 
 
