@@ -584,6 +584,49 @@ def test_render_stl_rejects_missing_output(
 # =========================================================
 
 
+@pytest.mark.slow
+def test_render_stl_source_replaces_existing_target(
+    tmp_path: Path,
+) -> None:
+    """
+    Source rendering replaces an existing STL target.
+
+    Incremental execution may rebuild a physical product at the same
+    persistent path. Rendering new source to that path must replace the
+    previous physical geometry without requiring the caller to remove the
+    existing product first.
+    """
+
+    output = tmp_path / "model.stl"
+
+    openscad.render_stl_source(
+        """
+linear_extrude(height = 2)
+    square([100, 100], center = true);
+""".strip(),
+        output,
+    )
+
+    assert output.is_file()
+
+    initial_contents = output.read_bytes()
+
+    openscad.render_stl_source(
+        """
+linear_extrude(height = 2)
+    square([90, 90], center = true);
+""".strip(),
+        output,
+    )
+
+    assert output.is_file()
+
+    rebuilt_contents = output.read_bytes()
+
+    assert rebuilt_contents
+    assert rebuilt_contents != initial_contents
+
+
 def test_render_stl_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

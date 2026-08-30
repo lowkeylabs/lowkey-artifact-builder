@@ -32,11 +32,6 @@ SVG_GROUP = f"{{{SVG_NAMESPACE}}}g"
 SVG_PATH = f"{{{SVG_NAMESPACE}}}path"
 
 
-ET.register_namespace(
-    "",
-    SVG_NAMESPACE,
-)
-
 # =========================================================
 # Registered Artwork
 # =========================================================
@@ -417,37 +412,42 @@ def _compose_ridge(
         "shape-boundary",
     )
 
-    if ridge_width == 0.0:
-        tree.write(
-            output,
-            encoding="unicode",
-        )
-        return
+    if ridge_width > 0.0:
+        registered_inset = ridge_width / shape_size
 
-    registered_inset = ridge_width / shape_size
+        if circle is not None:
+            _compose_circle_ridge(
+                root,
+                circle,
+                registered_inset=registered_inset,
+            )
 
-    if circle is not None:
-        _compose_circle_ridge(
-            root,
-            circle,
-            registered_inset=registered_inset,
-        )
+        elif square is not None:
+            _compose_square_ridge(
+                root,
+                square,
+                registered_inset=registered_inset,
+            )
 
-    elif square is not None:
-        _compose_square_ridge(
-            root,
-            square,
-            registered_inset=registered_inset,
-        )
+        else:
+            assert polygon is not None
 
-    else:
-        assert polygon is not None
+            _compose_polygon_ridge(
+                root,
+                polygon,
+                registered_inset=registered_inset,
+            )
 
-        _compose_polygon_ridge(
-            root,
-            polygon,
-            registered_inset=registered_inset,
-        )
+    #
+    # ElementTree namespace registration is process-global. Establish the SVG
+    # default namespace at the serialization boundary rather than relying on
+    # namespace state established when this module was imported.
+    #
+
+    ET.register_namespace(
+        "",
+        SVG_NAMESPACE,
+    )
 
     tree.write(
         output,

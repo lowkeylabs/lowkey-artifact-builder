@@ -1484,6 +1484,201 @@ def test_positive_separate_polygon_ridge_partitions_physical_geometry(
 # =========================================================
 
 
+@pytest.mark.slow
+def test_extrude_stage_can_rebuild_existing_outputs_after_shape_size_change(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape extrusion can rebuild its persistent outputs after shape_size changes.
+
+    A physical parameter change makes extrusion stale while retaining its
+    existing stage products until execution replaces them. Re-executing the
+    stage into the same persistent output location must replace those products
+    with valid geometry at the newly configured physical size.
+    """
+
+    composition = tmp_path / "compose" / "composition.svg"
+    composition_manifest = tmp_path / "compose" / "products.json"
+    output_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_composition(
+        composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
+
+    context.output.return_value = output_manifest
+
+    # -----------------------------------------------------
+    # Initial extrusion
+    # -----------------------------------------------------
+
+    context.resolver = _make_extrude_resolver(
+        shape_size=100.0,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    base = output_manifest.parent / "base.stl"
+
+    assert output_manifest.is_file()
+    assert base.is_file()
+
+    initial_bounds = _stl_bounds(
+        base,
+    )
+
+    assert initial_bounds[0] == pytest.approx(-50.0)
+    assert initial_bounds[1] == pytest.approx(50.0)
+    assert initial_bounds[2] == pytest.approx(-50.0)
+    assert initial_bounds[3] == pytest.approx(50.0)
+
+    # -----------------------------------------------------
+    # Rebuild extrusion at a different physical size
+    # -----------------------------------------------------
+
+    context.resolver = _make_extrude_resolver(
+        shape_size=90.0,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    assert output_manifest.is_file()
+    assert base.is_file()
+
+    rebuilt_bounds = _stl_bounds(
+        base,
+    )
+
+    assert rebuilt_bounds[0] == pytest.approx(-45.0)
+    assert rebuilt_bounds[1] == pytest.approx(45.0)
+    assert rebuilt_bounds[2] == pytest.approx(-45.0)
+    assert rebuilt_bounds[3] == pytest.approx(45.0)
+    assert rebuilt_bounds[4] == pytest.approx(0.0)
+    assert rebuilt_bounds[5] == pytest.approx(2.0)
+
+
+@pytest.mark.slow
+def test_extrude_stage_rebuilds_after_size_change_through_engine_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Shape extrusion rebuilds after shape_size changes through execute_stage.
+
+    The common stage execution boundary changes the process working directory
+    before invoking the model implementation. Re-execution through that
+    boundary must preserve access to persistent compose inputs and replace
+    existing extrusion products with geometry at the new physical size.
+    """
+
+    from lowkey_artifact_builder.engine.stage import execute_stage
+
+    artifact_dir = tmp_path / "artifact"
+    compose_dir = artifact_dir / "20-compose"
+    extrude_dir = artifact_dir / "30-extrude"
+
+    composition = compose_dir / "composition.svg"
+    composition_manifest = compose_dir / "products.json"
+    output_manifest = extrude_dir / "products.json"
+
+    _write_composition(
+        composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
+    )
+
+    extrude_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    context.artifact_id = "shape"
+    context.model_name = "shape"
+    context.stage_name = "extrude"
+    context.working_dir = extrude_dir
+    context.inputs = {
+        "compose.composition": composition,
+        "compose.manifest": composition_manifest,
+    }
+    context.outputs = {
+        "manifest": output_manifest,
+    }
+
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
+
+    context.output.return_value = output_manifest
+
+    context.resolver = _make_extrude_resolver(
+        shape_size=100.0,
+    )
+
+    execute_stage(
+        context,
+    )
+
+    base = extrude_dir / "base.stl"
+
+    assert base.is_file()
+
+    assert _stl_bounds(base)[:4] == pytest.approx(
+        (
+            -50.0,
+            50.0,
+            -50.0,
+            50.0,
+        )
+    )
+
+    context.resolver = _make_extrude_resolver(
+        shape_size=90.0,
+    )
+
+    execute_stage(
+        context,
+    )
+
+    assert output_manifest.is_file()
+    assert base.is_file()
+
+    assert _stl_bounds(base) == pytest.approx(
+        (
+            -45.0,
+            45.0,
+            -45.0,
+            45.0,
+            0.0,
+            2.0,
+        )
+    )
+
+
 def test_extrude_stage_materializes_declared_component_manifest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

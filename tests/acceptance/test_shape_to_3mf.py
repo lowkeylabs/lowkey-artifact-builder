@@ -878,3 +878,288 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
         assert artwork_color.get("name") == expected_name
         assert artwork_color.get("displaycolor") == expected_display_color
         assert artwork_object.get("pindex") == "0"
+
+
+@pytest.mark.slow
+def test_shape_physical_change_reuses_registered_artwork(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    Shape physical changes reuse current registered Artwork.
+
+    Changing Shape physical size rebuilds the Shape manufacturing path
+    without repeating Artwork interpretation when the reusable registered
+    Artwork vector product remains current.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    # -----------------------------------------------------
+    # Create canonical Artwork input
+    # -----------------------------------------------------
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+
+    assert fixture_source.is_file()
+
+    artwork_directory = project_root / "artifacts" / "source-artwork"
+
+    artwork_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_input = artwork_directory / "artifact.png"
+
+    shutil.copy2(
+        fixture_source,
+        artwork_input,
+    )
+
+    # -----------------------------------------------------
+    # Configure reusable Artwork producer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "source-artwork",
+        {
+            "model": "artwork",
+            "source": str(
+                artwork_input,
+            ),
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Configure Shape consumer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "artwork-shape",
+        {
+            "model": "shape",
+            "shape_size": 100.0,
+            "product_dependencies": {
+                "manifest": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "manifest",
+                    "artifact": "source-artwork",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Build initial Shape
+    # -----------------------------------------------------
+
+    initial_plan = create_build_plans(
+        "artwork-shape",
+        project_root=project_root,
+    )[0]
+
+    execute_dependency_build(
+        initial_plan,
+    )
+
+    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "default"
+
+    artwork_products = artwork_root / "30-vector" / "products.json"
+
+    assert artwork_products.is_file()
+
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+    initial_vector_bytes = artwork_products.read_bytes()
+
+    initial_component_bytes = {
+        path.name: path.read_bytes() for path in (artwork_root / "30-vector").glob("*.svg")
+    }
+
+    assert initial_component_bytes
+
+    # -----------------------------------------------------
+    # Change only Shape physical size
+    # -----------------------------------------------------
+
+    update_artifact_config(
+        "artwork-shape",
+        {
+            "shape_size": 90.0,
+        },
+        project_root=project_root,
+    )
+
+    resized_plan = create_build_plans(
+        "artwork-shape",
+        project_root=project_root,
+    )[0]
+
+    execute_dependency_build(
+        resized_plan,
+    )
+
+    # -----------------------------------------------------
+    # Verify registered Artwork was reused unchanged
+    # -----------------------------------------------------
+
+    assert artwork_products.read_bytes() == initial_vector_bytes
+
+    resized_component_bytes = {
+        path.name: path.read_bytes() for path in (artwork_root / "30-vector").glob("*.svg")
+    }
+
+    assert resized_component_bytes == initial_component_bytes
+
+    # Standalone Artwork manufacturing remains unnecessary.
+
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+    # -----------------------------------------------------
+    # Verify resized Shape artifact exists
+    # -----------------------------------------------------
+
+    package_stage = next(stage for stage in resized_plan.stages if stage.spec.name == "package")
+
+    artifact_product = next(
+        product for product in package_stage.products if product.spec.name == "artifact"
+    )
+
+    output = artifact_product.path
+
+    assert output.is_file()
+    assert output.stat().st_size > 0
+    assert zipfile.is_zipfile(
+        output,
+    )
+
+
+@pytest.mark.slow
+def test_shape_rebuilds_after_size_change(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    A completed Shape can be rebuilt after its physical size changes.
+
+    Changing Shape physical size invalidates and rebuilds the downstream
+    Shape manufacturing products through normal dependency-aware
+    orchestration.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    # -----------------------------------------------------
+    # Configure Shape
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "resized-shape",
+        {
+            "model": "shape",
+            "shape_size": 100.0,
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Build initial Shape
+    # -----------------------------------------------------
+
+    initial_plan = create_build_plans(
+        "resized-shape",
+        project_root=project_root,
+    )[0]
+
+    execute_dependency_build(
+        initial_plan,
+    )
+
+    shape_root = project_root / "artifacts" / "resized-shape" / "shape" / "default"
+
+    initial_artifact = shape_root / "40-package" / "artifact.3mf"
+
+    existing_base = shape_root / "30-extrude" / "base.stl"
+
+    assert initial_artifact.is_file()
+    assert zipfile.is_zipfile(
+        initial_artifact,
+    )
+
+    assert existing_base.is_file()
+    assert existing_base.stat().st_size > 0
+
+    initial_base_bytes = existing_base.read_bytes()
+
+    # -----------------------------------------------------
+    # Change Shape size
+    # -----------------------------------------------------
+
+    update_artifact_config(
+        "resized-shape",
+        {
+            "shape_size": 90.0,
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Rebuild through normal orchestration
+    # -----------------------------------------------------
+
+    resized_plan = create_build_plans(
+        "resized-shape",
+        project_root=project_root,
+    )[0]
+
+    execute_dependency_build(
+        resized_plan,
+    )
+
+    # -----------------------------------------------------
+    # Verify extrusion was rebuilt in place
+    # -----------------------------------------------------
+
+    assert existing_base.is_file()
+    assert existing_base.stat().st_size > 0
+
+    resized_base_bytes = existing_base.read_bytes()
+
+    assert resized_base_bytes != initial_base_bytes
+
+    # -----------------------------------------------------
+    # Verify rebuilt package
+    # -----------------------------------------------------
+
+    package_stage = next(stage for stage in resized_plan.stages if stage.spec.name == "package")
+
+    artifact_product = next(
+        product for product in package_stage.products if product.spec.name == "artifact"
+    )
+
+    output = artifact_product.path
+
+    assert output.is_file()
+    assert output.stat().st_size > 0
+    assert zipfile.is_zipfile(
+        output,
+    )

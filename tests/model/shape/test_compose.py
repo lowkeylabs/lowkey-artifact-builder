@@ -1200,6 +1200,141 @@ def test_registered_artwork_components_share_one_transform(
 # =========================================================
 
 
+def test_compose_stage_can_rewrite_existing_composition_after_size_change(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape composition can rebuild into its existing persistent output.
+
+    Changing shape_size may invalidate registered composition because physical
+    ridge width is represented relative to Shape size. Re-executing the stage
+    must replace its previous composition with valid registered Shape geometry.
+    """
+
+    structure_input = tmp_path / "structure.svg"
+    composition_output = tmp_path / "composition.svg"
+
+    _write_registered_structure(
+        structure_input,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    _configure_compose_inputs(
+        context,
+        structure=structure_input,
+    )
+    _configure_compose_outputs(
+        context,
+        composition=composition_output,
+    )
+
+    _configure_shape_resolver(
+        context,
+        shape_size=100.0,
+        ridge_width=0.0,
+    )
+
+    compose.execute(
+        context,
+    )
+
+    initial_root = ET.parse(
+        composition_output,
+    ).getroot()
+
+    initial_boundary = initial_root.find(
+        './/*[@id="shape-boundary"]',
+    )
+
+    assert initial_boundary is not None
+
+    _configure_shape_resolver(
+        context,
+        shape_size=90.0,
+        ridge_width=0.0,
+    )
+
+    compose.execute(
+        context,
+    )
+
+    rebuilt_root = ET.parse(
+        composition_output,
+    ).getroot()
+
+    rebuilt_boundary = rebuilt_root.find(
+        './/*[@id="shape-boundary"]',
+    )
+
+    assert rebuilt_boundary is not None
+    assert rebuilt_boundary.tag == "{http://www.w3.org/2000/svg}circle"
+    assert float(rebuilt_boundary.get("r", "nan")) == pytest.approx(
+        0.5,
+    )
+
+
+def test_compose_serialization_restores_svg_default_namespace(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape composition owns the serialization of its persistent SVG product.
+
+    ElementTree namespace registration is process-global. Composition must
+    therefore establish the SVG default namespace when it serializes rather
+    than relying on namespace state established when its module was imported.
+    """
+
+    structure_input = tmp_path / "structure.svg"
+    composition_output = tmp_path / "composition.svg"
+
+    _write_registered_structure(
+        structure_input,
+    )
+
+    #
+    # Simulate another XML subsystem changing ElementTree's
+    # process-global namespace registration after compose was
+    # imported.
+    #
+
+    ET.register_namespace(
+        "",
+        "urn:lowkey:test",
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    _configure_compose_inputs(
+        context,
+        structure=structure_input,
+    )
+    _configure_compose_outputs(
+        context,
+        composition=composition_output,
+    )
+
+    _configure_shape_resolver(
+        context,
+        shape_size=90.0,
+        ridge_width=0.0,
+    )
+
+    compose.execute(
+        context,
+    )
+
+    serialized = composition_output.read_text(
+        encoding="utf-8",
+    )
+
+    assert '<svg xmlns="http://www.w3.org/2000/svg"' in serialized
+
+
 def test_compose_stage_materializes_registered_composition_manifest(
     tmp_path: Path,
 ) -> None:
@@ -2707,3 +2842,75 @@ def test_registered_artwork_envelope_bounds_supports_linear_path(
         width=40.0,
         height=40.0,
     )
+
+
+@pytest.mark.slow
+def test_compose_output_is_consumable_by_openscad(
+    tmp_path: Path,
+) -> None:
+    """
+    Persistent Shape composition is consumable by physical extrusion.
+
+    Compose owns the persistent registered Shape representation. Its SVG
+    serialization must therefore remain a valid manufacturing input for the
+    downstream extrusion operation, not merely valid XML.
+    """
+
+    from lowkey_artifact_builder.model.models.shape.stages import (
+        extrude,
+        structure,
+    )
+
+    structure_path = tmp_path / "10-structure" / "structure.svg"
+
+    composition_path = tmp_path / "20-compose" / "composition.svg"
+
+    output_path = tmp_path / "30-extrude" / "base.stl"
+
+    structure_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    composition_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    output_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    geometry = structure.create_circle_geometry()
+
+    document = structure.create_circle_svg(
+        geometry,
+    )
+
+    document.write(
+        structure_path,
+        encoding="unicode",
+    )
+
+    compose._compose_ridge(
+        structure_path,
+        composition_path,
+        shape_size=90.0,
+        ridge_width=0.0,
+    )
+
+    source = extrude._build_scad(
+        composition_path,
+        shape_size=90.0,
+        shape_base_raise=2.0,
+        shape_outer_ridge_raise=1.0,
+        shape_outer_ridge_style="integrated",
+    )
+
+    extrude.render_stl_source(
+        source,
+        output_path,
+    )
+
+    assert output_path.is_file()

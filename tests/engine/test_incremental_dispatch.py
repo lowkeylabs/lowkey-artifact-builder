@@ -587,6 +587,96 @@ def test_incremental_artifact_build_does_not_dispatch_current_stages(
 # =========================================================
 
 
+def test_incremental_artifact_build_downstream_stage_sees_rebuilt_upstream_product(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A downstream rebuild consumes the upstream product rebuilt in the same run.
+
+    When consecutive stages are invalidated, the later stage context must
+    resolve its prerequisite input to the persistent product just replaced
+    by the earlier stage.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+        content=b"original-input",
+    )
+
+    _record_all_stages_current(
+        build_plan,
+    )
+
+    upstream_stage = next(stage for stage in build_plan.stages if stage.inputs)
+
+    downstream_stage = next(
+        stage for stage in build_plan.stages if upstream_stage.name in stage.spec.dependencies
+    )
+
+    upstream_product = upstream_stage.products[0]
+
+    for planned_input in upstream_stage.inputs:
+        planned_input.path.write_bytes(
+            b"changed-input",
+        )
+
+    rebuilt_content = b"rebuilt-upstream-product"
+
+    downstream_observed: bytes | None = None
+
+    def dispatch(
+        context: StageContext,
+    ) -> None:
+        nonlocal downstream_observed
+
+        stage = _stage_by_name(
+            build_plan,
+            context.stage_name,
+        )
+
+        if stage is upstream_stage:
+            upstream_product.path.write_bytes(
+                rebuilt_content,
+            )
+
+            for product in stage.products[1:]:
+                product.path.write_bytes(
+                    rebuilt_content,
+                )
+
+            return
+
+        if stage is downstream_stage:
+            downstream_input = next(
+                path for path in context.inputs.values() if path == upstream_product.path
+            )
+
+            downstream_observed = downstream_input.read_bytes()
+
+        _materialize_stage_products(
+            stage,
+        )
+
+    monkeypatch.setattr(
+        incremental_module,
+        "execute_stage",
+        dispatch,
+    )
+
+    execute_incremental_artifact_build(
+        build_plan,
+    )
+
+    assert downstream_observed == rebuilt_content
+
+
 def test_incremental_artifact_build_dispatches_only_invalidated_chain(
     artwork_plan: ArtworkPlanFactory,
     tmp_path: Path,

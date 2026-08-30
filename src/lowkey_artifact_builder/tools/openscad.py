@@ -310,28 +310,8 @@ def render_stl_source(
     """
     Render OpenSCAD source text directly to STL.
 
-    The supplied source is written to a temporary SCAD
-    document, rendered using OpenSCAD, and then removed.
-
-    The temporary SCAD file is created in the output
-    directory. This allows relative paths used by OpenSCAD
-    ``import()`` statements to be interpreted relative to
-    the generated model location.
-
-    Args:
-        source:
-            Complete OpenSCAD source text.
-
-        output:
-            STL file to create.
-
-    Returns:
-        Path to the generated STL.
-
-    Raises:
-        OpenSCADError:
-            If the source is empty, the output filename is
-            invalid, or OpenSCAD fails.
+    The source is materialized temporarily beside the output so relative
+    filesystem behavior remains local to the rendering operation.
     """
 
     output = Path(output)
@@ -353,16 +333,9 @@ def render_stl_source(
         exist_ok=True,
     )
 
-    #
-    # Resolve the output directory before creating the
-    # temporary SCAD file.
-    #
-    # Keeping the generated SCAD beside the output is
-    # important for models containing relative import()
-    # paths.
-    #
-
     output_directory = output.parent.resolve()
+
+    scad: Path | None = None
 
     try:
         with tempfile.NamedTemporaryFile(
@@ -377,14 +350,10 @@ def render_stl_source(
 
             file.write(source)
 
-        try:
-            return render_stl(
-                scad,
-                output,
-            )
-
-        finally:
-            scad.unlink(missing_ok=True)
+        return render_stl(
+            scad,
+            output,
+        )
 
     except OpenSCADError:
         raise
@@ -393,6 +362,12 @@ def render_stl_source(
         raise OpenSCADError(
             f"Could not create temporary OpenSCAD source for {output}: {exc}"
         ) from exc
+
+    finally:
+        if scad is not None:
+            scad.unlink(
+                missing_ok=True,
+            )
 
 
 __all__ = [
