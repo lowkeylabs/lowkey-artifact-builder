@@ -870,9 +870,11 @@ def _register_vector_layer(
     Registered Artwork instead uses the corresponding source-raster
     coordinates.
 
-    The SVG coordinate system is restored to the common crop and every
-    top-level geometry element receives the crop translation. Existing
-    element transforms are preserved after that registration transform.
+    The SVG coordinate system is restored to the common crop and rendered
+    top-level SVG groups receive the crop translation. Existing geometry
+    transforms are preserved after that registration transform.
+
+    Document metadata and definitions are not transformed.
     """
 
     root = tree.getroot()
@@ -900,8 +902,12 @@ def _register_vector_layer(
     )
 
     registration = f"translate({crop.x} {crop.y})"
+    group_tag = f"{{{SVG_NS}}}g"
 
     for element in root:
+        if element.tag != group_tag:
+            continue
+
         existing_transform = element.get(
             "transform",
         )

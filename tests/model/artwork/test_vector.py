@@ -617,7 +617,9 @@ def test_vector_layer_geometry_is_registered_with_source_crop(
                 'width="14" '
                 'height="14" '
                 'viewBox="0 0 14 14">'
+                "<g>"
                 '<rect x="2" y="3" width="4" height="5"/>'
+                "</g>"
                 "</svg>"
             ),
             encoding="utf-8",
@@ -639,8 +641,12 @@ def test_vector_layer_geometry_is_registered_with_source_crop(
         output,
     ).getroot()
 
-    rectangle = next(
+    group = next(
         iter(root),
+    )
+
+    rectangle = next(
+        iter(group),
     )
 
     assert float(rectangle.get("x", "nan")) == pytest.approx(2.0)
@@ -648,7 +654,7 @@ def test_vector_layer_geometry_is_registered_with_source_crop(
     assert float(rectangle.get("width", "nan")) == pytest.approx(4.0)
     assert float(rectangle.get("height", "nan")) == pytest.approx(5.0)
 
-    assert rectangle.get("transform") == "translate(2 3)"
+    assert group.get("transform") == "translate(2 3)"
 
 
 def test_registered_envelope_uses_same_crop_as_vector_layers(
@@ -1633,7 +1639,9 @@ def test_vector_path_geometry_is_registered_with_source_crop(
                 'width="14" '
                 'height="14" '
                 'viewBox="0 0 14 14">'
+                "<g>"
                 '<path d="M 2,3 H 6 V 8 H 2 Z"/>'
+                "</g>"
                 "</svg>"
             ),
             encoding="utf-8",
@@ -1655,12 +1663,16 @@ def test_vector_path_geometry_is_registered_with_source_crop(
         output,
     ).getroot()
 
-    path = next(
+    group = next(
         iter(root),
     )
 
+    path = next(
+        iter(group),
+    )
+
     assert path.get("d") == "M 2,3 H 6 V 8 H 2 Z"
-    assert path.get("transform") == "translate(2 3)"
+    assert group.get("transform") == "translate(2 3)"
 
 
 def test_vector_path_registration_preserves_existing_transform(
@@ -1668,8 +1680,8 @@ def test_vector_path_registration_preserves_existing_transform(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Registering traced path geometry preserves transforms already present
-    in the Inkscape vector output.
+    Registering traced geometry preserves transforms already present on the
+    Inkscape geometry group.
     """
 
     source = tmp_path / "source.png"
@@ -1703,9 +1715,9 @@ def test_vector_path_registration_preserves_existing_transform(
                 'width="14" '
                 'height="14" '
                 'viewBox="0 0 14 14">'
-                "<path "
-                'd="M 2,3 H 6 V 8 H 2 Z" '
-                'transform="scale(0.5)"/>'
+                '<g transform="scale(0.5)">'
+                '<path d="M 2,3 H 6 V 8 H 2 Z"/>'
+                "</g>"
                 "</svg>"
             ),
             encoding="utf-8",
@@ -1727,9 +1739,170 @@ def test_vector_path_registration_preserves_existing_transform(
         output,
     ).getroot()
 
-    path = next(
+    group = next(
         iter(root),
     )
 
+    path = next(
+        iter(group),
+    )
+
     assert path.get("d") == "M 2,3 H 6 V 8 H 2 Z"
-    assert path.get("transform") == "translate(2 3) scale(0.5)"
+    assert group.get("transform") == "translate(2 3) scale(0.5)"
+
+
+@pytest.mark.slow
+def test_vector_trace_preserves_asymmetric_registered_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Real vector tracing preserves asymmetric geometry in registered coordinates.
+    """
+
+    source = tmp_path / "source.png"
+    output = tmp_path / "color-1.svg"
+
+    _write_raster(
+        source,
+        box=(4, 6, 8, 12),
+    )
+
+    crop = vector.RasterCrop(
+        x=2,
+        y=3,
+        size=14,
+    )
+
+    vector._trace_mask(
+        source,
+        output,
+        crop=crop,
+    )
+
+    root = ET.parse(
+        output,
+    ).getroot()
+
+    assert root.get("viewBox") == "2 3 14 14"
+    assert root.get("width") == "14"
+    assert root.get("height") == "14"
+
+    geometry = [element for element in root.iter() if element.tag == f"{{{vector.SVG_NS}}}path"]
+
+    assert geometry
+
+    geometry_parent = next(element for element in root if element.tag == f"{{{vector.SVG_NS}}}g")
+
+    assert geometry_parent.get("transform") == "translate(2 3)"
+
+
+@pytest.mark.slow
+def test_vector_trace_distinguishes_registered_top_and_bottom(
+    tmp_path: Path,
+) -> None:
+    """
+    Real tracing preserves vertical orientation in registered Artwork.
+    """
+
+    top_source = tmp_path / "top.png"
+    bottom_source = tmp_path / "bottom.png"
+
+    top_output = tmp_path / "top.svg"
+    bottom_output = tmp_path / "bottom.svg"
+
+    _write_raster(
+        top_source,
+        box=(4, 2, 8, 6),
+    )
+
+    _write_raster(
+        bottom_source,
+        box=(4, 10, 8, 14),
+    )
+
+    crop = vector.RasterCrop(
+        x=2,
+        y=0,
+        size=16,
+    )
+
+    vector._trace_mask(
+        top_source,
+        top_output,
+        crop=crop,
+    )
+
+    vector._trace_mask(
+        bottom_source,
+        bottom_output,
+        crop=crop,
+    )
+
+    top_root = ET.parse(
+        top_output,
+    ).getroot()
+
+    bottom_root = ET.parse(
+        bottom_output,
+    ).getroot()
+
+    top_paths = [
+        element for element in top_root.iter() if element.tag == f"{{{vector.SVG_NS}}}path"
+    ]
+
+    bottom_paths = [
+        element for element in bottom_root.iter() if element.tag == f"{{{vector.SVG_NS}}}path"
+    ]
+
+    assert top_paths
+    assert bottom_paths
+
+    assert [element.get("d") for element in top_paths] != [
+        element.get("d") for element in bottom_paths
+    ]
+
+
+@pytest.mark.slow
+def test_vector_registration_does_not_transform_document_metadata(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork transforms rendered geometry without modifying
+    non-rendered Inkscape document metadata.
+    """
+
+    source = tmp_path / "source.png"
+    output = tmp_path / "color-1.svg"
+
+    _write_raster(
+        source,
+        box=(4, 6, 8, 12),
+    )
+
+    crop = vector.RasterCrop(
+        x=2,
+        y=3,
+        size=14,
+    )
+
+    vector._trace_mask(
+        source,
+        output,
+        crop=crop,
+    )
+
+    root = ET.parse(
+        output,
+    ).getroot()
+
+    defs = next(element for element in root if element.tag == f"{{{vector.SVG_NS}}}defs")
+
+    assert defs.get("transform") is None
+
+    non_svg_children = [
+        element for element in root if not element.tag.startswith(f"{{{vector.SVG_NS}}}")
+    ]
+
+    assert non_svg_children
+
+    assert all(element.get("transform") is None for element in non_svg_children)
