@@ -88,7 +88,10 @@ def test_defined_graph_preserves_artwork_dependencies() -> None:
 
     assert artwork.stage("prepare").dependencies == ()
     assert artwork.stage("raster").dependencies == ("prepare",)
-    assert artwork.stage("vector").dependencies == ("raster",)
+    assert artwork.stage("vector").dependencies == (
+        "prepare",
+        "raster",
+    )
     assert artwork.stage("extrude").dependencies == ("vector",)
     assert artwork.stage("package").dependencies == ("extrude",)
 

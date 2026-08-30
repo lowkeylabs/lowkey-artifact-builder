@@ -227,6 +227,18 @@ def test_create_stage_context_resolves_direct_dependency_products(
     )
 
     assert context.inputs == {
+        "prepare.trace": (
+            tmp_path / "artifacts" / "example" / "artwork" / "default" / "10-prepare" / "trace.svg"
+        ),
+        "prepare.envelope": (
+            tmp_path
+            / "artifacts"
+            / "example"
+            / "artwork"
+            / "default"
+            / "10-prepare"
+            / "envelope.svg"
+        ),
         "raster.manifest": (
             tmp_path
             / "artifacts"
@@ -259,13 +271,15 @@ def test_create_stage_context_includes_only_direct_dependencies(
 
     context = create_stage_context(
         "example",
-        stage_name="vector",
+        stage_name="extrude",
         project_root=tmp_path,
     )
 
-    assert "raster.manifest" in context.inputs
+    assert "vector.manifest" in context.inputs
 
     assert all(not name.startswith("prepare.") for name in context.inputs)
+
+    assert all(not name.startswith("raster.") for name in context.inputs)
 
 
 # =========================================================

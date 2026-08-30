@@ -317,12 +317,16 @@ def _registered_artwork_manifest(
     """
     Serialize incorporated registered Artwork for persistent composition.
 
-    Component membership and semantic metadata are preserved while the common
-    placement transformation is recorded once for the complete registered
-    Artwork collection.
+    The common registered coordinate extent, component membership, semantic
+    metadata, and placement transformation are preserved so downstream stages
+    can interpret the registered Artwork without rediscovering source geometry.
     """
 
     return {
+        "registered_extent": {
+            "width": artwork.registered_extent.width,
+            "height": artwork.registered_extent.height,
+        },
         "transform": {
             "scale": transform.scale,
             "translate_x": transform.translate_x,

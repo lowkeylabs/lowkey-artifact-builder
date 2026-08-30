@@ -36,15 +36,20 @@ def test_artwork_stages() -> None:
 
 def test_artwork_stage_dependencies() -> None:
     """
-    Artwork stages form a linear dependency chain using semantic stage
-    names rather than numeric stage identifiers.
+    Artwork stages declare every upstream stage whose products they consume.
+
+    Vector consumes both the registered raster manifest and the prepared
+    envelope, so it depends directly on both raster and prepare.
     """
 
     stages = {stage.name: stage for stage in MODEL.stages}
 
     assert stages["prepare"].dependencies == ()
     assert stages["raster"].dependencies == ("prepare",)
-    assert stages["vector"].dependencies == ("raster",)
+    assert stages["vector"].dependencies == (
+        "prepare",
+        "raster",
+    )
     assert stages["extrude"].dependencies == ("vector",)
     assert stages["package"].dependencies == ("extrude",)
 

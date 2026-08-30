@@ -318,6 +318,37 @@ def _write_composition_manifest(
     )
 
 
+def _registered_artwork(
+    *,
+    components: list[dict[str, object]],
+    scale: float = 1.0,
+    translate_x: float = 0.0,
+    translate_y: float = 0.0,
+    registered_width: float = 1.0,
+    registered_height: float = 1.0,
+) -> dict[str, object]:
+    """
+    Build persistent registered-Artwork data consumed by Shape extrusion.
+
+    Registered extent describes the Artwork coordinate system retained by
+    composition. Transform places that registered Artwork into Shape's
+    registered coordinate system.
+    """
+
+    return {
+        "registered_extent": {
+            "width": registered_width,
+            "height": registered_height,
+        },
+        "transform": {
+            "scale": scale,
+            "translate_x": translate_x,
+            "translate_y": translate_y,
+        },
+        "components": components,
+    }
+
+
 def _configure_extrude_context_inputs(
     context: Mock,
     *,
@@ -3652,13 +3683,8 @@ def test_incorporated_artwork_is_dimensionalized_above_shape_base(
 
     _write_composition_manifest(
         composition_manifest,
-        artwork={
-            "transform": {
-                "scale": 1.0,
-                "translate_x": 0.0,
-                "translate_y": 0.0,
-            },
-            "components": [
+        artwork=_registered_artwork(
+            components=[
                 {
                     "index": 1,
                     "path": "color-1.svg",
@@ -3670,7 +3696,7 @@ def test_incorporated_artwork_is_dimensionalized_above_shape_base(
                     },
                 },
             ],
-        },
+        ),
     )
 
     resolver = _make_extrude_resolver(
@@ -3767,13 +3793,8 @@ def test_incorporated_artwork_components_share_physical_z_dimensionalization(
 
     _write_composition_manifest(
         composition_manifest,
-        artwork={
-            "transform": {
-                "scale": 1.0,
-                "translate_x": 0.0,
-                "translate_y": 0.0,
-            },
-            "components": [
+        artwork=_registered_artwork(
+            components=[
                 {
                     "index": 1,
                     "path": "color-1.svg",
@@ -3795,7 +3816,7 @@ def test_incorporated_artwork_components_share_physical_z_dimensionalization(
                     },
                 },
             ],
-        },
+        ),
     )
 
     resolver = _make_extrude_resolver(
@@ -3877,13 +3898,8 @@ def test_incorporated_artwork_manifest_preserves_semantic_colors(
 
     _write_composition_manifest(
         composition_manifest,
-        artwork={
-            "transform": {
-                "scale": 1.0,
-                "translate_x": 0.0,
-                "translate_y": 0.0,
-            },
-            "components": [
+        artwork=_registered_artwork(
+            components=[
                 {
                     "index": 1,
                     "path": "color-1.svg",
@@ -3891,7 +3907,7 @@ def test_incorporated_artwork_manifest_preserves_semantic_colors(
                     "color": expected_color,
                 },
             ],
-        },
+        ),
     )
 
     resolver = _make_extrude_resolver(
@@ -3930,6 +3946,24 @@ def test_incorporated_artwork_preserves_registered_composition_transform(
 ) -> None:
     """
     Artwork dimensionalization preserves its registered composition transform.
+
+    Registered Artwork occupies its canonical 0..1 coordinate extent.
+
+    The persistent composition transform:
+
+        scale       = 0.4
+        translate_x = 0.1
+        translate_y = -0.2
+
+    therefore maps the complete Artwork extent into Shape registered space:
+
+        X = 0.1..0.5
+        Y = -0.2..0.2
+
+    A 100 mm Shape dimensionalizes that registered geometry to:
+
+        X = 10..50 mm
+        Y = -20..20 mm
     """
 
     composition = tmp_path / "composition.svg"
@@ -3945,11 +3979,11 @@ def test_incorporated_artwork_preserves_registered_composition_transform(
         """
 <svg
     xmlns="http://www.w3.org/2000/svg"
-    viewBox="-0.5 -0.5 1.0 1.0"
+    viewBox="0 0 1.0 1.0"
 >
     <rect
-        x="-0.5"
-        y="-0.5"
+        x="0.0"
+        y="0.0"
         width="1.0"
         height="1.0"
     />
@@ -3960,13 +3994,11 @@ def test_incorporated_artwork_preserves_registered_composition_transform(
 
     _write_composition_manifest(
         composition_manifest,
-        artwork={
-            "transform": {
-                "scale": 0.4,
-                "translate_x": 0.1,
-                "translate_y": -0.2,
-            },
-            "components": [
+        artwork=_registered_artwork(
+            scale=0.4,
+            translate_x=0.1,
+            translate_y=-0.2,
+            components=[
                 {
                     "index": 1,
                     "path": "color-1.svg",
@@ -3978,7 +4010,7 @@ def test_incorporated_artwork_preserves_registered_composition_transform(
                     },
                 },
             ],
-        },
+        ),
     )
 
     resolver = _make_extrude_resolver(
@@ -4014,10 +4046,10 @@ def test_incorporated_artwork_preserves_registered_composition_transform(
         output_manifest.parent / artwork_component_data["path"],
     )
 
-    assert bounds[0] == pytest.approx(-10.0)
-    assert bounds[1] == pytest.approx(30.0)
-    assert bounds[2] == pytest.approx(-40.0)
-    assert bounds[3] == pytest.approx(0.0)
+    assert bounds[0] == pytest.approx(10.0)
+    assert bounds[1] == pytest.approx(50.0)
+    assert bounds[2] == pytest.approx(-20.0)
+    assert bounds[3] == pytest.approx(20.0)
     assert bounds[4] == pytest.approx(2.0)
     assert bounds[5] == pytest.approx(3.0)
 
@@ -4030,7 +4062,16 @@ def test_shape_size_scales_incorporated_artwork_physical_xy_extent(
     shape_size scales Artwork without changing registered composition.
     """
 
-    physical_bounds: list[tuple[float, float, float, float, float, float]] = []
+    physical_bounds: list[
+        tuple[
+            float,
+            float,
+            float,
+            float,
+            float,
+            float,
+        ]
+    ] = []
 
     for shape_size in (
         50.0,
@@ -4067,13 +4108,9 @@ def test_shape_size_scales_incorporated_artwork_physical_xy_extent(
 
         _write_composition_manifest(
             composition_manifest,
-            artwork={
-                "transform": {
-                    "scale": 0.8,
-                    "translate_x": 0.0,
-                    "translate_y": 0.0,
-                },
-                "components": [
+            artwork=_registered_artwork(
+                scale=0.8,
+                components=[
                     {
                         "index": 1,
                         "path": "color-1.svg",
@@ -4085,7 +4122,7 @@ def test_shape_size_scales_incorporated_artwork_physical_xy_extent(
                         },
                     },
                 ],
-            },
+            ),
         )
 
         resolver = _make_extrude_resolver(
@@ -4152,6 +4189,30 @@ def test_incorporated_artwork_preserves_registered_asymmetric_geometry(
 ) -> None:
     """
     Artwork dimensionalization preserves registered X/Y geometry and orientation.
+
+    Registered Artwork occupies:
+
+        X = 10..30
+        Y = 20..60
+
+    within its canonical 100-unit registered extent.
+
+    The persistent composition transform maps that Artwork extent into
+    Shape registered space:
+
+        scale       = 0.01
+        translate_x = -0.5
+        translate_y = -0.5
+
+    so the occupied geometry becomes:
+
+        X = -0.4..-0.2
+        Y = -0.3..+0.1
+
+    A 100 mm Shape therefore produces physical geometry at:
+
+        X = -40..-20 mm
+        Y = -30..+10 mm
     """
 
     composition = tmp_path / "composition.svg"
@@ -4167,13 +4228,13 @@ def test_incorporated_artwork_preserves_registered_asymmetric_geometry(
         """
 <svg
     xmlns="http://www.w3.org/2000/svg"
-    viewBox="-0.5 -0.5 1.0 1.0"
+    viewBox="0 0 100 100"
 >
     <rect
-        x="-0.4"
-        y="-0.3"
-        width="0.2"
-        height="0.4"
+        x="10"
+        y="20"
+        width="20"
+        height="40"
     />
 </svg>
 """.strip(),
@@ -4182,13 +4243,13 @@ def test_incorporated_artwork_preserves_registered_asymmetric_geometry(
 
     _write_composition_manifest(
         composition_manifest,
-        artwork={
-            "transform": {
-                "scale": 1.0,
-                "translate_x": 0.0,
-                "translate_y": 0.0,
-            },
-            "components": [
+        artwork=_registered_artwork(
+            scale=0.01,
+            translate_x=-0.5,
+            translate_y=-0.5,
+            registered_width=100.0,
+            registered_height=100.0,
+            components=[
                 {
                     "index": 1,
                     "path": "color-1.svg",
@@ -4200,7 +4261,7 @@ def test_incorporated_artwork_preserves_registered_asymmetric_geometry(
                     },
                 },
             ],
-        },
+        ),
     )
 
     resolver = _make_extrude_resolver(

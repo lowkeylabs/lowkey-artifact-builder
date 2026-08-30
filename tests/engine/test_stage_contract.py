@@ -465,12 +465,32 @@ def test_independent_execution_uses_explicit_dependency_input(
 ) -> None:
     """
     A bound dependency product is supplied directly to the implementation.
+
+    Other declared dependency products remain required at their resolved
+    paths.
     """
 
     _install_context_resolver(
         monkeypatch,
         project_root=tmp_path,
         resolver=test_resolver,
+    )
+
+    prepare_dir = tmp_path / "artifacts" / "example" / "artwork" / "default" / "10-prepare"
+
+    prepare_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    (prepare_dir / "trace.svg").write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    (prepare_dir / "envelope.svg").write_text(
+        "<svg/>",
+        encoding="utf-8",
     )
 
     explicit_input = tmp_path / "external" / "raster-products.json"

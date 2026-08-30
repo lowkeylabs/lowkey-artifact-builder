@@ -128,7 +128,10 @@ STAGES = (
         id=30,
         name="vector",
         description=("Convert registered raster color layers into registered vector geometry."),
-        dependencies=("raster",),
+        dependencies=(
+            "prepare",
+            "raster",
+        ),
         parameters=(),
         products=(
             ProductSpec(

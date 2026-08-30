@@ -344,14 +344,27 @@ def _render_artwork_components(
     Every Artwork component receives the same persisted registered-space
     transform, the same Shape physical X/Y scaling, and the same physical
     Z interval.
+
+    The persistent registered coordinate extent is required so downstream
+    physical dimensionalization retains the Artwork coordinate-system
+    contract.
     """
 
+    registered_extent = artwork.get(
+        "registered_extent",
+    )
     transform = artwork.get(
         "transform",
     )
     components = artwork.get(
         "components",
     )
+
+    if not isinstance(
+        registered_extent,
+        dict,
+    ):
+        raise ValueError("Registered Shape composition Artwork requires a registered extent.")
 
     if not isinstance(
         transform,
@@ -364,6 +377,13 @@ def _render_artwork_components(
         list,
     ):
         raise ValueError("Registered Shape composition Artwork requires components.")
+
+    registered_width = float(
+        registered_extent["width"],
+    )
+    registered_height = float(
+        registered_extent["height"],
+    )
 
     scale = float(
         transform["scale"],
@@ -415,6 +435,8 @@ def _render_artwork_components(
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
             shape_artwork_raise=shape_artwork_raise,
+            artwork_registered_width=registered_width,
+            artwork_registered_height=registered_height,
             artwork_scale=scale,
             artwork_translate_x=translate_x,
             artwork_translate_y=translate_y,
@@ -1265,6 +1287,8 @@ def _build_artwork_component_scad(
     shape_size: float,
     shape_base_raise: float,
     shape_artwork_raise: float,
+    artwork_registered_width: float,
+    artwork_registered_height: float,
     artwork_scale: float,
     artwork_translate_x: float,
     artwork_translate_y: float,
@@ -1272,10 +1296,15 @@ def _build_artwork_component_scad(
     """
     Build OpenSCAD source for one incorporated Artwork component.
 
-    OpenSCAD normalizes imported SVG coordinates into its own import coordinate
-    system. The import is first restored to Shape registered coordinates, then
-    the persistent registered Artwork placement transform is applied, and
-    finally Shape maps registered coordinates into physical X/Y space.
+    Registered Artwork uses a zero-origin SVG coordinate system with positive Y
+    downward. OpenSCAD SVG import preserves X but reverses Y within the
+    registered extent.
+
+    The imported geometry is therefore reflected through the registered
+    Artwork height before the persistent Artwork-to-Shape composition
+    transform is applied.
+
+    Shape then maps its registered coordinates into physical X/Y space.
 
     The resulting component begins at the physical top of the Shape base.
     """
@@ -1284,6 +1313,8 @@ def _build_artwork_component_scad(
         f"shape_size = {shape_size:g};\n"
         f"shape_base_raise = {shape_base_raise:g};\n"
         f"shape_artwork_raise = {shape_artwork_raise:g};\n"
+        f"artwork_registered_width = {artwork_registered_width:g};\n"
+        f"artwork_registered_height = {artwork_registered_height:g};\n"
         f"artwork_scale = {artwork_scale:g};\n"
         f"artwork_translate_x = {artwork_translate_x:g};\n"
         f"artwork_translate_y = {artwork_translate_y:g};\n"
@@ -1300,8 +1331,9 @@ def _build_artwork_component_scad(
         "                0\n"
         "            ])\n"
         "                scale([artwork_scale, artwork_scale, 1])\n"
-        "                    translate([-0.5, -1.5, 0])\n"
-        f'                        import("{source}", dpi = 25.4);\n'
+        "                    translate([0, artwork_registered_height, 0])\n"
+        "                        mirror([0, 1, 0])\n"
+        f'                            import("{source}", dpi = 25.4);\n'
     )
 
 

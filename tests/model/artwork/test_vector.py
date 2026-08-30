@@ -515,8 +515,11 @@ def test_vector_layer_records_common_registered_coordinate_system(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Every vector layer records the same registered coordinate system
-    as the Registered Artwork envelope.
+    Every vector layer uses the canonical Registered Artwork coordinate system.
+
+    The source-raster crop establishes the registered extent, but its source
+    X/Y origin is not part of the reusable Registered Artwork coordinate
+    system.
     """
 
     source = tmp_path / "source.png"
@@ -572,18 +575,21 @@ def test_vector_layer_records_common_registered_coordinate_system(
         output,
     ).getroot()
 
-    assert root.get("viewBox") == "2 3 14 14"
+    assert root.get("viewBox") == "0 0 14 14"
     assert root.get("width") == "14"
     assert root.get("height") == "14"
 
 
-def test_vector_layer_geometry_is_registered_with_source_crop(
+def test_vector_layer_geometry_remains_in_canonical_registered_coordinates(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Vector-layer geometry retains its position in the common registered
-    coordinate system rather than remaining local to the cropped raster.
+    Traced vector geometry remains in crop-local coordinates that are the
+    canonical reusable Registered Artwork coordinates.
+
+    Source-raster crop position does not alter the registered position of
+    traced geometry.
     """
 
     source = tmp_path / "source.png"
@@ -654,7 +660,7 @@ def test_vector_layer_geometry_is_registered_with_source_crop(
     assert float(rectangle.get("width", "nan")) == pytest.approx(4.0)
     assert float(rectangle.get("height", "nan")) == pytest.approx(5.0)
 
-    assert group.get("transform") == "translate(2 3)"
+    assert group.get("transform") is None
 
 
 def test_registered_envelope_uses_same_crop_as_vector_layers(
@@ -806,7 +812,11 @@ def test_registered_envelope_records_common_coordinate_system(
     tmp_path: Path,
 ) -> None:
     """
-    The persistent Artwork envelope records the common registered crop.
+    The persistent Artwork envelope uses the canonical Registered Artwork
+    coordinate system defined by registered_extent.
+
+    The source-raster crop origin is removed when the prepared envelope is
+    registered.
     """
 
     prepared_envelope = tmp_path / "prepare" / "envelope.svg"
@@ -833,9 +843,73 @@ def test_registered_envelope_records_common_coordinate_system(
         registered_envelope,
     ).getroot()
 
-    assert root.get("viewBox") == "2 3 14 14"
+    assert root.get("viewBox") == "0 0 14 14"
     assert root.get("width") == "14"
     assert root.get("height") == "14"
+
+
+def test_registered_envelope_geometry_is_translated_to_canonical_coordinates(
+    tmp_path: Path,
+) -> None:
+    """
+    Registering the Artwork envelope translates its source-image geometry
+    into the canonical Registered Artwork coordinate system.
+
+    A source crop beginning at (2, 3) becomes a registered coordinate
+    system beginning at (0, 0). The envelope and traced vector layers can
+    therefore share one reusable coordinate system independent of the
+    source-raster crop origin.
+    """
+
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    prepared_envelope.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    prepared_envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'width="20" '
+            'height="20" '
+            'viewBox="0 0 20 20">'
+            '<rect x="4" y="6" width="8" height="6"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    registered_envelope = tmp_path / "vector" / "envelope.svg"
+
+    crop = vector.RasterCrop(
+        x=2,
+        y=3,
+        size=14,
+    )
+
+    vector._register_envelope(
+        prepared_envelope,
+        registered_envelope,
+        crop=crop,
+    )
+
+    root = ET.parse(
+        registered_envelope,
+    ).getroot()
+
+    assert root.get("viewBox") == "0 0 14 14"
+
+    group = next(element for element in root if element.tag == f"{{{vector.SVG_NS}}}g")
+
+    rectangle = next(element for element in group if element.tag == f"{{{vector.SVG_NS}}}rect")
+
+    assert group.get("transform") == "translate(-2 -3)"
+
+    assert float(rectangle.get("x", "nan")) == pytest.approx(4.0)
+    assert float(rectangle.get("y", "nan")) == pytest.approx(6.0)
+    assert float(rectangle.get("width", "nan")) == pytest.approx(8.0)
+    assert float(rectangle.get("height", "nan")) == pytest.approx(6.0)
 
 
 def test_vector_generation_is_independent_of_physical_size(
@@ -1599,13 +1673,13 @@ def test_registered_vector_artwork_envelope_is_stage_local(
     assert (vector_manifest.parent / envelope).is_file()
 
 
-def test_vector_path_geometry_is_registered_with_source_crop(
+def test_vector_path_geometry_remains_in_canonical_registered_coordinates(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Traced path geometry is restored from crop-local coordinates into the
-    common Registered Artwork coordinate system.
+    Traced path geometry remains in canonical Registered Artwork coordinates
+    rather than being translated back into source-raster coordinates.
     """
 
     source = tmp_path / "source.png"
@@ -1672,7 +1746,7 @@ def test_vector_path_geometry_is_registered_with_source_crop(
     )
 
     assert path.get("d") == "M 2,3 H 6 V 8 H 2 Z"
-    assert group.get("transform") == "translate(2 3)"
+    assert group.get("transform") is None
 
 
 def test_vector_path_registration_preserves_existing_transform(
@@ -1681,7 +1755,7 @@ def test_vector_path_registration_preserves_existing_transform(
 ) -> None:
     """
     Registering traced geometry preserves transforms already present on the
-    Inkscape geometry group.
+    Inkscape geometry group without adding a source-crop translation.
     """
 
     source = tmp_path / "source.png"
@@ -1748,7 +1822,7 @@ def test_vector_path_registration_preserves_existing_transform(
     )
 
     assert path.get("d") == "M 2,3 H 6 V 8 H 2 Z"
-    assert group.get("transform") == "translate(2 3) scale(0.5)"
+    assert group.get("transform") == "scale(0.5)"
 
 
 @pytest.mark.slow
@@ -1756,7 +1830,8 @@ def test_vector_trace_preserves_asymmetric_registered_geometry(
     tmp_path: Path,
 ) -> None:
     """
-    Real vector tracing preserves asymmetric geometry in registered coordinates.
+    Real vector tracing preserves asymmetric geometry in the canonical
+    Registered Artwork coordinate system.
     """
 
     source = tmp_path / "source.png"
@@ -1783,7 +1858,7 @@ def test_vector_trace_preserves_asymmetric_registered_geometry(
         output,
     ).getroot()
 
-    assert root.get("viewBox") == "2 3 14 14"
+    assert root.get("viewBox") == "0 0 14 14"
     assert root.get("width") == "14"
     assert root.get("height") == "14"
 
@@ -1793,7 +1868,7 @@ def test_vector_trace_preserves_asymmetric_registered_geometry(
 
     geometry_parent = next(element for element in root if element.tag == f"{{{vector.SVG_NS}}}g")
 
-    assert geometry_parent.get("transform") == "translate(2 3)"
+    assert geometry_parent.get("transform") is None
 
 
 @pytest.mark.slow

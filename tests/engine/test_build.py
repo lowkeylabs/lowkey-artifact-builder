@@ -921,7 +921,7 @@ def test_execute_build_context_contains_dependency_products(
     artwork_plan,
 ) -> None:
     """
-    Stage contexts expose products from direct dependencies using
+    Stage contexts expose products from every direct dependency using
     qualified input names.
     """
 
@@ -963,6 +963,10 @@ def test_execute_build_context_contains_dependency_products(
     }
 
     assert observed["vector"] == {
+        "prepare.trace": (plan.artifact_dir / "artwork" / "default" / "10-prepare" / "trace.svg"),
+        "prepare.envelope": (
+            plan.artifact_dir / "artwork" / "default" / "10-prepare" / "envelope.svg"
+        ),
         "raster.manifest": (
             plan.artifact_dir / "artwork" / "default" / "20-raster" / "products.json"
         ),

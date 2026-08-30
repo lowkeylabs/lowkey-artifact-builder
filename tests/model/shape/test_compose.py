@@ -1431,6 +1431,76 @@ def test_compose_stage_resolves_only_registered_partition_parameters(
     ]
 
 
+def test_composition_manifest_preserves_artwork_registered_extent(
+    tmp_path: Path,
+) -> None:
+    """
+    Persistent Shape composition retains the registered coordinate extent
+    needed to dimensionalize incorporated Artwork downstream.
+    """
+
+    component = tmp_path / "color-1.svg"
+    envelope = tmp_path / "envelope.svg"
+    manifest = tmp_path / "composition.json"
+
+    component.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"/>',
+        encoding="utf-8",
+    )
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg">'
+            '<rect x="10" y="20" width="20" height="40"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(
+            compose.RegisteredArtworkComponent(
+                index=1,
+                path=component,
+                name="color-1",
+                color={
+                    "hex": "#ff0000",
+                },
+            ),
+        ),
+    )
+
+    transform = compose.RegisteredArtworkTransform(
+        scale=0.01,
+        width=0.2,
+        height=0.4,
+        translate_x=-0.5,
+        translate_y=-0.5,
+    )
+
+    compose._write_composition_manifest(
+        manifest,
+        composition=tmp_path / "composition.svg",
+        artwork=artwork,
+        artwork_transform=transform,
+    )
+
+    document = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert document["artwork"]["registered_extent"] == {
+        "width": 100.0,
+        "height": 100.0,
+    }
+
+
 # =========================================================
 # Registered outer-ridge composition
 # =========================================================

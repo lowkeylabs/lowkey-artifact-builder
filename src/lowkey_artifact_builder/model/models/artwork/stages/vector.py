@@ -664,11 +664,14 @@ def _register_envelope(
     """
     Register the prepared Artwork envelope with the vector coordinate system.
 
-    The prepared envelope is expressed in source-image coordinates. Vector
-    layers are generated from a common square crop of those same coordinates.
+    The prepared envelope is expressed in source-image coordinates.
 
-    Assigning the crop as the SVG viewBox makes the envelope use that same
-    registered coordinate system without altering its geometry.
+    Registered Artwork uses a canonical square coordinate system whose
+    origin is zero and whose extent is determined by the common raster crop.
+
+    The envelope geometry is translated from source-image coordinates into
+    that canonical coordinate system so that it remains registered with the
+    vector color layers.
     """
 
     tree = load(
@@ -681,8 +684,8 @@ def _register_envelope(
         "viewBox",
         " ".join(
             (
-                str(crop.x),
-                str(crop.y),
+                "0",
+                "0",
                 str(crop.size),
                 str(crop.size),
             )
@@ -698,6 +701,36 @@ def _register_envelope(
         "height",
         str(crop.size),
     )
+
+    registration = f"translate({-crop.x} {-crop.y})"
+    group_tag = f"{{{SVG_NS}}}g"
+
+    children = list(
+        root,
+    )
+
+    if children:
+        group = ET.Element(
+            group_tag,
+        )
+
+        group.set(
+            "transform",
+            registration,
+        )
+
+        for child in children:
+            root.remove(
+                child,
+            )
+
+            group.append(
+                child,
+            )
+
+        root.append(
+            group,
+        )
 
     output.parent.mkdir(
         parents=True,
@@ -867,13 +900,13 @@ def _register_vector_layer(
     Register one traced vector layer in the common Artwork coordinate system.
 
     Inkscape traces the already-cropped raster in crop-local coordinates.
-    Registered Artwork instead uses the corresponding source-raster
+    Those crop-local coordinates are the canonical Registered Artwork
     coordinates.
 
-    The SVG coordinate system is restored to the common crop and rendered
-    top-level SVG groups receive the crop translation. Existing geometry
-    transforms are preserved after that registration transform.
+    The common registered coordinate system therefore begins at zero and
+    extends through the common crop size in both X and Y.
 
+    Existing geometry transforms produced by Inkscape are preserved.
     Document metadata and definitions are not transformed.
     """
 
@@ -883,8 +916,8 @@ def _register_vector_layer(
         "viewBox",
         " ".join(
             (
-                str(crop.x),
-                str(crop.y),
+                "0",
+                "0",
                 str(crop.size),
                 str(crop.size),
             )
@@ -900,28 +933,6 @@ def _register_vector_layer(
         "height",
         str(crop.size),
     )
-
-    registration = f"translate({crop.x} {crop.y})"
-    group_tag = f"{{{SVG_NS}}}g"
-
-    for element in root:
-        if element.tag != group_tag:
-            continue
-
-        existing_transform = element.get(
-            "transform",
-        )
-
-        if existing_transform:
-            transform = f"{registration} {existing_transform}"
-
-        else:
-            transform = registration
-
-        element.set(
-            "transform",
-            transform,
-        )
 
 
 # =========================================================

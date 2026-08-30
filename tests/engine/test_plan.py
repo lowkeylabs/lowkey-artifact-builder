@@ -183,7 +183,10 @@ def test_create_build_plan_preserves_dependencies(
     assert dependencies == {
         "prepare": (),
         "raster": ("prepare",),
-        "vector": ("raster",),
+        "vector": (
+            "prepare",
+            "raster",
+        ),
         "extrude": ("vector",),
         "package": ("extrude",),
     }
