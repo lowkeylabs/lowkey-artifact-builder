@@ -1136,3 +1136,152 @@ def test_package_stage_rejects_invalid_component_color_metadata(
     resolver.assert_not_called()
 
     assert not artifact.exists()
+
+
+def test_package_stage_preserves_mixed_structural_and_artwork_components(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape packaging preserves the complete physical component partition.
+
+    Structural and incorporated Artwork components remain independently
+    printable even when components from different semantic roles share the
+    same semantic color.
+    """
+
+    component_directory = tmp_path / "extrude"
+
+    base = component_directory / "base.stl"
+    ridge = component_directory / "ridge.stl"
+    artwork_1 = component_directory / "artwork-1.stl"
+    artwork_2 = component_directory / "artwork-2.stl"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    _write_component_stl(
+        base,
+        solid_name="shape-base",
+    )
+
+    _write_component_stl(
+        ridge,
+        solid_name="shape-ridge",
+    )
+
+    _write_component_stl(
+        artwork_1,
+        solid_name="artwork-1",
+    )
+
+    _write_component_stl(
+        artwork_2,
+        solid_name="artwork-2",
+    )
+
+    _write_component_manifest(
+        manifest,
+        (
+            (
+                "base",
+                "base.stl",
+                "white",
+                (255, 255, 255),
+            ),
+            (
+                "ridge",
+                "ridge.stl",
+                "red",
+                (220, 38, 38),
+            ),
+            (
+                "artwork-1",
+                "artwork-1.stl",
+                "red",
+                (220, 38, 38),
+            ),
+            (
+                "artwork-2",
+                "artwork-2.stl",
+                "blue",
+                (37, 99, 235),
+            ),
+        ),
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "example"
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    package.execute(
+        context,
+    )
+
+    model = _read_model(
+        artifact,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    assert set(objects_by_name) == {
+        "example-base",
+        "example-ridge",
+        "example-artwork-1",
+        "example-artwork-2",
+    }
+
+    expected_colors = {
+        "example-base": (
+            "white",
+            "#FFFFFF",
+        ),
+        "example-ridge": (
+            "red",
+            "#DC2626",
+        ),
+        "example-artwork-1": (
+            "red",
+            "#DC2626",
+        ),
+        "example-artwork-2": (
+            "blue",
+            "#2563EB",
+        ),
+    }
+
+    for object_name, expected_color in expected_colors.items():
+        object_ = objects_by_name[object_name]
+
+        material_id = object_.get(
+            "pid",
+        )
+
+        assert material_id is not None
+
+        material = materials_by_id[material_id]
+
+        color = material.find(
+            f"{{{CORE_NS}}}base",
+        )
+
+        assert color is not None
+        assert (
+            color.get("name"),
+            color.get("displaycolor"),
+        ) == expected_color
+
+    assert objects_by_name["example-ridge"].get("id") != objects_by_name["example-artwork-1"].get(
+        "id"
+    )
