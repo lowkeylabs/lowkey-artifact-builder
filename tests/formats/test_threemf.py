@@ -1122,3 +1122,110 @@ def test_write_associates_component_with_its_color(
 
     assert objects[0].get("pid") == materials[0].get("id")
     assert objects[0].get("pindex") == "0"
+
+
+def test_write_associates_each_component_with_its_semantic_color(
+    tmp_path: Path,
+) -> None:
+    """
+    Each colored component references its own semantic 3MF material.
+    """
+
+    path = tmp_path / "example.3mf"
+
+    write(
+        (
+            Component(
+                name="base",
+                mesh=_mesh(),
+                color=PaletteColor(
+                    name="test-white",
+                    rgb=(255, 255, 255),
+                ),
+            ),
+            Component(
+                name="artwork-1",
+                mesh=_mesh(),
+                color=PaletteColor(
+                    name="test-red",
+                    rgb=(255, 0, 0),
+                ),
+            ),
+            Component(
+                name="artwork-2",
+                mesh=_mesh(),
+                color=PaletteColor(
+                    name="test-blue",
+                    rgb=(0, 0, 255),
+                ),
+            ),
+        ),
+        path,
+    )
+
+    model = _read_model(path)
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = {
+        material.get("id"): material
+        for material in model.findall(
+            f".//{{{CORE_NS}}}basematerials",
+        )
+    }
+
+    actual: list[
+        tuple[
+            str | None,
+            str | None,
+            str | None,
+            str | None,
+        ]
+    ] = []
+
+    for object_element in objects:
+        material_id = object_element.get(
+            "pid",
+        )
+
+        assert material_id is not None
+
+        material = materials[material_id]
+
+        base = material.find(
+            f"{{{CORE_NS}}}base",
+        )
+
+        assert base is not None
+
+        actual.append(
+            (
+                object_element.get("name"),
+                base.get("name"),
+                base.get("displaycolor"),
+                object_element.get("pindex"),
+            )
+        )
+
+    assert actual == [
+        (
+            "base",
+            "test-white",
+            "#FFFFFF",
+            "0",
+        ),
+        (
+            "artwork-1",
+            "test-red",
+            "#FF0000",
+            "0",
+        ),
+        (
+            "artwork-2",
+            "test-blue",
+            "#0000FF",
+            "0",
+        ),
+    ]

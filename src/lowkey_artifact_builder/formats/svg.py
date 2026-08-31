@@ -802,6 +802,261 @@ def flatten_ancestor_transforms(
         )
 
 
+def _format_coordinate(
+    value: float,
+) -> str:
+    """
+    Format a transformed SVG coordinate compactly.
+    """
+
+    if value == 0.0:
+        value = 0.0
+
+    if value.is_integer():
+        return str(
+            int(value),
+        )
+
+    return format(
+        value,
+        ".15g",
+    )
+
+
+def _materialize_linear_path_transform(
+    element: ET.Element[str],
+    *,
+    scale: float,
+    translate_x: float,
+    translate_y: float,
+) -> None:
+    """
+    Materialize a uniform scale and translation into a linear SVG path.
+
+    Supported path commands are absolute M, L, and Z commands.
+
+    Coordinates are transformed as:
+
+        x' = x * scale + translate_x
+        y' = y * scale + translate_y
+    """
+
+    data = element.get(
+        "d",
+    )
+
+    if data is None:
+        raise SVGError("SVG path does not define path data.")
+
+    tokens = data.replace(
+        ",",
+        " ",
+    ).split()
+
+    transformed: list[str] = []
+
+    index = 0
+
+    while index < len(tokens):
+        command = tokens[index]
+
+        index += 1
+
+        if command in {
+            "M",
+            "L",
+        }:
+            if index + 1 >= len(tokens):
+                raise SVGError("SVG linear path contains incomplete coordinates.")
+
+            try:
+                x = float(
+                    tokens[index],
+                )
+
+                y = float(
+                    tokens[index + 1],
+                )
+
+            except ValueError as exc:
+                raise SVGError("SVG linear path contains invalid coordinates.") from exc
+
+            transformed.extend(
+                (
+                    command,
+                    _format_coordinate(
+                        x * scale + translate_x,
+                    ),
+                    _format_coordinate(
+                        y * scale + translate_y,
+                    ),
+                )
+            )
+
+            index += 2
+
+            continue
+
+        if command in {
+            "Z",
+            "z",
+        }:
+            transformed.append(
+                "Z",
+            )
+
+            continue
+
+        raise SVGError(f"Cannot materialize unsupported SVG path command: {command}")
+
+    element.set(
+        "d",
+        " ".join(
+            transformed,
+        ),
+    )
+
+    element.attrib.pop(
+        "transform",
+        None,
+    )
+
+
+def _materialize_rect_transform(
+    element: ET.Element[str],
+    *,
+    scale: float,
+    translate_x: float,
+    translate_y: float,
+) -> None:
+    """
+    Materialize a uniform scale and translation into SVG rectangle geometry.
+    """
+
+    try:
+        x = float(
+            element.get(
+                "x",
+                "0",
+            )
+        )
+
+        y = float(
+            element.get(
+                "y",
+                "0",
+            )
+        )
+
+        width_value = element.get(
+            "width",
+        )
+
+        height_value = element.get(
+            "height",
+        )
+
+        if width_value is None or height_value is None:
+            raise ValueError
+
+        width = float(
+            width_value,
+        )
+
+        height = float(
+            height_value,
+        )
+
+    except ValueError as exc:
+        raise SVGError("SVG rectangle contains invalid geometry.") from exc
+
+    element.set(
+        "x",
+        _format_coordinate(
+            x * scale + translate_x,
+        ),
+    )
+
+    element.set(
+        "y",
+        _format_coordinate(
+            y * scale + translate_y,
+        ),
+    )
+
+    element.set(
+        "width",
+        _format_coordinate(
+            width * scale,
+        ),
+    )
+
+    element.set(
+        "height",
+        _format_coordinate(
+            height * scale,
+        ),
+    )
+
+    element.attrib.pop(
+        "transform",
+        None,
+    )
+
+
+def materialize_transform(
+    element: ET.Element[str],
+    *,
+    scale: float = 1.0,
+    translate_x: float = 0.0,
+    translate_y: float = 0.0,
+) -> None:
+    """
+    Materialize a uniform scale and translation into SVG element geometry.
+
+    The transformation is applied directly to coordinates rather than
+    retained as an SVG transform attribute.
+
+    Supported geometry currently includes linear paths using absolute
+    M, L, and Z commands and rectangles.
+
+    The transformation is:
+
+        x' = x * scale + translate_x
+        y' = y * scale + translate_y
+
+    Raises:
+        SVGError:
+            If the element is unsupported or its geometry cannot be
+            transformed.
+    """
+
+    if scale <= 0.0:
+        raise SVGError("SVG geometry scale must be positive.")
+
+    if element.tag == f"{{{SVG_NS}}}path":
+        _materialize_linear_path_transform(
+            element,
+            scale=scale,
+            translate_x=translate_x,
+            translate_y=translate_y,
+        )
+
+        return
+
+    if element.tag == f"{{{SVG_NS}}}rect":
+        _materialize_rect_transform(
+            element,
+            scale=scale,
+            translate_x=translate_x,
+            translate_y=translate_y,
+        )
+
+        return
+
+    raise SVGError("Cannot materialize transform for unsupported SVG element type.")
+
+
 # =========================================================
 # Path inspection
 # =========================================================

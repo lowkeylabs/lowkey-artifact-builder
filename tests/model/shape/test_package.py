@@ -238,20 +238,20 @@ def test_package_stage_packages_incorporated_artwork_components(
             (
                 "base",
                 "base.stl",
-                "white",
+                "test-white",
                 (255, 255, 255),
             ),
             (
                 "artwork-1",
                 "artwork-1.stl",
-                "red",
-                (220, 38, 38),
+                "test-red",
+                (255, 0, 0),
             ),
             (
                 "artwork-2",
                 "artwork-2.stl",
-                "blue",
-                (37, 99, 235),
+                "test-blue",
+                (0, 0, 255),
             ),
         ),
     )
@@ -276,9 +276,9 @@ def test_package_stage_packages_incorporated_artwork_components(
     )
 
     assert [object_.get("name") for object_ in objects] == [
-        "example-base",
-        "example-artwork-1",
-        "example-artwork-2",
+        "example-base-test-white",
+        "example-artwork-1-test-red",
+        "example-artwork-2-test-blue",
     ]
 
 
@@ -321,20 +321,20 @@ def test_package_stage_preserves_incorporated_artwork_colors(
             (
                 "base",
                 "base.stl",
-                "white",
+                "test-white",
                 (255, 255, 255),
             ),
             (
                 "artwork-1",
                 "artwork-1.stl",
-                "red",
-                (220, 38, 38),
+                "test-red",
+                (255, 0, 0),
             ),
             (
                 "artwork-2",
                 "artwork-2.stl",
-                "blue",
-                (37, 99, 235),
+                "test-blue",
+                (0, 0, 255),
             ),
         ),
     )
@@ -367,17 +367,17 @@ def test_package_stage_preserves_incorporated_artwork_colors(
     materials_by_id = {material.get("id"): material for material in materials}
 
     expected_colors = {
-        "example-base": (
-            "white",
+        "example-base-test-white": (
+            "test-white",
             "#FFFFFF",
         ),
-        "example-artwork-1": (
-            "red",
-            "#DC2626",
+        "example-artwork-1-test-red": (
+            "test-red",
+            "#FF0000",
         ),
-        "example-artwork-2": (
-            "blue",
-            "#2563EB",
+        "example-artwork-2-test-blue": (
+            "test-blue",
+            "#0000FF",
         ),
     }
 
@@ -517,7 +517,7 @@ def test_package_stage_packages_single_base_component(
             "utf-8",
         )
 
-    assert "example-base" in model
+    assert "example-base-white" in model
     assert "example-ridge" not in model
 
 
@@ -558,18 +558,19 @@ def test_package_stage_packages_all_manifest_components(
             "utf-8",
         )
 
-    assert "example-base" in model
-    assert "example-ridge" in model
+    assert "example-base-white" in model
+    assert "example-ridge-white" in model
 
 
-def test_package_stage_uses_semantic_component_names(
+def test_package_stage_uses_semantic_component_and_color_names(
     tmp_path: Path,
 ) -> None:
     """
-    Packaged Shape components have stable semantic object identities.
+    Packaged Shape components expose semantic component and color identities.
 
-    Object naming combines artifact identity with the component role declared
-    by the manifest rather than depending on physical STL filenames.
+    Object naming combines artifact identity, the component role declared by
+    the manifest, and its semantic color identity rather than depending on
+    physical STL filenames.
     """
 
     component_directory = tmp_path / "extrude"
@@ -595,14 +596,14 @@ def test_package_stage_uses_semantic_component_names(
             (
                 "base",
                 "arbitrary-base-name.stl",
-                "white",
+                "test-white",
                 (255, 255, 255),
             ),
             (
                 "ridge",
                 "arbitrary-ridge-name.stl",
-                "white",
-                (255, 255, 255),
+                "test-red",
+                (255, 0, 0),
             ),
         ),
     )
@@ -618,20 +619,22 @@ def test_package_stage_uses_semantic_component_names(
         context,
     )
 
-    with zipfile.ZipFile(
+    model = _read_model(
         artifact,
-    ) as archive:
-        model = archive.read(
-            "3D/3dmodel.model",
-        ).decode(
-            "utf-8",
-        )
+    )
 
-    assert "example-base" in model
-    assert "example-ridge" in model
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
 
-    assert "example-arbitrary-base-name" not in model
-    assert "example-arbitrary-ridge-name" not in model
+    assert [object_.get("name") for object_ in objects] == [
+        "example-base-test-white",
+        "example-ridge-test-red",
+    ]
+
+    assert all("arbitrary-base-name" not in (object_.get("name") or "") for object_ in objects)
+
+    assert all("arbitrary-ridge-name" not in (object_.get("name") or "") for object_ in objects)
 
 
 def test_package_stage_preserves_base_component_color(
@@ -661,8 +664,8 @@ def test_package_stage_preserves_base_component_color(
             (
                 "base",
                 "base.stl",
-                "red",
-                (220, 38, 38),
+                "test-red",
+                (255, 0, 0),
             ),
         ),
     )
@@ -691,7 +694,7 @@ def test_package_stage_preserves_base_component_color(
     )
 
     assert len(objects) == 1
-    assert objects[0].get("name") == "example-base"
+    assert objects[0].get("name") == "example-base-test-red"
 
     assert len(materials) == 1
 
@@ -700,8 +703,8 @@ def test_package_stage_preserves_base_component_color(
     )
 
     assert base_color is not None
-    assert base_color.get("name") == "red"
-    assert base_color.get("displaycolor") == "#DC2626"
+    assert base_color.get("name") == "test-red"
+    assert base_color.get("displaycolor") == "#FF0000"
 
     assert objects[0].get("pid") == materials[0].get("id")
     assert objects[0].get("pindex") == "0"
@@ -741,14 +744,14 @@ def test_package_stage_preserves_distinct_component_colors(
             (
                 "base",
                 "base.stl",
-                "white",
+                "test-white",
                 (255, 255, 255),
             ),
             (
                 "ridge",
                 "ridge.stl",
-                "red",
-                (220, 38, 38),
+                "test-red",
+                (255, 0, 0),
             ),
         ),
     )
@@ -777,8 +780,8 @@ def test_package_stage_preserves_distinct_component_colors(
     )
 
     assert [object_.get("name") for object_ in objects] == [
-        "example-base",
-        "example-ridge",
+        "example-base-test-white",
+        "example-ridge-test-red",
     ]
 
     colors = {
@@ -792,12 +795,12 @@ def test_package_stage_preserves_distinct_component_colors(
     ridge_color = colors[objects[1].get("pid")]
 
     assert base_color is not None
-    assert base_color.get("name") == "white"
+    assert base_color.get("name") == "test-white"
     assert base_color.get("displaycolor") == "#FFFFFF"
 
     assert ridge_color is not None
-    assert ridge_color.get("name") == "red"
-    assert ridge_color.get("displaycolor") == "#DC2626"
+    assert ridge_color.get("name") == "test-red"
+    assert ridge_color.get("displaycolor") == "#FF0000"
 
 
 def test_package_stage_does_not_resolve_geometry_parameters(
@@ -999,14 +1002,14 @@ def test_package_stage_preserves_shared_component_color(
             (
                 "base",
                 "base.stl",
-                "red",
-                (220, 38, 38),
+                "test-red",
+                (255, 0, 0),
             ),
             (
                 "ridge",
                 "ridge.stl",
-                "red",
-                (220, 38, 38),
+                "test-red",
+                (255, 0, 0),
             ),
         ),
     )
@@ -1035,8 +1038,8 @@ def test_package_stage_preserves_shared_component_color(
     )
 
     assert [object_.get("name") for object_ in objects] == [
-        "example-base",
-        "example-ridge",
+        "example-base-test-red",
+        "example-ridge-test-red",
     ]
 
     assert len(materials) == 2
@@ -1051,8 +1054,8 @@ def test_package_stage_preserves_shared_component_color(
         )
 
         assert color is not None
-        assert color.get("name") == "red"
-        assert color.get("displaycolor") == "#DC2626"
+        assert color.get("name") == "test-red"
+        assert color.get("displaycolor") == "#FF0000"
 
 
 @pytest.mark.parametrize(
@@ -1184,26 +1187,26 @@ def test_package_stage_preserves_mixed_structural_and_artwork_components(
             (
                 "base",
                 "base.stl",
-                "white",
+                "test-white",
                 (255, 255, 255),
             ),
             (
                 "ridge",
                 "ridge.stl",
-                "red",
-                (220, 38, 38),
+                "test-red",
+                (255, 0, 0),
             ),
             (
                 "artwork-1",
                 "artwork-1.stl",
-                "red",
-                (220, 38, 38),
+                "test-red",
+                (255, 0, 0),
             ),
             (
                 "artwork-2",
                 "artwork-2.stl",
-                "blue",
-                (37, 99, 235),
+                "test-blue",
+                (0, 0, 255),
             ),
         ),
     )
@@ -1236,28 +1239,28 @@ def test_package_stage_preserves_mixed_structural_and_artwork_components(
     materials_by_id = {material.get("id"): material for material in materials}
 
     assert set(objects_by_name) == {
-        "example-base",
-        "example-ridge",
-        "example-artwork-1",
-        "example-artwork-2",
+        "example-base-test-white",
+        "example-ridge-test-red",
+        "example-artwork-1-test-red",
+        "example-artwork-2-test-blue",
     }
 
     expected_colors = {
-        "example-base": (
-            "white",
+        "example-base-test-white": (
+            "test-white",
             "#FFFFFF",
         ),
-        "example-ridge": (
-            "red",
-            "#DC2626",
+        "example-ridge-test-red": (
+            "test-red",
+            "#FF0000",
         ),
-        "example-artwork-1": (
-            "red",
-            "#DC2626",
+        "example-artwork-1-test-red": (
+            "test-red",
+            "#FF0000",
         ),
-        "example-artwork-2": (
-            "blue",
-            "#2563EB",
+        "example-artwork-2-test-blue": (
+            "test-blue",
+            "#0000FF",
         ),
     }
 
@@ -1282,6 +1285,6 @@ def test_package_stage_preserves_mixed_structural_and_artwork_components(
             color.get("displaycolor"),
         ) == expected_color
 
-    assert objects_by_name["example-ridge"].get("id") != objects_by_name["example-artwork-1"].get(
-        "id"
-    )
+    assert objects_by_name["example-ridge-test-red"].get("id") != objects_by_name[
+        "example-artwork-1-test-red"
+    ].get("id")

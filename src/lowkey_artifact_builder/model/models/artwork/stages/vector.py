@@ -54,6 +54,7 @@ from lowkey_artifact_builder.formats.svg import (
     SVG_NS,
     SVGError,
     load,
+    materialize_transform,
     save,
 )
 from lowkey_artifact_builder.logging_config import get_logger
@@ -118,6 +119,24 @@ class RasterLayer:
     frozen=True,
     slots=True,
 )
+class RasterRegistration:
+    """
+    Mapping from source SVG coordinates into raster pixel coordinates.
+    """
+
+    x: float
+
+    y: float
+
+    size: float
+
+    pixels: int
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
 class RasterCrop:
     """
     Common square crop in source-raster coordinates.
@@ -164,7 +183,8 @@ def execute(
     The stage consumes:
 
         raster.manifest
-            Manifest describing registered raster color layers.
+            Manifest describing registered raster color layers and the
+            source-to-raster registration used to produce them.
 
         prepare.envelope
             Prepared Artwork envelope in source coordinates.
@@ -201,7 +221,7 @@ def execute(
     )
 
     try:
-        layers = _load_raster_manifest(
+        registration, layers = _load_raster_manifest(
             raster_manifest,
         )
 
@@ -214,6 +234,7 @@ def execute(
         _register_envelope(
             prepared_envelope,
             registered_envelope,
+            registration=registration,
             crop=crop,
         )
 
@@ -268,9 +289,12 @@ def execute(
 
 def _load_raster_manifest(
     manifest: Path,
-) -> list[RasterLayer]:
+) -> tuple[
+    RasterRegistration,
+    list[RasterLayer],
+]:
     """
-    Load raster products from the raster manifest.
+    Load raster registration and products from the raster manifest.
     """
 
     try:
@@ -285,6 +309,77 @@ def _load_raster_manifest(
         json.JSONDecodeError,
     ) as exc:
         raise VectorError(f"Could not read raster manifest: {manifest}") from exc
+
+    registration_data = data.get(
+        "registration",
+    )
+
+    if not isinstance(
+        registration_data,
+        dict,
+    ):
+        raise VectorError("Raster manifest does not contain registration.")
+
+    registration_x = registration_data.get(
+        "x",
+    )
+
+    registration_y = registration_data.get(
+        "y",
+    )
+
+    registration_size = registration_data.get(
+        "size",
+    )
+
+    registration_pixels = registration_data.get(
+        "pixels",
+    )
+
+    if (
+        isinstance(
+            registration_x,
+            bool,
+        )
+        or not isinstance(
+            registration_x,
+            int | float,
+        )
+        or isinstance(
+            registration_y,
+            bool,
+        )
+        or not isinstance(
+            registration_y,
+            int | float,
+        )
+        or isinstance(
+            registration_size,
+            bool,
+        )
+        or not isinstance(
+            registration_size,
+            int | float,
+        )
+        or registration_size <= 0
+        or isinstance(
+            registration_pixels,
+            bool,
+        )
+        or not isinstance(
+            registration_pixels,
+            int,
+        )
+        or registration_pixels < 1
+    ):
+        raise VectorError("Raster manifest contains invalid registration.")
+
+    registration = RasterRegistration(
+        x=float(registration_x),
+        y=float(registration_y),
+        size=float(registration_size),
+        pixels=registration_pixels,
+    )
 
     products = data.get(
         "products",
@@ -409,7 +504,10 @@ def _load_raster_manifest(
         key=lambda layer: layer.index,
     )
 
-    return result
+    return (
+        registration,
+        result,
+    )
 
 
 def _color_component(
@@ -659,20 +757,38 @@ def _register_envelope(
     source: Path,
     output: Path,
     *,
+    registration: RasterRegistration,
     crop: RasterCrop,
 ) -> None:
     """
     Register the prepared Artwork envelope with the vector coordinate system.
 
-    The prepared envelope is expressed in source-image coordinates.
+    The prepared envelope is expressed in source coordinates.
 
-    Registered Artwork uses a canonical square coordinate system whose
-    origin is zero and whose extent is determined by the common raster crop.
+    Raster registration maps the source-coordinate square into raster pixels.
+    The common vector crop then maps those raster coordinates into canonical
+    Registered Artwork coordinates.
 
-    The envelope geometry is translated from source-image coordinates into
-    that canonical coordinate system so that it remains registered with the
-    vector color layers.
+    The complete mapping is:
+
+        raster =
+            (source - registration origin)
+            * registration.pixels
+            / registration.size
+
+        registered =
+            raster - crop origin
+
+    The registration transform is materialized into the persistent envelope
+    geometry so downstream consumers observe geometry directly in Registered
+    Artwork coordinates.
     """
+
+    scale = registration.pixels / registration.size
+
+    translate_x = -registration.x * scale - crop.x
+
+    translate_y = -registration.y * scale - crop.y
 
     tree = load(
         source,
@@ -702,34 +818,20 @@ def _register_envelope(
         str(crop.size),
     )
 
-    registration = f"translate({-crop.x} {-crop.y})"
-    group_tag = f"{{{SVG_NS}}}g"
+    geometry_tags = {
+        "{http://www.w3.org/2000/svg}path",
+        "{http://www.w3.org/2000/svg}rect",
+    }
 
-    children = list(
-        root,
-    )
+    for element in root.iter():
+        if element.tag not in geometry_tags:
+            continue
 
-    if children:
-        group = ET.Element(
-            group_tag,
-        )
-
-        group.set(
-            "transform",
-            registration,
-        )
-
-        for child in children:
-            root.remove(
-                child,
-            )
-
-            group.append(
-                child,
-            )
-
-        root.append(
-            group,
+        materialize_transform(
+            element,
+            scale=scale,
+            translate_x=translate_x,
+            translate_y=translate_y,
         )
 
     output.parent.mkdir(

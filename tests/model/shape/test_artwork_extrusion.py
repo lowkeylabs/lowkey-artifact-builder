@@ -427,3 +427,261 @@ def test_incorporated_registered_artwork_is_physically_centered(
 
     assert minimum_z == pytest.approx(2.0)
     assert maximum_z == pytest.approx(3.0)
+
+
+@pytest.mark.slow
+def test_artwork_extrusion_physically_applies_persisted_composition_transform(
+    tmp_path: Path,
+) -> None:
+    """
+    Artwork extrusion physically applies the persisted composition transform.
+
+    The registered Artwork component occupies:
+
+        X = 10..30
+        Y = 20..60
+
+    within a 100x100 registered extent.
+
+    The persisted transform deliberately centers that occupied region:
+
+        scale = 0.01
+        translate_x = -0.20
+        translate_y = -0.40
+
+    In registered Shape coordinates this places the occupied Artwork at:
+
+        X = -0.10..+0.10
+        Y = -0.20..+0.20
+
+    Physical dimensionalization to a 100 mm Shape must therefore produce
+    Artwork centered on both physical axes.
+
+    This test protects the persistence boundary between Shape composition
+    and physical Artwork extrusion.
+    """
+
+    component = tmp_path / "color-1.svg"
+
+    _write_registered_artwork(
+        component,
+    )
+
+    artwork = {
+        "registered_extent": {
+            "width": 100.0,
+            "height": 100.0,
+        },
+        "transform": {
+            "scale": 0.01,
+            "translate_x": -0.20,
+            "translate_y": -0.40,
+        },
+        "components": [
+            {
+                "index": 1,
+                "path": "color-1.svg",
+                "name": "red",
+                "color": {
+                    "red": 220,
+                    "green": 38,
+                    "blue": 38,
+                },
+            },
+        ],
+    }
+
+    output_directory = tmp_path / "extrude"
+
+    output_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    extrude._render_artwork_components(
+        artwork,
+        tmp_path,
+        output_directory,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_artwork_raise=1.0,
+    )
+
+    output = output_directory / "artwork-1.stl"
+
+    (
+        minimum_x,
+        maximum_x,
+        minimum_y,
+        maximum_y,
+        minimum_z,
+        maximum_z,
+    ) = _stl_bounds(
+        output,
+    )
+
+    assert minimum_x == pytest.approx(-10.0)
+    assert maximum_x == pytest.approx(10.0)
+
+    assert minimum_y == pytest.approx(-20.0)
+    assert maximum_y == pytest.approx(20.0)
+
+    assert (minimum_x + maximum_x) / 2.0 == pytest.approx(0.0)
+    assert (minimum_y + maximum_y) / 2.0 == pytest.approx(0.0)
+
+    assert minimum_z == pytest.approx(2.0)
+    assert maximum_z == pytest.approx(3.0)
+
+
+@pytest.mark.slow
+def test_extrude_stage_physically_preserves_composed_artwork_centering(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape extrusion realizes the Artwork transform persisted by composition.
+
+    Registered Artwork has deliberately asymmetric occupancy within its
+    registered extent. Composition centers that envelope in the Shape and
+    persists one common transform. The extrusion stage must consume that
+    persisted composition contract and produce physically centered Artwork.
+    """
+
+    artwork_directory = tmp_path / "artwork"
+    compose_directory = tmp_path / "20-compose"
+    extrude_directory = tmp_path / "30-extrude"
+
+    artwork_directory.mkdir()
+    compose_directory.mkdir()
+    extrude_directory.mkdir()
+
+    component = compose_directory / "color-1.svg"
+    composition = compose_directory / "composition.svg"
+    composition_manifest = compose_directory / "products.json"
+
+    _write_registered_artwork(
+        component,
+    )
+
+    composition.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="-0.5 -0.5 1 1"
+>
+    <circle
+        id="shape-boundary"
+        cx="0"
+        cy="0"
+        r="0.5"
+    />
+    <circle
+        id="ridge-inner-boundary"
+        cx="0"
+        cy="0"
+        r="0.45"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    envelope = artwork_directory / "envelope.svg"
+
+    envelope.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="100"
+    height="100"
+    viewBox="0 0 100 100"
+>
+    <rect
+        x="10"
+        y="20"
+        width="20"
+        height="40"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    registered_artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        registered_artwork,
+        composition=composition,
+    )
+
+    composition_manifest.write_text(
+        __import__("json").dumps(
+            {
+                "composition": "composition.svg",
+                "artwork": {
+                    "registered_extent": {
+                        "width": 100.0,
+                        "height": 100.0,
+                    },
+                    "transform": {
+                        "scale": transform.scale,
+                        "translate_x": transform.translate_x,
+                        "translate_y": transform.translate_y,
+                    },
+                    "components": [
+                        {
+                            "index": 1,
+                            "path": "color-1.svg",
+                            "name": "red",
+                            "color": {
+                                "red": 220,
+                                "green": 38,
+                                "blue": 38,
+                            },
+                        },
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = extrude._load_composed_artwork(
+        composition_manifest,
+    )
+
+    assert artwork is not None
+
+    extrude._render_artwork_components(
+        artwork,
+        composition_manifest.parent,
+        extrude_directory,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_artwork_raise=1.0,
+    )
+
+    output = extrude_directory / "artwork-1.stl"
+
+    (
+        minimum_x,
+        maximum_x,
+        minimum_y,
+        maximum_y,
+        minimum_z,
+        maximum_z,
+    ) = _stl_bounds(
+        output,
+    )
+
+    assert (minimum_x + maximum_x) / 2.0 == pytest.approx(0.0)
+    assert (minimum_y + maximum_y) / 2.0 == pytest.approx(0.0)
+
+    assert minimum_z == pytest.approx(2.0)
+    assert maximum_z == pytest.approx(3.0)

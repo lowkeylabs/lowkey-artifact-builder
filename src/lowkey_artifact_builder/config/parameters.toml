@@ -36,16 +36,20 @@
 #
 # Colors available to the printer for this artifact.
 #
-# Workspaces commonly override this to describe the colors
-# currently loaded or intended for a particular project.
+# printer_colors identifies the subset of catalog colors
+# currently loaded, intended, or otherwise available for
+# producing an artifact. It is not the complete filament
+# color library.
 #
-# Individual artifacts may override the palette when their
-# artwork requires a specific subset of colors.
+# Workspaces commonly override this value to describe the
+# colors available for a particular project. Individual
+# artifacts may override it when their artwork requires a
+# specific palette.
 #
 
 printer_colors = [
-    "brown",
     "black",
+    "brown",
     "gold",
     "white",
     "silver",
@@ -71,17 +75,90 @@ openscad_fn = 360
 # =========================================================
 
 #
-# Color definitions are reference/catalog data rather than
-# ordinary resolved parameters.
+# The color catalog contains colors known to the system.
 #
-# They do not participate in the normal:
+# Physical filament entries form a user-maintained library
+# of available colors. This library may change as filament
+# is purchased, replaced, or its catalog information is
+# updated.
+#
+# Catalog entries are reference data rather than ordinary
+# resolved parameters. They do not participate in the normal:
 #
 #     system -> model -> workspace -> artifact
 #
 # parameter override chain.
 #
-# Entries may provide physical filament information and an
-# RGB representation used by artwork processing.
+# printer_colors selects colors from this catalog for use by
+# a particular build. A future color-selection operation may
+# compare Artwork color requirements with the physical
+# filament library and select appropriate catalog colors for
+# printer_colors.
+#
+
+
+# ---------------------------------------------------------
+# Synthetic test colors
+# ---------------------------------------------------------
+
+#
+# Stable synthetic colors reserved for automated tests.
+#
+# These entries deliberately do not represent physical
+# filament products and should not normally appear in the
+# system printer_colors default.
+#
+# Tests that exercise color resolution, propagation,
+# manifests, component identity, or output representation
+# should prefer these colors rather than depending on the
+# mutable physical filament library.
+#
+
+[colors.test-red]
+manufacturer = "test"
+filament = "Test Red"
+rgb = [255, 0, 0]
+
+
+[colors.test-green]
+manufacturer = "test"
+filament = "Test Green"
+rgb = [0, 255, 0]
+
+
+[colors.test-blue]
+manufacturer = "test"
+filament = "Test Blue"
+rgb = [0, 0, 255]
+
+
+[colors.test-yellow]
+manufacturer = "test"
+filament = "Test Yellow"
+rgb = [255, 255, 0]
+
+
+[colors.test-white]
+manufacturer = "test"
+filament = "Test White"
+rgb = [255, 255, 255]
+
+
+# ---------------------------------------------------------
+# Physical filament library
+# ---------------------------------------------------------
+
+#
+# User-maintained library of physical filament colors
+# available for selection.
+#
+# Entries identify physical filament products and provide an
+# RGB representation used by artwork processing and color
+# matching.
+#
+# This library is expected to evolve independently of
+# automated tests as filament is purchased or replaced and
+# as manufacturer or color information is updated.
 #
 
 [colors.black]

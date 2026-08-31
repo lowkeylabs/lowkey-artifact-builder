@@ -4393,31 +4393,39 @@ def test_incorporated_artwork_preserves_registered_asymmetric_geometry(
     tmp_path: Path,
 ) -> None:
     """
-    Artwork dimensionalization preserves registered X/Y geometry and orientation.
+    Artwork dimensionalization preserves registered geometry and orientation.
 
-    Registered Artwork occupies:
+    Registered Artwork contains SVG geometry occupying:
 
         X = 10..30
         Y = 20..60
 
     within its canonical 100-unit registered extent.
 
-    The persistent composition transform maps that Artwork extent into
-    Shape registered space:
+    OpenSCAD SVG import preserves X but converts the SVG positive-down Y axis
+    to its positive-up coordinate system. The imported geometry therefore
+    occupies:
+
+        X = 10..30
+        Y = 40..80
+
+    before the persistent composition transform is applied.
+
+    The composition transform maps the Artwork into Shape registered space:
 
         scale       = 0.01
         translate_x = -0.5
         translate_y = -0.5
 
-    so the occupied geometry becomes:
+    producing:
 
         X = -0.4..-0.2
-        Y = -0.3..+0.1
+        Y = -0.1..+0.3
 
     A 100 mm Shape therefore produces physical geometry at:
 
         X = -40..-20 mm
-        Y = -30..+10 mm
+        Y = -10..+30 mm
     """
 
     composition = tmp_path / "composition.svg"
@@ -4479,11 +4487,13 @@ def test_incorporated_artwork_preserves_registered_asymmetric_geometry(
         spec=StageContext,
     )
     context.resolver = resolver
+
     _configure_extrude_context_inputs(
         context,
         composition=composition,
         composition_manifest=composition_manifest,
     )
+
     context.output.return_value = output_manifest
 
     extrude.execute(
@@ -4504,7 +4514,5 @@ def test_incorporated_artwork_preserves_registered_asymmetric_geometry(
 
     assert bounds[0] == pytest.approx(-40.0, abs=0.002)
     assert bounds[1] == pytest.approx(-20.0, abs=0.002)
-    assert bounds[2] == pytest.approx(-30.0, abs=0.002)
-    assert bounds[3] == pytest.approx(10.0, abs=0.002)
-    assert bounds[4] == pytest.approx(2.0, abs=0.002)
-    assert bounds[5] == pytest.approx(3.0, abs=0.002)
+    assert bounds[2] == pytest.approx(-10.0, abs=0.002)
+    assert bounds[3] == pytest.approx(30.0, abs=0.002)

@@ -23,6 +23,7 @@ import pytest
 from PIL import Image
 
 from lowkey_artifact_builder.model.models.artwork.stages import vector
+from lowkey_artifact_builder.model.models.shape.stages import compose
 
 # =========================================================
 # Test support
@@ -137,7 +138,7 @@ def _write_raster_manifest(
     products: list[dict[str, Any]],
 ) -> None:
     """
-    Write a minimal raster manifest.
+    Write a minimal raster manifest with identity source registration.
     """
 
     path.parent.mkdir(
@@ -148,6 +149,12 @@ def _write_raster_manifest(
     path.write_text(
         json.dumps(
             {
+                "registration": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "size": 20.0,
+                    "pixels": 20,
+                },
                 "products": products,
             }
         ),
@@ -510,6 +517,218 @@ def test_vector_manifest_describes_stage_local_products(
 # =========================================================
 
 
+def test_registered_envelope_preserves_occupied_bounds_relative_to_common_crop(
+    tmp_path: Path,
+) -> None:
+    """
+    Vector registration preserves the Artwork envelope's occupied position.
+
+    When source coordinates map one-to-one into raster coordinates,
+    registering into the common vector crop translates the occupied envelope
+    by the crop origin and materializes that translation into its geometry.
+    """
+
+    source = tmp_path / "prepared-envelope.svg"
+    output = tmp_path / "registered-envelope.svg"
+
+    source.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'width="100" '
+            'height="100" '
+            'viewBox="0 0 100 100">'
+            '<rect x="30" y="20" width="40" height="60"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    registration = vector.RasterRegistration(
+        x=0.0,
+        y=0.0,
+        size=100.0,
+        pixels=100,
+    )
+
+    crop = vector.RasterCrop(
+        x=20,
+        y=10,
+        size=80,
+    )
+
+    vector._register_envelope(
+        source,
+        output,
+        registration=registration,
+        crop=crop,
+    )
+
+    root = ET.parse(
+        output,
+    ).getroot()
+
+    assert root.get("viewBox") == "0 0 80 80"
+    assert root.get("width") == "80"
+    assert root.get("height") == "80"
+
+    rectangle = next(element for element in root if element.tag == f"{{{vector.SVG_NS}}}rect")
+
+    assert float(
+        rectangle.get(
+            "x",
+            "nan",
+        )
+    ) == pytest.approx(10.0)
+
+    assert float(
+        rectangle.get(
+            "y",
+            "nan",
+        )
+    ) == pytest.approx(10.0)
+
+    assert float(
+        rectangle.get(
+            "width",
+            "nan",
+        )
+    ) == pytest.approx(40.0)
+
+    assert float(
+        rectangle.get(
+            "height",
+            "nan",
+        )
+    ) == pytest.approx(60.0)
+
+    assert rectangle.get("transform") is None
+
+
+def test_registered_envelope_remains_registered_with_common_layer_crop(
+    tmp_path: Path,
+) -> None:
+    """
+    The Artwork envelope remains registered with differently sized color layers.
+
+    When source and raster coordinates are identical, the common layer crop
+    maps directly into source coordinates and is materialized into the
+    registered envelope geometry.
+    """
+
+    first_raster = tmp_path / "first.png"
+    second_raster = tmp_path / "second.png"
+
+    _write_raster(
+        first_raster,
+        box=(2, 4, 8, 12),
+    )
+
+    _write_raster(
+        second_raster,
+        box=(10, 6, 18, 16),
+    )
+
+    layers = [
+        vector.RasterLayer(
+            index=1,
+            path=first_raster,
+            name="white",
+            color=(
+                255,
+                255,
+                255,
+            ),
+        ),
+        vector.RasterLayer(
+            index=2,
+            path=second_raster,
+            name="black",
+            color=(
+                0,
+                0,
+                0,
+            ),
+        ),
+    ]
+
+    crop = vector._common_crop(
+        layers,
+    )
+
+    assert crop == vector.RasterCrop(
+        x=2,
+        y=2,
+        size=16,
+    )
+
+    source = tmp_path / "prepared-envelope.svg"
+    output = tmp_path / "registered-envelope.svg"
+
+    source.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'width="20" '
+            'height="20" '
+            'viewBox="0 0 20 20">'
+            '<rect x="2" y="4" width="16" height="12"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    registration = vector.RasterRegistration(
+        x=0.0,
+        y=0.0,
+        size=20.0,
+        pixels=20,
+    )
+
+    vector._register_envelope(
+        source,
+        output,
+        registration=registration,
+        crop=crop,
+    )
+
+    root = ET.parse(
+        output,
+    ).getroot()
+
+    assert root.get("viewBox") == "0 0 16 16"
+
+    rectangle = next(element for element in root if element.tag == f"{{{vector.SVG_NS}}}rect")
+
+    assert float(
+        rectangle.get(
+            "x",
+            "nan",
+        )
+    ) == pytest.approx(0.0)
+
+    assert float(
+        rectangle.get(
+            "y",
+            "nan",
+        )
+    ) == pytest.approx(2.0)
+
+    assert float(
+        rectangle.get(
+            "width",
+            "nan",
+        )
+    ) == pytest.approx(16.0)
+
+    assert float(
+        rectangle.get(
+            "height",
+            "nan",
+        )
+    ) == pytest.approx(12.0)
+
+    assert rectangle.get("transform") is None
+
+
 def test_vector_layer_records_common_registered_coordinate_system(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -740,6 +959,7 @@ def test_registered_envelope_uses_same_crop_as_vector_layers(
         source: Path,
         output: Path,
         *,
+        registration: vector.RasterRegistration,
         crop: vector.RasterCrop,
     ) -> None:
         envelope_crops.append(
@@ -814,9 +1034,6 @@ def test_registered_envelope_records_common_coordinate_system(
     """
     The persistent Artwork envelope uses the canonical Registered Artwork
     coordinate system defined by registered_extent.
-
-    The source-raster crop origin is removed when the prepared envelope is
-    registered.
     """
 
     prepared_envelope = tmp_path / "prepare" / "envelope.svg"
@@ -827,6 +1044,13 @@ def test_registered_envelope_records_common_coordinate_system(
 
     registered_envelope = tmp_path / "vector" / "envelope.svg"
 
+    registration = vector.RasterRegistration(
+        x=0.0,
+        y=0.0,
+        size=20.0,
+        pixels=20,
+    )
+
     crop = vector.RasterCrop(
         x=2,
         y=3,
@@ -836,6 +1060,7 @@ def test_registered_envelope_records_common_coordinate_system(
     vector._register_envelope(
         prepared_envelope,
         registered_envelope,
+        registration=registration,
         crop=crop,
     )
 
@@ -852,13 +1077,8 @@ def test_registered_envelope_geometry_is_translated_to_canonical_coordinates(
     tmp_path: Path,
 ) -> None:
     """
-    Registering the Artwork envelope translates its source-image geometry
-    into the canonical Registered Artwork coordinate system.
-
-    A source crop beginning at (2, 3) becomes a registered coordinate
-    system beginning at (0, 0). The envelope and traced vector layers can
-    therefore share one reusable coordinate system independent of the
-    source-raster crop origin.
+    Identity raster registration materializes the common vector-crop
+    translation into canonical Registered Artwork geometry.
     """
 
     prepared_envelope = tmp_path / "prepare" / "envelope.svg"
@@ -882,6 +1102,13 @@ def test_registered_envelope_geometry_is_translated_to_canonical_coordinates(
 
     registered_envelope = tmp_path / "vector" / "envelope.svg"
 
+    registration = vector.RasterRegistration(
+        x=0.0,
+        y=0.0,
+        size=20.0,
+        pixels=20,
+    )
+
     crop = vector.RasterCrop(
         x=2,
         y=3,
@@ -891,6 +1118,7 @@ def test_registered_envelope_geometry_is_translated_to_canonical_coordinates(
     vector._register_envelope(
         prepared_envelope,
         registered_envelope,
+        registration=registration,
         crop=crop,
     )
 
@@ -900,16 +1128,37 @@ def test_registered_envelope_geometry_is_translated_to_canonical_coordinates(
 
     assert root.get("viewBox") == "0 0 14 14"
 
-    group = next(element for element in root if element.tag == f"{{{vector.SVG_NS}}}g")
+    rectangle = next(element for element in root if element.tag == f"{{{vector.SVG_NS}}}rect")
 
-    rectangle = next(element for element in group if element.tag == f"{{{vector.SVG_NS}}}rect")
+    assert float(
+        rectangle.get(
+            "x",
+            "nan",
+        )
+    ) == pytest.approx(2.0)
 
-    assert group.get("transform") == "translate(-2 -3)"
+    assert float(
+        rectangle.get(
+            "y",
+            "nan",
+        )
+    ) == pytest.approx(3.0)
 
-    assert float(rectangle.get("x", "nan")) == pytest.approx(4.0)
-    assert float(rectangle.get("y", "nan")) == pytest.approx(6.0)
-    assert float(rectangle.get("width", "nan")) == pytest.approx(8.0)
-    assert float(rectangle.get("height", "nan")) == pytest.approx(6.0)
+    assert float(
+        rectangle.get(
+            "width",
+            "nan",
+        )
+    ) == pytest.approx(8.0)
+
+    assert float(
+        rectangle.get(
+            "height",
+            "nan",
+        )
+    ) == pytest.approx(6.0)
+
+    assert rectangle.get("transform") is None
 
 
 def test_vector_generation_is_independent_of_physical_size(
@@ -1981,3 +2230,541 @@ def test_vector_registration_does_not_transform_document_metadata(
     assert non_svg_children
 
     assert all(element.get("transform") is None for element in non_svg_children)
+
+
+def test_vector_registration_preserves_common_coordinates_between_envelope_and_layers(
+    tmp_path: Path,
+) -> None:
+    """
+    Vector Artwork products share one registered coordinate system.
+
+    The common raster crop establishes one registered coordinate system for
+    every vector layer and envelope.svg. The envelope remains authoritative
+    for Artwork occupancy within that coordinate system.
+    """
+
+    first_raster = tmp_path / "first.png"
+    second_raster = tmp_path / "second.png"
+
+    _write_raster(
+        first_raster,
+        box=(2, 4, 8, 12),
+    )
+
+    _write_raster(
+        second_raster,
+        box=(10, 6, 18, 16),
+    )
+
+    layers = [
+        vector.RasterLayer(
+            index=1,
+            path=first_raster,
+            name="white",
+            color=(
+                255,
+                255,
+                255,
+            ),
+        ),
+        vector.RasterLayer(
+            index=2,
+            path=second_raster,
+            name="black",
+            color=(
+                0,
+                0,
+                0,
+            ),
+        ),
+    ]
+
+    crop = vector._common_crop(
+        layers,
+    )
+
+    assert crop == vector.RasterCrop(
+        x=2,
+        y=2,
+        size=16,
+    )
+
+    prepared_envelope = tmp_path / "prepared-envelope.svg"
+    registered_envelope = tmp_path / "registered-envelope.svg"
+
+    prepared_envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'width="20" '
+            'height="20" '
+            'viewBox="0 0 20 20">'
+            '<rect x="3" y="4" width="14" height="12"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    registration = vector.RasterRegistration(
+        x=0.0,
+        y=0.0,
+        size=20.0,
+        pixels=20,
+    )
+
+    vector._register_envelope(
+        prepared_envelope,
+        registered_envelope,
+        registration=registration,
+        crop=crop,
+    )
+
+    envelope_root = ET.parse(
+        registered_envelope,
+    ).getroot()
+
+    assert envelope_root.get("viewBox") == "0 0 16 16"
+    assert envelope_root.get("width") == "16"
+    assert envelope_root.get("height") == "16"
+
+    envelope_rectangle = next(
+        element for element in envelope_root if element.tag == f"{{{vector.SVG_NS}}}rect"
+    )
+
+    assert envelope_rectangle.get("transform") is None
+
+    registered_layers: list[Path] = []
+
+    for layer in layers:
+        output = tmp_path / f"registered-{layer.index}.svg"
+
+        vector._trace_mask(
+            layer.path,
+            output,
+            crop=crop,
+        )
+
+        registered_layers.append(
+            output,
+        )
+
+    for registered_layer in registered_layers:
+        root = ET.parse(
+            registered_layer,
+        ).getroot()
+
+        assert root.get("viewBox") == "0 0 16 16"
+        assert root.get("width") == "16"
+        assert root.get("height") == "16"
+
+    assert float(
+        envelope_rectangle.get(
+            "x",
+            "nan",
+        )
+    ) == pytest.approx(1.0)
+
+    assert float(
+        envelope_rectangle.get(
+            "y",
+            "nan",
+        )
+    ) == pytest.approx(2.0)
+
+    assert float(
+        envelope_rectangle.get(
+            "width",
+            "nan",
+        )
+    ) == pytest.approx(14.0)
+
+    assert float(
+        envelope_rectangle.get(
+            "height",
+            "nan",
+        )
+    ) == pytest.approx(12.0)
+
+
+def test_shape_reads_vector_registered_envelope_in_common_coordinates(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape interprets Artwork's registered envelope in producer coordinates.
+
+    With identity raster registration, the common vector crop translates the
+    prepared envelope into canonical Registered Artwork coordinates.
+    """
+
+    prepared_envelope = tmp_path / "prepared-envelope.svg"
+    registered_envelope = tmp_path / "envelope.svg"
+
+    prepared_envelope.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="100"
+    height="100"
+    viewBox="0 0 100 100"
+>
+    <rect
+        x="30"
+        y="20"
+        width="40"
+        height="60"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    registration = vector.RasterRegistration(
+        x=0.0,
+        y=0.0,
+        size=100.0,
+        pixels=100,
+    )
+
+    crop = vector.RasterCrop(
+        x=20,
+        y=10,
+        size=80,
+    )
+
+    vector._register_envelope(
+        prepared_envelope,
+        registered_envelope,
+        registration=registration,
+        crop=crop,
+    )
+
+    assert registered_envelope.is_file()
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=80.0,
+            height=80.0,
+        ),
+        envelope=registered_envelope,
+        components=(),
+    )
+
+    bounds = compose.registered_artwork_envelope_bounds(
+        artwork,
+    )
+
+    assert bounds.x == pytest.approx(10.0)
+    assert bounds.y == pytest.approx(10.0)
+
+    assert bounds.width == pytest.approx(40.0)
+    assert bounds.height == pytest.approx(60.0)
+
+    envelope_center_x = (bounds.x + bounds.x + bounds.width) / 2.0
+
+    envelope_center_y = (bounds.y + bounds.y + bounds.height) / 2.0
+
+    assert envelope_center_x == pytest.approx(30.0)
+    assert envelope_center_y == pytest.approx(40.0)
+
+    registered_center_x = artwork.registered_extent.width / 2.0
+
+    assert registered_center_x == pytest.approx(40.0)
+
+    assert envelope_center_x != pytest.approx(
+        registered_center_x,
+    )
+
+
+def test_registered_envelope_materializes_source_to_raster_scale_in_path_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork materializes source-to-raster scaling into envelope paths.
+
+    The persistent envelope must expose geometry directly in Registered Artwork
+    coordinates rather than requiring downstream consumers to interpret an SVG
+    scale transform.
+    """
+
+    source = tmp_path / "prepared-envelope.svg"
+    output = tmp_path / "registered-envelope.svg"
+
+    source.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="200"
+    height="180"
+    viewBox="0 0 200 180"
+>
+    <path
+        d="M 36 42 L 164 42 L 164 138 L 36 138 Z"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    registration = vector.RasterRegistration(
+        x=20.0,
+        y=10.0,
+        size=160.0,
+        pixels=100,
+    )
+
+    crop = vector.RasterCrop(
+        x=10,
+        y=10,
+        size=80,
+    )
+
+    vector._register_envelope(
+        source,
+        output,
+        registration=registration,
+        crop=crop,
+    )
+
+    root = ET.parse(
+        output,
+    ).getroot()
+
+    assert root.get("viewBox") == "0 0 80 80"
+    assert root.get("width") == "80"
+    assert root.get("height") == "80"
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=80.0,
+            height=80.0,
+        ),
+        envelope=output,
+        components=(),
+    )
+
+    bounds = compose.registered_artwork_envelope_bounds(
+        artwork,
+    )
+
+    assert bounds.x == pytest.approx(0.0)
+    assert bounds.y == pytest.approx(10.0)
+    assert bounds.width == pytest.approx(80.0)
+    assert bounds.height == pytest.approx(60.0)
+
+    assert all("scale(" not in (element.get("transform") or "") for element in root.iter())
+
+
+def test_vector_stage_registers_envelope_through_raster_registration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Vector registration maps the prepared envelope through raster registration.
+
+    The raster manifest defines how source coordinates were mapped into raster
+    pixels. Vector registration must use that mapping before applying its common
+    raster crop so the envelope and vector layers share one registered
+    coordinate system.
+    """
+
+    raster_dir = tmp_path / "raster"
+    prepare_dir = tmp_path / "prepare"
+    vector_dir = tmp_path / "vector"
+
+    raster_dir.mkdir()
+    prepare_dir.mkdir()
+    vector_dir.mkdir()
+
+    #
+    # The raster stage exported this source-coordinate square:
+    #
+    #     X = 20..180
+    #     Y = 10..170
+    #
+    # into:
+    #
+    #     100 x 100 pixels
+    #
+    # Therefore:
+    #
+    #     source X 20..180 -> raster X 0..100
+    #     source Y 10..170 -> raster Y 0..100
+    #
+
+    raster_layer = raster_dir / "color-1.png"
+
+    image = Image.new(
+        "RGBA",
+        (100, 100),
+        (0, 0, 0, 0),
+    )
+
+    try:
+        #
+        # Actual visible geometry occupies:
+        #
+        #     raster X = 10..90
+        #     raster Y = 20..80
+        #
+        # The vector common crop therefore becomes:
+        #
+        #     X = 10..90
+        #     Y = 10..90
+        #
+        # because the 80-pixel width determines the square crop.
+        #
+        for y in range(20, 80):
+            for x in range(10, 90):
+                image.putpixel(
+                    (x, y),
+                    (255, 0, 0, 255),
+                )
+
+        image.save(
+            raster_layer,
+            format="PNG",
+        )
+
+    finally:
+        image.close()
+
+    raster_manifest = raster_dir / "products.json"
+
+    raster_manifest.write_text(
+        json.dumps(
+            {
+                "registration": {
+                    "x": 20.0,
+                    "y": 10.0,
+                    "size": 160.0,
+                    "pixels": 100,
+                },
+                "products": [
+                    {
+                        "index": 1,
+                        "path": "color-1.png",
+                        "name": "red",
+                        "color": {
+                            "red": 255,
+                            "green": 0,
+                            "blue": 0,
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    #
+    # This envelope occupies exactly the same source-space region as the
+    # visible raster geometry:
+    #
+    # raster X 10..90 corresponds to source X 36..164
+    # raster Y 20..80 corresponds to source Y 42..138
+    #
+    # After the vector crop:
+    #
+    #     envelope X = 0..80
+    #     envelope Y = 10..70
+    #
+    # inside the common 80 x 80 registered extent.
+    #
+
+    prepared_envelope = prepare_dir / "envelope.svg"
+
+    prepared_envelope.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="200"
+    height="180"
+    viewBox="0 0 200 180"
+>
+    <rect
+        x="36"
+        y="42"
+        width="128"
+        height="96"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_dir / "products.json"
+
+    class Context:
+        def input(
+            self,
+            name: str,
+        ) -> Path:
+            return {
+                "raster.manifest": raster_manifest,
+                "prepare.envelope": prepared_envelope,
+            }[name]
+
+        def output(
+            self,
+            name: str,
+        ) -> Path:
+            assert name == "manifest"
+            return vector_manifest
+
+    def fake_trace_mask(
+        source: Path,
+        output: Path,
+        *,
+        crop: vector.RasterCrop,
+    ) -> None:
+        assert source == raster_layer
+
+        output.write_text(
+            f"""
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="{crop.size}"
+    height="{crop.size}"
+    viewBox="0 0 {crop.size} {crop.size}"
+>
+    <rect
+        x="0"
+        y="10"
+        width="{crop.size}"
+        height="60"
+    />
+</svg>
+""".strip(),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        vector,
+        "_trace_mask",
+        fake_trace_mask,
+    )
+
+    vector.execute(
+        Context(),  # type: ignore[arg-type]
+    )
+
+    registered_envelope = vector_dir / "envelope.svg"
+
+    assert registered_envelope.is_file()
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=80.0,
+            height=80.0,
+        ),
+        envelope=registered_envelope,
+        components=(),
+    )
+
+    bounds = compose.registered_artwork_envelope_bounds(
+        artwork,
+    )
+
+    assert bounds.x == pytest.approx(0.0)
+    assert bounds.y == pytest.approx(10.0)
+    assert bounds.width == pytest.approx(80.0)
+    assert bounds.height == pytest.approx(60.0)

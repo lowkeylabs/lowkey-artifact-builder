@@ -278,7 +278,7 @@ def test_raster_uses_declared_prepare_trace(
     monkeypatch.setattr(
         raster,
         "_write_manifest",
-        lambda path, layers, assignments, *, pixels: path.write_text(
+        lambda path, layers, assignments, *, pixels, bounds: path.write_text(
             "{}",
             encoding="utf-8",
         ),
@@ -406,7 +406,7 @@ def test_raster_places_dynamic_pngs_beside_declared_manifest(
     monkeypatch.setattr(
         raster,
         "_write_manifest",
-        lambda path, layers, assignments, *, pixels: path.write_text(
+        lambda path, layers, assignments, *, pixels, bounds: path.write_text(
             "{}",
             encoding="utf-8",
         ),
@@ -444,11 +444,18 @@ def test_raster_manifest_describes_stage_local_products(
         distance=1.25,
     )
 
+    bounds = raster.RasterBounds(
+        x=2.5,
+        y=3.5,
+        size=20.0,
+    )
+
     raster._write_manifest(
         manifest,
         [layer],
         (assignment,),
         pixels=20,
+        bounds=bounds,
     )
 
     data = json.loads(
@@ -459,6 +466,12 @@ def test_raster_manifest_describes_stage_local_products(
 
     assert data == {
         "pixels": 20,
+        "registration": {
+            "x": 2.5,
+            "y": 3.5,
+            "size": 20.0,
+            "pixels": 20,
+        },
         "products": [
             {
                 "index": 1,
@@ -542,3 +555,53 @@ def test_cleanup_layers_uses_raster_pixel_area(
 
         finally:
             alpha.close()
+
+
+def test_raster_manifest_records_source_registration_bounds(
+    tmp_path: Path,
+) -> None:
+    """
+    Raster products record the source bounds used to register their pixels.
+
+    Downstream consumers must be able to map source-coordinate geometry into
+    the raster coordinate system without reconstructing raster-stage policy.
+    """
+
+    output_directory = tmp_path / "rasters"
+
+    layer = output_directory / "color-1.png"
+
+    _write_layer(
+        layer,
+    )
+
+    manifest = output_directory / "products.json"
+
+    assignment = _assignment()
+
+    bounds = raster.RasterBounds(
+        x=12.5,
+        y=7.5,
+        size=80.0,
+    )
+
+    raster._write_manifest(
+        manifest,
+        [layer],
+        (assignment,),
+        pixels=100,
+        bounds=bounds,
+    )
+
+    data = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert data["registration"] == {
+        "x": 12.5,
+        "y": 7.5,
+        "size": 80.0,
+        "pixels": 100,
+    }

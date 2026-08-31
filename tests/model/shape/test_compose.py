@@ -666,6 +666,142 @@ def test_registered_artwork_fits_into_rectangular_shape_interior(
     assert placement.height == pytest.approx(0.75)
 
 
+def test_rectangular_shape_fit_maps_envelope_x_bounds_into_shape_interior(
+    tmp_path: Path,
+) -> None:
+    """
+    Rectangular Shape fitting maps Artwork occupancy into Shape coordinates.
+
+    Registered Artwork and registered Shape have independent coordinate
+    origins. The Artwork envelope is fitted in its own registered coordinate
+    system and then mapped into the actual Shape interior bounds.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    _write_registered_square_structure(
+        structure,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=100.0,
+        ridge_width=13.0,
+    )
+
+    envelope.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="137"
+    height="137"
+    viewBox="0 0 137 137"
+>
+    <rect
+        x="11"
+        y="20"
+        width="72"
+        height="40"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=137.0,
+            height=137.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    interior = compose.registered_interior_region(
+        composition,
+    )
+
+    interior_x = float(
+        interior.get(
+            "x",
+            "nan",
+        )
+    )
+
+    interior_width = float(
+        interior.get(
+            "width",
+            "nan",
+        )
+    )
+
+    interior_min_x = interior_x
+    interior_max_x = interior_x + interior_width
+    interior_center_x = (interior_min_x + interior_max_x) / 2.0
+
+    assert interior_min_x == pytest.approx(-0.37)
+    assert interior_max_x == pytest.approx(0.37)
+    assert interior_width == pytest.approx(0.74)
+    assert interior_center_x == pytest.approx(0.0)
+
+    bounds = compose.registered_artwork_envelope_bounds(
+        artwork,
+    )
+
+    envelope_min_x = bounds.x
+    envelope_max_x = bounds.x + bounds.width
+    envelope_center_x = (envelope_min_x + envelope_max_x) / 2.0
+
+    assert envelope_min_x == pytest.approx(11.0)
+    assert envelope_max_x == pytest.approx(83.0)
+    assert bounds.width == pytest.approx(72.0)
+    assert envelope_center_x == pytest.approx(47.0)
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    expected_scale = interior_width / bounds.width
+
+    assert transform.scale == pytest.approx(
+        expected_scale,
+    )
+
+    transformed_min_x = envelope_min_x * transform.scale + transform.translate_x
+
+    transformed_max_x = envelope_max_x * transform.scale + transform.translate_x
+
+    transformed_width = transformed_max_x - transformed_min_x
+
+    transformed_center_x = (transformed_min_x + transformed_max_x) / 2.0
+
+    assert transformed_min_x == pytest.approx(
+        interior_min_x,
+    )
+
+    assert transformed_max_x == pytest.approx(
+        interior_max_x,
+    )
+
+    assert transformed_width == pytest.approx(
+        interior_width,
+    )
+
+    assert transformed_center_x == pytest.approx(
+        interior_center_x,
+    )
+
+    expected_translate_x = interior_center_x - envelope_center_x * expected_scale
+
+    assert transform.translate_x == pytest.approx(
+        expected_translate_x,
+    )
+
+
 def test_registered_artwork_centers_within_rectangular_shape_interior(
     tmp_path: Path,
 ) -> None:
@@ -2499,6 +2635,179 @@ def test_compose_manifest_preserves_registered_artwork_membership(
         ).read_bytes()
 
 
+def test_compose_stage_places_artwork_from_manifest_envelope_occupancy(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape composition places registered Artwork from its declared envelope.
+
+    Individual Artwork components may have different occupied extents.
+    The vector manifest's envelope is the authoritative occupied region for
+    fitting the complete registered Artwork collection into the Shape.
+
+    Composition must therefore center the envelope occupancy rather than the
+    registered extent or any individual component.
+    """
+
+    artwork_dir = tmp_path / "artwork"
+    artwork_dir.mkdir()
+
+    artwork_manifest = artwork_dir / "products.json"
+    envelope = artwork_dir / "envelope.svg"
+    left_component = artwork_dir / "left.svg"
+    right_component = artwork_dir / "right.svg"
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 20 20">'
+            '<rect x="3" y="2" width="12" height="16"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    left_component.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 20 20">'
+            '<rect x="4" y="5" width="3" height="8"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    right_component.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 20 20">'
+            '<rect x="10" y="7" width="4" height="6"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork_manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 20,
+                "envelope": "envelope.svg",
+                "products": [
+                    {
+                        "index": 1,
+                        "path": "left.svg",
+                        "name": "white",
+                        "color": {
+                            "red": 255,
+                            "green": 255,
+                            "blue": 255,
+                        },
+                    },
+                    {
+                        "index": 2,
+                        "path": "right.svg",
+                        "name": "black",
+                        "color": {
+                            "red": 0,
+                            "green": 0,
+                            "blue": 0,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    structure_input = tmp_path / "structure.svg"
+    composition_output = tmp_path / "composition.svg"
+    manifest_output = tmp_path / "shape-products.json"
+
+    _write_registered_structure(
+        structure_input,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    _configure_compose_inputs(
+        context,
+        structure=structure_input,
+        artwork_manifest=artwork_manifest,
+    )
+
+    outputs = {
+        "composition": composition_output,
+        "manifest": manifest_output,
+    }
+    context.output.side_effect = outputs.__getitem__
+
+    _configure_shape_resolver(
+        context,
+        shape_size=100.0,
+        ridge_width=0.0,
+    )
+
+    compose.execute(
+        context,
+    )
+
+    manifest = json.loads(
+        manifest_output.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    transform = manifest["artwork"]["transform"]
+
+    #
+    # Circular containment is limited by the envelope corner radius.
+    #
+    # Envelope:
+    #
+    #     x = 3..15     center x = 9
+    #     y = 2..18     center y = 10
+    #
+    # Its half extents are 6 x 8. The envelope corner radius is therefore
+    # 10, so fitting it inside the radius-0.5 Shape uses scale 0.05.
+    #
+    expected_scale = 0.5 / math.hypot(
+        6.0,
+        8.0,
+    )
+
+    assert transform["scale"] == pytest.approx(
+        expected_scale,
+    )
+
+    #
+    # The envelope center, not registered_extent center (10, 10), is mapped
+    # onto the Shape origin.
+    #
+    # This distinction is deliberate: using registered_extent would produce
+    # translate_x = -0.5 rather than the required -0.45.
+    #
+    assert transform["translate_x"] == pytest.approx(
+        -(9.0 * expected_scale),
+    )
+
+    assert transform["translate_y"] == pytest.approx(
+        -(10.0 * expected_scale),
+    )
+
+    #
+    # Individual component extents do not participate in placement.
+    #
+    assert transform["translate_x"] != pytest.approx(
+        -(5.5 * expected_scale),
+    )
+
+    assert transform["translate_x"] != pytest.approx(
+        -(12.0 * expected_scale),
+    )
+
+
 def test_compose_manifest_records_one_common_artwork_transform(
     tmp_path: Path,
 ) -> None:
@@ -2914,3 +3223,151 @@ def test_compose_output_is_consumable_by_openscad(
     )
 
     assert output_path.is_file()
+
+
+def test_shape_reads_vector_registered_envelope_in_common_coordinates(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape interprets Artwork's registered envelope in producer coordinates.
+
+    With identity raster registration, the common vector crop translates the
+    prepared envelope into canonical Registered Artwork coordinates.
+
+    The envelope, not individual Artwork layers or registered_extent, defines
+    the occupied Artwork region used for placement.
+    """
+
+    from lowkey_artifact_builder.model.models.artwork.stages import vector
+
+    prepared_envelope = tmp_path / "prepared-envelope.svg"
+    registered_envelope = tmp_path / "envelope.svg"
+
+    #
+    # The prepared Artwork envelope occupies:
+    #
+    #     X = 30..70
+    #     Y = 20..80
+    #
+    # in the original source coordinate system.
+    #
+
+    prepared_envelope.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="100"
+    height="100"
+    viewBox="0 0 100 100"
+>
+    <rect
+        x="30"
+        y="20"
+        width="40"
+        height="60"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    #
+    # This fixture uses identity source-to-raster registration:
+    #
+    #     source X/Y == raster X/Y
+    #
+    # Artwork's common vector crop then begins at raster coordinate
+    # (20, 10), establishing:
+    #
+    #     registered X = source X - 20
+    #     registered Y = source Y - 10
+    #
+    # The registered envelope occupancy must consequently be:
+    #
+    #     X = 10..50
+    #     Y = 10..70
+    #
+
+    registration = vector.RasterRegistration(
+        x=0.0,
+        y=0.0,
+        size=100.0,
+        pixels=100,
+    )
+
+    crop = vector.RasterCrop(
+        x=20,
+        y=10,
+        size=80,
+    )
+
+    vector._register_envelope(
+        prepared_envelope,
+        registered_envelope,
+        registration=registration,
+        crop=crop,
+    )
+
+    assert registered_envelope.is_file()
+
+    #
+    # Consume the exact representation written by Artwork vectorization.
+    #
+    # Shape receives only the registered extent and envelope product. It
+    # should not need to know how Artwork performed source-to-registered
+    # coordinate conversion internally.
+    #
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=80.0,
+            height=80.0,
+        ),
+        envelope=registered_envelope,
+        components=(),
+    )
+
+    bounds = compose.registered_artwork_envelope_bounds(
+        artwork,
+    )
+
+    #
+    # Shape observes the effective Registered Artwork coordinates rather
+    # than the original source coordinates.
+    #
+
+    assert bounds.x == pytest.approx(10.0)
+    assert bounds.y == pytest.approx(10.0)
+
+    assert bounds.width == pytest.approx(40.0)
+    assert bounds.height == pytest.approx(60.0)
+
+    envelope_min_x = bounds.x
+    envelope_max_x = bounds.x + bounds.width
+    envelope_center_x = (envelope_min_x + envelope_max_x) / 2.0
+
+    assert envelope_min_x == pytest.approx(10.0)
+    assert envelope_max_x == pytest.approx(50.0)
+    assert envelope_center_x == pytest.approx(30.0)
+
+    envelope_min_y = bounds.y
+    envelope_max_y = bounds.y + bounds.height
+    envelope_center_y = (envelope_min_y + envelope_max_y) / 2.0
+
+    assert envelope_min_y == pytest.approx(10.0)
+    assert envelope_max_y == pytest.approx(70.0)
+    assert envelope_center_y == pytest.approx(40.0)
+
+    #
+    # registered_extent defines the common coordinate system but does not
+    # redefine Artwork occupancy. In particular, its center differs from
+    # the occupied envelope center along X.
+    #
+
+    registered_center_x = artwork.registered_extent.width / 2.0
+
+    assert registered_center_x == pytest.approx(40.0)
+
+    assert envelope_center_x != pytest.approx(
+        registered_center_x,
+    )

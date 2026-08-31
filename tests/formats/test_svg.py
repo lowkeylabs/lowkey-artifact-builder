@@ -1113,6 +1113,111 @@ def test_flatten_ancestor_transforms_without_transforms() -> None:
     )
 
 
+def test_materialize_transform_translates_linear_path_geometry() -> None:
+    """
+    Translation can be materialized directly into linear path geometry.
+    """
+
+    tree = _tree(
+        f"""
+        <svg xmlns="{svg.SVG_NS}">
+            <path
+                id="path1"
+                d="M 10 20 L 30 20 L 30 40 L 10 40 Z"
+            />
+        </svg>
+        """
+    )
+
+    svg.materialize_transform(
+        svg.get_object(
+            tree,
+            "path1",
+        ),
+        translate_x=-10.0,
+        translate_y=-20.0,
+    )
+
+    path = svg.get_object(
+        tree,
+        "path1",
+    )
+
+    assert path.get("d") == ("M 0 0 L 20 0 L 20 20 L 0 20 Z")
+
+    assert path.get("transform") is None
+
+
+def test_materialize_transform_scales_and_translates_rect_geometry() -> None:
+    """
+    Uniform scale and translation can be materialized into rectangle geometry.
+    """
+
+    tree = _tree(
+        f"""
+        <svg xmlns="{svg.SVG_NS}">
+            <rect
+                x="36"
+                y="42"
+                width="128"
+                height="96"
+            />
+        </svg>
+        """
+    )
+
+    rect = next(_root(tree).iter(f"{{{svg.SVG_NS}}}rect"))
+
+    svg.materialize_transform(
+        rect,
+        scale=0.625,
+        translate_x=-22.5,
+        translate_y=-16.25,
+    )
+
+    assert rect.get("x") == "0"
+    assert rect.get("y") == "10"
+    assert rect.get("width") == "80"
+    assert rect.get("height") == "60"
+    assert rect.get("transform") is None
+
+
+def test_materialize_transform_scales_and_translates_linear_path_geometry() -> None:
+    """
+    Uniform scale and translation can be materialized into path geometry.
+    """
+
+    tree = _tree(
+        f"""
+        <svg xmlns="{svg.SVG_NS}">
+            <path
+                id="path1"
+                d="M 36 42 L 164 42 L 164 138 L 36 138 Z"
+            />
+        </svg>
+        """
+    )
+
+    svg.materialize_transform(
+        svg.get_object(
+            tree,
+            "path1",
+        ),
+        scale=0.625,
+        translate_x=-22.5,
+        translate_y=-16.25,
+    )
+
+    path = svg.get_object(
+        tree,
+        "path1",
+    )
+
+    assert path.get("d") == ("M 0 10 L 80 10 L 80 70 L 0 70 Z")
+
+    assert path.get("transform") is None
+
+
 # =========================================================
 # Path inspection
 # =========================================================

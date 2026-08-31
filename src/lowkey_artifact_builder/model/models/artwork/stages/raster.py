@@ -292,6 +292,7 @@ def execute(
             layers,
             assignments,
             pixels=pixels,
+            bounds=bounds,
         )
 
     except (
@@ -1119,9 +1120,15 @@ def _write_manifest(
     ],
     *,
     pixels: int,
+    bounds: RasterBounds,
 ) -> None:
     """
     Write the raster product manifest.
+
+    Registration records the source-coordinate square that was rendered
+    into the common raster pixel extent. Downstream stages can therefore
+    map source-coordinate geometry into raster coordinates without
+    reconstructing raster-stage policy.
 
     Each product records:
 
@@ -1172,6 +1179,12 @@ def _write_manifest(
 
     data = {
         "pixels": pixels,
+        "registration": {
+            "x": bounds.x,
+            "y": bounds.y,
+            "size": bounds.size,
+            "pixels": pixels,
+        },
         "products": products,
     }
 
