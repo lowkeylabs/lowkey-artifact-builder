@@ -7,6 +7,7 @@ Tests for Shape registered structural geometry.
 
 from __future__ import annotations
 
+import math
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import Mock, call
@@ -377,6 +378,45 @@ def test_polygon_rotation_preserves_regular_polygon_proportions() -> None:
         edge_lengths.append((dx * dx + dy * dy) ** 0.5)
 
     assert edge_lengths == pytest.approx([edge_lengths[0]] * len(edge_lengths))
+
+
+def test_heptagon_geometry_is_origin_centered_regular_polygon() -> None:
+    """
+    A generated heptagon is a regular polygon centered on the Shape origin.
+
+    Every edge has the same perpendicular distance from the origin before
+    SVG serialization or downstream Shape composition.
+    """
+
+    geometry = structure.create_polygon_geometry(
+        number_of_sides=7,
+        rotation=0.0,
+    )
+
+    polygon = geometry.vertices
+
+    assert len(polygon) == 7
+
+    edge_distances = tuple(
+        abs(start[0] * end[1] - start[1] * end[0])
+        / math.hypot(
+            end[0] - start[0],
+            end[1] - start[1],
+        )
+        for start, end in zip(
+            polygon,
+            polygon[1:] + polygon[:1],
+            strict=True,
+        )
+    )
+
+    expected_distance = edge_distances[0]
+
+    for distance in edge_distances:
+        assert distance == pytest.approx(
+            expected_distance,
+            abs=1.0e-9,
+        )
 
 
 def test_polygon_svg_contains_registered_polygon() -> None:

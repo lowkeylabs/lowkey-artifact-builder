@@ -4524,3 +4524,182 @@ def test_small_offset_circular_artwork_is_centered_in_placement_circle(
     assert transform.translate_y == pytest.approx(
         -1.6,
     )
+
+
+def test_heptagon_ridge_inner_boundary_is_origin_centered_regular_polygon(
+    tmp_path: Path,
+) -> None:
+    """
+    A heptagon ridge preserves an origin-centered regular interior.
+
+    Every edge of the ridge inner boundary has the same perpendicular
+    distance from the registered Shape origin.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+
+    _write_registered_polygon_structure(
+        structure,
+        number_of_sides=7,
+        rotation=0.0,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=120.0,
+        ridge_width=2.0,
+    )
+
+    interior = compose.registered_interior_region(
+        composition,
+    )
+
+    assert interior.get("id") == "ridge-inner-boundary"
+    assert interior.tag == compose.SVG_POLYGON
+
+    polygon = _polygon_points(
+        interior,
+    )
+
+    assert len(polygon) == 7
+
+    edge_distances = tuple(
+        abs(start[0] * end[1] - start[1] * end[0])
+        / math.hypot(
+            end[0] - start[0],
+            end[1] - start[1],
+        )
+        for start, end in zip(
+            polygon,
+            polygon[1:] + polygon[:1],
+            strict=True,
+        )
+    )
+
+    expected_distance = edge_distances[0]
+
+    for distance in edge_distances:
+        assert distance == pytest.approx(
+            expected_distance,
+            abs=1.0e-9,
+        )
+
+
+def test_heptagon_artwork_placement_circle_is_tangent_to_every_inner_edge(
+    tmp_path: Path,
+) -> None:
+    """
+    A heptagon's Artwork placement circle is its registered interior incircle.
+
+    The origin-centered placement circle must be tangent to every edge of the
+    regular ridge inner boundary rather than merely using its nearest edge.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+
+    _write_registered_polygon_structure(
+        structure,
+        number_of_sides=7,
+        rotation=0.0,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=120.0,
+        ridge_width=2.0,
+    )
+
+    interior = compose.registered_interior_region(
+        composition,
+    )
+
+    placement = compose.artwork_placement_circle(
+        interior,
+    )
+
+    polygon = _polygon_points(
+        interior,
+    )
+
+    assert len(polygon) == 7
+
+    assert placement.center_x == pytest.approx(
+        0.0,
+        abs=1.0e-12,
+    )
+
+    assert placement.center_y == pytest.approx(
+        0.0,
+        abs=1.0e-12,
+    )
+
+    for start, end in zip(
+        polygon,
+        polygon[1:] + polygon[:1],
+        strict=True,
+    ):
+        edge_distance = abs(start[0] * end[1] - start[1] * end[0]) / math.hypot(
+            end[0] - start[0],
+            end[1] - start[1],
+        )
+
+        assert placement.radius == pytest.approx(
+            edge_distance,
+            abs=1.0e-9,
+        )
+
+
+def test_heptagon_structure_boundary_is_origin_centered_regular_polygon(
+    tmp_path: Path,
+) -> None:
+    """
+    A registered heptagon has an origin-centered regular outer boundary.
+
+    Every edge of the original Shape boundary has the same perpendicular
+    distance from the registered Shape origin before ridge composition.
+    """
+
+    structure_path = tmp_path / "structure.svg"
+
+    _write_registered_polygon_structure(
+        structure_path,
+        number_of_sides=7,
+        rotation=0.0,
+    )
+
+    root = ET.parse(
+        structure_path,
+    ).getroot()
+
+    polygon_element = next(element for element in root.iter() if element.tag == compose.SVG_POLYGON)
+
+    polygon = _polygon_points(
+        polygon_element,
+    )
+
+    assert len(polygon) == 7
+
+    edge_distances = tuple(
+        abs(start[0] * end[1] - start[1] * end[0])
+        / math.hypot(
+            end[0] - start[0],
+            end[1] - start[1],
+        )
+        for start, end in zip(
+            polygon,
+            polygon[1:] + polygon[:1],
+            strict=True,
+        )
+    )
+
+    expected_distance = edge_distances[0]
+
+    for distance in edge_distances:
+        assert distance == pytest.approx(
+            expected_distance,
+            abs=1.0e-9,
+        )

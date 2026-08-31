@@ -18,7 +18,9 @@ import pytest
 from lowkey_artifact_builder.engine import (
     BuildError,
     BuildPlan,
+    PlannedProduct,
     PlannedProductDependency,
+    PlannedStage,
     StageContext,
     execute_artifact_stage,
     execute_build,
@@ -29,9 +31,12 @@ from lowkey_artifact_builder.engine.stage import (
     StageInputError,
 )
 from lowkey_artifact_builder.model import (
+    ModelSpec,
     ProductDependencyBinding,
     ProductDependencySpec,
     ProductRef,
+    ProductSpec,
+    StageSpec,
 )
 
 # =========================================================
@@ -535,6 +540,167 @@ def test_execute_build_realizes_product_dependency_before_consumer(
     assert not (producer_plan.artifact_dir / "artwork" / "default" / "40-extrude").exists()
 
     assert not (producer_plan.artifact_dir / "artwork" / "default" / "50-package").exists()
+
+
+def test_execute_build_exposes_product_dependency_to_consumer_stage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    A realized cross-artifact product is exposed to its consumer stage.
+
+    After execution realizes the producer product required by a consumer,
+    the consumer StageContext must expose that product using its qualified
+    semantic input name.
+    """
+
+    _create_source(tmp_path)
+
+    producer_target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="default",
+        stage="vector",
+        product="manifest",
+    )
+
+    producer_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+        targets=(producer_target,),
+    )
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="manifest",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="example",
+        realization="default",
+    )
+
+    dependency_path = (
+        producer_plan.artifact_dir / "artwork" / "default" / "30-vector" / "products.json"
+    )
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=dependency_path,
+    )
+
+    consumer_stage = PlannedStage(
+        spec=StageSpec(
+            id=10,
+            name="consume",
+            product_dependencies=(dependency,),
+            products=(
+                ProductSpec(
+                    name="artifact",
+                    path="artifact.dat",
+                ),
+            ),
+        ),
+        products=(
+            PlannedProduct(
+                spec=ProductSpec(
+                    name="artifact",
+                    path="artifact.dat",
+                ),
+                path=(
+                    tmp_path
+                    / "artifacts"
+                    / "consumer"
+                    / "consumer"
+                    / "default"
+                    / "10-consume"
+                    / "artifact.dat"
+                ),
+            ),
+        ),
+    )
+
+    consumer_plan = BuildPlan(
+        artifact_id="consumer",
+        model=ModelSpec(
+            name="consumer",
+            title="Consumer",
+            stages=(consumer_stage.spec,),
+        ),
+        realization_name="default",
+        resolver=producer_plan.resolver,
+        project_root=tmp_path,
+        artifact_dir=tmp_path / "artifacts" / "consumer",
+        stages=(consumer_stage,),
+        product_dependencies=(dependency,),
+        product_dependency_bindings=(binding,),
+        planned_product_dependencies=(planned_dependency,),
+    )
+
+    observed_inputs: dict[str, Path] | None = None
+
+    registry = StageRegistry()
+
+    def producer_implementation(
+        context: StageContext,
+    ) -> None:
+        _create_declared_outputs(
+            context,
+        )
+
+    for stage_name in (
+        "prepare",
+        "raster",
+        "vector",
+    ):
+        registry.register(
+            "artwork",
+            stage_name,
+            producer_implementation,
+        )
+
+    def consumer_implementation(
+        context: StageContext,
+    ) -> None:
+        nonlocal observed_inputs
+
+        observed_inputs = dict(
+            context.inputs,
+        )
+
+        _create_declared_outputs(
+            context,
+        )
+
+    registry.register(
+        "consumer",
+        "consume",
+        consumer_implementation,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.stage.build_stage_registry",
+        lambda: registry,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.build.create_product_dependency_build_plan",
+        lambda dependency, *, project_root: producer_plan,
+        raising=False,
+    )
+
+    execute_build(
+        consumer_plan,
+    )
+
+    assert dependency_path.is_file()
+
+    assert observed_inputs == {
+        "artwork.vector.manifest": dependency_path,
+    }
 
 
 def test_execute_build_reuses_existing_product_dependency(

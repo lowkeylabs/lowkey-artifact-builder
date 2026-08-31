@@ -18,6 +18,11 @@ from lowkey_artifact_builder.engine import (
     create_build_plan,
     execute_build,
 )
+from lowkey_artifact_builder.formats.threemf import (
+    Component,
+    load_stl,
+    write,
+)
 from lowkey_artifact_builder.model.models.shape.stages import compose, extrude, structure
 
 # =========================================================
@@ -292,6 +297,187 @@ def _stl_bounds(
         max(ys),
         min(zs),
         max(zs),
+    )
+
+
+def _build_diagnostic_ring_scad(
+    *,
+    radius: float,
+    width: float,
+    z: float,
+    height: float,
+) -> str:
+    """
+    Build a thin physical ring marking the Artwork placement circle.
+    """
+
+    inner_radius = radius - width
+
+    if inner_radius <= 0.0:
+        raise ValueError("Diagnostic ring width must be smaller than its radius.")
+
+    return (
+        f"radius = {radius:g};\n"
+        f"inner_radius = {inner_radius:g};\n"
+        f"z = {z:g};\n"
+        f"height = {height:g};\n"
+        "\n"
+        "translate([0, 0, z])\n"
+        "    linear_extrude(height = height)\n"
+        "        difference() {\n"
+        "            circle(r = radius, $fn = 256);\n"
+        "            circle(r = inner_radius, $fn = 256);\n"
+        "        }\n"
+    )
+
+
+def _build_diagnostic_origin_scad(
+    *,
+    size: float,
+    width: float,
+    z: float,
+    height: float,
+) -> str:
+    """
+    Build a physical cross centered exactly on Shape XY origin.
+    """
+
+    return (
+        f"size = {size:g};\n"
+        f"width = {width:g};\n"
+        f"z = {z:g};\n"
+        f"height = {height:g};\n"
+        "\n"
+        "translate([0, 0, z])\n"
+        "    linear_extrude(height = height)\n"
+        "        union() {\n"
+        "            square([size, width], center = true);\n"
+        "            square([width, size], center = true);\n"
+        "        }\n"
+    )
+
+
+def _build_diagnostic_envelope_scad(
+    source: str,
+    *,
+    shape_size: float,
+    registered_height: float,
+    artwork_scale: float,
+    artwork_translate_x: float,
+    artwork_translate_y: float,
+    z: float,
+    height: float,
+) -> str:
+    """
+    Physically render the authoritative Artwork envelope.
+
+    The envelope receives exactly the registered-to-physical XY transform
+    persisted by Shape composition and consumed by Artwork extrusion.
+    """
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"registered_height = {registered_height:g};\n"
+        f"artwork_scale = {artwork_scale:g};\n"
+        f"artwork_translate_x = {artwork_translate_x:g};\n"
+        f"artwork_translate_y = {artwork_translate_y:g};\n"
+        f"z = {z:g};\n"
+        f"height = {height:g};\n"
+        "openscad_translate_y = "
+        "-(registered_height * artwork_scale) "
+        "- artwork_translate_y;\n"
+        "\n"
+        "translate([0, 0, z])\n"
+        "    linear_extrude(height = height)\n"
+        "        scale([shape_size, shape_size, 1])\n"
+        "            translate([\n"
+        "                artwork_translate_x,\n"
+        "                openscad_translate_y,\n"
+        "                0\n"
+        "            ])\n"
+        "                scale([artwork_scale, artwork_scale, 1])\n"
+        f'                    import("{source}", dpi = 25.4);\n'
+    )
+
+
+def _write_artwork_placement_diagnostic_3mf(
+    path: Path,
+    *,
+    base: Path,
+    ridge: Path,
+    artwork_products: tuple[Path, ...],
+    placement_circle: Path,
+    envelope: Path,
+    origin: Path,
+) -> None:
+    """
+    Package the physical Shape and Artwork placement diagnostics into one 3MF.
+
+    The base, ridge, Artwork, and diagnostic reference geometry are already
+    expressed in the same physical coordinate system. Packaging therefore
+    preserves their relative registration.
+    """
+
+    components: list[Component] = [
+        Component(
+            name="shape-base",
+            mesh=load_stl(
+                base,
+            ),
+            color=None,
+        ),
+        Component(
+            name="shape-ridge",
+            mesh=load_stl(
+                ridge,
+            ),
+            color=None,
+        ),
+    ]
+
+    for index, artwork_product in enumerate(
+        artwork_products,
+        start=1,
+    ):
+        components.append(
+            Component(
+                name=f"artwork-{index}",
+                mesh=load_stl(
+                    artwork_product,
+                ),
+                color=None,
+            )
+        )
+
+    components.extend(
+        (
+            Component(
+                name="diagnostic-placement-circle",
+                mesh=load_stl(
+                    placement_circle,
+                ),
+                color=None,
+            ),
+            Component(
+                name="diagnostic-artwork-envelope",
+                mesh=load_stl(
+                    envelope,
+                ),
+                color=None,
+            ),
+            Component(
+                name="diagnostic-origin",
+                mesh=load_stl(
+                    origin,
+                ),
+                color=None,
+            ),
+        )
+    )
+
+    write(
+        tuple(components),
+        path,
     )
 
 
@@ -1265,3 +1451,219 @@ def test_real_2121_stuart_is_physically_centered_in_heptagon_placement_circle(
         0.0,
         abs=0.25,
     )
+
+
+@pytest.mark.slow
+def test_write_real_2121_stuart_artwork_placement_diagnostics(
+    tmp_path: Path,
+) -> None:
+    """
+    Render physical diagnostics for the real 2121_stuart placement regression.
+
+    The diagnostic 3MF contains:
+
+        - the actual production Shape base;
+        - the actual production Shape ridge;
+        - the actual physically rendered Artwork components;
+        - the computed physical Artwork placement circle;
+        - the transformed authoritative Artwork envelope;
+        - the physical Shape origin.
+
+    All geometry is expressed in the same physical coordinate system.
+    """
+
+    vector_manifest = _build_2121_stuart_registered_artwork(
+        tmp_path,
+    )
+
+    artwork, placement_radius = _compose_2121_stuart_into_heptagon(
+        tmp_path,
+        vector_manifest,
+    )
+
+    composition = tmp_path / "composition.svg"
+
+    assert composition.is_file()
+
+    diagnostic_directory = tmp_path / "diagnostic"
+
+    diagnostic_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    # -----------------------------------------------------
+    # Actual production Shape base and ridge
+    # -----------------------------------------------------
+
+    registered_ridge = extrude._load_ridge(
+        composition,
+    )
+
+    assert isinstance(
+        registered_ridge,
+        extrude.RegisteredPolygonRidge,
+    )
+
+    structural_components = extrude._render_polygon_ridge_components(
+        registered_ridge,
+        diagnostic_directory,
+        shape_size=120.0,
+        shape_base_raise=2.0,
+        shape_outer_ridge_raise=1.0,
+        shape_outer_ridge_style="integrated",
+    )
+
+    assert structural_components == (
+        (
+            "base",
+            "base.stl",
+        ),
+        (
+            "ridge",
+            "ridge.stl",
+        ),
+    )
+
+    base = diagnostic_directory / "base.stl"
+    ridge = diagnostic_directory / "ridge.stl"
+
+    assert base.is_file()
+    assert ridge.is_file()
+
+    # -----------------------------------------------------
+    # Actual production Artwork
+    # -----------------------------------------------------
+
+    extrude._render_artwork_components(
+        artwork,
+        tmp_path,
+        diagnostic_directory,
+        shape_size=120.0,
+        shape_base_raise=2.0,
+        shape_artwork_raise=1.0,
+    )
+
+    artwork_products = tuple(
+        sorted(
+            diagnostic_directory.glob(
+                "artwork-*.stl",
+            )
+        )
+    )
+
+    assert artwork_products
+
+    # -----------------------------------------------------
+    # Placement circle
+    # -----------------------------------------------------
+
+    placement_circle = diagnostic_directory / "diagnostic-placement-circle.stl"
+
+    placement_source = _build_diagnostic_ring_scad(
+        radius=placement_radius * 120.0,
+        width=0.5,
+        z=3.25,
+        height=0.25,
+    )
+
+    extrude.render_stl_source(
+        placement_source,
+        placement_circle,
+    )
+
+    # -----------------------------------------------------
+    # Shape origin
+    # -----------------------------------------------------
+
+    origin = diagnostic_directory / "diagnostic-origin.stl"
+
+    origin_source = _build_diagnostic_origin_scad(
+        size=8.0,
+        width=0.5,
+        z=3.55,
+        height=0.25,
+    )
+
+    extrude.render_stl_source(
+        origin_source,
+        origin,
+    )
+
+    # -----------------------------------------------------
+    # Authoritative Artwork envelope
+    # -----------------------------------------------------
+
+    registered_artwork = compose.load_registered_artwork(
+        vector_manifest,
+    )
+
+    envelope_path = registered_artwork.envelope
+
+    assert envelope_path.is_file()
+
+    registered_extent = artwork["registered_extent"]
+
+    assert isinstance(
+        registered_extent,
+        dict,
+    )
+
+    transform = artwork["transform"]
+
+    assert isinstance(
+        transform,
+        dict,
+    )
+
+    envelope = diagnostic_directory / "diagnostic-artwork-envelope.stl"
+
+    envelope_source = _build_diagnostic_envelope_scad(
+        str(
+            envelope_path.resolve(),
+        ),
+        shape_size=120.0,
+        registered_height=float(
+            registered_extent["height"],
+        ),
+        artwork_scale=float(
+            transform["scale"],
+        ),
+        artwork_translate_x=float(
+            transform["translate_x"],
+        ),
+        artwork_translate_y=float(
+            transform["translate_y"],
+        ),
+        z=3.85,
+        height=0.25,
+    )
+
+    extrude.render_stl_source(
+        envelope_source,
+        envelope,
+    )
+
+    assert placement_circle.is_file()
+    assert origin.is_file()
+    assert envelope.is_file()
+
+    # -----------------------------------------------------
+    # One registration-preserving diagnostic 3MF
+    # -----------------------------------------------------
+
+    diagnostic_3mf = diagnostic_directory / "artwork-placement-diagnostic.3mf"
+
+    _write_artwork_placement_diagnostic_3mf(
+        diagnostic_3mf,
+        base=base,
+        ridge=ridge,
+        artwork_products=artwork_products,
+        placement_circle=placement_circle,
+        envelope=envelope,
+        origin=origin,
+    )
+
+    assert diagnostic_3mf.is_file()
+
+    print(f"\ndiagnostic 3MF: {diagnostic_3mf}")

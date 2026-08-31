@@ -8,6 +8,7 @@ Tests for Shape physical-component packaging.
 from __future__ import annotations
 
 import json
+import shutil
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
@@ -15,15 +16,223 @@ from unittest.mock import Mock, call
 
 import pytest
 
-from lowkey_artifact_builder.engine import StageContext
+from lowkey_artifact_builder.config import write_artifact_config
+from lowkey_artifact_builder.engine import (
+    StageContext,
+    create_build_plan,
+    create_build_plans,
+    execute_build,
+    execute_builds,
+)
 from lowkey_artifact_builder.engine.bootstrap import build_stage_registry
-from lowkey_artifact_builder.formats.threemf import CORE_NS
+from lowkey_artifact_builder.formats.threemf import CORE_NS, load_stl
 from lowkey_artifact_builder.model.models.shape import stages
-from lowkey_artifact_builder.model.models.shape.stages import package
+from lowkey_artifact_builder.model.models.shape.stages import compose, extrude, package, structure
 
 # =========================================================
 # Helpers
 # =========================================================
+
+
+def _build_2121_stuart_registered_artwork(
+    project_root: Path,
+) -> Path:
+    """
+    Build the real 2121_stuart fixture through registered Artwork vectorization.
+    """
+
+    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "2121_stuart.png"
+
+    assert fixture.is_file()
+
+    source = project_root / "2121_stuart.png"
+
+    shutil.copyfile(
+        fixture,
+        source,
+    )
+
+    (project_root / "workspace.toml").write_text(
+        """
+[parameters]
+artwork_colors = ["black", "brown", "gold", "silver", "white"]
+artwork_pixels = 973
+artwork_min_island_area = 1
+artwork_island_connectivity = 8
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    write_artifact_config(
+        "2121_stuart",
+        {
+            "model": "artwork",
+            "source": "2121_stuart.png",
+            "artwork_size": 200.0,
+        },
+        project_root=project_root,
+    )
+
+    plan = create_build_plan(
+        "2121_stuart",
+        project_root=project_root,
+    )
+
+    execute_build(
+        plan,
+    )
+
+    return (
+        project_root
+        / "artifacts"
+        / "2121_stuart"
+        / "artwork"
+        / "default"
+        / "30-vector"
+        / "products.json"
+    )
+
+
+def _build_2121_stuart_shape_components(
+    project_root: Path,
+) -> Path:
+    """
+    Produce the real 2121_stuart physical Artwork components for packaging.
+
+    The Shape reproduces the reported regression case:
+
+        polygon
+        7 sides
+        120 mm
+        2 mm outer ridge
+    """
+
+    vector_manifest = _build_2121_stuart_registered_artwork(
+        project_root,
+    )
+
+    structure_path = project_root / "structure.svg"
+    composition = project_root / "composition.svg"
+
+    geometry = structure.create_polygon_geometry(
+        number_of_sides=7,
+        rotation=0.0,
+    )
+
+    document = structure.create_polygon_svg(
+        geometry,
+    )
+
+    document.write(
+        structure_path,
+        encoding="unicode",
+    )
+
+    compose._compose_ridge(
+        structure_path,
+        composition,
+        shape_size=120.0,
+        ridge_width=2.0,
+    )
+
+    registered_artwork = compose.load_registered_artwork(
+        vector_manifest,
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        registered_artwork,
+        composition=composition,
+    )
+
+    vector_data = json.loads(
+        vector_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    components: list[dict[str, object]] = []
+
+    for product in vector_data["products"]:
+        source = vector_manifest.parent / str(
+            product["path"],
+        )
+
+        destination = project_root / source.name
+
+        shutil.copyfile(
+            source,
+            destination,
+        )
+
+        components.append(
+            {
+                **product,
+                "path": destination.name,
+            }
+        )
+
+    artwork: dict[str, object] = {
+        "registered_extent": {
+            "width": registered_artwork.registered_extent.width,
+            "height": registered_artwork.registered_extent.height,
+        },
+        "transform": {
+            "scale": transform.scale,
+            "translate_x": transform.translate_x,
+            "translate_y": transform.translate_y,
+        },
+        "components": components,
+    }
+
+    output_directory = project_root / "extrude"
+
+    output_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    extrude._render_artwork_components(
+        artwork,
+        project_root,
+        output_directory,
+        shape_size=120.0,
+        shape_base_raise=2.0,
+        shape_artwork_raise=1.0,
+    )
+
+    physical_components = tuple(
+        sorted(
+            output_directory.glob(
+                "artwork-*.stl",
+            )
+        )
+    )
+
+    assert physical_components
+
+    manifest_components = []
+
+    for index, component in enumerate(
+        physical_components,
+        start=1,
+    ):
+        manifest_components.append(
+            (
+                f"artwork-{index}",
+                component.name,
+                f"test-color-{index}",
+                (100 + index, 100 + index, 100 + index),
+            )
+        )
+
+    manifest = output_directory / "products.json"
+
+    _write_component_manifest(
+        manifest,
+        tuple(manifest_components),
+    )
+
+    return manifest
 
 
 def _write_component_stl(
@@ -52,6 +261,119 @@ endfacet
 endsolid {solid_name}
 """,
         encoding="utf-8",
+    )
+
+
+def _write_geometry_component_stl(
+    path: Path,
+    *,
+    solid_name: str,
+    vertices: tuple[
+        tuple[float, float, float],
+        tuple[float, float, float],
+        tuple[float, float, float],
+    ],
+) -> None:
+    """
+    Write one triangular STL component with explicit physical coordinates.
+    """
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    vertex_1, vertex_2, vertex_3 = vertices
+
+    path.write_text(
+        f"""solid {solid_name}
+facet normal 0 0 1
+    outer loop
+        vertex {vertex_1[0]} {vertex_1[1]} {vertex_1[2]}
+        vertex {vertex_2[0]} {vertex_2[1]} {vertex_2[2]}
+        vertex {vertex_3[0]} {vertex_3[1]} {vertex_3[2]}
+    endloop
+endfacet
+endsolid {solid_name}
+""",
+        encoding="utf-8",
+    )
+
+
+def _object_vertices(
+    object_: ET.Element,
+) -> tuple[
+    tuple[float, float, float],
+    ...,
+]:
+    """
+    Return physical vertices stored directly in one packaged 3MF object.
+    """
+
+    vertices = object_.findall(
+        f"./{{{CORE_NS}}}mesh/{{{CORE_NS}}}vertices/{{{CORE_NS}}}vertex",
+    )
+
+    result: list[
+        tuple[
+            float,
+            float,
+            float,
+        ]
+    ] = []
+
+    for vertex in vertices:
+        x = vertex.get("x")
+        y = vertex.get("y")
+        z = vertex.get("z")
+
+        assert x is not None
+        assert y is not None
+        assert z is not None
+
+        result.append(
+            (
+                float(x),
+                float(y),
+                float(z),
+            )
+        )
+
+    return tuple(
+        result,
+    )
+
+
+def _mesh_bounds(
+    vertices: tuple[
+        tuple[float, float, float],
+        ...,
+    ],
+) -> tuple[
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+]:
+    """
+    Return min/max X, Y, and Z bounds for physical mesh vertices.
+    """
+
+    assert vertices
+
+    xs = tuple(vertex[0] for vertex in vertices)
+    ys = tuple(vertex[1] for vertex in vertices)
+    zs = tuple(vertex[2] for vertex in vertices)
+
+    return (
+        min(xs),
+        max(xs),
+        min(ys),
+        max(ys),
+        min(zs),
+        max(zs),
     )
 
 
@@ -196,6 +518,224 @@ def _read_model(
 # =========================================================
 # Package stage execution
 # =========================================================
+
+
+def test_package_stage_preserves_component_mesh_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape packaging preserves physical component geometry.
+
+    Packaging is a representation boundary. It must not scale, translate,
+    rotate, center, or otherwise reinterpret the physical mesh supplied by
+    extrusion.
+    """
+
+    component_directory = tmp_path / "extrude"
+
+    component = component_directory / "artwork-1.stl"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    source_vertices = (
+        (-37.25, -18.5, 2.0),
+        (41.75, -11.25, 2.0),
+        (7.5, 46.125, 3.25),
+    )
+
+    _write_geometry_component_stl(
+        component,
+        solid_name="artwork-1",
+        vertices=source_vertices,
+    )
+
+    _write_component_manifest(
+        manifest,
+        (
+            (
+                "artwork-1",
+                "artwork-1.stl",
+                "test-red",
+                (255, 0, 0),
+            ),
+        ),
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "example"
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    package.execute(
+        context,
+    )
+
+    model = _read_model(
+        artifact,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    assert len(objects) == 1
+
+    packaged_vertices = _object_vertices(
+        objects[0],
+    )
+
+    assert len(packaged_vertices) == len(source_vertices)
+
+    for packaged_vertex, source_vertex in zip(
+        packaged_vertices,
+        source_vertices,
+        strict=True,
+    ):
+        assert packaged_vertex == pytest.approx(
+            source_vertex,
+        )
+
+    assert _mesh_bounds(
+        packaged_vertices,
+    ) == pytest.approx(
+        _mesh_bounds(source_vertices),
+    )
+
+
+def test_package_stage_preserves_relative_component_registration(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape packaging preserves physical registration between components.
+
+    Independently printable Artwork components may occupy different portions
+    of the common physical coordinate system. Packaging must preserve those
+    relative positions without independently centering or transforming them.
+    """
+
+    component_directory = tmp_path / "extrude"
+
+    artwork_1 = component_directory / "artwork-1.stl"
+    artwork_2 = component_directory / "artwork-2.stl"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    artwork_1_vertices = (
+        (-42.0, -31.0, 2.0),
+        (-17.0, -29.0, 2.0),
+        (-35.0, 8.0, 3.0),
+    )
+
+    artwork_2_vertices = (
+        (14.0, -9.0, 2.0),
+        (47.0, -4.0, 2.0),
+        (32.0, 39.0, 3.0),
+    )
+
+    _write_geometry_component_stl(
+        artwork_1,
+        solid_name="artwork-1",
+        vertices=artwork_1_vertices,
+    )
+
+    _write_geometry_component_stl(
+        artwork_2,
+        solid_name="artwork-2",
+        vertices=artwork_2_vertices,
+    )
+
+    _write_component_manifest(
+        manifest,
+        (
+            (
+                "artwork-1",
+                "artwork-1.stl",
+                "test-red",
+                (255, 0, 0),
+            ),
+            (
+                "artwork-2",
+                "artwork-2.stl",
+                "test-blue",
+                (0, 0, 255),
+            ),
+        ),
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "example"
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    package.execute(
+        context,
+    )
+
+    model = _read_model(
+        artifact,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    packaged_artwork_1 = _object_vertices(
+        objects_by_name["example-artwork-1-test-red"],
+    )
+
+    packaged_artwork_2 = _object_vertices(
+        objects_by_name["example-artwork-2-test-blue"],
+    )
+
+    assert _mesh_bounds(
+        packaged_artwork_1,
+    ) == pytest.approx(
+        _mesh_bounds(artwork_1_vertices),
+    )
+
+    assert _mesh_bounds(
+        packaged_artwork_2,
+    ) == pytest.approx(
+        _mesh_bounds(artwork_2_vertices),
+    )
+
+    source_1_bounds = _mesh_bounds(
+        artwork_1_vertices,
+    )
+    source_2_bounds = _mesh_bounds(
+        artwork_2_vertices,
+    )
+
+    packaged_1_bounds = _mesh_bounds(
+        packaged_artwork_1,
+    )
+    packaged_2_bounds = _mesh_bounds(
+        packaged_artwork_2,
+    )
+
+    source_center_delta = (
+        (source_2_bounds[0] + source_2_bounds[1]) / 2.0
+        - (source_1_bounds[0] + source_1_bounds[1]) / 2.0,
+        (source_2_bounds[2] + source_2_bounds[3]) / 2.0
+        - (source_1_bounds[2] + source_1_bounds[3]) / 2.0,
+    )
+
+    packaged_center_delta = (
+        (packaged_2_bounds[0] + packaged_2_bounds[1]) / 2.0
+        - (packaged_1_bounds[0] + packaged_1_bounds[1]) / 2.0,
+        (packaged_2_bounds[2] + packaged_2_bounds[3]) / 2.0
+        - (packaged_1_bounds[2] + packaged_1_bounds[3]) / 2.0,
+    )
+
+    assert packaged_center_delta == pytest.approx(
+        source_center_delta,
+    )
 
 
 def test_package_stage_packages_incorporated_artwork_components(
@@ -1288,3 +1828,503 @@ def test_package_stage_preserves_mixed_structural_and_artwork_components(
     assert objects_by_name["example-ridge-test-red"].get("id") != objects_by_name[
         "example-artwork-1-test-red"
     ].get("id")
+
+
+@pytest.mark.slow
+def test_real_2121_stuart_package_preserves_artwork_physical_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape packaging preserves the real 2121_stuart physical Artwork geometry.
+
+    The real registered Artwork is composed into the reported 120 mm
+    seven-sided Shape with a 2 mm outer ridge and physically dimensionalized
+    before packaging.
+
+    Packaging must preserve the union bounds and center of those physical
+    Artwork components exactly. It must not independently scale, translate,
+    center, crop, or otherwise reinterpret the geometry.
+    """
+
+    manifest = _build_2121_stuart_shape_components(
+        tmp_path,
+    )
+
+    source_components = tuple(
+        sorted(
+            manifest.parent.glob(
+                "artwork-*.stl",
+            )
+        )
+    )
+
+    assert source_components
+
+    source_bounds = tuple(
+        _mesh_bounds(
+            tuple(
+                load_stl(component).vertices,
+            )
+        )
+        for component in source_components
+    )
+
+    source_union = (
+        min(bounds[0] for bounds in source_bounds),
+        max(bounds[1] for bounds in source_bounds),
+        min(bounds[2] for bounds in source_bounds),
+        max(bounds[3] for bounds in source_bounds),
+        min(bounds[4] for bounds in source_bounds),
+        max(bounds[5] for bounds in source_bounds),
+    )
+
+    artifact = tmp_path / "artifact.3mf"
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "2121_stuart_shape"
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    package.execute(
+        context,
+    )
+
+    model = _read_model(
+        artifact,
+    )
+
+    artwork_objects = tuple(
+        object_
+        for object_ in model.findall(
+            f".//{{{CORE_NS}}}object",
+        )
+        if "-artwork-" in (object_.get("name") or "")
+    )
+
+    assert len(artwork_objects) == len(source_components)
+
+    packaged_bounds = tuple(
+        _mesh_bounds(
+            _object_vertices(
+                object_,
+            )
+        )
+        for object_ in artwork_objects
+    )
+
+    packaged_union = (
+        min(bounds[0] for bounds in packaged_bounds),
+        max(bounds[1] for bounds in packaged_bounds),
+        min(bounds[2] for bounds in packaged_bounds),
+        max(bounds[3] for bounds in packaged_bounds),
+        min(bounds[4] for bounds in packaged_bounds),
+        max(bounds[5] for bounds in packaged_bounds),
+    )
+
+    assert packaged_union == pytest.approx(
+        source_union,
+        abs=1e-5,
+    )
+
+    source_center = (
+        (source_union[0] + source_union[1]) / 2.0,
+        (source_union[2] + source_union[3]) / 2.0,
+    )
+
+    packaged_center = (
+        (packaged_union[0] + packaged_union[1]) / 2.0,
+        (packaged_union[2] + packaged_union[3]) / 2.0,
+    )
+
+    assert packaged_center == pytest.approx(
+        source_center,
+        abs=1e-5,
+    )
+
+
+@pytest.mark.slow
+def test_real_2121_stuart_end_to_end_shape_compose_contains_registered_artwork(
+    tmp_path: Path,
+) -> None:
+    """
+    A normal Shape build persists its bound registered Artwork in composition.
+
+    The configured Shape consumes the real 2121_stuart Artwork vector manifest.
+    Normal dependency planning and execution must therefore carry that
+    registered Artwork into the persistent Shape composition manifest.
+    """
+
+    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "2121_stuart.png"
+
+    assert fixture.is_file()
+
+    source = tmp_path / "2121_stuart.png"
+
+    shutil.copyfile(
+        fixture,
+        source,
+    )
+
+    (tmp_path / "workspace.toml").write_text(
+        """
+[parameters]
+artwork_colors = ["black", "brown", "gold", "silver", "white"]
+artwork_pixels = 973
+artwork_min_island_area = 1
+artwork_island_connectivity = 8
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    write_artifact_config(
+        "2121_stuart",
+        {
+            "model": "artwork",
+            "source": "2121_stuart.png",
+            "artwork_size": 200.0,
+        },
+        project_root=tmp_path,
+    )
+
+    write_artifact_config(
+        "2121_stuart_shape",
+        {
+            "model": "shape",
+            "shape_geometry": "polygon",
+            "shape_sides": 7,
+            "shape_size": 120.0,
+            "shape_base_color": "white",
+            "shape_outer_ridge_width": 2.0,
+            "product_dependencies": {
+                "manifest": {
+                    "artifact": "2121_stuart",
+                    "model": "artwork",
+                    "realization": "default",
+                    "stage": "vector",
+                    "product": "manifest",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plans = create_build_plans(
+        "2121_stuart_shape",
+        project_root=tmp_path,
+    )
+
+    execute_builds(
+        plans,
+    )
+
+    compose_manifest = (
+        tmp_path
+        / "artifacts"
+        / "2121_stuart_shape"
+        / "shape"
+        / "default"
+        / "20-compose"
+        / "products.json"
+    )
+
+    assert compose_manifest.is_file()
+
+    data = json.loads(
+        compose_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    artwork = data["artwork"]
+
+    assert artwork is not None
+
+    assert artwork["components"]
+
+    assert artwork["registered_extent"]["width"] > 0.0
+    assert artwork["registered_extent"]["height"] > 0.0
+
+    transform = artwork["transform"]
+
+    assert transform["scale"] > 0.0
+
+
+@pytest.mark.slow
+def test_real_2121_stuart_end_to_end_shape_extrude_contains_artwork_components(
+    tmp_path: Path,
+) -> None:
+    """
+    A normal Shape build propagates incorporated Artwork into extrusion.
+
+    The configured Shape consumes the real 2121_stuart registered Artwork
+    manifest. Normal dependency planning and execution must therefore produce
+    physical Artwork components in the Shape extrusion manifest before
+    packaging begins.
+    """
+
+    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "2121_stuart.png"
+
+    assert fixture.is_file()
+
+    source = tmp_path / "2121_stuart.png"
+
+    shutil.copyfile(
+        fixture,
+        source,
+    )
+
+    (tmp_path / "workspace.toml").write_text(
+        """
+[parameters]
+artwork_colors = ["black", "brown", "gold", "silver", "white"]
+artwork_pixels = 973
+artwork_min_island_area = 1
+artwork_island_connectivity = 8
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    write_artifact_config(
+        "2121_stuart",
+        {
+            "model": "artwork",
+            "source": "2121_stuart.png",
+            "artwork_size": 200.0,
+        },
+        project_root=tmp_path,
+    )
+
+    write_artifact_config(
+        "2121_stuart_shape",
+        {
+            "model": "shape",
+            "shape_geometry": "polygon",
+            "shape_sides": 7,
+            "shape_size": 120.0,
+            "shape_base_color": "white",
+            "shape_outer_ridge_width": 2.0,
+            "product_dependencies": {
+                "manifest": {
+                    "artifact": "2121_stuart",
+                    "model": "artwork",
+                    "realization": "default",
+                    "stage": "vector",
+                    "product": "manifest",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plans = create_build_plans(
+        "2121_stuart_shape",
+        project_root=tmp_path,
+    )
+
+    execute_builds(
+        plans,
+    )
+
+    extrude_manifest = (
+        tmp_path
+        / "artifacts"
+        / "2121_stuart_shape"
+        / "shape"
+        / "default"
+        / "30-extrude"
+        / "products.json"
+    )
+
+    assert extrude_manifest.is_file()
+
+    data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    components = data["components"]
+
+    artwork_components = tuple(
+        component
+        for component in components
+        if str(component["name"]).startswith(
+            "artwork-",
+        )
+    )
+
+    assert artwork_components
+
+    for component in artwork_components:
+        path = extrude_manifest.parent / str(
+            component["path"],
+        )
+
+        assert path.is_file()
+
+
+@pytest.mark.slow
+def test_real_2121_stuart_end_to_end_shape_package_fills_placement_circle(
+    tmp_path: Path,
+) -> None:
+    """
+    A normal real Shape build preserves fitted Artwork through final packaging.
+
+    The reported regression case is built through normal engine orchestration:
+
+        real 2121_stuart PNG
+        -> registered Artwork
+        -> 120 mm seven-sided Shape
+        -> 2 mm outer ridge
+        -> artifact.3mf
+
+    The Artwork objects in the final artifact must fill the expected physical
+    placement circle and remain centered on the Shape origin.
+
+    This protects the complete configuration, dependency-planning, execution,
+    dimensionalization, and packaging path rather than an isolated stage.
+    """
+
+    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "2121_stuart.png"
+
+    assert fixture.is_file()
+
+    source = tmp_path / "2121_stuart.png"
+
+    shutil.copyfile(
+        fixture,
+        source,
+    )
+
+    (tmp_path / "workspace.toml").write_text(
+        """
+[parameters]
+artwork_colors = ["black", "brown", "gold", "silver", "white"]
+artwork_pixels = 973
+artwork_min_island_area = 1
+artwork_island_connectivity = 8
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    write_artifact_config(
+        "2121_stuart",
+        {
+            "model": "artwork",
+            "source": "2121_stuart.png",
+            "artwork_size": 200.0,
+        },
+        project_root=tmp_path,
+    )
+
+    write_artifact_config(
+        "2121_stuart_shape",
+        {
+            "model": "shape",
+            "shape_geometry": "polygon",
+            "shape_sides": 7,
+            "shape_size": 120.0,
+            "shape_base_color": "white",
+            "shape_outer_ridge_width": 2.0,
+            "product_dependencies": {
+                "manifest": {
+                    "artifact": "2121_stuart",
+                    "model": "artwork",
+                    "realization": "default",
+                    "stage": "vector",
+                    "product": "manifest",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plans = create_build_plans(
+        "2121_stuart_shape",
+        project_root=tmp_path,
+    )
+
+    execute_builds(
+        plans,
+    )
+
+    realization_root = tmp_path / "artifacts" / "2121_stuart_shape" / "shape" / "default"
+
+    composition = realization_root / "20-compose" / "composition.svg"
+
+    artifact = realization_root / "40-package" / "artifact.3mf"
+
+    assert composition.is_file()
+    assert artifact.is_file()
+
+    interior = compose.registered_interior_region(
+        composition,
+    )
+
+    placement = compose.artwork_placement_circle(
+        interior,
+    )
+
+    expected_radius = placement.radius * 120.0
+
+    model = _read_model(
+        artifact,
+    )
+
+    artwork_objects = tuple(
+        object_
+        for object_ in model.findall(
+            f".//{{{CORE_NS}}}object",
+        )
+        if "-artwork-" in (object_.get("name") or "")
+    )
+
+    assert artwork_objects
+
+    bounds = tuple(
+        _mesh_bounds(
+            _object_vertices(
+                object_,
+            )
+        )
+        for object_ in artwork_objects
+    )
+
+    minimum_x = min(item[0] for item in bounds)
+    maximum_x = max(item[1] for item in bounds)
+    minimum_y = min(item[2] for item in bounds)
+    maximum_y = max(item[3] for item in bounds)
+
+    assert minimum_x == pytest.approx(
+        -expected_radius,
+        abs=0.25,
+    )
+    assert maximum_x == pytest.approx(
+        expected_radius,
+        abs=0.25,
+    )
+
+    assert minimum_y == pytest.approx(
+        -expected_radius,
+        abs=0.25,
+    )
+    assert maximum_y == pytest.approx(
+        expected_radius,
+        abs=0.25,
+    )
+
+    center_x = (minimum_x + maximum_x) / 2.0
+
+    center_y = (minimum_y + maximum_y) / 2.0
+
+    assert center_x == pytest.approx(
+        0.0,
+        abs=0.25,
+    )
+
+    assert center_y == pytest.approx(
+        0.0,
+        abs=0.25,
+    )

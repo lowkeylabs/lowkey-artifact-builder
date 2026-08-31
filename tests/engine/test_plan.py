@@ -2388,6 +2388,101 @@ def test_shape_build_plan_resolves_bound_registered_artwork(
     )
 
 
+def test_create_build_plans_preserves_shape_bound_registered_artwork(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-level Shape planning preserves its bound registered Artwork.
+
+    Planning an implicit-default Shape through create_build_plans must retain
+    the same declarative dependency, concrete producer binding, and planned
+    producer product as planning that realization directly.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "product_dependencies": {
+                "manifest": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "manifest",
+                    "artifact": "artwork-source",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    write_artifact_config(
+        "artwork-source",
+        {
+            "model": "artwork",
+            "source": "source.png",
+        },
+        project_root=tmp_path,
+    )
+
+    plans = create_build_plans(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    assert plan.artifact_id == "shape-example"
+    assert plan.model_name == "shape"
+    assert plan.realization_name == "default"
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="manifest",
+    )
+
+    assert plan.product_dependencies == (dependency,)
+
+    assert (
+        len(
+            plan.product_dependency_bindings,
+        )
+        == 1
+    )
+
+    binding = plan.product_dependency_bindings[0]
+
+    assert binding == ProductDependencyBinding(
+        dependency=dependency,
+        artifact="artwork-source",
+        realization="default",
+    )
+
+    assert (
+        len(
+            plan.planned_product_dependencies,
+        )
+        == 1
+    )
+
+    planned_dependency = plan.planned_product_dependencies[0]
+
+    assert planned_dependency.binding == binding
+
+    assert planned_dependency.path == (
+        tmp_path
+        / "artifacts"
+        / "artwork-source"
+        / "artwork"
+        / "default"
+        / "30-vector"
+        / "products.json"
+    )
+
+
 def test_shape_registered_artwork_dependency_plans_only_vector_closure(
     tmp_path: Path,
 ) -> None:

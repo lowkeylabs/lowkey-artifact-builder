@@ -470,38 +470,31 @@ def _normalize_polygon_vertices(
     """
     Uniformly normalize polygon vertices into registered Shape space.
 
-    The polygon's rotated bounding envelope is first centered about the
-    registered origin. All coordinates are then scaled by the same factor so
-    that the greatest X/Y extent becomes 1.0.
+    The regular polygon is already centered about the registered Shape origin.
+    All coordinates are therefore scaled uniformly about that origin so that
+    the greatest X/Y extent becomes 1.0.
 
-    Uniform scaling preserves polygon proportions.
+    Uniform scaling preserves polygon proportions, regularity, and its
+    origin-centered registration.
     """
 
     xs = [x for x, _ in vertices]
     ys = [y for _, y in vertices]
 
-    min_x = min(xs)
-    max_x = max(xs)
-    min_y = min(ys)
-    max_y = max(ys)
-
-    width = max_x - min_x
-    height = max_y - min_y
+    width = max(xs) - min(xs)
+    height = max(ys) - min(ys)
 
     maximum_extent = max(
         width,
         height,
     )
 
-    center_x = (min_x + max_x) / 2.0
-    center_y = (min_y + max_y) / 2.0
-
     scale = 1.0 / maximum_extent
 
     return tuple(
         (
-            (x - center_x) * scale,
-            (y - center_y) * scale,
+            x * scale,
+            y * scale,
         )
         for x, y in vertices
     )

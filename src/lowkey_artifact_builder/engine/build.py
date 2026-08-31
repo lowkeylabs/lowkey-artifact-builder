@@ -522,14 +522,20 @@ def _collect_stage_inputs(
 
         source
 
-    Products from direct dependencies are exposed using qualified names:
+    Products from direct local stage dependencies are exposed using
+    qualified names:
 
         prepare.trace
         raster.manifest
 
-    Input names must be unique. A collision between an explicit input
-    and a dependency product is treated as an invalid execution
-    context rather than silently replacing either resource.
+    Bound external product dependencies are exposed using their
+    semantic product identity:
+
+        artwork.vector.manifest
+
+    Input names must be unique. A collision between any execution-facing
+    inputs is treated as an invalid execution context rather than
+    silently replacing either resource.
     """
 
     inputs: dict[
@@ -544,6 +550,12 @@ def _collect_stage_inputs(
     )
 
     _add_dependency_inputs(
+        plan,
+        stage,
+        inputs,
+    )
+
+    _add_product_dependency_inputs(
         plan,
         stage,
         inputs,
@@ -612,6 +624,58 @@ def _add_dependency_inputs(
                 name,
                 product.path,
             )
+
+
+def _add_product_dependency_inputs(
+    plan: BuildPlan,
+    stage: PlannedStage,
+    inputs: dict[str, Path],
+) -> None:
+    """
+    Add bound external product dependencies consumed by the stage.
+
+    A stage declares semantic product dependencies independently of
+    their concrete producer artifact and realization. BuildPlan retains
+    the resolved producer bindings and product paths.
+
+    Execution exposes each required product using its qualified semantic
+    identity:
+
+        model.stage.product
+    """
+
+    planned_dependencies = {
+        planned_dependency.binding.dependency: planned_dependency
+        for planned_dependency in plan.planned_product_dependencies
+    }
+
+    for dependency in stage.spec.product_dependencies:
+        try:
+            planned_dependency = planned_dependencies[dependency]
+
+        except KeyError as exc:
+            raise BuildError(
+                f"Cannot execute stage "
+                f"{stage.name!r} "
+                f"for artifact "
+                f"{plan.artifact_id!r}: "
+                f"product dependency "
+                f"{dependency.model}."
+                f"{dependency.stage}."
+                f"{dependency.product} "
+                "is not present in the "
+                "build plan."
+            ) from exc
+
+        name = f"{dependency.model}.{dependency.stage}.{dependency.product}"
+
+        _add_stage_input(
+            plan,
+            stage,
+            inputs,
+            name,
+            planned_dependency.path,
+        )
 
 
 def _add_stage_input(
