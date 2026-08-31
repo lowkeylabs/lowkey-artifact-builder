@@ -1039,23 +1039,41 @@ registered Shape space.
 
 Registered Artwork is placed within the registered Shape interior region.
 
-Artwork is:
+Shape uses one geometry-independent Artwork placement rule for every supported
+Shape geometry.
 
-* centered within the Shape;
-* uniformly scaled;
+The Artwork placement region is the largest circle centered at the registered
+Shape origin that is wholly contained within the available registered Shape
+interior region.
+
+The placement circle is computed from the registered interior boundary. The
+same computation is used regardless of whether the Shape geometry is a circle,
+square, or regular polygon.
+
+Registered Artwork is:
+
+* centered within the Artwork placement region;
+
+* uniformly scaled to the largest size at which its authoritative Artwork
+  envelope remains contained within the Artwork placement region;
+
 * aspect-ratio preserving;
-* contained within the available interior region.
 
-Artwork is not stretched to fill the interior region.
+* not stretched;
 
-Artwork is not cropped merely to fill the interior region.
+* not cropped merely to increase its fitted size.
 
-The transformation from registered Artwork space into registered Shape
-space is derived from the Artwork collection's common registered extent
-and the available registered Shape interior region.
+The authoritative Artwork envelope determines Artwork occupancy for fitting.
 
-All registered Artwork color layers receive the same transformation so
-that their registration is preserved.
+Shape does not infer Artwork occupancy from the independent bounds of its
+individual color components.
+
+The transformation from registered Artwork space into registered Shape space
+is derived from the Artwork collection's common registered extent and the
+computed Artwork placement region.
+
+All registered Artwork color layers receive the same transformation so that
+their registration is preserved.
 
 ## Registered Composition
 
@@ -1782,8 +1800,13 @@ A conforming initial Shape implementation satisfies the following:
 50. Shape determines the physical size and placement of incorporated
     Artwork.
 
-51. Incorporated Artwork is centered and uniformly contained within the
-    available interior region.
+51. Shape uses one geometry-independent Artwork placement computation for
+    circle, square, and regular polygon geometry. The Artwork placement region
+    is the largest circle centered at the registered Shape origin that is
+    wholly contained within the available registered Shape interior region,
+    and incorporated Artwork is centered and uniformly scaled to the largest
+    size at which its authoritative envelope remains contained within that
+    placement region.
 
 52. Artwork aspect ratio and registration between color components are
     preserved.
