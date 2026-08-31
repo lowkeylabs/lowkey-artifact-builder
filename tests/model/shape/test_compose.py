@@ -4047,3 +4047,480 @@ def test_circular_artwork_envelope_fits_placement_circle_by_envelope_geometry(
     assert transformed_center_y == pytest.approx(
         0.0,
     )
+
+
+def test_linear_path_artwork_envelope_fits_placement_circle_by_envelope_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    A linear-path Artwork envelope fits by occupied geometry, not its bounds.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition.write_text(
+        """\
+<svg xmlns="http://www.w3.org/2000/svg">
+  <circle
+      id="ridge-inner-boundary"
+      cx="0"
+      cy="0"
+      r="0.4"
+  />
+</svg>
+""",
+        encoding="utf-8",
+    )
+
+    envelope = tmp_path / "envelope.svg"
+    envelope.write_text(
+        """\
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 100 100">
+  <path
+      d="M 50 10 L 90 50 L 50 90 L 10 50 Z"
+  />
+</svg>
+""",
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    #
+    # The diamond's occupied radius is exactly 40 registered units.
+    #
+    # Its rectangular bounds are 80 x 80. Treating the bounds' corners as
+    # occupied geometry would incorrectly use sqrt(40**2 + 40**2) and produce
+    # a scale of approximately 0.007071 instead of 0.01.
+    #
+
+    assert transform.scale == pytest.approx(
+        0.4 / 40.0,
+    )
+    assert transform.width == pytest.approx(
+        0.8,
+    )
+    assert transform.height == pytest.approx(
+        0.8,
+    )
+
+    #
+    # The registered envelope is centered at (50, 50). After scaling by
+    # 0.01, translating by (-0.5, -0.5) places that center at the registered
+    # Shape origin.
+    #
+
+    assert transform.translate_x == pytest.approx(
+        -0.5,
+    )
+    assert transform.translate_y == pytest.approx(
+        -0.5,
+    )
+
+
+def test_circular_envelope_scales_exactly_to_shape_placement_circle(
+    tmp_path: Path,
+) -> None:
+    """
+    A circular Artwork envelope fills the Shape placement circle exactly.
+
+    Shape scales the authoritative Artwork envelope by the ratio of the
+    placement-circle radius to the Artwork-envelope radius.
+    """
+
+    composition = tmp_path / "composition.svg"
+
+    composition.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="-0.5 -0.5 1.0 1.0">'
+            "<polygon "
+            'id="ridge-inner-boundary" '
+            'points="'
+            "0.400000,0.000000 "
+            "0.249396,0.312733 "
+            "-0.089008,0.389972 "
+            "-0.360388,0.173553 "
+            "-0.360388,-0.173553 "
+            "-0.089008,-0.389972 "
+            "0.249396,-0.312733"
+            '"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 973 973">'
+            '<circle cx="486.5" cy="486.5" r="450.0"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=973.0,
+            height=973.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    placement = compose.artwork_placement_circle(
+        compose.registered_interior_region(
+            composition,
+        )
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    assert transform.scale == pytest.approx(
+        placement.radius / 450.0,
+    )
+
+    assert 450.0 * transform.scale == pytest.approx(
+        placement.radius,
+    )
+
+
+def test_circular_envelope_center_maps_exactly_to_shape_placement_circle_center(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape maps the center of the Artwork envelope to the placement-circle center.
+
+    Scaling and translation together must make the source and target circles
+    concentric.
+    """
+
+    composition = tmp_path / "composition.svg"
+
+    composition.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="-0.5 -0.5 1.0 1.0">'
+            "<polygon "
+            'id="ridge-inner-boundary" '
+            'points="'
+            "0.400000,0.000000 "
+            "0.249396,0.312733 "
+            "-0.089008,0.389972 "
+            "-0.360388,0.173553 "
+            "-0.360388,-0.173553 "
+            "-0.089008,-0.389972 "
+            "0.249396,-0.312733"
+            '"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    envelope = tmp_path / "envelope.svg"
+
+    source_center_x = 480.0
+    source_center_y = 493.0
+    source_radius = 450.0
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 973 973">'
+            f'<circle cx="{source_center_x}" '
+            f'cy="{source_center_y}" '
+            f'r="{source_radius}"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=973.0,
+            height=973.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    placement = compose.artwork_placement_circle(
+        compose.registered_interior_region(
+            composition,
+        )
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    transformed_center_x = source_center_x * transform.scale + transform.translate_x
+    transformed_center_y = source_center_y * transform.scale + transform.translate_y
+
+    assert transformed_center_x == pytest.approx(
+        placement.center_x,
+    )
+    assert transformed_center_y == pytest.approx(
+        placement.center_y,
+    )
+
+    assert source_radius * transform.scale == pytest.approx(
+        placement.radius,
+    )
+
+
+def test_linear_path_circle_scales_and_centers_to_shape_placement_circle(
+    tmp_path: Path,
+) -> None:
+    """
+    A circular Artwork envelope represented by a linear path fills the
+    Shape placement circle and remains concentric with it.
+
+    Fitting must be based on the circular occupancy represented by the
+    authoritative envelope rather than incidental axis-aligned extrema
+    of the path's sampled vertices.
+    """
+
+    composition = tmp_path / "composition.svg"
+
+    composition.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="-0.5 -0.5 1.0 1.0">'
+            "<circle "
+            'id="ridge-inner-boundary" '
+            'cx="0.0" '
+            'cy="0.0" '
+            'r="0.4"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    envelope = tmp_path / "envelope.svg"
+
+    source_center_x = 486.5
+    source_center_y = 486.5
+    source_radius = 450.0
+
+    angles = (
+        7.0,
+        52.0,
+        97.0,
+        142.0,
+        187.0,
+        232.0,
+        277.0,
+        322.0,
+    )
+
+    points = tuple(
+        (
+            source_center_x + source_radius * math.cos(math.radians(angle)),
+            source_center_y + source_radius * math.sin(math.radians(angle)),
+        )
+        for angle in angles
+    )
+
+    path_data = " ".join(
+        (f"{'M' if index == 0 else 'L'} {x_coordinate} {y_coordinate}")
+        for index, (x_coordinate, y_coordinate) in enumerate(points)
+    )
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 973 973">'
+            f'<path d="{path_data} Z"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=973.0,
+            height=973.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    placement = compose.artwork_placement_circle(
+        compose.registered_interior_region(
+            composition,
+        )
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    transformed_center_x = source_center_x * transform.scale + transform.translate_x
+    transformed_center_y = source_center_y * transform.scale + transform.translate_y
+    transformed_radius = source_radius * transform.scale
+
+    assert transformed_center_x == pytest.approx(
+        placement.center_x,
+    )
+    assert transformed_center_y == pytest.approx(
+        placement.center_y,
+    )
+    assert transformed_radius == pytest.approx(
+        placement.radius,
+    )
+
+
+def test_small_offset_circular_artwork_expands_to_fill_placement_circle(
+    tmp_path: Path,
+) -> None:
+    """
+    A small circular Artwork envelope expands to fill the placement circle.
+
+    Artwork fitting is determined by occupied envelope geometry rather than
+    by the size of the common registered coordinate extent.
+    """
+
+    composition = tmp_path / "composition.svg"
+
+    composition.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="-0.5 -0.5 1.0 1.0">'
+            "<circle "
+            'id="ridge-inner-boundary" '
+            'cx="0.0" '
+            'cy="0.0" '
+            'r="0.4"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 100 100">'
+            '<circle cx="60" cy="40" r="10"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    assert transform.scale == pytest.approx(
+        0.04,
+    )
+    assert 10.0 * transform.scale == pytest.approx(
+        0.4,
+    )
+
+
+def test_small_offset_circular_artwork_is_centered_in_placement_circle(
+    tmp_path: Path,
+) -> None:
+    """
+    An offset Artwork envelope is centered within the placement circle.
+
+    Shape centers occupied Artwork geometry rather than preserving its
+    registered-space offset relative to the registered extent.
+    """
+
+    composition = tmp_path / "composition.svg"
+
+    composition.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="-0.5 -0.5 1.0 1.0">'
+            "<circle "
+            'id="ridge-inner-boundary" '
+            'cx="0.0" '
+            'cy="0.0" '
+            'r="0.4"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    envelope = tmp_path / "envelope.svg"
+
+    source_center_x = 60.0
+    source_center_y = 40.0
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 100 100">'
+            f'<circle cx="{source_center_x}" '
+            f'cy="{source_center_y}" '
+            'r="10"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    transformed_center_x = source_center_x * transform.scale + transform.translate_x
+    transformed_center_y = source_center_y * transform.scale + transform.translate_y
+
+    assert transformed_center_x == pytest.approx(
+        0.0,
+    )
+    assert transformed_center_y == pytest.approx(
+        0.0,
+    )
+
+    assert transform.translate_x == pytest.approx(
+        -2.4,
+    )
+    assert transform.translate_y == pytest.approx(
+        -1.6,
+    )

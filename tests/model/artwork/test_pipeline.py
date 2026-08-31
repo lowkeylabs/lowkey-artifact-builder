@@ -15,6 +15,7 @@ prepare -> raster -> vector -> extrude -> package transformation.
 from __future__ import annotations
 
 import json
+import shutil
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
@@ -41,6 +42,266 @@ pytestmark = pytest.mark.slow
 # =========================================================
 # Test support
 # =========================================================
+
+
+def _build_2121_stuart_artwork(
+    project_root: Path,
+) -> Path:
+    """
+    Build the real 2121_stuart Artwork fixture.
+
+    The fixture reproduces the registered Artwork consumed by Shape in the
+    regression case under investigation. Its physical artwork_size matches
+    the real artifact configuration, although registered vector Artwork
+    remains dimension-independent.
+    """
+
+    fixture = Path(__file__).parent / "fixtures" / "2121_stuart.png"
+
+    assert fixture.is_file()
+
+    source = project_root / "2121_stuart.png"
+
+    shutil.copyfile(
+        fixture,
+        source,
+    )
+
+    (project_root / "workspace.toml").write_text(
+        """
+[parameters]
+artwork_colors = ["black", "brown", "gold", "silver", "white"]
+artwork_pixels = 973
+artwork_min_island_area = 1
+artwork_island_connectivity = 8
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    write_artifact_config(
+        "2121_stuart",
+        {
+            "model": "artwork",
+            "source": "2121_stuart.png",
+            "artwork_size": 200.0,
+        },
+        project_root=project_root,
+    )
+
+    plan = create_build_plan(
+        "2121_stuart",
+        project_root=project_root,
+    )
+
+    execute_build(
+        plan,
+    )
+
+    return project_root / "artifacts" / "2121_stuart" / "artwork" / "default"
+
+
+def _svg_occupied_bounds(
+    path: Path,
+) -> tuple[
+    float,
+    float,
+    float,
+    float,
+]:
+    """
+    Return occupied X/Y bounds of linear SVG path geometry.
+
+    Bounds are derived from path coordinates rather than from the SVG document
+    extent. The Artwork vector products may use absolute or relative move,
+    line, horizontal-line, and vertical-line commands.
+    """
+
+    root = ET.parse(
+        path,
+    ).getroot()
+
+    points: list[
+        tuple[
+            float,
+            float,
+        ]
+    ] = []
+
+    command_letters = set(
+        "MmLlHhVvZz",
+    )
+
+    for element in root.iter():
+        if (
+            element.tag.rsplit(
+                "}",
+                maxsplit=1,
+            )[-1]
+            != "path"
+        ):
+            continue
+
+        data = element.get(
+            "d",
+            "",
+        )
+
+        for command in command_letters:
+            data = data.replace(
+                command,
+                f" {command} ",
+            )
+
+        tokens = data.replace(
+            ",",
+            " ",
+        ).split()
+
+        index = 0
+        command: str | None = None
+
+        current_x = 0.0
+        current_y = 0.0
+
+        subpath_x = 0.0
+        subpath_y = 0.0
+
+        while index < len(tokens):
+            token = tokens[index]
+
+            if token in command_letters:
+                command = token
+                index += 1
+
+                if command in {
+                    "Z",
+                    "z",
+                }:
+                    current_x = subpath_x
+                    current_y = subpath_y
+
+                    points.append(
+                        (
+                            current_x,
+                            current_y,
+                        )
+                    )
+
+                    command = None
+
+                continue
+
+            if command is None:
+                raise AssertionError(
+                    f"2121_stuart regression fixture contains unexpected SVG path token: {token!r}"
+                )
+
+            if command in {
+                "M",
+                "m",
+                "L",
+                "l",
+            }:
+                if index + 1 >= len(tokens):
+                    raise AssertionError(
+                        f"Incomplete SVG path command in {path}",
+                    )
+
+                x = float(
+                    tokens[index],
+                )
+                y = float(
+                    tokens[index + 1],
+                )
+
+                if command.islower():
+                    x += current_x
+                    y += current_y
+
+                current_x = x
+                current_y = y
+
+                points.append(
+                    (
+                        current_x,
+                        current_y,
+                    )
+                )
+
+                if command in {
+                    "M",
+                    "m",
+                }:
+                    subpath_x = current_x
+                    subpath_y = current_y
+
+                    command = "L" if command == "M" else "l"
+
+                index += 2
+                continue
+
+            if command in {
+                "H",
+                "h",
+            }:
+                x = float(
+                    tokens[index],
+                )
+
+                if command == "h":
+                    x += current_x
+
+                current_x = x
+
+                points.append(
+                    (
+                        current_x,
+                        current_y,
+                    )
+                )
+
+                index += 1
+                continue
+
+            if command in {
+                "V",
+                "v",
+            }:
+                y = float(
+                    tokens[index],
+                )
+
+                if command == "v":
+                    y += current_y
+
+                current_y = y
+
+                points.append(
+                    (
+                        current_x,
+                        current_y,
+                    )
+                )
+
+                index += 1
+                continue
+
+            raise AssertionError(
+                f"2121_stuart regression fixture contains unsupported SVG path command: {command!r}"
+            )
+
+    assert points, f"SVG contains no supported occupied path geometry: {path}"
+
+    xs = tuple(x for x, _y in points)
+
+    ys = tuple(y for _x, y in points)
+
+    return (
+        min(xs),
+        max(xs),
+        min(ys),
+        max(ys),
+    )
 
 
 def _write_workspace(
@@ -769,3 +1030,121 @@ def test_artwork_pipeline_executes_named_realizations_independently(
     assert coaster_artifact.stat().st_size > 0
 
     assert ornament_artifact != coaster_artifact
+
+
+def test_2121_stuart_registered_envelope_matches_registered_component_extent(
+    tmp_path: Path,
+) -> None:
+    """
+    The real 2121_stuart registered envelope and registered color components
+    share one common occupied coordinate extent.
+
+    The authoritative envelope used by Shape for placement must describe the
+    same outer occupied region as the registered Artwork components that Shape
+    subsequently dimensionalizes.
+    """
+
+    realization = _build_2121_stuart_artwork(
+        tmp_path,
+    )
+
+    vector_directory = realization / "30-vector"
+
+    manifest = _read_manifest(
+        vector_directory / "products.json",
+    )
+
+    envelope_path = vector_directory / str(manifest["envelope"])
+
+    products = _manifest_products(
+        manifest,
+    )
+
+    component_paths = tuple(vector_directory / str(product["path"]) for product in products)
+
+    assert envelope_path.is_file()
+    assert component_paths
+    assert all(path.is_file() for path in component_paths)
+
+    envelope_bounds = _svg_occupied_bounds(
+        envelope_path,
+    )
+
+    component_bounds = tuple(_svg_occupied_bounds(path) for path in component_paths)
+
+    union_bounds = (
+        min(bounds[0] for bounds in component_bounds),
+        max(bounds[1] for bounds in component_bounds),
+        min(bounds[2] for bounds in component_bounds),
+        max(bounds[3] for bounds in component_bounds),
+    )
+
+    assert envelope_bounds == pytest.approx(
+        union_bounds,
+        abs=1.0,
+    )
+
+
+def test_2121_stuart_registered_envelope_and_components_share_occupied_center(
+    tmp_path: Path,
+) -> None:
+    """
+    The real 2121_stuart envelope and registered component union have the
+    same occupied center.
+
+    Shape centers the authoritative envelope in its placement circle. The
+    visible registered Artwork must therefore share that center rather than
+    being displaced within the envelope used for fitting.
+    """
+
+    realization = _build_2121_stuart_artwork(
+        tmp_path,
+    )
+
+    vector_directory = realization / "30-vector"
+
+    manifest = _read_manifest(
+        vector_directory / "products.json",
+    )
+
+    envelope_path = vector_directory / str(manifest["envelope"])
+
+    products = _manifest_products(
+        manifest,
+    )
+
+    component_bounds = tuple(
+        _svg_occupied_bounds(
+            vector_directory / str(product["path"]),
+        )
+        for product in products
+    )
+
+    envelope_bounds = _svg_occupied_bounds(
+        envelope_path,
+    )
+
+    component_union = (
+        min(bounds[0] for bounds in component_bounds),
+        max(bounds[1] for bounds in component_bounds),
+        min(bounds[2] for bounds in component_bounds),
+        max(bounds[3] for bounds in component_bounds),
+    )
+
+    envelope_center_x = (envelope_bounds[0] + envelope_bounds[1]) / 2.0
+
+    envelope_center_y = (envelope_bounds[2] + envelope_bounds[3]) / 2.0
+
+    component_center_x = (component_union[0] + component_union[1]) / 2.0
+
+    component_center_y = (component_union[2] + component_union[3]) / 2.0
+
+    assert component_center_x == pytest.approx(
+        envelope_center_x,
+        abs=0.5,
+    )
+
+    assert component_center_y == pytest.approx(
+        envelope_center_y,
+        abs=0.5,
+    )
