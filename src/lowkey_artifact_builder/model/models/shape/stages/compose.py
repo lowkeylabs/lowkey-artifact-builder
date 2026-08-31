@@ -1259,19 +1259,24 @@ def _fit_registered_artwork_to_polygon(
     """
     Fit registered Artwork within a convex polygon Shape interior.
 
-    The occupied Artwork envelope is centered on the polygon and uniformly
-    scaled until one of its corners reaches a polygon edge.
+    The occupied Artwork envelope is centered on the registered Shape origin
+    and uniformly scaled until one of its corners reaches a polygon edge.
+
+    Registered Shape geometry is centered at (0, 0). Polygon vertex or
+    bounding-box asymmetry therefore does not shift incorporated Artwork away
+    from the Shape origin.
     """
 
     bounds = registered_artwork_envelope_bounds(
         artwork,
     )
+
     polygon = _read_polygon_points(
         interior,
     )
 
-    polygon_center_x = sum(point[0] for point in polygon) / len(polygon)
-    polygon_center_y = sum(point[1] for point in polygon) / len(polygon)
+    target_center_x = 0.0
+    target_center_y = 0.0
 
     half_width = bounds.width / 2.0
     half_height = bounds.height / 2.0
@@ -1302,8 +1307,8 @@ def _fit_registered_artwork_to_polygon(
             normal_x = edge_y
             normal_y = -edge_x
 
-        center_distance = normal_x * (polygon_center_x - start[0]) + normal_y * (
-            polygon_center_y - start[1]
+        center_distance = normal_x * (target_center_x - start[0]) + normal_y * (
+            target_center_y - start[1]
         )
 
         corner_distance = max(-(normal_x * corner[0] + normal_y * corner[1]) for corner in corners)
@@ -1316,7 +1321,9 @@ def _fit_registered_artwork_to_polygon(
             center_distance / corner_distance,
         )
 
-    if not math.isfinite(scale):
+    if not math.isfinite(
+        scale,
+    ):
         raise ValueError("Registered Artwork cannot be fitted within polygon Shape interior.")
 
     width = bounds.width * scale
@@ -1329,8 +1336,8 @@ def _fit_registered_artwork_to_polygon(
         scale=scale,
         width=width,
         height=height,
-        translate_x=(polygon_center_x - (source_center_x * scale)),
-        translate_y=(polygon_center_y - (source_center_y * scale)),
+        translate_x=target_center_x - (source_center_x * scale),
+        translate_y=target_center_y - (source_center_y * scale),
     )
 
 

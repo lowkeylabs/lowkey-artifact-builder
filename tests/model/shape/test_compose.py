@@ -1134,6 +1134,177 @@ def test_registered_artwork_centers_within_polygon_shape_interior(
     assert transform.translate_y == pytest.approx(0.0)
 
 
+def test_registered_artwork_centers_on_shape_origin_in_seven_sided_polygon(
+    tmp_path: Path,
+) -> None:
+    """
+    Artwork in a regular polygon is centered on the registered Shape origin.
+
+    Odd-sided polygon geometry has an asymmetric axis-aligned envelope.
+    That asymmetry must not shift incorporated Artwork away from the Shape
+    origin.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    _write_registered_polygon_structure(
+        structure,
+        number_of_sides=7,
+        rotation=0.0,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=120.0,
+        ridge_width=5.0,
+    )
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 100 100">'
+            '<rect x="10" y="20" width="60" height="50"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    bounds = compose.registered_artwork_envelope_bounds(
+        artwork,
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    transformed_center_x = (bounds.x + bounds.width / 2.0) * transform.scale + transform.translate_x
+
+    transformed_center_y = (
+        bounds.y + bounds.height / 2.0
+    ) * transform.scale + transform.translate_y
+
+    assert transformed_center_x == pytest.approx(
+        0.0,
+        abs=1.0e-12,
+    )
+
+    assert transformed_center_y == pytest.approx(
+        0.0,
+        abs=1.0e-12,
+    )
+
+
+def test_registered_artwork_centered_in_seven_sided_polygon_remains_contained(
+    tmp_path: Path,
+) -> None:
+    """
+    Centered Artwork remains contained by a seven-sided polygon interior.
+
+    Polygon fitting centers Artwork on the Shape origin and chooses a uniform
+    scale that keeps every occupied envelope corner within the actual ridge
+    inner boundary.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    _write_registered_polygon_structure(
+        structure,
+        number_of_sides=7,
+        rotation=0.0,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=120.0,
+        ridge_width=5.0,
+    )
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 100 100">'
+            '<rect x="10" y="20" width="60" height="50"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    bounds = compose.registered_artwork_envelope_bounds(
+        artwork,
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    interior = compose.registered_interior_region(
+        composition,
+    )
+
+    polygon = compose._read_polygon_points(
+        interior,
+    )
+
+    source_corners = (
+        (
+            bounds.x,
+            bounds.y,
+        ),
+        (
+            bounds.x + bounds.width,
+            bounds.y,
+        ),
+        (
+            bounds.x + bounds.width,
+            bounds.y + bounds.height,
+        ),
+        (
+            bounds.x,
+            bounds.y + bounds.height,
+        ),
+    )
+
+    transformed_corners = tuple(
+        (
+            x * transform.scale + transform.translate_x,
+            y * transform.scale + transform.translate_y,
+        )
+        for x, y in source_corners
+    )
+
+    for corner in transformed_corners:
+        assert _point_is_inside_convex_polygon(
+            corner,
+            polygon,
+        )
+
+
 def test_registered_artwork_fit_uses_envelope_occupancy(
     tmp_path: Path,
 ) -> None:
