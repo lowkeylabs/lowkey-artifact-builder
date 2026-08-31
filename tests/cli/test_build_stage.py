@@ -247,24 +247,39 @@ def test_build_stage_does_not_create_build_plans(
     assert result.exit_code == 0
 
 
-def test_build_stage_does_not_execute_build_plans(
+def test_build_stage_does_not_execute_artifact_build(
     monkeypatch,
 ) -> None:
     """
-    Explicit stage execution does not enter graph-driven build execution.
+    Explicit stage execution does not enter artifact build orchestration.
     """
 
     def unexpected_execution(
         *args,
         **kwargs,
     ):
-        raise AssertionError("explicit stage execution entered build execution")
+        raise AssertionError("explicit stage execution entered artifact build execution")
 
     monkeypatch.setattr(
         cmd_build,
-        "execute_incremental_artifact_build",
+        "execute_artifact_build",
         unexpected_execution,
     )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_stage",
+        lambda *args, **kwargs: None,
+        raising=False,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--stage",
+        "vector",
+    )
+
+    assert result.exit_code == 0
 
 
 # =========================================================

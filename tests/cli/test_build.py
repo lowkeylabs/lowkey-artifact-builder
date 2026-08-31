@@ -43,37 +43,27 @@ def _invoke(
 # =========================================================
 
 
-def test_build_creates_plans_for_artifact(
+def test_build_delegates_artifact_execution_to_engine(
     monkeypatch,
 ) -> None:
     """
-    Building an artifact delegates planning to the plural build-plan API.
+    Normal builds delegate artifact orchestration to the engine.
     """
 
-    planned: list[str] = []
-    plans = (
-        object(),
-        object(),
-    )
+    executed: list[str] = []
 
-    def create_plans(
+    def execute_artifact(
         artifact_id: str,
         *,
         project_root: Path,
-    ) -> tuple[object, ...]:
-        planned.append(artifact_id)
-        return plans
+        event_sink=None,
+    ) -> None:
+        executed.append(artifact_id)
 
     monkeypatch.setattr(
         cmd_build,
-        "create_build_plans",
-        create_plans,
-    )
-
-    monkeypatch.setattr(
-        cmd_build,
-        "execute_incremental_artifact_build",
-        lambda plan, *, event_sink=None: None,
+        "execute_artifact_build",
+        execute_artifact,
     )
 
     result = _invoke(
@@ -81,40 +71,33 @@ def test_build_creates_plans_for_artifact(
     )
 
     assert result.exit_code == 0
-    assert planned == ["skippy"]
+    assert executed == ["skippy"]
 
 
-def test_build_executes_all_artifact_plans(
+def test_build_does_not_create_build_plans(
     monkeypatch,
 ) -> None:
     """
-    All realization plans returned for an artifact are executed.
+    Normal execution leaves build-plan creation to the engine boundary.
     """
 
-    plans = (
-        object(),
-        object(),
-    )
-
-    executed: list[object] = []
+    def unexpected_planning(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ):
+        raise AssertionError("normal CLI execution created build plans")
 
     monkeypatch.setattr(
         cmd_build,
         "create_build_plans",
-        lambda artifact_id, *, project_root: plans,
+        unexpected_planning,
     )
-
-    def execute(
-        plan: object,
-        *,
-        event_sink=None,
-    ) -> None:
-        executed.append(plan)
 
     monkeypatch.setattr(
         cmd_build,
-        "execute_incremental_artifact_build",
-        execute,
+        "execute_artifact_build",
+        lambda artifact_id, *, project_root, event_sink=None: None,
     )
 
     result = _invoke(
@@ -122,10 +105,6 @@ def test_build_executes_all_artifact_plans(
     )
 
     assert result.exit_code == 0
-    assert executed == [
-        plans[0],
-        plans[1],
-    ]
 
 
 def test_build_passes_project_root(
@@ -133,31 +112,25 @@ def test_build_passes_project_root(
     tmp_path: Path,
 ) -> None:
     """
-    Build planning uses the current project root.
+    Artifact execution receives the current project root.
     """
 
     roots: list[Path] = []
 
-    def create_plans(
+    def execute_artifact(
         artifact_id: str,
         *,
         project_root: Path,
-    ) -> tuple[object, ...]:
+        event_sink=None,
+    ) -> None:
         roots.append(project_root)
-        return ()
 
     monkeypatch.chdir(tmp_path)
 
     monkeypatch.setattr(
         cmd_build,
-        "create_build_plans",
-        create_plans,
-    )
-
-    monkeypatch.setattr(
-        cmd_build,
-        "execute_incremental_artifact_build",
-        lambda plan, *, event_sink=None: None,
+        "execute_artifact_build",
+        execute_artifact,
     )
 
     result = _invoke(
@@ -203,15 +176,16 @@ def test_build_dry_run_displays_all_plans(
     )
 
     def unexpected_execution(
-        plan: object,
+        artifact_id: str,
         *,
+        project_root: Path,
         event_sink=None,
     ) -> None:
-        raise AssertionError("dry run entered incremental execution")
+        raise AssertionError("dry run entered artifact execution")
 
     monkeypatch.setattr(
         cmd_build,
-        "execute_incremental_artifact_build",
+        "execute_artifact_build",
         unexpected_execution,
     )
 
@@ -239,7 +213,7 @@ def test_build_dry_run_does_not_execute(
         object(),
     )
 
-    executed: list[object] = []
+    executed: list[str] = []
 
     monkeypatch.setattr(
         cmd_build,
@@ -253,17 +227,18 @@ def test_build_dry_run_does_not_execute(
         lambda plan: None,
     )
 
-    def execute(
-        plan: object,
+    def execute_artifact(
+        artifact_id: str,
         *,
+        project_root: Path,
         event_sink=None,
     ) -> None:
-        executed.append(plan)
+        executed.append(artifact_id)
 
     monkeypatch.setattr(
         cmd_build,
-        "execute_incremental_artifact_build",
-        execute,
+        "execute_artifact_build",
+        execute_artifact,
     )
 
     result = _invoke(
@@ -284,55 +259,23 @@ def test_build_multiple_artifacts_in_argument_order(
     monkeypatch,
 ) -> None:
     """
-    Multiple artifact IDs are planned and executed in argument order.
+    Multiple artifact IDs are delegated to the engine in argument order.
     """
 
-    planned: list[str] = []
     executed: list[str] = []
 
-    skippy = object()
-    scooby = object()
-
-    plans_by_artifact = {
-        "skippy": (skippy,),
-        "scooby": (scooby,),
-    }
-
-    artifact_by_plan = {
-        id(skippy): "skippy",
-        id(scooby): "scooby",
-    }
-
-    def create_plans(
+    def execute_artifact(
         artifact_id: str,
         *,
         project_root: Path,
-    ) -> tuple[object, ...]:
-        planned.append(artifact_id)
-        return plans_by_artifact[artifact_id]
-
-    def execute(
-        plan: object,
-        *,
         event_sink=None,
     ) -> None:
-        try:
-            artifact_id = artifact_by_plan[id(plan)]
-        except KeyError as exc:
-            raise AssertionError("unexpected build plan") from exc
-
         executed.append(artifact_id)
 
     monkeypatch.setattr(
         cmd_build,
-        "create_build_plans",
-        create_plans,
-    )
-
-    monkeypatch.setattr(
-        cmd_build,
-        "execute_incremental_artifact_build",
-        execute,
+        "execute_artifact_build",
+        execute_artifact,
     )
 
     result = _invoke(
@@ -341,11 +284,6 @@ def test_build_multiple_artifacts_in_argument_order(
     )
 
     assert result.exit_code == 0
-
-    assert planned == [
-        "skippy",
-        "scooby",
-    ]
 
     assert executed == [
         "skippy",
@@ -387,15 +325,16 @@ def test_build_multiple_artifacts_dry_run_in_argument_order(
     )
 
     def unexpected_execution(
-        plan: object,
+        artifact_id: str,
         *,
+        project_root: Path,
         event_sink=None,
     ) -> None:
-        raise AssertionError("dry run entered incremental execution")
+        raise AssertionError("dry run entered artifact execution")
 
     monkeypatch.setattr(
         cmd_build,
-        "execute_incremental_artifact_build",
+        "execute_artifact_build",
         unexpected_execution,
     )
 
@@ -423,7 +362,7 @@ def test_build_plan_error_is_reported(
     monkeypatch,
 ) -> None:
     """
-    Build planning errors are presented as Click command errors.
+    Dry-run planning errors are presented as Click command errors.
     """
 
     def create_plans(
@@ -441,6 +380,7 @@ def test_build_plan_error_is_reported(
 
     result = _invoke(
         "skippy",
+        "--dry-run",
     )
 
     assert result.exit_code != 0
@@ -451,28 +391,21 @@ def test_build_execution_error_is_reported(
     monkeypatch,
 ) -> None:
     """
-    Incremental build execution errors are presented as Click command errors.
+    Artifact build errors are presented as Click command errors.
     """
 
-    plans = (object(),)
-
-    monkeypatch.setattr(
-        cmd_build,
-        "create_build_plans",
-        lambda artifact_id, *, project_root: plans,
-    )
-
-    def execute(
-        plan: object,
+    def execute_artifact(
+        artifact_id: str,
         *,
+        project_root: Path,
         event_sink=None,
     ) -> None:
         raise cmd_build.BuildError("cannot execute build")
 
     monkeypatch.setattr(
         cmd_build,
-        "execute_incremental_artifact_build",
-        execute,
+        "execute_artifact_build",
+        execute_artifact,
     )
 
     result = _invoke(

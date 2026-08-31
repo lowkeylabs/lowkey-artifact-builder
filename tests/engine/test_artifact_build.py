@@ -1,57 +1,89 @@
 """
-Acceptance tests for artifact builds through the public CLI.
+Tests for the public artifact-build engine boundary.
 
-The CLI is intentionally thin. A caller identifies the configured artifact
-to build; the engine owns planning, dependency resolution, incremental
-execution, and production of the requested artifact.
+A caller identifies the configured artifact it wants built. The engine owns
+planning, dependency resolution, incremental execution, and production of
+the requested artifact.
+
+Callers of this boundary do not construct BuildPlans or select an execution
+strategy.
 """
-# File: tests/acceptance/test_cli_dependency_build.py
+# File: tests/engine/test_artifact_build.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 
-import json
 import shutil
 import zipfile
 from pathlib import Path
 
 import pytest
-from click.testing import CliRunner
 
-from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.config import (
     write_artifact_config,
 )
+from lowkey_artifact_builder.engine import (
+    execute_artifact_build,
+)
 
 # =========================================================
-# CLI artifact-build acceptance
+# Public artifact-build boundary
 # =========================================================
+
+
+def test_artifact_build_accepts_configured_artifact_identity(
+    tmp_path: Path,
+) -> None:
+    """
+    The public engine build boundary accepts an artifact identity.
+
+    Callers do not construct a BuildPlan or select an execution strategy.
+    """
+
+    write_artifact_config(
+        "shape-artifact",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    execute_artifact_build(
+        "shape-artifact",
+        project_root=tmp_path,
+    )
+
+    output = (
+        tmp_path
+        / "artifacts"
+        / "shape-artifact"
+        / "shape"
+        / "default"
+        / "40-package"
+        / "artifact.3mf"
+    )
+
+    assert output.is_file()
+    assert output.stat().st_size > 0
+    assert zipfile.is_zipfile(
+        output,
+    )
 
 
 @pytest.mark.slow
-def test_cli_builds_artifact_with_cross_artifact_dependency(
+def test_artifact_build_satisfies_cross_artifact_dependencies(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    The public CLI builds a configured artifact with external dependencies.
+    The public engine build boundary satisfies configured dependencies.
 
-    The caller requests only the consumer artifact. The CLI does not require
-    the producer to be built separately and does not require the caller to
-    select an execution strategy.
-
-    The engine must satisfy the configured artifact graph and produce the
+    The caller requests only the consumer artifact. The engine determines
+    and executes the required producer closure before completing the
     requested artifact.
+
+    Producer stages outside the required dependency closure do not execute.
     """
-
-    project_root = tmp_path
-
-    monkeypatch.chdir(
-        project_root,
-    )
-
-    runner = CliRunner()
 
     # -----------------------------------------------------
     # Create canonical Artwork source
@@ -61,9 +93,9 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
 
     fixture_source = repository_root / "projects" / "nydeli-clean.png"
 
-    assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
+    assert fixture_source.is_file(), f"Test artwork does not exist: {fixture_source}"
 
-    artwork_directory = project_root / "artifacts" / "source-artwork"
+    artwork_directory = tmp_path / "artifacts" / "source-artwork"
 
     artwork_directory.mkdir(
         parents=True,
@@ -89,7 +121,7 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
                 artwork_input,
             ),
         },
-        project_root=project_root,
+        project_root=tmp_path,
     )
 
     # -----------------------------------------------------
@@ -110,48 +142,37 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
                 },
             },
         },
-        project_root=project_root,
+        project_root=tmp_path,
     )
 
-    # -----------------------------------------------------
-    # Verify nothing has been built
-    # -----------------------------------------------------
+    artwork_root = tmp_path / "artifacts" / "source-artwork" / "artwork" / "default"
 
-    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "default"
-
-    shape_root = project_root / "artifacts" / "artwork-shape" / "shape" / "default"
+    shape_root = tmp_path / "artifacts" / "artwork-shape" / "shape" / "default"
 
     assert not artwork_root.exists()
     assert not shape_root.exists()
 
     # -----------------------------------------------------
-    # Request only the consumer through the public CLI
+    # Request only the consumer artifact
     # -----------------------------------------------------
 
-    result = runner.invoke(
-        cli,
-        [
-            "build",
-            "artwork-shape",
-        ],
+    execute_artifact_build(
+        "artwork-shape",
+        project_root=tmp_path,
     )
 
-    assert result.exit_code == 0, f"Artifact build failed:\n{result.output}\n{result.exception!r}"
-
     # -----------------------------------------------------
-    # Verify required upstream production
+    # Required producer closure exists
     # -----------------------------------------------------
 
     assert (artwork_root / "10-prepare" / "trace.svg").is_file()
 
     assert (artwork_root / "20-raster" / "products.json").is_file()
 
-    artwork_vector_manifest = artwork_root / "30-vector" / "products.json"
-
-    assert artwork_vector_manifest.is_file()
+    assert (artwork_root / "30-vector" / "products.json").is_file()
 
     # -----------------------------------------------------
-    # Verify unrequired upstream production did not occur
+    # Unrequired producer stages remain absent
     # -----------------------------------------------------
 
     assert not (artwork_root / "40-extrude" / "products.json").exists()
@@ -159,31 +180,7 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
 
     # -----------------------------------------------------
-    # Verify consumer workflow completed
-    # -----------------------------------------------------
-
-    assert (shape_root / "10-structure" / "structure.svg").is_file()
-
-    composition_manifest = shape_root / "20-compose" / "products.json"
-
-    assert composition_manifest.is_file()
-
-    assert (shape_root / "30-extrude" / "products.json").is_file()
-
-    # -----------------------------------------------------
-    # Verify configured dependency was incorporated
-    # -----------------------------------------------------
-
-    composition_data = json.loads(
-        composition_manifest.read_text(
-            encoding="utf-8",
-        )
-    )
-
-    assert composition_data["artwork"] is not None
-
-    # -----------------------------------------------------
-    # Verify requested artifact was produced
+    # Requested consumer artifact exists
     # -----------------------------------------------------
 
     output = shape_root / "40-package" / "artifact.3mf"

@@ -56,6 +56,9 @@ the subset of stages that must execute for the current build context.
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 
+from .artifact_build import (
+    execute_artifact_build,
+)
 from .build import (
     BuildError,
     execute_artifact_stage,
@@ -193,6 +196,7 @@ __all__ = [
     "emit_event",
     "evaluate_product_state",
     "execute_artifact_stage",
+    "execute_artifact_build",
     "execute_build",
     "execute_builds",
     "execute_incremental_artifact_build",

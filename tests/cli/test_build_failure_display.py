@@ -1,5 +1,5 @@
 """
-Tests for CLI presentation of incremental build failures.
+Tests for CLI presentation of artifact build failures.
 """
 # File: tests/cli/test_build_failure_display.py
 # Copyright 2026 LowKeyLabs LLC
@@ -7,7 +7,7 @@ Tests for CLI presentation of incremental build failures.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
+from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
@@ -24,41 +24,17 @@ from lowkey_artifact_builder.engine import (
 # =========================================================
 
 
-def _plan():
-    """
-    Construct a minimal realized plan for CLI orchestration tests.
-    """
-
-    return SimpleNamespace()
-
-
-def _install_plan(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """
-    Install one realized plan and return it.
-    """
-
-    plan = _plan()
-
-    monkeypatch.setattr(
-        cmd_build,
-        "create_build_plans",
-        lambda artifact_id, *, project_root: (plan,),
-    )
-
-    return plan
-
-
 def _emit_failed_build(
-    plan,
+    artifact_id: str,
     *,
+    project_root: Path,
     event_sink=None,
 ) -> None:
     """
     Emit representative failure lifecycle events and fail execution.
     """
 
+    assert artifact_id == "skippy"
     assert event_sink is not None
 
     event_sink(
@@ -106,16 +82,12 @@ def _invoke_failed_build(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """
-    Invoke one CLI build whose incremental execution fails.
+    Invoke one CLI build whose artifact execution fails.
     """
-
-    _install_plan(
-        monkeypatch,
-    )
 
     monkeypatch.setattr(
         cmd_build,
-        "execute_incremental_artifact_build",
+        "execute_artifact_build",
         _emit_failed_build,
     )
 
@@ -137,7 +109,7 @@ def test_failed_build_reports_stage_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Incremental stage failure is visible before command termination.
+    Stage failure is visible before command termination.
     """
 
     result = _invoke_failed_build(
@@ -152,7 +124,7 @@ def test_failed_build_reports_build_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Incremental build failure is visible before command termination.
+    Artifact build failure is visible before command termination.
     """
 
     result = _invoke_failed_build(

@@ -30,8 +30,8 @@ from lowkey_artifact_builder.engine import (
     BuildPlanError,
     ExecutionEvent,
     create_build_plans,
+    execute_artifact_build,
     execute_artifact_stage,
-    execute_incremental_artifact_build,
 )
 
 # =========================================================
@@ -194,20 +194,21 @@ def _execute_build(
     """
     Execute normal graph-driven artifact builds.
 
-    Each realized BuildPlan executes through the persistent incremental
-    artifact boundary. Dry-run remains planning-only.
+    Normal execution delegates artifact orchestration to the engine.
+    Dry-run remains planning-only so the CLI can display the plans that
+    would be executed without performing any work.
     """
 
     project_root = Path.cwd()
 
     for artifact_id in artifact_ids:
         try:
-            plans = create_build_plans(
-                artifact_id,
-                project_root=project_root,
-            )
-
             if dry_run:
+                plans = create_build_plans(
+                    artifact_id,
+                    project_root=project_root,
+                )
+
                 for plan in plans:
                     display_build_plan(
                         plan,
@@ -215,11 +216,11 @@ def _execute_build(
 
                 continue
 
-            for plan in plans:
-                execute_incremental_artifact_build(
-                    plan,
-                    event_sink=_display_execution_event,
-                )
+            execute_artifact_build(
+                artifact_id,
+                project_root=project_root,
+                event_sink=_display_execution_event,
+            )
 
         except (
             BuildPlanError,
