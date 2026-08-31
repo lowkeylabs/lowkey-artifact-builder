@@ -612,14 +612,162 @@ def test_shape_interior_with_ridge_is_innermost_ridge_boundary(
 # =========================================================
 
 
-def test_registered_artwork_fits_into_rectangular_shape_interior(
+@pytest.mark.parametrize(
+    (
+        "interior",
+        "expected_radius",
+    ),
+    [
+        (
+            ET.Element(
+                "{http://www.w3.org/2000/svg}circle",
+                {
+                    "cx": "0.0",
+                    "cy": "0.0",
+                    "r": "0.42",
+                },
+            ),
+            0.42,
+        ),
+        (
+            ET.Element(
+                "{http://www.w3.org/2000/svg}rect",
+                {
+                    "x": "-0.45",
+                    "y": "-0.45",
+                    "width": "0.9",
+                    "height": "0.9",
+                },
+            ),
+            0.45,
+        ),
+        (
+            ET.Element(
+                "{http://www.w3.org/2000/svg}polygon",
+                {
+                    "points": (
+                        "0.0,-0.45 "
+                        "0.389711,-0.225 "
+                        "0.389711,0.225 "
+                        "0.0,0.45 "
+                        "-0.389711,0.225 "
+                        "-0.389711,-0.225"
+                    ),
+                },
+            ),
+            pytest.approx(
+                0.389711,
+                abs=1.0e-6,
+            ),
+        ),
+    ],
+    ids=[
+        "circle",
+        "square",
+        "polygon",
+    ],
+)
+def test_artwork_placement_circle_uses_common_interior_boundary_computation(
+    interior: ET.Element,
+    expected_radius: float,
+) -> None:
+    """
+    Every supported Shape interior uses one Artwork placement-circle contract.
+
+    The placement region is the largest circle centered at the registered
+    Shape origin that is wholly contained within the supplied interior
+    boundary.
+    """
+
+    placement = compose.artwork_placement_circle(
+        interior,
+    )
+
+    assert placement.center_x == pytest.approx(
+        0.0,
+        abs=1.0e-12,
+    )
+    assert placement.center_y == pytest.approx(
+        0.0,
+        abs=1.0e-12,
+    )
+    assert placement.radius == expected_radius
+
+
+def test_artwork_placement_circle_uses_heptagon_ridge_inner_boundary(
     tmp_path: Path,
 ) -> None:
     """
-    Registered Artwork fits within the actual rectangular Shape interior.
+    Polygon Artwork placement is derived from the actual ridge interior.
 
-    Shape placement derives the available region from registered structural
-    geometry rather than requiring callers to independently supply dimensions.
+    A seven-sided Shape uses the same origin-centered placement-circle
+    computation as every other supported Shape geometry.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+
+    _write_registered_polygon_structure(
+        structure,
+        number_of_sides=7,
+        rotation=0.0,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=120.0,
+        ridge_width=2.0,
+    )
+
+    interior = compose.registered_interior_region(
+        composition,
+    )
+
+    placement = compose.artwork_placement_circle(
+        interior,
+    )
+
+    polygon = compose._read_polygon_points(
+        interior,
+    )
+
+    expected_radius = min(
+        abs(start[0] * end[1] - start[1] * end[0])
+        / math.hypot(
+            end[0] - start[0],
+            end[1] - start[1],
+        )
+        for start, end in zip(
+            polygon,
+            polygon[1:] + polygon[:1],
+            strict=True,
+        )
+    )
+
+    assert placement.center_x == pytest.approx(
+        0.0,
+        abs=1.0e-12,
+    )
+    assert placement.center_y == pytest.approx(
+        0.0,
+        abs=1.0e-12,
+    )
+    assert placement.radius == pytest.approx(
+        expected_radius,
+        abs=1.0e-12,
+    )
+
+
+def test_registered_artwork_fits_into_square_placement_circle(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork fits within the square Shape's placement circle.
+
+    The square interior determines the largest origin-centered placement
+    circle, and the authoritative Artwork envelope is uniformly scaled to
+    remain within that circle.
     """
 
     structure = tmp_path / "structure.svg"
@@ -661,20 +809,33 @@ def test_registered_artwork_fits_into_rectangular_shape_interior(
         composition=composition,
     )
 
-    assert placement.scale == pytest.approx(0.075)
-    assert placement.width == pytest.approx(0.9)
-    assert placement.height == pytest.approx(0.75)
+    expected_radius = 0.45
+    envelope_radius = math.hypot(
+        12.0 / 2.0,
+        10.0 / 2.0,
+    )
+    expected_scale = expected_radius / envelope_radius
+
+    assert placement.scale == pytest.approx(
+        expected_scale,
+    )
+    assert placement.width == pytest.approx(
+        12.0 * expected_scale,
+    )
+    assert placement.height == pytest.approx(
+        10.0 * expected_scale,
+    )
 
 
-def test_rectangular_shape_fit_maps_envelope_x_bounds_into_shape_interior(
+def test_square_shape_fit_maps_envelope_into_placement_circle(
     tmp_path: Path,
 ) -> None:
     """
-    Rectangular Shape fitting maps Artwork occupancy into Shape coordinates.
+    Square Shape fitting maps Artwork occupancy into its placement circle.
 
-    Registered Artwork and registered Shape have independent coordinate
-    origins. The Artwork envelope is fitted in its own registered coordinate
-    system and then mapped into the actual Shape interior bounds.
+    Artwork coordinates remain independent of Shape coordinates, while the
+    authoritative envelope is centered and uniformly fitted within the
+    origin-centered placement region.
     """
 
     structure = tmp_path / "structure.svg"
@@ -724,92 +885,57 @@ def test_rectangular_shape_fit_maps_envelope_x_bounds_into_shape_interior(
         composition,
     )
 
-    interior_x = float(
-        interior.get(
-            "x",
-            "nan",
-        )
+    placement_circle = compose.artwork_placement_circle(
+        interior,
     )
-
-    interior_width = float(
-        interior.get(
-            "width",
-            "nan",
-        )
-    )
-
-    interior_min_x = interior_x
-    interior_max_x = interior_x + interior_width
-    interior_center_x = (interior_min_x + interior_max_x) / 2.0
-
-    assert interior_min_x == pytest.approx(-0.37)
-    assert interior_max_x == pytest.approx(0.37)
-    assert interior_width == pytest.approx(0.74)
-    assert interior_center_x == pytest.approx(0.0)
 
     bounds = compose.registered_artwork_envelope_bounds(
         artwork,
     )
-
-    envelope_min_x = bounds.x
-    envelope_max_x = bounds.x + bounds.width
-    envelope_center_x = (envelope_min_x + envelope_max_x) / 2.0
-
-    assert envelope_min_x == pytest.approx(11.0)
-    assert envelope_max_x == pytest.approx(83.0)
-    assert bounds.width == pytest.approx(72.0)
-    assert envelope_center_x == pytest.approx(47.0)
 
     transform = compose.fit_registered_artwork_to_shape(
         artwork,
         composition=composition,
     )
 
-    expected_scale = interior_width / bounds.width
+    envelope_radius = math.hypot(
+        bounds.width / 2.0,
+        bounds.height / 2.0,
+    )
+
+    expected_scale = placement_circle.radius / envelope_radius
+
+    assert placement_circle.radius == pytest.approx(
+        0.37,
+    )
 
     assert transform.scale == pytest.approx(
         expected_scale,
     )
 
-    transformed_min_x = envelope_min_x * transform.scale + transform.translate_x
+    transformed_center_x = (bounds.x + bounds.width / 2.0) * transform.scale + transform.translate_x
 
-    transformed_max_x = envelope_max_x * transform.scale + transform.translate_x
-
-    transformed_width = transformed_max_x - transformed_min_x
-
-    transformed_center_x = (transformed_min_x + transformed_max_x) / 2.0
-
-    assert transformed_min_x == pytest.approx(
-        interior_min_x,
-    )
-
-    assert transformed_max_x == pytest.approx(
-        interior_max_x,
-    )
-
-    assert transformed_width == pytest.approx(
-        interior_width,
-    )
+    transformed_center_y = (
+        bounds.y + bounds.height / 2.0
+    ) * transform.scale + transform.translate_y
 
     assert transformed_center_x == pytest.approx(
-        interior_center_x,
+        0.0,
     )
-
-    expected_translate_x = interior_center_x - envelope_center_x * expected_scale
-
-    assert transform.translate_x == pytest.approx(
-        expected_translate_x,
+    assert transformed_center_y == pytest.approx(
+        0.0,
     )
 
 
-def test_registered_artwork_centers_within_rectangular_shape_interior(
+def test_registered_artwork_centers_within_square_placement_circle(
     tmp_path: Path,
 ) -> None:
     """
-    Registered Artwork is centered in the registered Shape interior.
+    Registered Artwork is centered on the Shape origin after fitting.
 
-    Placement accounts for both the Shape interior origin and the Artwork
-    envelope's position in its own registered coordinate system.
+    Placement accounts for the Artwork envelope's position in its own
+    registered coordinate system while centering the occupied envelope within
+    the Shape's origin-centered placement circle.
     """
 
     structure = tmp_path / "structure.svg"
@@ -846,13 +972,27 @@ def test_registered_artwork_centers_within_rectangular_shape_interior(
         components=(),
     )
 
+    bounds = compose.registered_artwork_envelope_bounds(
+        artwork,
+    )
+
     transform = compose.fit_registered_artwork_to_shape(
         artwork,
         composition=composition,
     )
 
-    assert transform.translate_x == pytest.approx(-0.6)
-    assert transform.translate_y == pytest.approx(-0.45)
+    transformed_center_x = (bounds.x + bounds.width / 2.0) * transform.scale + transform.translate_x
+
+    transformed_center_y = (
+        bounds.y + bounds.height / 2.0
+    ) * transform.scale + transform.translate_y
+
+    assert transformed_center_x == pytest.approx(
+        0.0,
+    )
+    assert transformed_center_y == pytest.approx(
+        0.0,
+    )
 
 
 def test_registered_artwork_fits_inside_circular_shape_interior(
@@ -3541,4 +3681,153 @@ def test_shape_reads_vector_registered_envelope_in_common_coordinates(
 
     assert envelope_center_x != pytest.approx(
         registered_center_x,
+    )
+
+
+@pytest.mark.parametrize(
+    "interior",
+    [
+        ET.Element(
+            "{http://www.w3.org/2000/svg}circle",
+            {
+                "cx": "0.0",
+                "cy": "0.0",
+                "r": "0.4",
+            },
+        ),
+        ET.Element(
+            "{http://www.w3.org/2000/svg}rect",
+            {
+                "x": "-0.4",
+                "y": "-0.4",
+                "width": "0.8",
+                "height": "0.8",
+            },
+        ),
+        ET.Element(
+            "{http://www.w3.org/2000/svg}polygon",
+            {
+                "points": (
+                    "0.0,-0.4618802153517006 "
+                    "0.4,-0.2309401076758503 "
+                    "0.4,0.2309401076758503 "
+                    "0.0,0.4618802153517006 "
+                    "-0.4,0.2309401076758503 "
+                    "-0.4,-0.2309401076758503"
+                ),
+            },
+        ),
+    ],
+    ids=[
+        "circle",
+        "square",
+        "polygon",
+    ],
+)
+def test_registered_artwork_fit_uses_common_placement_circle(
+    tmp_path: Path,
+    interior: ET.Element,
+) -> None:
+    """
+    Artwork fitting depends on the common placement circle, not Shape geometry.
+
+    Each supplied Shape interior has the same largest origin-centered placement
+    circle with radius 0.4. The same authoritative Artwork envelope must
+    therefore receive the same maximal uniform transform for every geometry.
+    """
+
+    composition = tmp_path / "composition.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    root = ET.Element(
+        "{http://www.w3.org/2000/svg}svg",
+        {
+            "viewBox": "-0.5 -0.5 1 1",
+        },
+    )
+
+    interior.set(
+        "id",
+        "ridge-inner-boundary",
+    )
+
+    root.append(
+        interior,
+    )
+
+    ET.ElementTree(
+        root,
+    ).write(
+        composition,
+        encoding="unicode",
+    )
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 100 100">'
+            '<rect x="10" y="10" width="60" height="80"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    #
+    # The occupied Artwork envelope is 60 x 80. Relative to its center,
+    # its corners are (+/-30, +/-40), giving a corner radius of 50.
+    #
+    # The common placement-circle radius is 0.4, so the largest uniform
+    # scale that contains the authoritative envelope is:
+    #
+    #     0.4 / 50 = 0.008
+    #
+    expected_scale = 0.008
+
+    assert transform.scale == pytest.approx(
+        expected_scale,
+        abs=1.0e-12,
+    )
+
+    assert transform.width == pytest.approx(
+        60.0 * expected_scale,
+        abs=1.0e-12,
+    )
+
+    assert transform.height == pytest.approx(
+        80.0 * expected_scale,
+        abs=1.0e-12,
+    )
+
+    bounds = compose.registered_artwork_envelope_bounds(
+        artwork,
+    )
+
+    transformed_center_x = (bounds.x + bounds.width / 2.0) * transform.scale + transform.translate_x
+
+    transformed_center_y = (
+        bounds.y + bounds.height / 2.0
+    ) * transform.scale + transform.translate_y
+
+    assert transformed_center_x == pytest.approx(
+        0.0,
+        abs=1.0e-12,
+    )
+
+    assert transformed_center_y == pytest.approx(
+        0.0,
+        abs=1.0e-12,
     )

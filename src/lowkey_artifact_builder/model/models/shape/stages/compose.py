@@ -128,6 +128,17 @@ class PlacedRegisteredArtwork:
     components: tuple[PlacedRegisteredArtworkComponent, ...]
 
 
+@dataclass(frozen=True)
+class ArtworkPlacementCircle:
+    """
+    Origin-centered circular placement region for registered Artwork.
+    """
+
+    center_x: float
+    center_y: float
+    radius: float
+
+
 # =========================================================
 # Public interface
 # =========================================================
@@ -1347,37 +1358,37 @@ def fit_registered_artwork_to_shape(
     composition: Path,
 ) -> RegisteredArtworkTransform:
     """
-    Fit registered Artwork within the actual Shape interior.
+    Fit registered Artwork within the Shape's common placement region.
 
-    The Shape composition determines the available registered region.
-    Artwork occupancy is determined by its registered envelope.
+    The Shape composition determines the registered interior boundary. That
+    boundary is reduced to the largest origin-centered circle wholly contained
+    within the interior, and registered Artwork is uniformly fitted within
+    that common placement circle.
 
-    Rectangular, circular, and convex polygon Shape interiors are supported.
+    Shape geometry therefore does not determine Artwork fitting policy.
     """
 
     interior = registered_interior_region(
         composition,
     )
 
-    if interior.tag == SVG_RECT:
-        return _fit_registered_artwork_to_rect(
-            artwork,
-            interior=interior,
-        )
+    placement = artwork_placement_circle(
+        interior,
+    )
 
-    if interior.tag == SVG_CIRCLE:
-        return _fit_registered_artwork_to_circle(
-            artwork,
-            interior=interior,
-        )
+    placement_element = ET.Element(
+        SVG_CIRCLE,
+        {
+            "cx": str(placement.center_x),
+            "cy": str(placement.center_y),
+            "r": str(placement.radius),
+        },
+    )
 
-    if interior.tag == SVG_POLYGON:
-        return _fit_registered_artwork_to_polygon(
-            artwork,
-            interior=interior,
-        )
-
-    raise ValueError("Registered Artwork fitting requires a supported Shape interior.")
+    return _fit_registered_artwork_to_circle(
+        artwork,
+        interior=placement_element,
+    )
 
 
 def place_registered_artwork(
@@ -1609,3 +1620,112 @@ def _load_component(
         name=name,
         color=color,
     )
+
+
+def artwork_placement_circle(
+    interior: ET.Element,
+) -> ArtworkPlacementCircle:
+    """
+    Return the largest origin-centered circle contained by a Shape interior.
+
+    Circle, rectangle, and regular-polygon interiors use the same semantic
+    operation. The registered Shape origin is the fixed center of the
+    placement circle; the interior boundary determines only its maximum
+    radius.
+    """
+
+    if interior.tag == SVG_CIRCLE:
+        center_x = float(
+            interior.get(
+                "cx",
+                "0.0",
+            )
+        )
+        center_y = float(
+            interior.get(
+                "cy",
+                "0.0",
+            )
+        )
+        radius = float(
+            interior.get(
+                "r",
+                "0.0",
+            )
+        )
+
+        center_distance = math.hypot(
+            center_x,
+            center_y,
+        )
+
+        return ArtworkPlacementCircle(
+            center_x=0.0,
+            center_y=0.0,
+            radius=radius - center_distance,
+        )
+
+    if interior.tag == SVG_RECT:
+        x = float(
+            interior.get(
+                "x",
+                "0.0",
+            )
+        )
+        y = float(
+            interior.get(
+                "y",
+                "0.0",
+            )
+        )
+        width = float(
+            interior.get(
+                "width",
+                "0.0",
+            )
+        )
+        height = float(
+            interior.get(
+                "height",
+                "0.0",
+            )
+        )
+
+        radius = min(
+            -x,
+            x + width,
+            -y,
+            y + height,
+        )
+
+        return ArtworkPlacementCircle(
+            center_x=0.0,
+            center_y=0.0,
+            radius=radius,
+        )
+
+    if interior.tag == SVG_POLYGON:
+        points = _read_polygon_points(
+            interior,
+        )
+
+        radius = min(
+            abs(start[0] * end[1] - start[1] * end[0])
+            / math.hypot(
+                end[0] - start[0],
+                end[1] - start[1],
+            )
+            for start, end in zip(
+                points,
+                points[1:] + points[:1],
+                strict=True,
+            )
+        )
+
+        return ArtworkPlacementCircle(
+            center_x=0.0,
+            center_y=0.0,
+            radius=radius,
+        )
+
+    raise ValueError("Artwork placement requires a supported registered Shape interior.")
