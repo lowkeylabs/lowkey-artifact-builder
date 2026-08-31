@@ -1353,8 +1353,12 @@ def _build_artwork_component_scad(
     downward. OpenSCAD SVG import maps that geometry into its upward-positive
     coordinate system while preserving the Artwork's top-view orientation.
 
-    The persistent Artwork-to-Shape composition transform is then applied in
-    registered Shape coordinates, followed by Shape physical X/Y scaling.
+    The persistent Artwork-to-Shape composition transform is expressed in SVG
+    registered coordinates. Its Y translation is therefore converted into the
+    OpenSCAD coordinate system before being applied. X coordinates require no
+    conversion.
+
+    Shape then maps its registered coordinates into physical X/Y space.
 
     The resulting component begins at the physical top of the Shape base.
     """
@@ -1368,6 +1372,9 @@ def _build_artwork_component_scad(
         f"artwork_scale = {artwork_scale:g};\n"
         f"artwork_translate_x = {artwork_translate_x:g};\n"
         f"artwork_translate_y = {artwork_translate_y:g};\n"
+        "artwork_openscad_translate_y = "
+        "-(artwork_registered_height * artwork_scale) "
+        "- artwork_translate_y;\n"
         "\n"
         "translate([0, 0, shape_base_raise])\n"
         "    linear_extrude(\n"
@@ -1377,7 +1384,7 @@ def _build_artwork_component_scad(
         "        scale([shape_size, shape_size, 1])\n"
         "            translate([\n"
         "                artwork_translate_x,\n"
-        "                artwork_translate_y,\n"
+        "                artwork_openscad_translate_y,\n"
         "                0\n"
         "            ])\n"
         "                scale([artwork_scale, artwork_scale, 1])\n"

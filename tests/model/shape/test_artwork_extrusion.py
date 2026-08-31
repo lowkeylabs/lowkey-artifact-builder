@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from lowkey_artifact_builder.model.models.shape.stages import extrude
+from lowkey_artifact_builder.model.models.shape.stages import compose, extrude
 
 # =========================================================
 # Test support
@@ -316,3 +316,114 @@ def test_artwork_extrusion_passes_registered_extent_to_scad_builder(
         "width": 100.0,
         "height": 80.0,
     }
+
+
+@pytest.mark.slow
+def test_incorporated_registered_artwork_is_physically_centered(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape extrusion preserves registered Artwork centering in physical X/Y.
+
+    The Artwork envelope is deliberately offset within its registered extent.
+    Shape composition must fit the occupied envelope into the circular interior
+    and extrusion must realize that placement with equal space around the
+    Artwork center on both physical axes.
+
+    The physical Artwork bounds must therefore be centered on the Shape origin.
+    """
+
+    artwork = tmp_path / "artwork.svg"
+    envelope = tmp_path / "envelope.svg"
+    composition = tmp_path / "composition.svg"
+    output = tmp_path / "artwork.stl"
+
+    _write_registered_artwork(
+        artwork,
+    )
+
+    envelope.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="100"
+    height="100"
+    viewBox="0 0 100 100"
+>
+    <rect
+        x="10"
+        y="20"
+        width="20"
+        height="40"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    composition.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="-0.5 -0.5 1 1"
+>
+    <circle
+        id="ridge-inner-boundary"
+        cx="0"
+        cy="0"
+        r="0.45"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    registered_artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        registered_artwork,
+        composition=composition,
+    )
+
+    source = extrude._build_artwork_component_scad(
+        str(
+            artwork.resolve(),
+        ),
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_artwork_raise=1.0,
+        artwork_registered_width=100.0,
+        artwork_registered_height=100.0,
+        artwork_scale=transform.scale,
+        artwork_translate_x=transform.translate_x,
+        artwork_translate_y=transform.translate_y,
+    )
+
+    extrude.render_stl_source(
+        source,
+        output,
+    )
+
+    (
+        minimum_x,
+        maximum_x,
+        minimum_y,
+        maximum_y,
+        minimum_z,
+        maximum_z,
+    ) = _stl_bounds(
+        output,
+    )
+
+    assert (minimum_x + maximum_x) / 2.0 == pytest.approx(0.0)
+    assert (minimum_y + maximum_y) / 2.0 == pytest.approx(0.0)
+
+    assert minimum_z == pytest.approx(2.0)
+    assert maximum_z == pytest.approx(3.0)
