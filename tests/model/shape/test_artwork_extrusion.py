@@ -127,25 +127,27 @@ def test_incorporated_registered_artwork_preserves_physical_xy_orientation(
     tmp_path: Path,
 ) -> None:
     """
-    Shape dimensionalization preserves registered Artwork position and
-    orientation when mapping the composition into physical X/Y space.
+    Shape dimensionalization preserves registered Artwork top-view orientation.
 
-    Registered Artwork occupies:
+    SVG registered coordinates use a downward-positive Y axis. Within the
+    100-unit registered Artwork extent, the occupied rectangle spans:
 
         X = 10..30
         Y = 20..60
 
-    within a 100-unit registered extent.
-
-    Mapping that extent into the canonical Shape coordinate system gives:
+    Mapping the registered Artwork into Shape's centered, upward-positive
+    coordinate system therefore gives:
 
         X = -0.4..-0.2
-        Y = -0.3..+0.1
+        Y = -0.1..+0.3
 
     A 100 mm Shape must therefore produce physical geometry at:
 
         X = -40..-20 mm
-        Y = -30..+10 mm
+        Y = -10..+30 mm
+
+    The SVG-to-OpenSCAD coordinate-system transition must not vertically
+    mirror the Artwork when viewed from the top of the Shape.
 
     Artwork begins at the 2 mm Shape base top and rises 1 mm.
     """
@@ -184,8 +186,8 @@ def test_incorporated_registered_artwork_preserves_physical_xy_orientation(
         (
             -40.0,
             -20.0,
-            -30.0,
-            10.0,
+            -10.0,
+            30.0,
             2.0,
             3.0,
         )

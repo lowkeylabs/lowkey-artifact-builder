@@ -1350,14 +1350,11 @@ def _build_artwork_component_scad(
     Build OpenSCAD source for one incorporated Artwork component.
 
     Registered Artwork uses a zero-origin SVG coordinate system with positive Y
-    downward. OpenSCAD SVG import preserves X but reverses Y within the
-    registered extent.
+    downward. OpenSCAD SVG import maps that geometry into its upward-positive
+    coordinate system while preserving the Artwork's top-view orientation.
 
-    The imported geometry is therefore reflected through the registered
-    Artwork height before the persistent Artwork-to-Shape composition
-    transform is applied.
-
-    Shape then maps its registered coordinates into physical X/Y space.
+    The persistent Artwork-to-Shape composition transform is then applied in
+    registered Shape coordinates, followed by Shape physical X/Y scaling.
 
     The resulting component begins at the physical top of the Shape base.
     """
@@ -1384,9 +1381,7 @@ def _build_artwork_component_scad(
         "                0\n"
         "            ])\n"
         "                scale([artwork_scale, artwork_scale, 1])\n"
-        "                    translate([0, artwork_registered_height, 0])\n"
-        "                        mirror([0, 1, 0])\n"
-        f'                            import("{source}", dpi = 25.4);\n'
+        f'                    import("{source}", dpi = 25.4);\n'
     )
 
 
