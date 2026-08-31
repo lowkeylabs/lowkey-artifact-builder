@@ -3831,3 +3831,219 @@ def test_registered_artwork_fit_uses_common_placement_circle(
         0.0,
         abs=1.0e-12,
     )
+
+
+def test_heptagon_120mm_with_2mm_ridge_provides_expected_artwork_placement_circle(
+    tmp_path: Path,
+) -> None:
+    """
+    A 120 mm seven-sided Shape with a 2 mm ridge preserves the expected
+    physical Artwork placement diameter.
+
+    Shape size defines the maximum registered polygon extent. The ridge is
+    inset inward by 2 mm, and the largest origin-centered circle contained by
+    that inner boundary defines the Artwork placement region.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+
+    shape_size = 120.0
+    ridge_width = 2.0
+
+    _write_registered_polygon_structure(
+        structure,
+        number_of_sides=7,
+        rotation=0.0,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=shape_size,
+        ridge_width=ridge_width,
+    )
+
+    interior = compose.registered_interior_region(
+        composition,
+    )
+
+    placement = compose.artwork_placement_circle(
+        interior,
+    )
+
+    polygon = compose._read_polygon_points(
+        interior,
+    )
+
+    expected_registered_radius = min(
+        abs(start[0] * end[1] - start[1] * end[0])
+        / math.hypot(
+            end[0] - start[0],
+            end[1] - start[1],
+        )
+        for start, end in zip(
+            polygon,
+            polygon[1:] + polygon[:1],
+            strict=True,
+        )
+    )
+
+    assert placement.center_x == pytest.approx(
+        0.0,
+    )
+    assert placement.center_y == pytest.approx(
+        0.0,
+    )
+
+    assert placement.radius == pytest.approx(
+        expected_registered_radius,
+    )
+
+    #
+    # The ridge is constructed by moving every polygon edge inward by
+    # ridge_width / shape_size in registered coordinates. Therefore its
+    # physical placement-circle radius must be the outer polygon apothem
+    # minus exactly the physical ridge width.
+    #
+
+    outer_tree = ET.parse(
+        structure,
+    )
+    outer_polygon = outer_tree.getroot().find(
+        compose.SVG_POLYGON,
+    )
+
+    assert outer_polygon is not None
+
+    outer_points = compose._read_polygon_points(
+        outer_polygon,
+    )
+
+    outer_registered_radius = min(
+        abs(start[0] * end[1] - start[1] * end[0])
+        / math.hypot(
+            end[0] - start[0],
+            end[1] - start[1],
+        )
+        for start, end in zip(
+            outer_points,
+            outer_points[1:] + outer_points[:1],
+            strict=True,
+        )
+    )
+
+    outer_physical_radius = outer_registered_radius * shape_size
+
+    placement_physical_radius = placement.radius * shape_size
+
+    assert placement_physical_radius == pytest.approx(
+        outer_physical_radius - ridge_width,
+    )
+
+    assert (placement_physical_radius * 2.0) == pytest.approx(
+        2.0 * (outer_physical_radius - ridge_width),
+    )
+
+
+def test_circular_artwork_envelope_fits_placement_circle_by_envelope_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Circular Artwork occupancy fits a circular placement region by geometry.
+
+    The authoritative Artwork envelope determines containment. Its rectangular
+    bounds must not cause circular Artwork to be unnecessarily reduced as
+    though the corners of that bounding rectangle were occupied geometry.
+    """
+
+    composition = tmp_path / "composition.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    placement_radius = 0.4
+    envelope_radius = 40.0
+
+    composition.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="-0.5 -0.5 1 1">'
+            "<circle "
+            'id="ridge-inner-boundary" '
+            'cx="0" '
+            'cy="0" '
+            f'r="{placement_radius}"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 100 100">'
+            "<circle "
+            'cx="50" '
+            'cy="50" '
+            f'r="{envelope_radius}"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    #
+    # A circular envelope of radius 40 fits exactly into a placement circle
+    # of radius 0.4 at scale 0.01.
+    #
+    # Treating the envelope's 80 x 80 rectangular bounds as occupied geometry
+    # would instead produce:
+    #
+    #     0.4 / hypot(40, 40)
+    #
+    # which is unnecessarily smaller.
+    #
+
+    expected_scale = placement_radius / envelope_radius
+
+    assert transform.scale == pytest.approx(
+        expected_scale,
+    )
+
+    assert transform.width == pytest.approx(
+        2.0 * placement_radius,
+    )
+
+    assert transform.height == pytest.approx(
+        2.0 * placement_radius,
+    )
+
+    bounds = compose.registered_artwork_envelope_bounds(
+        artwork,
+    )
+
+    transformed_center_x = (bounds.x + bounds.width / 2.0) * transform.scale + transform.translate_x
+
+    transformed_center_y = (
+        bounds.y + bounds.height / 2.0
+    ) * transform.scale + transform.translate_y
+
+    assert transformed_center_x == pytest.approx(
+        0.0,
+    )
+
+    assert transformed_center_y == pytest.approx(
+        0.0,
+    )

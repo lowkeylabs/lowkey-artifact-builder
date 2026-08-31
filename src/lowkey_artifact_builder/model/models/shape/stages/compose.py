@@ -863,6 +863,170 @@ def registered_artwork_envelope_bounds(
     )
 
 
+def registered_artwork_envelope_radius(
+    artwork: RegisteredArtwork,
+) -> float:
+    """
+    Return the radial extent of the authoritative Artwork envelope.
+
+    The envelope is measured from the center of its occupied bounds. Actual
+    envelope geometry determines the maximum occupied radius; the corners of
+    the envelope's rectangular bounds are not assumed to contain geometry.
+    """
+
+    root = ET.parse(
+        artwork.envelope,
+    ).getroot()
+
+    envelope = next(
+        iter(root),
+        None,
+    )
+
+    if envelope is None:
+        raise ValueError("Registered Artwork envelope requires geometry.")
+
+    bounds = _registered_element_bounds(
+        envelope,
+    )
+
+    center_x = bounds.x + (bounds.width / 2.0)
+    center_y = bounds.y + (bounds.height / 2.0)
+
+    return _registered_element_radius(
+        envelope,
+        center_x=center_x,
+        center_y=center_y,
+    )
+
+
+def _registered_element_radius(
+    element: ET.Element,
+    *,
+    center_x: float,
+    center_y: float,
+) -> float:
+    """
+    Return the maximum occupied distance from a registered point.
+
+    Supported registered envelope geometry is measured directly rather than
+    through its rectangular bounds.
+    """
+
+    if element.tag == SVG_CIRCLE:
+        element_center_x = float(
+            element.get(
+                "cx",
+                "0.0",
+            )
+        )
+        element_center_y = float(
+            element.get(
+                "cy",
+                "0.0",
+            )
+        )
+        radius = float(
+            element.get(
+                "r",
+                "0.0",
+            )
+        )
+
+        return (
+            math.hypot(
+                element_center_x - center_x,
+                element_center_y - center_y,
+            )
+            + radius
+        )
+
+    if element.tag == SVG_RECT:
+        x = float(
+            element.get(
+                "x",
+                "0.0",
+            )
+        )
+        y = float(
+            element.get(
+                "y",
+                "0.0",
+            )
+        )
+        width = float(
+            element.get(
+                "width",
+                "0.0",
+            )
+        )
+        height = float(
+            element.get(
+                "height",
+                "0.0",
+            )
+        )
+
+        corners = (
+            (x, y),
+            (x + width, y),
+            (x + width, y + height),
+            (x, y + height),
+        )
+
+        return max(
+            math.hypot(
+                x_coordinate - center_x,
+                y_coordinate - center_y,
+            )
+            for x_coordinate, y_coordinate in corners
+        )
+
+    if element.tag == SVG_POLYGON:
+        points = _read_polygon_points(
+            element,
+        )
+
+        return max(
+            math.hypot(
+                x_coordinate - center_x,
+                y_coordinate - center_y,
+            )
+            for x_coordinate, y_coordinate in points
+        )
+
+    if element.tag == SVG_PATH:
+        points = _registered_linear_path_points(
+            element,
+        )
+
+        return max(
+            math.hypot(
+                x_coordinate - center_x,
+                y_coordinate - center_y,
+            )
+            for x_coordinate, y_coordinate in points
+        )
+
+    if element.tag == SVG_GROUP:
+        translate_x, translate_y = _registered_translation(
+            element.get(
+                "transform",
+            ),
+        )
+
+        return max(
+            _registered_element_radius(
+                child,
+                center_x=center_x - translate_x,
+                center_y=center_y - translate_y,
+            )
+            for child in element
+        )
+
+    raise ValueError("Registered Artwork envelope contains unsupported geometry.")
+
+
 def _registered_element_bounds(
     element: ET.Element,
 ) -> RegisteredBounds:
@@ -975,15 +1139,14 @@ def _registered_element_bounds(
     raise ValueError("Registered Artwork envelope contains unsupported geometry.")
 
 
-def _registered_linear_path_bounds(
+def _registered_linear_path_points(
     path: ET.Element,
-) -> RegisteredBounds:
+) -> tuple[tuple[float, float], ...]:
     """
-    Return occupied bounds for a registered linear SVG path.
+    Return vertices from a registered linear SVG path.
 
     Registered Artwork envelopes produced by Artwork use absolute move and
-    line commands with optional path closure. Other SVG path commands remain
-    unsupported until required by the registered Artwork contract.
+    line commands with optional path closure.
     """
 
     data = path.get(
@@ -1018,17 +1181,10 @@ def _registered_linear_path_bounds(
         if index + 1 >= len(tokens):
             raise ValueError("Registered Artwork envelope path contains incomplete coordinates.")
 
-        x = float(
-            tokens[index],
-        )
-        y = float(
-            tokens[index + 1],
-        )
-
         points.append(
             (
-                x,
-                y,
+                float(tokens[index]),
+                float(tokens[index + 1]),
             )
         )
 
@@ -1036,6 +1192,22 @@ def _registered_linear_path_bounds(
 
     if not points:
         raise ValueError("Registered Artwork envelope path requires geometry.")
+
+    return tuple(
+        points,
+    )
+
+
+def _registered_linear_path_bounds(
+    path: ET.Element,
+) -> RegisteredBounds:
+    """
+    Return occupied bounds for a registered linear SVG path.
+    """
+
+    points = _registered_linear_path_points(
+        path,
+    )
 
     minimum_x = min(point[0] for point in points)
     maximum_x = max(point[0] for point in points)
@@ -1050,21 +1222,18 @@ def _registered_linear_path_bounds(
     )
 
 
-def _apply_registered_element_transform(
-    bounds: RegisteredBounds,
-    *,
+def _registered_translation(
     transform: str | None,
-) -> RegisteredBounds:
+) -> tuple[float, float]:
     """
-    Apply a supported SVG registration transform to occupied bounds.
-
-    Registered Artwork currently requires translation transforms emitted by
-    the Artwork registration boundary. Other SVG transform forms remain
-    unsupported until required by the registered Artwork contract.
+    Return the translation declared by a supported SVG transform.
     """
 
     if transform is None:
-        return bounds
+        return (
+            0.0,
+            0.0,
+        )
 
     transform = transform.strip()
 
@@ -1085,21 +1254,32 @@ def _apply_registered_element_transform(
     )
 
     if len(arguments) == 1:
-        translate_x = float(
-            arguments[0],
-        )
-        translate_y = 0.0
-
-    elif len(arguments) == 2:
-        translate_x = float(
-            arguments[0],
-        )
-        translate_y = float(
-            arguments[1],
+        return (
+            float(arguments[0]),
+            0.0,
         )
 
-    else:
-        raise ValueError("Registered Artwork envelope contains an invalid translation.")
+    if len(arguments) == 2:
+        return (
+            float(arguments[0]),
+            float(arguments[1]),
+        )
+
+    raise ValueError("Registered Artwork envelope contains an invalid translation.")
+
+
+def _apply_registered_element_transform(
+    bounds: RegisteredBounds,
+    *,
+    transform: str | None,
+) -> RegisteredBounds:
+    """
+    Apply a supported SVG registration transform to occupied bounds.
+    """
+
+    translate_x, translate_y = _registered_translation(
+        transform,
+    )
 
     return RegisteredBounds(
         x=bounds.x + translate_x,
@@ -1207,11 +1387,12 @@ def _fit_registered_artwork_to_circle(
     interior: ET.Element,
 ) -> RegisteredArtworkTransform:
     """
-    Fit registered Artwork within a circular Shape interior.
+    Fit registered Artwork within a circular placement region.
 
-    The occupied Artwork envelope is uniformly scaled so its corners remain
-    within the circle, then centered on the circle while preserving the
-    Artwork's common registered coordinate system.
+    The authoritative Artwork envelope is uniformly scaled to the largest
+    size whose occupied geometry remains within the placement circle, then
+    centered while preserving the Artwork's common registered coordinate
+    system.
     """
 
     bounds = registered_artwork_envelope_bounds(
@@ -1237,21 +1418,20 @@ def _fit_registered_artwork_to_circle(
         )
     )
 
-    half_width = bounds.width / 2.0
-    half_height = bounds.height / 2.0
-
-    envelope_radius = math.hypot(
-        half_width,
-        half_height,
+    envelope_radius = registered_artwork_envelope_radius(
+        artwork,
     )
+
+    if envelope_radius <= 0.0:
+        raise ValueError("Registered Artwork envelope requires positive radial extent.")
 
     scale = radius / envelope_radius
 
     width = bounds.width * scale
     height = bounds.height * scale
 
-    source_center_x = bounds.x + half_width
-    source_center_y = bounds.y + half_height
+    source_center_x = bounds.x + (bounds.width / 2.0)
+    source_center_y = bounds.y + (bounds.height / 2.0)
 
     return RegisteredArtworkTransform(
         scale=scale,
