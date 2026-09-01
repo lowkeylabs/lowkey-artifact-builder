@@ -74,6 +74,7 @@ def _validate_shape(
         "shape_outer_ridge_raise": 1.0,
         "shape_outer_ridge_style": "integrated",
         "shape_base_color": "white",
+        "shape_outer_ridge_color": "white",
     }
 
     resolved_values.update(
@@ -835,6 +836,100 @@ def test_invalid_historical_shape_base_color_does_not_block_current_extrude() ->
         {
             "shape_base_raise": 2.0,
             "shape_base_color": "",
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "integrated",
+        }
+    )
+
+    build_plan, execution_plan = _shape_execution_plan(
+        resolver=resolver,
+        extrude_state=ProductState.CURRENT,
+    )
+
+    validate_execution(
+        build_plan,
+        execution_plan,
+    )
+
+
+def test_shape_accepts_nonempty_outer_ridge_color() -> None:
+    """
+    Shape outer-ridge color may be any nonempty semantic color name.
+    """
+
+    _validate_shape(
+        {
+            "shape_outer_ridge_color": "test-red",
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "ridge_color",
+    (
+        "",
+        "   ",
+        None,
+    ),
+)
+def test_shape_rejects_invalid_outer_ridge_color(
+    ridge_color: object,
+) -> None:
+    """
+    Shape outer-ridge color must be a nonempty semantic color name.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_outer_ridge_color",
+    ):
+        _validate_shape(
+            {
+                "shape_outer_ridge_color": ridge_color,
+            }
+        )
+
+
+def test_invalid_shape_ridge_color_fails_when_extrude_requires_execution() -> None:
+    """
+    Invalid outer-ridge color is validated when extrusion must execute.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_base_raise": 2.0,
+            "shape_base_color": "white",
+            "shape_outer_ridge_color": "",
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "integrated",
+        }
+    )
+
+    build_plan, execution_plan = _shape_execution_plan(
+        resolver=resolver,
+        extrude_state=ProductState.ABSENT,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_outer_ridge_color",
+    ):
+        validate_execution(
+            build_plan,
+            execution_plan,
+        )
+
+
+def test_invalid_historical_shape_ridge_color_does_not_block_current_extrude() -> None:
+    """
+    Invalid historical outer-ridge color is irrelevant when extrusion is current.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_base_raise": 2.0,
+            "shape_base_color": "white",
+            "shape_outer_ridge_color": "",
             "shape_outer_ridge_raise": 1.0,
             "shape_outer_ridge_style": "integrated",
         }
