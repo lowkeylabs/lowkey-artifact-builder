@@ -88,7 +88,10 @@ STAGES = (
                 ),
             ),
         ),
-        parameters=("artwork_colors",),
+        parameters=(
+            "artwork_colors",
+            "artwork_fill_color",
+        ),
         products=(
             ProductSpec(
                 name="trace",

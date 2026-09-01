@@ -93,7 +93,10 @@ def test_create_build_plan_retains_resolver(
 
     assert prepare.name == "prepare"
 
-    assert prepare.spec.parameters == ("artwork_colors",)
+    assert prepare.spec.parameters == (
+        "artwork_colors",
+        "artwork_fill_color",
+    )
 
     assert plan.resolver("artwork_colors") == [
         "white",
@@ -101,6 +104,10 @@ def test_create_build_plan_retains_resolver(
     ]
 
     assert plan.resolver.source("artwork_colors") == "test"
+
+    assert plan.resolver("artwork_fill_color") == "white"
+
+    assert plan.resolver.source("artwork_fill_color") == "test"
 
 
 def test_create_build_plan_resolves_external_input(

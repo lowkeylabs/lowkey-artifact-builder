@@ -10,9 +10,21 @@ to its ordered artwork color palette.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from lowkey_artifact_builder.config import ConfigError
+from lowkey_artifact_builder.engine import (
+    BuildPlan,
+    ExecutionPlan,
+    PlannedProduct,
+    PlannedStage,
+    PlannedStageExecution,
+    ProductState,
+)
+from lowkey_artifact_builder.engine.validation import validate_execution
+from lowkey_artifact_builder.model.models.artwork import MODEL
 from lowkey_artifact_builder.model.validation import (
     get_named_model_validators,
     validate_configuration,
@@ -59,6 +71,66 @@ def _validate_artwork(
             "artwork",
         ),
     )
+
+
+def _artwork_execution_plan(
+    *,
+    resolver: StubResolver,
+    prepare_state: ProductState,
+) -> tuple[
+    BuildPlan,
+    ExecutionPlan,
+]:
+    """
+    Construct an Artwork execution plan with the requested persistent
+    state for every prepare product.
+    """
+
+    prepare_spec = next(stage for stage in MODEL.stages if stage.name == "prepare")
+
+    prepare = PlannedStage(
+        spec=prepare_spec,
+        inputs=(),
+        products=tuple(
+            PlannedProduct(
+                spec=product,
+                path=(Path("/project/artifacts/example/artwork/default/10-prepare") / product.path),
+            )
+            for product in prepare_spec.products
+        ),
+    )
+
+    build_plan = BuildPlan(
+        artifact_id="example",
+        model=MODEL,
+        realization_name="default",
+        resolver=resolver,  # type: ignore[arg-type]
+        project_root=Path("/project"),
+        artifact_dir=Path("/project/artifacts/example"),
+        stages=(prepare,),
+    )
+
+    execution_plan = ExecutionPlan(
+        artifact_id="example",
+        model_name="artwork",
+        realization="default",
+        stages=(
+            PlannedStageExecution(
+                stage_name="prepare",
+                product_states=tuple(prepare_state for _ in prepare.products),
+            ),
+        ),
+    )
+
+    return (
+        build_plan,
+        execution_plan,
+    )
+
+
+# =========================================================
+# Artwork configuration validation
+# =========================================================
 
 
 def test_artwork_declares_fill_color_membership_validator() -> None:
@@ -156,3 +228,66 @@ def test_artwork_fill_color_membership_uses_semantic_color_name() -> None:
             ),
             fill_color="test-white",
         )
+
+
+# =========================================================
+# Execution-scoped Artwork validation
+# =========================================================
+
+
+def test_invalid_artwork_fill_color_fails_when_prepare_requires_execution() -> None:
+    """
+    Artwork fill-color membership is validated when preparation must
+    execute.
+    """
+
+    resolver = StubResolver(
+        {
+            "artwork_colors": (
+                "red",
+                "blue",
+            ),
+            "artwork_fill_color": "green",
+        }
+    )
+
+    build_plan, execution_plan = _artwork_execution_plan(
+        resolver=resolver,
+        prepare_state=ProductState.ABSENT,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="artwork_fill_color",
+    ):
+        validate_execution(
+            build_plan,
+            execution_plan,
+        )
+
+
+def test_invalid_historical_artwork_fill_color_does_not_block_current_prepare() -> None:
+    """
+    Invalid historical Artwork configuration is not revalidated when
+    preparation is already current and therefore does not execute.
+    """
+
+    resolver = StubResolver(
+        {
+            "artwork_colors": (
+                "red",
+                "blue",
+            ),
+            "artwork_fill_color": "green",
+        }
+    )
+
+    build_plan, execution_plan = _artwork_execution_plan(
+        resolver=resolver,
+        prepare_state=ProductState.CURRENT,
+    )
+
+    validate_execution(
+        build_plan,
+        execution_plan,
+    )

@@ -71,11 +71,17 @@ def test_artwork_prepare_external_input() -> None:
 
 
 def test_artwork_prepare_parameters() -> None:
-    """Artwork preparation consumes the artwork palette."""
+    """
+    Artwork preparation consumes the artwork palette and configured
+    fill color.
+    """
 
     stages = {stage.name: stage for stage in MODEL.stages}
 
-    assert stages["prepare"].parameters == ("artwork_colors",)
+    assert stages["prepare"].parameters == (
+        "artwork_colors",
+        "artwork_fill_color",
+    )
 
 
 def test_artwork_raster_is_independent_of_physical_size() -> None:
@@ -167,6 +173,7 @@ def test_artwork_model_parameters() -> None:
     assert MODEL.parameters == (
         "source",
         "artwork_colors",
+        "artwork_fill_color",
         "artwork_pixels",
         "artwork_min_island_area",
         "artwork_island_connectivity",
