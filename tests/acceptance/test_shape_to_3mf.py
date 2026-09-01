@@ -1610,16 +1610,16 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
 
 
 @pytest.mark.slow
-def test_shape_rebuilds_after_size_change(
+def test_shape_size_change_preserves_registered_geometry(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     """
-    A completed Shape can be rebuilt after its physical size changes.
+    Changing only Shape physical size does not change registered geometry.
 
-    Changing Shape physical size invalidates and rebuilds the downstream
-    Shape manufacturing products through normal dependency-aware
-    orchestration.
+    Shape structure and composition exist in canonical registered space.
+    shape_size is a physical dimensionalization parameter and therefore
+    must not alter either registered product.
     """
 
     project_root = tmp_path
@@ -1656,22 +1656,17 @@ def test_shape_rebuilds_after_size_change(
 
     shape_root = project_root / "artifacts" / "resized-shape" / "shape" / "default"
 
-    initial_artifact = shape_root / "40-package" / "artifact.3mf"
+    structure = shape_root / "10-structure" / "structure.svg"
+    composition = shape_root / "20-compose" / "composition.svg"
 
-    existing_base = shape_root / "30-extrude" / "base.stl"
+    assert structure.is_file()
+    assert composition.is_file()
 
-    assert initial_artifact.is_file()
-    assert zipfile.is_zipfile(
-        initial_artifact,
-    )
-
-    assert existing_base.is_file()
-    assert existing_base.stat().st_size > 0
-
-    initial_base_bytes = existing_base.read_bytes()
+    initial_structure_bytes = structure.read_bytes()
+    initial_composition_bytes = composition.read_bytes()
 
     # -----------------------------------------------------
-    # Change Shape size
+    # Change only physical Shape size
     # -----------------------------------------------------
 
     update_artifact_config(
@@ -1696,18 +1691,116 @@ def test_shape_rebuilds_after_size_change(
     )
 
     # -----------------------------------------------------
-    # Verify extrusion was rebuilt in place
+    # Registered geometry remains unchanged
     # -----------------------------------------------------
 
-    assert existing_base.is_file()
-    assert existing_base.stat().st_size > 0
+    assert structure.is_file()
+    assert composition.is_file()
 
-    resized_base_bytes = existing_base.read_bytes()
+    assert structure.read_bytes() == initial_structure_bytes
+    assert composition.read_bytes() == initial_composition_bytes
+
+
+@pytest.mark.slow
+def test_shape_size_change_rebuilds_physical_products(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    Changing Shape physical size rebuilds physical manufacturing products.
+
+    shape_size is introduced at physical dimensionalization. Changing it
+    therefore changes the extruded Shape while normal dependency-aware
+    orchestration still produces a valid final artifact.3mf.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    # -----------------------------------------------------
+    # Configure Shape
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "resized-shape",
+        {
+            "model": "shape",
+            "shape_size": 100.0,
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Build initial Shape
+    # -----------------------------------------------------
+
+    initial_plan = create_build_plans(
+        "resized-shape",
+        project_root=project_root,
+    )[0]
+
+    execute_dependency_build(
+        initial_plan,
+    )
+
+    shape_root = project_root / "artifacts" / "resized-shape" / "shape" / "default"
+
+    base = shape_root / "30-extrude" / "base.stl"
+    artifact = shape_root / "40-package" / "artifact.3mf"
+
+    assert base.is_file()
+    assert base.stat().st_size > 0
+
+    assert artifact.is_file()
+    assert artifact.stat().st_size > 0
+    assert zipfile.is_zipfile(
+        artifact,
+    )
+
+    initial_base_bytes = base.read_bytes()
+    initial_artifact_bytes = artifact.read_bytes()
+
+    # -----------------------------------------------------
+    # Change only physical Shape size
+    # -----------------------------------------------------
+
+    update_artifact_config(
+        "resized-shape",
+        {
+            "shape_size": 90.0,
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Rebuild through normal orchestration
+    # -----------------------------------------------------
+
+    resized_plan = create_build_plans(
+        "resized-shape",
+        project_root=project_root,
+    )[0]
+
+    execute_dependency_build(
+        resized_plan,
+    )
+
+    # -----------------------------------------------------
+    # Physical extrusion changed
+    # -----------------------------------------------------
+
+    assert base.is_file()
+    assert base.stat().st_size > 0
+
+    resized_base_bytes = base.read_bytes()
 
     assert resized_base_bytes != initial_base_bytes
 
     # -----------------------------------------------------
-    # Verify rebuilt package
+    # Final package was rebuilt successfully
     # -----------------------------------------------------
 
     package_stage = next(stage for stage in resized_plan.stages if stage.spec.name == "package")
@@ -1718,11 +1811,14 @@ def test_shape_rebuilds_after_size_change(
 
     output = artifact_product.path
 
+    assert output == artifact
     assert output.is_file()
     assert output.stat().st_size > 0
     assert zipfile.is_zipfile(
         output,
     )
+
+    assert output.read_bytes() != initial_artifact_bytes
 
 
 @pytest.mark.slow
