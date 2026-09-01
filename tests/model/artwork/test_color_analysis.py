@@ -213,49 +213,9 @@ def test_artwork_color_analysis_keeps_availability_scopes_independent() -> None:
     assert result.library.distance < result.printer.distance
 
 
-def test_artwork_color_analysis_excludes_synthetic_catalog_colors() -> None:
+def test_artwork_color_analysis_matches_supplied_catalog_candidates_without_policy() -> None:
     """
-    Catalog-wide matching excludes synthetic colors reserved for tests.
-    """
-
-    artwork = PaletteColor(
-        name="artwork-red",
-        rgb=(255, 0, 0),
-    )
-
-    analysis = analyze_color_matches(
-        artwork_colors=(artwork,),
-        printer_colors=(
-            PaletteColor(
-                name="printer-red",
-                rgb=(200, 0, 0),
-            ),
-        ),
-        library_colors=(
-            PaletteColor(
-                name="library-red",
-                rgb=(210, 0, 0),
-            ),
-        ),
-        catalog_colors=(
-            PaletteColor(
-                name="test-red",
-                rgb=(255, 0, 0),
-            ),
-            PaletteColor(
-                name="fire-engine-red",
-                rgb=(240, 0, 0),
-            ),
-        ),
-        synthetic_catalog_colors=("test-red",),
-    )
-
-    assert analysis[0].catalog.color.name == "fire-engine-red"
-
-
-def test_artwork_color_analysis_allows_synthetic_printer_colors() -> None:
-    """
-    Synthetic colors remain usable in explicitly configured printer candidates.
+    Direct color matching applies no physical-catalog selection policy.
     """
 
     artwork = PaletteColor(
@@ -263,28 +223,28 @@ def test_artwork_color_analysis_allows_synthetic_printer_colors() -> None:
         rgb=(255, 0, 0),
     )
 
-    test_red = PaletteColor(
+    synthetic = PaletteColor(
         name="test-red",
         rgb=(255, 0, 0),
     )
 
-    analysis = analyze_color_matches(
-        artwork_colors=(artwork,),
-        printer_colors=(test_red,),
-        library_colors=(test_red,),
-        catalog_colors=(
-            test_red,
-            PaletteColor(
-                name="physical-red",
-                rgb=(240, 0, 0),
-            ),
-        ),
-        synthetic_catalog_colors=("test-red",),
+    physical = PaletteColor(
+        name="physical-red",
+        rgb=(240, 0, 0),
     )
 
-    assert analysis[0].printer.color is test_red
-    assert analysis[0].library.color is test_red
-    assert analysis[0].catalog.color.name == "physical-red"
+    result = analyze_color_matches(
+        artwork_colors=(artwork,),
+        printer_colors=(physical,),
+        library_colors=(physical,),
+        catalog_colors=(
+            synthetic,
+            physical,
+        ),
+    )[0]
+
+    assert result.catalog.color is synthetic
+    assert result.catalog.distance == 0.0
 
 
 # =========================================================
