@@ -16,6 +16,9 @@ from __future__ import annotations
 from lowkey_artifact_builder.cli.display.build import (
     display_build_plan,
 )
+from lowkey_artifact_builder.cli.display.colors import (
+    display_color_matches,
+)
 from lowkey_artifact_builder.cli.display.common import (
     console,
     create_table,
@@ -36,6 +39,7 @@ __all__ = [
     "create_table",
     "display_artifact_config",
     "display_build_plan",
+    "display_color_matches",
     "display_model",
     "display_model_workplan",
     "display_model_workplans",
