@@ -17,6 +17,7 @@ from __future__ import annotations
 from lowkey_artifact_builder.model.validation import (
     ConfigurationResolver,
     ConfigurationValidator,
+    get_named_model_validators,
     validate_configuration,
 )
 
@@ -101,12 +102,55 @@ def validate_required_configuration(
     required = set(required_parameters)
 
     relevant_validators = tuple(
-        validator for validator in validators if required.intersection(validator.parameters)
+        validator
+        for validator in validators
+        if required.intersection(
+            validator.parameters,
+        )
     )
 
     validate_configuration(
         resolver,
         validators=relevant_validators,
+    )
+
+
+def validate_execution(
+    build_plan: BuildPlan,
+    execution_plan: ExecutionPlan,
+) -> None:
+    """
+    Validate resolved model configuration required by one execution plan.
+
+    Execution planning determines which realized stages must execute.
+    Configuration validation then follows those execution decisions.
+
+    Validators are discovered through the model subsystem using the model
+    identity retained by the realized build plan. The engine contains no
+    knowledge of model implementation package layout and no model-specific
+    configuration validity rules.
+
+    Only validators relevant to configuration consumed by required stages are
+    executed. Configuration belonging solely to already-current stages remains
+    outside validation scope.
+
+    This operation does not alter the build or execution plan, inspect product
+    state, materialize inputs, execute stages, or persist build results.
+    """
+
+    required_parameters = required_configuration_parameters(
+        build_plan,
+        execution_plan,
+    )
+
+    validators = get_named_model_validators(
+        build_plan.model_name,
+    )
+
+    validate_required_configuration(
+        build_plan.resolver,
+        required_parameters=required_parameters,
+        validators=validators,
     )
 
 
@@ -117,5 +161,6 @@ def validate_required_configuration(
 
 __all__ = [
     "required_configuration_parameters",
+    "validate_execution",
     "validate_required_configuration",
 ]

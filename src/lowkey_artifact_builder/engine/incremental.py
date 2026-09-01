@@ -75,6 +75,9 @@ from .specs import (
 from .stage import (
     execute_stage as dispatch_stage,
 )
+from .validation import (
+    validate_execution,
+)
 
 # =========================================================
 # Stage execution
@@ -294,6 +297,11 @@ def execute_incremental_build(
             fingerprints=fingerprints,
             product_dependencies=product_dependencies,
             event_sink=event_sink,
+        )
+
+        validate_execution(
+            build_plan,
+            execution_plan,
         )
 
         required_stage_names = {

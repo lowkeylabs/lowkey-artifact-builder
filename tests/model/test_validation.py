@@ -16,6 +16,7 @@ from lowkey_artifact_builder.model.validation import (
     ConfigurationResolver,
     ConfigurationValidator,
     get_model_validators,
+    get_named_model_validators,
     validate_configuration,
 )
 
@@ -345,6 +346,59 @@ def test_validating_configuration_executes_validators_in_declaration_order() -> 
 # =========================================================
 # Model validator discovery
 # =========================================================
+
+
+def test_named_model_without_implementation_package_has_no_validators() -> None:
+    """
+    A programmatically defined model need not have a built-in implementation
+    package in order to participate in generic planning and execution.
+    """
+
+    validators = get_named_model_validators(
+        "synthetic-model",
+    )
+
+    assert validators == ()
+
+
+def test_named_model_discovers_builtin_model_validators(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Named-model discovery delegates built-in validator discovery to the model
+    subsystem rather than requiring the engine to know package layout.
+    """
+
+    observed: list[str] = []
+
+    validator = ConfigurationValidator(
+        parameters=("value",),
+        validate=lambda resolver: None,
+    )
+
+    def get_validators(
+        model_package: str,
+    ) -> tuple[ConfigurationValidator, ...]:
+        observed.append(
+            model_package,
+        )
+
+        return (validator,)
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.model.validation.get_model_validators",
+        get_validators,
+    )
+
+    validators = get_named_model_validators(
+        "artwork",
+    )
+
+    assert validators == (validator,)
+
+    assert observed == [
+        "lowkey_artifact_builder.model.models.artwork",
+    ]
 
 
 def test_model_without_validation_module_has_no_validators(

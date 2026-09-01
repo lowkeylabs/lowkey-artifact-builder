@@ -121,6 +121,42 @@ def get_model_validators(
     )
 
 
+def get_named_model_validators(
+    model_name: str,
+) -> tuple[ConfigurationValidator, ...]:
+    """
+    Return configuration validators for one named built-in model.
+
+    Model implementation package discovery belongs to the model subsystem.
+    Callers identify a model by its public model name and need not know the
+    package layout used by built-in model implementations.
+
+    A model without a discoverable built-in implementation package declares
+    no discoverable configuration validators. This permits programmatically
+    defined and synthetic models to participate in generic planning and
+    execution without requiring an implementation package.
+
+    Errors raised while importing an existing model implementation or its
+    validation module are not suppressed.
+    """
+
+    model_package = f"lowkey_artifact_builder.model.models.{model_name}"
+
+    try:
+        import_module(
+            model_package,
+        )
+    except ModuleNotFoundError as exc:
+        if exc.name == model_package:
+            return ()
+
+        raise
+
+    return get_model_validators(
+        model_package,
+    )
+
+
 def _get_declared_validators(
     module: ModuleType,
 ) -> tuple[ConfigurationValidator, ...]:
@@ -182,5 +218,6 @@ __all__ = [
     "ConfigurationResolver",
     "ConfigurationValidator",
     "get_model_validators",
+    "get_named_model_validators",
     "validate_configuration",
 ]

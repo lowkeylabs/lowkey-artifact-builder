@@ -16,6 +16,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from lowkey_artifact_builder.config import ConfigError
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     ExecutionPlan,
@@ -26,6 +29,7 @@ from lowkey_artifact_builder.engine import (
 )
 from lowkey_artifact_builder.engine.validation import (
     required_configuration_parameters,
+    validate_execution,
     validate_required_configuration,
 )
 from lowkey_artifact_builder.model import (
@@ -542,4 +546,236 @@ def test_irrelevant_invalid_model_configuration_does_not_fail() -> None:
         }[name],
         required_parameters=("package_format",),
         validators=(validator,),
+    )
+
+
+# =========================================================
+# Complete execution validation
+# =========================================================
+
+
+def test_execution_validation_uses_build_plan_resolver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Execution validation applies relevant model validators to the resolver
+    retained by the realized build plan.
+    """
+
+    observed: list[object] = []
+
+    def resolver(
+        name: str,
+    ) -> object:
+        return {
+            "fill_color": "red",
+        }[name]
+
+    stage = _planned_stage(
+        stage_id=10,
+        name="prepare",
+        parameters=("fill_color",),
+    )
+
+    build_plan = BuildPlan(
+        artifact_id="example",
+        model=ModelSpec(
+            name="example-model",
+            title="Example Model",
+        ),
+        realization_name="default",
+        resolver=resolver,  # type: ignore[arg-type]
+        project_root=Path("/project"),
+        artifact_dir=Path("/project/artifacts/example"),
+        stages=(stage,),
+    )
+
+    execution_plan = _execution_plan(
+        stages=(
+            _stage_execution(
+                name="prepare",
+                state=ProductState.ABSENT,
+            ),
+        ),
+    )
+
+    def validate(
+        resolved: ConfigurationResolver,
+    ) -> None:
+        observed.append(
+            resolved("fill_color"),
+        )
+
+    validator = ConfigurationValidator(
+        parameters=("fill_color",),
+        validate=validate,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.validation.get_named_model_validators",
+        lambda model_package: (validator,),
+    )
+
+    validate_execution(
+        build_plan,
+        execution_plan,
+    )
+
+    assert observed == [
+        "red",
+    ]
+
+
+def test_execution_validation_fails_for_required_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Invalid configuration relevant to required execution fails validation.
+    """
+
+    def resolver(
+        name: str,
+    ) -> object:
+        return {
+            "fill_color": "green",
+            "palette": (
+                "red",
+                "blue",
+            ),
+        }[name]
+
+    stage = _planned_stage(
+        stage_id=10,
+        name="prepare",
+        parameters=(
+            "fill_color",
+            "palette",
+        ),
+    )
+
+    build_plan = BuildPlan(
+        artifact_id="example",
+        model=ModelSpec(
+            name="example-model",
+            title="Example Model",
+        ),
+        realization_name="default",
+        resolver=resolver,  # type: ignore[arg-type]
+        project_root=Path("/project"),
+        artifact_dir=Path("/project/artifacts/example"),
+        stages=(stage,),
+    )
+
+    execution_plan = _execution_plan(
+        stages=(
+            _stage_execution(
+                name="prepare",
+                state=ProductState.ABSENT,
+            ),
+        ),
+    )
+
+    def validate(
+        resolved: ConfigurationResolver,
+    ) -> None:
+        fill_color = resolved("fill_color")
+        palette = resolved("palette")
+
+        if not isinstance(fill_color, str):
+            raise TypeError("Expected fill_color to be a string.")
+
+        if not isinstance(palette, tuple):
+            raise TypeError("Expected palette to be a tuple.")
+
+        if not all(isinstance(color, str) for color in palette):
+            raise TypeError("Expected palette to contain only strings.")
+
+        if fill_color not in palette:
+            raise ConfigError("fill color is not in palette")
+
+    validator = ConfigurationValidator(
+        parameters=(
+            "fill_color",
+            "palette",
+        ),
+        validate=validate,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.validation.get_named_model_validators",
+        lambda model_package: (validator,),
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="fill color is not in palette",
+    ):
+        validate_execution(
+            build_plan,
+            execution_plan,
+        )
+
+
+def test_execution_validation_ignores_current_stage_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Invalid configuration used only by an already-current stage does not
+    participate in execution validation.
+    """
+
+    def resolver(
+        name: str,
+    ) -> object:
+        return {
+            "historical_parameter": "invalid",
+        }[name]
+
+    stage = _planned_stage(
+        stage_id=10,
+        name="prepare",
+        parameters=("historical_parameter",),
+    )
+
+    build_plan = BuildPlan(
+        artifact_id="example",
+        model=ModelSpec(
+            name="example-model",
+            title="Example Model",
+        ),
+        realization_name="default",
+        resolver=resolver,  # type: ignore[arg-type]
+        project_root=Path("/project"),
+        artifact_dir=Path("/project/artifacts/example"),
+        stages=(stage,),
+    )
+
+    execution_plan = _execution_plan(
+        stages=(
+            _stage_execution(
+                name="prepare",
+                state=ProductState.CURRENT,
+            ),
+        ),
+    )
+
+    def validate(
+        resolved: ConfigurationResolver,
+    ) -> None:
+        del resolved
+        raise ConfigError("historical configuration is invalid")
+
+    validator = ConfigurationValidator(
+        parameters=("historical_parameter",),
+        validate=validate,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.validation.get_named_model_validators",
+        lambda model_package: (validator,),
+    )
+
+    validate_execution(
+        build_plan,
+        execution_plan,
     )
