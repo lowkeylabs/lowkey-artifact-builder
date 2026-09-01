@@ -3,7 +3,8 @@ Tests for build-command execution observation.
 
 Normal graph-driven CLI builds delegate artifact orchestration to the
 artifact-level engine boundary and supply its semantic execution-event
-observer. Dry-run remains planning-only.
+observer. Dry-run prepares and validates planned execution without entering
+artifact execution.
 """
 # File: tests/cli/test_build_events.py
 # Copyright 2026 LowKeyLabs LLC
@@ -29,7 +30,7 @@ def _plan(
     artifact_id: str = "example",
 ):
     """
-    Return the minimal realized-plan identity needed by dry-run display.
+    Return the minimal realized-plan identity needed by CLI boundary tests.
     """
 
     return SimpleNamespace(
@@ -44,7 +45,7 @@ def _install_plans(
     *plans,
 ) -> None:
     """
-    Replace dry-run planning with deterministic realized plans.
+    Replace dry-run build-plan creation with deterministic realized plans.
     """
 
     def create_build_plans(
@@ -180,12 +181,12 @@ def test_build_command_supplies_event_sink_to_artifact_execution(
 # =========================================================
 
 
-def test_dry_run_does_not_execute_artifact_build(
+def test_dry_run_prepares_build_without_executing_artifact_build(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Dry-run remains planning-only at the artifact execution boundary.
+    Dry-run prepares the realized build without entering artifact execution.
     """
 
     monkeypatch.chdir(
@@ -199,7 +200,23 @@ def test_dry_run_does_not_execute_artifact_build(
         plan,
     )
 
+    prepared: list[object] = []
     executed = False
+
+    def prepare_incremental_build(
+        build_plan: object,
+    ) -> object:
+        prepared.append(
+            build_plan,
+        )
+
+        return object()
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        prepare_incremental_build,
+    )
 
     def execute_artifact_build(
         artifact_id: str,
@@ -233,5 +250,9 @@ def test_dry_run_does_not_execute_artifact_build(
     )
 
     assert result.exit_code == 0, result.output or repr(result.exception)
+
+    assert prepared == [
+        plan,
+    ]
 
     assert not executed

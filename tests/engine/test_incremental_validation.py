@@ -28,6 +28,7 @@ from lowkey_artifact_builder.engine import (
     StageCompletion,
     create_required_fingerprints,
     execute_incremental_build,
+    prepare_incremental_build,
     write_stage_completion,
 )
 
@@ -129,7 +130,174 @@ def _record_stage_current(
 
 
 # =========================================================
-# Incremental validation
+# Incremental preparation
+# =========================================================
+
+
+def test_prepare_incremental_build_validates_planned_execution(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Incremental preparation validates the execution plan produced from
+    current persistent state.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    validated: list[ExecutionPlan] = []
+
+    def validate_execution(
+        planned_build: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> None:
+        assert planned_build is build_plan
+
+        validated.append(
+            execution_plan,
+        )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.incremental.validate_execution",
+        validate_execution,
+    )
+
+    execution_plan = prepare_incremental_build(
+        build_plan,
+    )
+
+    assert validated == [
+        execution_plan,
+    ]
+
+
+def test_prepare_incremental_build_validates_current_execution_scope(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Incremental preparation validates against execution scope determined
+    from current persistent product state.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    fingerprints = create_required_fingerprints(
+        build_plan,
+    )
+
+    first_stage = build_plan.stages[0]
+
+    _record_stage_current(
+        build_plan,
+        first_stage,
+        fingerprints[first_stage.name],
+    )
+
+    validated_required_stages: list[tuple[str, ...]] = []
+
+    def validate_execution(
+        planned_build: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> None:
+        assert planned_build is build_plan
+
+        validated_required_stages.append(
+            tuple(stage.stage_name for stage in execution_plan.required_stages)
+        )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.incremental.validate_execution",
+        validate_execution,
+    )
+
+    execution_plan = prepare_incremental_build(
+        build_plan,
+    )
+
+    expected_required = tuple(
+        stage.name for stage in build_plan.stages if stage.name != first_stage.name
+    )
+
+    assert validated_required_stages == [
+        expected_required,
+    ]
+
+    assert tuple(stage.stage_name for stage in execution_plan.required_stages) == expected_required
+
+
+def test_prepare_incremental_build_propagates_validation_failure(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Invalid execution-relevant configuration prevents incremental
+    preparation from succeeding.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    validated: list[str] = []
+
+    def validate_execution(
+        planned_build: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> None:
+        assert planned_build is build_plan
+        assert execution_plan.required_stages
+
+        validated.append(
+            "validated",
+        )
+
+        raise ConfigError(
+            "required configuration is invalid",
+        )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.incremental.validate_execution",
+        validate_execution,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="required configuration is invalid",
+    ):
+        prepare_incremental_build(
+            build_plan,
+        )
+
+    assert validated == [
+        "validated",
+    ]
+
+
+# =========================================================
+# Incremental execution
 # =========================================================
 
 
@@ -166,7 +334,9 @@ def test_incremental_build_validates_before_required_stage_execution(
             "validated",
         )
 
-        raise ConfigError("required configuration is invalid")
+        raise ConfigError(
+            "required configuration is invalid",
+        )
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.incremental.validate_execution",
@@ -275,3 +445,126 @@ def test_incremental_build_validates_planned_execution_before_processing_stages(
     ]
 
     assert tuple(executed) == expected_required
+
+
+def test_prepare_incremental_build_does_not_execute_stages(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Incremental preparation performs planning and validation without
+    executing required stages.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.incremental.validate_execution",
+        lambda planned_build, execution_plan: None,
+    )
+
+    execution_plan = prepare_incremental_build(
+        build_plan,
+    )
+
+    assert execution_plan.required_stages
+
+    for stage in build_plan.stages:
+        for product in stage.products:
+            assert not product.path.exists()
+
+
+def test_prepare_incremental_build_does_not_persist_stage_completion(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Incremental preparation does not record successful stage completion.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    persisted: list[tuple[object, object]] = []
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.incremental.write_stage_completion",
+        lambda working_dir, completion: persisted.append(
+            (
+                working_dir,
+                completion,
+            )
+        ),
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.incremental.validate_execution",
+        lambda planned_build, execution_plan: None,
+    )
+
+    execution_plan = prepare_incremental_build(
+        build_plan,
+    )
+
+    assert execution_plan.required_stages
+    assert persisted == []
+
+
+def test_prepare_incremental_build_returns_persistent_state_execution_plan(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Incremental preparation preserves persistent-state execution decisions
+    made by incremental planning.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    fingerprints = create_required_fingerprints(
+        build_plan,
+    )
+
+    first_stage = build_plan.stages[0]
+
+    _record_stage_current(
+        build_plan,
+        first_stage,
+        fingerprints[first_stage.name],
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.incremental.validate_execution",
+        lambda planned_build, execution_plan: None,
+    )
+
+    execution_plan = prepare_incremental_build(
+        build_plan,
+    )
+
+    assert tuple(stage.stage_name for stage in execution_plan.required_stages) == tuple(
+        stage.name for stage in build_plan.stages if stage.name != first_stage.name
+    )

@@ -14,6 +14,7 @@ from click.testing import CliRunner
 
 import lowkey_artifact_builder.cli.cmd_build as cmd_build
 from lowkey_artifact_builder.cli._main import cli
+from lowkey_artifact_builder.config import ConfigError
 
 # =========================================================
 # Helpers
@@ -146,11 +147,11 @@ def test_build_passes_project_root(
 # =========================================================
 
 
-def test_build_dry_run_displays_all_plans(
+def test_build_dry_run_prepares_and_displays_all_plans(
     monkeypatch,
 ) -> None:
     """
-    A dry run displays every realization plan for the artifact.
+    A dry run prepares and displays every realization plan for the artifact.
     """
 
     first = object()
@@ -161,6 +162,7 @@ def test_build_dry_run_displays_all_plans(
         second,
     )
 
+    prepared: list[object] = []
     displayed: list[object] = []
 
     monkeypatch.setattr(
@@ -169,24 +171,23 @@ def test_build_dry_run_displays_all_plans(
         lambda artifact_id, *, project_root: plans,
     )
 
+    def prepare(
+        plan: object,
+    ) -> object:
+        prepared.append(plan)
+        return object()
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        prepare,
+        raising=False,
+    )
+
     monkeypatch.setattr(
         cmd_build,
         "display_build_plan",
         displayed.append,
-    )
-
-    def unexpected_execution(
-        artifact_id: str,
-        *,
-        project_root: Path,
-        event_sink=None,
-    ) -> None:
-        raise AssertionError("dry run entered artifact execution")
-
-    monkeypatch.setattr(
-        cmd_build,
-        "execute_artifact_build",
-        unexpected_execution,
     )
 
     result = _invoke(
@@ -195,9 +196,86 @@ def test_build_dry_run_displays_all_plans(
     )
 
     assert result.exit_code == 0
+
+    assert prepared == [
+        first,
+        second,
+    ]
+
     assert displayed == [
         first,
         second,
+    ]
+
+
+def test_build_dry_run_prepares_plan_before_display(
+    monkeypatch,
+) -> None:
+    """
+    A dry run validates persistent execution state before displaying a plan.
+    """
+
+    plan = object()
+
+    operations: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(
+        cmd_build,
+        "create_build_plans",
+        lambda artifact_id, *, project_root: (plan,),
+    )
+
+    def prepare(
+        candidate: object,
+    ) -> object:
+        operations.append(
+            (
+                "prepare",
+                candidate,
+            )
+        )
+
+        return object()
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        prepare,
+        raising=False,
+    )
+
+    def display(
+        candidate: object,
+    ) -> None:
+        operations.append(
+            (
+                "display",
+                candidate,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_build_plan",
+        display,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--dry-run",
+    )
+
+    assert result.exit_code == 0
+
+    assert operations == [
+        (
+            "prepare",
+            plan,
+        ),
+        (
+            "display",
+            plan,
+        ),
     ]
 
 
@@ -205,7 +283,7 @@ def test_build_dry_run_does_not_execute(
     monkeypatch,
 ) -> None:
     """
-    A dry run performs planning and display but no execution.
+    A dry run performs validated preparation and display but no execution.
     """
 
     plans = (
@@ -219,6 +297,13 @@ def test_build_dry_run_does_not_execute(
         cmd_build,
         "create_build_plans",
         lambda artifact_id, *, project_root: plans,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        lambda plan: object(),
+        raising=False,
     )
 
     monkeypatch.setattr(
@@ -295,7 +380,7 @@ def test_build_multiple_artifacts_dry_run_in_argument_order(
     monkeypatch,
 ) -> None:
     """
-    Dry-run plans are displayed artifact-by-artifact in argument order.
+    Dry-run plans are prepared and displayed artifact-by-artifact in order.
     """
 
     skippy_first = object()
@@ -310,7 +395,7 @@ def test_build_multiple_artifacts_dry_run_in_argument_order(
         "scooby": (scooby,),
     }
 
-    displayed: list[object] = []
+    operations: list[tuple[str, object]] = []
 
     monkeypatch.setattr(
         cmd_build,
@@ -318,24 +403,39 @@ def test_build_multiple_artifacts_dry_run_in_argument_order(
         lambda artifact_id, *, project_root: plans_by_artifact[artifact_id],
     )
 
+    def prepare(
+        plan: object,
+    ) -> object:
+        operations.append(
+            (
+                "prepare",
+                plan,
+            )
+        )
+
+        return object()
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        prepare,
+        raising=False,
+    )
+
+    def display(
+        plan: object,
+    ) -> None:
+        operations.append(
+            (
+                "display",
+                plan,
+            )
+        )
+
     monkeypatch.setattr(
         cmd_build,
         "display_build_plan",
-        displayed.append,
-    )
-
-    def unexpected_execution(
-        artifact_id: str,
-        *,
-        project_root: Path,
-        event_sink=None,
-    ) -> None:
-        raise AssertionError("dry run entered artifact execution")
-
-    monkeypatch.setattr(
-        cmd_build,
-        "execute_artifact_build",
-        unexpected_execution,
+        display,
     )
 
     result = _invoke(
@@ -346,10 +446,31 @@ def test_build_multiple_artifacts_dry_run_in_argument_order(
 
     assert result.exit_code == 0
 
-    assert displayed == [
-        skippy_first,
-        skippy_second,
-        scooby,
+    assert operations == [
+        (
+            "prepare",
+            skippy_first,
+        ),
+        (
+            "display",
+            skippy_first,
+        ),
+        (
+            "prepare",
+            skippy_second,
+        ),
+        (
+            "display",
+            skippy_second,
+        ),
+        (
+            "prepare",
+            scooby,
+        ),
+        (
+            "display",
+            scooby,
+        ),
     ]
 
 
@@ -362,7 +483,7 @@ def test_build_plan_error_is_reported(
     monkeypatch,
 ) -> None:
     """
-    Dry-run planning errors are presented as Click command errors.
+    Dry-run build-plan errors are presented as Click command errors.
     """
 
     def create_plans(
@@ -385,6 +506,56 @@ def test_build_plan_error_is_reported(
 
     assert result.exit_code != 0
     assert "cannot create build plan" in result.output
+
+
+def test_build_dry_run_configuration_error_is_reported_before_display(
+    monkeypatch,
+) -> None:
+    """
+    Dry-run configuration validation failures are presented as Click command
+    errors before the invalid plan is displayed.
+    """
+
+    plan = object()
+
+    monkeypatch.setattr(
+        cmd_build,
+        "create_build_plans",
+        lambda artifact_id, *, project_root: (plan,),
+    )
+
+    def prepare(
+        candidate: object,
+    ) -> object:
+        assert candidate is plan
+
+        raise ConfigError(
+            "required configuration is invalid",
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        prepare,
+        raising=False,
+    )
+
+    displayed: list[object] = []
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_build_plan",
+        displayed.append,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--dry-run",
+    )
+
+    assert result.exit_code != 0
+    assert "required configuration is invalid" in result.output
+    assert displayed == []
 
 
 def test_build_execution_error_is_reported(

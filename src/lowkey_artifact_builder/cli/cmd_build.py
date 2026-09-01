@@ -25,6 +25,7 @@ from lowkey_artifact_builder.cli.bindings import (
 from lowkey_artifact_builder.cli.display import (
     display_build_plan,
 )
+from lowkey_artifact_builder.config import ConfigError
 from lowkey_artifact_builder.engine import (
     BuildError,
     BuildPlanError,
@@ -32,6 +33,7 @@ from lowkey_artifact_builder.engine import (
     create_build_plans,
     execute_artifact_build,
     execute_artifact_stage,
+    prepare_incremental_build,
 )
 
 # =========================================================
@@ -195,8 +197,11 @@ def _execute_build(
     Execute normal graph-driven artifact builds.
 
     Normal execution delegates artifact orchestration to the engine.
-    Dry-run remains planning-only so the CLI can display the plans that
-    would be executed without performing any work.
+
+    Dry-run creates each configured BuildPlan, prepares its
+    persistent-state-aware ExecutionPlan, and validates the configuration
+    required by that execution scope before displaying the BuildPlan.
+    No stages are executed during dry-run.
     """
 
     project_root = Path.cwd()
@@ -210,6 +215,10 @@ def _execute_build(
                 )
 
                 for plan in plans:
+                    prepare_incremental_build(
+                        plan,
+                    )
+
                     display_build_plan(
                         plan,
                     )
@@ -223,6 +232,7 @@ def _execute_build(
             )
 
         except (
+            ConfigError,
             BuildPlanError,
             BuildError,
         ) as exc:

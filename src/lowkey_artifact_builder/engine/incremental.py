@@ -204,6 +204,41 @@ def plan_incremental_execution(
 
 
 # =========================================================
+# Incremental build preparation
+# =========================================================
+
+
+def prepare_incremental_build(
+    build_plan: BuildPlan,
+    *,
+    product_dependency_fingerprint: (ProductDependencyFingerprintResolver | None) = None,
+) -> ExecutionPlan:
+    """
+    Prepare an incremental build without executing stages.
+
+    Persistent-state-aware planning determines which stages require
+    execution.
+
+    Configuration validation is applied to the resulting execution scope
+    before the plan is returned.
+
+    No stage execution or completion persistence occurs at this boundary.
+    """
+
+    execution_plan = plan_incremental_execution(
+        build_plan,
+        product_dependency_fingerprint=product_dependency_fingerprint,
+    )
+
+    validate_execution(
+        build_plan,
+        execution_plan,
+    )
+
+    return execution_plan
+
+
+# =========================================================
 # Incremental build execution
 # =========================================================
 
@@ -770,4 +805,5 @@ __all__ = [
     "execute_incremental_artifact_build",
     "execute_incremental_build",
     "plan_incremental_execution",
+    "prepare_incremental_build",
 ]

@@ -123,6 +123,7 @@ from .incremental import (
     execute_incremental_artifact_build,
     execute_incremental_build,
     plan_incremental_execution,
+    prepare_incremental_build,
 )
 from .plan import (
     BuildPlanError,
@@ -206,6 +207,7 @@ __all__ = [
     "gather_product_evidence",
     "plan_execution",
     "plan_incremental_execution",
+    "prepare_incremental_build",
     "product_is_fresh",
     "read_stage_completion",
     "stage_requires_execution",
