@@ -17,6 +17,25 @@ from lowkey_artifact_builder.model.validation import (
 )
 
 
+def _validate_geometry(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require Shape geometry to be one of the supported geometry types.
+    """
+
+    geometry = resolver(
+        "shape_geometry",
+    )
+
+    if geometry not in (
+        "circle",
+        "square",
+        "polygon",
+    ):
+        raise ConfigError("shape_geometry must be one of: circle, square, polygon.")
+
+
 def _validate_outer_ridge_width(
     resolver: ConfigurationResolver,
 ) -> None:
@@ -120,6 +139,10 @@ VALIDATORS = (
             "shape_sides",
         ),
         validate=_validate_polygon_sides,
+    ),
+    ConfigurationValidator(
+        parameters=("shape_geometry",),
+        validate=_validate_geometry,
     ),
     ConfigurationValidator(
         parameters=("shape_outer_ridge_width",),

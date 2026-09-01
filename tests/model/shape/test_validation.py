@@ -578,3 +578,93 @@ def test_invalid_historical_shape_ridge_width_does_not_block_current_compose() -
         build_plan,
         execution_plan,
     )
+
+
+@pytest.mark.parametrize(
+    "geometry",
+    (
+        "circle",
+        "square",
+        "polygon",
+    ),
+)
+def test_shape_accepts_supported_geometry(
+    geometry: str,
+) -> None:
+    """
+    Shape accepts every geometry defined by the model contract.
+    """
+
+    _validate_shape(
+        {
+            "shape_geometry": geometry,
+        }
+    )
+
+
+def test_shape_rejects_unsupported_geometry() -> None:
+    """
+    Shape geometry must be one of the model-defined geometry types.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_geometry",
+    ):
+        _validate_shape(
+            {
+                "shape_geometry": "triangle",
+            }
+        )
+
+
+def test_invalid_shape_geometry_fails_when_structure_requires_execution() -> None:
+    """
+    Invalid Shape geometry is validated when structure must execute.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_geometry": "triangle",
+            "shape_sides": 8,
+            "shape_rotation": 0.0,
+        }
+    )
+
+    build_plan, execution_plan = _shape_structure_execution_plan(
+        resolver=resolver,
+        structure_state=ProductState.ABSENT,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_geometry",
+    ):
+        validate_execution(
+            build_plan,
+            execution_plan,
+        )
+
+
+def test_invalid_historical_shape_geometry_does_not_block_current_structure() -> None:
+    """
+    Invalid historical geometry is irrelevant when structure is current.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_geometry": "triangle",
+            "shape_sides": 8,
+            "shape_rotation": 0.0,
+        }
+    )
+
+    build_plan, execution_plan = _shape_structure_execution_plan(
+        resolver=resolver,
+        structure_state=ProductState.CURRENT,
+    )
+
+    validate_execution(
+        build_plan,
+        execution_plan,
+    )
