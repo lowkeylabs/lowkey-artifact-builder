@@ -1565,3 +1565,92 @@ def test_get_product_dependency_binding_rejects_mismatched_definition(
             dependency,
             project_root=tmp_path,
         )
+
+
+def test_library_colors_are_a_system_default(
+    tmp_path: Path,
+) -> None:
+    """
+    The local filament library is supplied by system configuration.
+    """
+
+    resolver = get_resolver(
+        "nydeli",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    library_colors = resolver("library_colors")
+
+    assert isinstance(library_colors, list)
+    assert library_colors
+    assert resolver.source("library_colors") == "system"
+
+
+def test_workspace_may_override_library_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Workspace configuration may override the local filament library.
+    """
+
+    _write_workspace(
+        tmp_path,
+        """
+[parameters]
+library_colors = ["test-red", "test-green"]
+""".lstrip(),
+    )
+
+    resolver = get_resolver(
+        "nydeli",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    assert resolver("library_colors") == [
+        "test-red",
+        "test-green",
+    ]
+    assert resolver.source("library_colors") == "workspace"
+
+
+def test_artifact_may_override_library_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact configuration may override the local filament library.
+    """
+
+    _write_workspace(
+        tmp_path,
+        """
+[parameters]
+library_colors = ["test-red", "test-green"]
+""".lstrip(),
+    )
+
+    write_artifact_config(
+        "nydeli",
+        {
+            "model": "artwork",
+            "parameters": {
+                "library_colors": [
+                    "test-blue",
+                    "test-yellow",
+                ],
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "nydeli",
+        project_root=tmp_path,
+    )
+
+    assert resolver("library_colors") == [
+        "test-blue",
+        "test-yellow",
+    ]
+    assert resolver.source("library_colors") == "artifact"

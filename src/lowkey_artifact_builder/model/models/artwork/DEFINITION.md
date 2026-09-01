@@ -360,7 +360,7 @@ must be present in `artwork_colors`.
 
 
 `artwork_envelope_mode` defines how the Artwork envelope is derived from
-the source image. It defaults to `alpha`.
+the source image. It defaults to `shrink-wrap`.
 
 Supported envelope modes are:
 

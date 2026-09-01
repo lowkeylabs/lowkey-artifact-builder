@@ -372,4 +372,3 @@ This change plan is complete when:
 
 After these criteria are satisfied and the repository conforms to the updated
 permanent specifications, this CHANGEPLAN may be removed.
-
