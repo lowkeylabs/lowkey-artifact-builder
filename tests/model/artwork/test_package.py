@@ -1,15 +1,15 @@
 """
-Tests for the artwork package stage.
+Tests for the Artwork package stage.
 
-These tests characterize the storage boundary between the build engine
-and the package-stage implementation.
+The package stage consumes dimensionalized Artwork components through the
+extrusion manifest and packages them through the shared 3MF component
+representation.
 
-The package stage must consume only the paths supplied through
-StageContext. In particular, it must not reconstruct artifact storage
-paths from the artifact identifier or from knowledge of the canonical
-workspace hierarchy.
+Filesystem layout remains a build-engine responsibility. Component membership,
+semantic color identity, and RGB metadata are established upstream and must be
+preserved by packaging.
 """
-# File: tests/model/test_package.py
+# File: tests/model/artwork/test_package.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 
@@ -21,6 +21,8 @@ from typing import Any
 
 import pytest
 
+from lowkey_artifact_builder.colors import PaletteColor
+from lowkey_artifact_builder.formats.threemf import Component, Mesh
 from lowkey_artifact_builder.model.models.artwork.stages import package
 
 # =========================================================
@@ -62,7 +64,7 @@ def _write_extrude_manifest(
     products: list[dict[str, Any]],
 ) -> None:
     """
-    Write a minimal extrusion manifest.
+    Write a minimal Artwork extrusion manifest.
     """
 
     path.parent.mkdir(
@@ -86,7 +88,7 @@ def _color(
     blue: int,
 ) -> dict[str, int]:
     """
-    Return an extrusion-manifest RGB color.
+    Return Artwork extrusion-manifest RGB metadata.
     """
 
     return {
@@ -96,8 +98,23 @@ def _color(
     }
 
 
+def _mesh() -> Mesh:
+    """
+    Return a minimal valid mesh for package-stage tests.
+    """
+
+    return Mesh(
+        vertices=(
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+        ),
+        triangles=((0, 1, 2),),
+    )
+
+
 # =========================================================
-# Storage-boundary tests
+# Packaging-contract tests
 # =========================================================
 
 
@@ -106,30 +123,20 @@ def test_package_uses_declared_artifact_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    The package stage writes to the artifact path supplied by StageContext.
-
-    The output path is deliberately unrelated to the canonical artifact
-    hierarchy. This prevents the test from passing if the stage happens
-    to reconstruct the normal filesystem layout itself.
+    Artwork packaging writes only to the output supplied by StageContext.
     """
 
     extrude_directory = tmp_path / "somewhere" / "extrusion"
 
-    first_stl = extrude_directory / "color-1.stl"
-    second_stl = extrude_directory / "color-2.stl"
+    stl = extrude_directory / "color-1.stl"
 
-    first_stl.parent.mkdir(
+    stl.parent.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    first_stl.write_text(
-        "first",
-        encoding="utf-8",
-    )
-
-    second_stl.write_text(
-        "second",
+    stl.write_text(
+        "component",
         encoding="utf-8",
     )
 
@@ -140,22 +147,12 @@ def test_package_uses_declared_artifact_output(
         [
             {
                 "index": 1,
-                "path": first_stl.name,
+                "path": stl.name,
                 "name": "white",
                 "color": _color(
                     255,
                     255,
                     255,
-                ),
-            },
-            {
-                "index": 2,
-                "path": second_stl.name,
-                "name": "red",
-                "color": _color(
-                    255,
-                    0,
-                    0,
                 ),
             },
         ],
@@ -173,23 +170,22 @@ def test_package_uses_declared_artifact_output(
         },
     )
 
-    calls: list[
-        tuple[
-            tuple[tuple[str, Path], ...],
-            Path,
-        ]
-    ] = []
+    monkeypatch.setattr(
+        package,
+        "load_stl",
+        lambda path: _mesh(),
+        raising=False,
+    )
 
-    def fake_write_stls(
-        stls: tuple[tuple[str, Path], ...],
+    received_output: Path | None = None
+
+    def fake_write(
+        components,
         output: Path,
     ) -> None:
-        calls.append(
-            (
-                tuple(stls),
-                output,
-            )
-        )
+        nonlocal received_output
+
+        received_output = output
 
         output.parent.mkdir(
             parents=True,
@@ -200,29 +196,15 @@ def test_package_uses_declared_artifact_output(
 
     monkeypatch.setattr(
         package,
-        "write_stls",
-        fake_write_stls,
+        "write",
+        fake_write,
+        raising=False,
     )
 
     package.execute(context)  # type: ignore[arg-type]
 
+    assert received_output == artifact
     assert artifact.is_file()
-
-    assert calls == [
-        (
-            (
-                (
-                    "example-white",
-                    first_stl,
-                ),
-                (
-                    "example-red",
-                    second_stl,
-                ),
-            ),
-            artifact,
-        )
-    ]
 
 
 def test_package_resolves_dynamic_stls_relative_to_manifest(
@@ -230,9 +212,7 @@ def test_package_resolves_dynamic_stls_relative_to_manifest(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Dynamic STL product paths are resolved relative to their manifest.
-
-    Their location must not depend on the location of the final artifact.
+    Artwork component paths are resolved relative to their manifest.
     """
 
     manifest_directory = tmp_path / "dynamic-products"
@@ -295,15 +275,134 @@ def test_package_resolves_dynamic_stls_relative_to_manifest(
         },
     )
 
-    captured_stls: tuple[tuple[str, Path], ...] | None = None
+    loaded_paths: list[Path] = []
 
-    def fake_write_stls(
-        stls: tuple[tuple[str, Path], ...],
+    def fake_load_stl(
+        path: Path,
+    ) -> Mesh:
+        loaded_paths.append(path)
+        return _mesh()
+
+    monkeypatch.setattr(
+        package,
+        "load_stl",
+        fake_load_stl,
+        raising=False,
+    )
+
+    def fake_write(
+        components,
         output: Path,
     ) -> None:
-        nonlocal captured_stls
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_bytes(b"3mf")
 
-        captured_stls = tuple(stls)
+    monkeypatch.setattr(
+        package,
+        "write",
+        fake_write,
+        raising=False,
+    )
+
+    package.execute(context)  # type: ignore[arg-type]
+
+    assert loaded_paths == [
+        first_stl,
+        second_stl,
+    ]
+
+
+def test_package_preserves_semantic_color_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Artwork packaging preserves semantic color identity and RGB metadata.
+
+    The extrusion manifest is authoritative for Artwork component colors.
+    Packaging transfers that metadata into the shared 3MF component contract
+    rather than discarding it or re-resolving model color policy.
+    """
+
+    extrude_directory = tmp_path / "extrude"
+
+    white_stl = extrude_directory / "color-1.stl"
+    red_stl = extrude_directory / "color-2.stl"
+
+    extrude_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    white_stl.write_text(
+        "white",
+        encoding="utf-8",
+    )
+
+    red_stl.write_text(
+        "red",
+        encoding="utf-8",
+    )
+
+    manifest = extrude_directory / "products.json"
+
+    _write_extrude_manifest(
+        manifest,
+        [
+            {
+                "index": 1,
+                "path": white_stl.name,
+                "name": "white",
+                "color": _color(
+                    255,
+                    255,
+                    255,
+                ),
+            },
+            {
+                "index": 2,
+                "path": red_stl.name,
+                "name": "red",
+                "color": _color(
+                    220,
+                    38,
+                    38,
+                ),
+            },
+        ],
+    )
+
+    artifact = tmp_path / "artifact.3mf"
+
+    context = StubContext(
+        artifact_id="portrait",
+        inputs={
+            "extrude.manifest": manifest,
+        },
+        outputs={
+            "artifact": artifact,
+        },
+    )
+
+    monkeypatch.setattr(
+        package,
+        "load_stl",
+        lambda path: _mesh(),
+        raising=False,
+    )
+
+    captured_components: tuple[Component, ...] | None = None
+
+    def fake_write(
+        components,
+        output: Path,
+    ) -> None:
+        nonlocal captured_components
+
+        captured_components = tuple(components)
 
         output.parent.mkdir(
             parents=True,
@@ -314,20 +413,36 @@ def test_package_resolves_dynamic_stls_relative_to_manifest(
 
     monkeypatch.setattr(
         package,
-        "write_stls",
-        fake_write_stls,
+        "write",
+        fake_write,
+        raising=False,
     )
 
     package.execute(context)  # type: ignore[arg-type]
 
-    assert captured_stls == (
-        (
-            "portrait-white",
-            first_stl,
+    assert captured_components is not None
+
+    assert tuple(component.name for component in captured_components) == (
+        "portrait-white",
+        "portrait-red",
+    )
+
+    assert tuple(component.color for component in captured_components) == (
+        PaletteColor(
+            name="white",
+            rgb=(
+                255,
+                255,
+                255,
+            ),
         ),
-        (
-            "portrait-green",
-            second_stl,
+        PaletteColor(
+            name="red",
+            rgb=(
+                220,
+                38,
+                38,
+            ),
         ),
     )
 
@@ -337,7 +452,7 @@ def test_package_does_not_require_canonical_artifact_directories(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Packaging does not depend on a canonical artifacts/<id>/... hierarchy.
+    Artwork packaging remains independent of workspace filesystem policy.
     """
 
     manifest_directory = tmp_path / "input"
@@ -368,7 +483,7 @@ def test_package_does_not_require_canonical_artifact_directories(
                     215,
                     0,
                 ),
-            }
+            },
         ],
     )
 
@@ -384,30 +499,30 @@ def test_package_does_not_require_canonical_artifact_directories(
         },
     )
 
-    received_output: Path | None = None
+    monkeypatch.setattr(
+        package,
+        "load_stl",
+        lambda path: _mesh(),
+        raising=False,
+    )
 
-    def fake_write_stls(
-        stls: tuple[tuple[str, Path], ...],
+    def fake_write(
+        components,
         output: Path,
     ) -> None:
-        nonlocal received_output
-
-        received_output = output
-
         output.parent.mkdir(
             parents=True,
             exist_ok=True,
         )
-
         output.write_bytes(b"3mf")
 
     monkeypatch.setattr(
         package,
-        "write_stls",
-        fake_write_stls,
+        "write",
+        fake_write,
+        raising=False,
     )
 
     package.execute(context)  # type: ignore[arg-type]
 
-    assert received_output == artifact
     assert artifact.is_file()

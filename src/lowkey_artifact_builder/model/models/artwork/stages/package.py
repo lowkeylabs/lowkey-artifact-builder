@@ -1,21 +1,16 @@
 """
 Artwork packaging stage.
 
-The package stage combines the independently printable artwork STL
-components into the final multicomponent 3MF artifact.
+The package stage combines independently printable Artwork STL components into
+the final multicomponent 3MF artifact.
 
-Filesystem layout and dependency resolution are responsibilities of
-the build engine. This implementation consumes only the paths supplied
-through StageContext.
+Filesystem layout and dependency resolution are responsibilities of the build
+engine. This implementation consumes only paths supplied through StageContext.
 
-The extrusion manifest identifies the dynamically generated STL
-components that participate in the final artifact. The package stage
-uses that manifest rather than discovering components by scanning the
-extrusion directory.
-
-Semantic artwork color names assigned during rasterization are
-preserved through the pipeline and used to construct meaningful 3MF
-object names.
+The extrusion manifest identifies the dynamically generated STL components
+that participate in the final artifact. Packaging preserves the semantic color
+identity and RGB representation established upstream without re-resolving
+Artwork color policy.
 """
 # File: src/lowkey_artifact_builder/model/models/artwork/stages/package.py
 # Copyright 2026 LowKeyLabs LLC
@@ -28,12 +23,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from lowkey_artifact_builder.engine import (
-    StageContext,
-)
+from lowkey_artifact_builder.colors import PaletteColor
+from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.formats.threemf import (
+    Component,
     ThreeMFError,
-    write_stls,
+    load_stl,
+    write,
 )
 
 # =========================================================
@@ -43,7 +39,7 @@ from lowkey_artifact_builder.formats.threemf import (
 
 class PackageError(RuntimeError):
     """
-    Raised when artwork packaging cannot be completed.
+    Raised when Artwork packaging cannot be completed.
     """
 
 
@@ -58,23 +54,18 @@ class PackageError(RuntimeError):
 )
 class ExtrudedComponent:
     """
-    One STL component described by the extrusion manifest.
+    One independently printable Artwork component.
 
-    name is the semantic artwork color assigned by the raster stage
-    and propagated through vectorization and extrusion.
+    The extrusion manifest establishes component order, path, semantic color
+    name, and RGB representation. Packaging preserves those semantics while
+    constructing the final 3MF.
     """
 
     index: int
 
     path: Path
 
-    name: str
-
-    color: tuple[
-        int,
-        int,
-        int,
-    ]
+    color: PaletteColor
 
 
 # =========================================================
@@ -86,18 +77,22 @@ def execute(
     context: StageContext,
 ) -> None:
     """
-    Execute the artwork package stage.
+    Execute the Artwork package stage.
 
     The stage consumes:
 
         extrude.manifest
-            Manifest describing the independently printable STL
-            components produced by the extrusion stage.
+            Manifest describing independently printable STL components
+            produced by the extrusion stage.
 
     The stage produces:
 
         artifact
             Final multicomponent 3MF artifact.
+
+    Packaging does not determine Artwork component membership or resolve
+    semantic colors. Those properties are established upstream and preserved
+    through the shared 3MF component representation.
     """
 
     extrude_manifest = context.input(
@@ -112,21 +107,26 @@ def execute(
         raise PackageError(f"Extrusion product manifest does not exist: {extrude_manifest}")
 
     try:
-        components = _load_extrude_manifest(extrude_manifest)
+        extruded_components = _load_extrude_manifest(
+            extrude_manifest,
+        )
 
-        stls = tuple(
-            (
-                _component_name(
+        components = tuple(
+            Component(
+                name=_component_name(
                     context.artifact_id,
                     component,
                 ),
-                component.path,
+                mesh=load_stl(
+                    component.path,
+                ),
+                color=component.color,
             )
-            for component in components
+            for component in extruded_components
         )
 
-        write_stls(
-            stls,
+        write(
+            components,
             artifact,
         )
 
@@ -140,7 +140,7 @@ def execute(
 
     except ThreeMFError as exc:
         raise PackageError(
-            f"Could not package artwork components from {extrude_manifest}: {exc}"
+            f"Could not package Artwork components from {extrude_manifest}: {exc}"
         ) from exc
 
     except (
@@ -164,7 +164,7 @@ def _load_extrude_manifest(
     manifest: Path,
 ) -> list[ExtrudedComponent]:
     """
-    Load STL components from the extrusion manifest.
+    Load independently printable components from an extrusion manifest.
     """
 
     try:
@@ -186,7 +186,9 @@ def _load_extrude_manifest(
     ):
         raise PackageError("Extrusion manifest must contain a JSON object.")
 
-    products = data.get("products")
+    products = data.get(
+        "products",
+    )
 
     if not isinstance(
         products,
@@ -197,27 +199,27 @@ def _load_extrude_manifest(
     if not products:
         raise PackageError("Extrusion manifest contains no STL products.")
 
-    result: list[ExtrudedComponent] = []
-
-    for product in products:
-        result.append(
-            _load_component(
-                manifest,
-                product,
-            )
+    result = [
+        _load_component(
+            manifest,
+            product,
         )
+        for product in products
+    ]
 
     indexes = [component.index for component in result]
 
     if len(indexes) != len(set(indexes)):
         raise PackageError("Extrusion product indexes must be unique.")
 
-    names = [component.name for component in result]
+    names = [component.color.name for component in result]
 
     if len(names) != len(set(names)):
         raise PackageError("Extrusion product color names must be unique.")
 
-    result.sort(key=lambda component: component.index)
+    result.sort(
+        key=lambda component: component.index,
+    )
 
     return result
 
@@ -236,13 +238,21 @@ def _load_component(
     ):
         raise PackageError("Extrusion manifest contains an invalid product.")
 
-    index = product.get("index")
+    index = product.get(
+        "index",
+    )
 
-    filename = product.get("path")
+    filename = product.get(
+        "path",
+    )
 
-    name = product.get("name")
+    name = product.get(
+        "name",
+    )
 
-    color_data = product.get("color")
+    color_data = product.get(
+        "color",
+    )
 
     if (
         isinstance(
@@ -283,21 +293,24 @@ def _load_component(
     ):
         raise PackageError(f"Extrusion product {index} has no valid color.")
 
-    color = (
-        _color_component(
-            color_data,
-            "red",
-            index,
-        ),
-        _color_component(
-            color_data,
-            "green",
-            index,
-        ),
-        _color_component(
-            color_data,
-            "blue",
-            index,
+    color = PaletteColor(
+        name=name,
+        rgb=(
+            _color_component(
+                color_data,
+                "red",
+                index,
+            ),
+            _color_component(
+                color_data,
+                "green",
+                index,
+            ),
+            _color_component(
+                color_data,
+                "blue",
+                index,
+            ),
         ),
     )
 
@@ -312,7 +325,6 @@ def _load_component(
     return ExtrudedComponent(
         index=index,
         path=path,
-        name=name,
         color=color,
     )
 
@@ -331,7 +343,9 @@ def _color_component(
     Return one validated RGB component.
     """
 
-    value = color.get(name)
+    value = color.get(
+        name,
+    )
 
     if (
         isinstance(
@@ -360,10 +374,11 @@ def _component_name(
     component: ExtrudedComponent,
 ) -> str:
     """
-    Return the semantic 3MF object name for one artwork component.
+    Return the semantic 3MF object name for one Artwork component.
 
-    Object names combine the artifact identity with the semantic
-    artwork color assigned during rasterization.
+    Artwork's independently printable components are identified by semantic
+    color. Object names therefore combine artifact identity with the semantic
+    color name established upstream.
 
     For example:
 
@@ -372,7 +387,7 @@ def _component_name(
         nydeli-white
     """
 
-    return f"{artifact_id}-{component.name}"
+    return f"{artifact_id}-{component.color.name}"
 
 
 __all__ = [

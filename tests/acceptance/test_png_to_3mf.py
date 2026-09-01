@@ -7,7 +7,9 @@ End-to-end acceptance tests for artifact production.
 
 from __future__ import annotations
 
+import json
 import shutil
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
@@ -18,6 +20,7 @@ from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.engine import (
     create_build_plans,
 )
+from lowkey_artifact_builder.formats.threemf import CORE_NS
 
 # =========================================================
 # Acceptance tests
@@ -30,17 +33,12 @@ def test_png_builds_complete_3mf(
     monkeypatch,
 ) -> None:
     """
-    A PNG artwork input can be interactively configured and built into
-    a complete 3MF artifact through the public CLI.
+    A PNG Artwork input builds into a semantically colored standalone 3MF.
 
-    The repository supplies only the source test artwork. Configuration,
-    artifact-owned inputs, intermediate products, and the final 3MF are
-    all created beneath an isolated temporary project root.
-
-    Raster and vector processing preserve registered artwork geometry
-    independently of physical manufacturing dimensions. Physical size
-    is introduced only when the registered vector geometry is consumed
-    by the extrusion stage.
+    Raster and vector processing preserve registered Artwork independently of
+    manufacturing dimensions. Extrusion introduces physical dimensions, and
+    packaging preserves each independently printable Artwork component's
+    semantic color identity and RGB representation.
     """
 
     # -----------------------------------------------------
@@ -72,28 +70,13 @@ def test_png_builds_complete_3mf(
     # Configure through the public CLI
     # -----------------------------------------------------
 
-    #
-    # Interactive responses:
-    #
-    #   1  -> artwork model
-    #   1  -> nydeli-clean.png
-    #   70 -> physical artwork size used by extrusion
-    #
-    # Raster and vector processing remain independent of physical
-    # dimensions. artwork_size is consumed only when the registered
-    # vector geometry is dimensionalized by the extrusion stage.
-    #
-    # setup_artifact() asks only for parameters that cannot
-    # already be resolved through the configuration stack.
-    #
-
     config_result = runner.invoke(
         cli,
         [
             "config",
             "nydeli",
         ],
-        input=("1\n1\n70\n"),
+        input="1\n1\n70\n",
     )
 
     assert config_result.exit_code == 0, (
@@ -135,7 +118,9 @@ def test_png_builds_complete_3mf(
     assert plan.model_name == "artwork"
     assert plan.realization_name == "default"
 
-    assert plan.artifact_dir.is_relative_to(project_root)
+    assert plan.artifact_dir.is_relative_to(
+        project_root,
+    )
 
     # -----------------------------------------------------
     # Build through the public CLI
@@ -154,8 +139,14 @@ def test_png_builds_complete_3mf(
     )
 
     # -----------------------------------------------------
-    # Locate final product
+    # Locate extrusion and package products
     # -----------------------------------------------------
+
+    extrude_stage = next(stage for stage in plan.stages if stage.spec.name == "extrude")
+
+    extrude_manifest_product = next(
+        product for product in extrude_stage.products if product.spec.name == "manifest"
+    )
 
     package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
 
@@ -163,27 +154,114 @@ def test_png_builds_complete_3mf(
         product for product in package_stage.products if product.spec.name == "artifact"
     )
 
+    extrude_manifest = extrude_manifest_product.path
     output = artifact_product.path
+
+    # -----------------------------------------------------
+    # Verify physical component contract
+    # -----------------------------------------------------
+
+    assert extrude_manifest.is_file()
+
+    extrusion_data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    products = extrusion_data["products"]
+
+    assert isinstance(
+        products,
+        list,
+    )
+
+    assert products
 
     # -----------------------------------------------------
     # Verify final product
     # -----------------------------------------------------
 
-    assert output.is_relative_to(project_root)
+    assert output.is_relative_to(
+        project_root,
+    )
 
     assert output.is_file(), f"Build did not produce the expected 3MF: {output}"
 
     assert output.stat().st_size > 0
 
-    # 3MF is an OPC/ZIP package. Verify that the result is
-    # structurally a 3MF rather than merely a file carrying
-    # the .3mf extension.
+    assert zipfile.is_zipfile(
+        output,
+    )
 
-    assert zipfile.is_zipfile(output)
+    with zipfile.ZipFile(
+        output,
+    ) as archive:
+        names = set(
+            archive.namelist(),
+        )
 
-    with zipfile.ZipFile(output) as archive:
-        names = set(archive.namelist())
+        assert "[Content_Types].xml" in names
 
-    assert "[Content_Types].xml" in names
+        model_name = next(
+            name for name in names if name.startswith("3D/") and name.endswith(".model")
+        )
 
-    assert any(name.startswith("3D/") and name.endswith(".model") for name in names)
+        model = ET.fromstring(
+            archive.read(
+                model_name,
+            ),
+        )
+
+    # -----------------------------------------------------
+    # Verify independently printable Artwork components
+    # -----------------------------------------------------
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    expected_names = {f"nydeli-{product['name']}" for product in products}
+
+    assert (
+        set(
+            objects_by_name,
+        )
+        == expected_names
+    )
+
+    assert len(materials) == len(products)
+
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    # -----------------------------------------------------
+    # Verify semantic color identity survives packaging
+    # -----------------------------------------------------
+
+    for product in products:
+        semantic_name = product["name"]
+        rgb = product["color"]
+
+        object_ = objects_by_name[f"nydeli-{semantic_name}"]
+
+        material = materials_by_id[object_.get("pid")]
+
+        color = material.find(
+            f"{{{CORE_NS}}}base",
+        )
+
+        assert color is not None
+
+        assert color.get("name") == semantic_name
+
+        assert color.get("displaycolor") == (
+            f"#{rgb['red']:02X}{rgb['green']:02X}{rgb['blue']:02X}"
+        )
+
+        assert object_.get("pindex") == "0"
