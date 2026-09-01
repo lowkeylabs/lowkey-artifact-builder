@@ -1212,3 +1212,50 @@ def test_prepare_does_not_require_white_when_fill_color_is_configured(
 
     assert trace.is_file()
     assert envelope.is_file()
+
+
+@pytest.mark.slow
+def test_shrink_wrap_real_opaque_artwork_does_not_use_source_rectangle() -> None:
+    """
+    Shrink-wrap derives a meaningful envelope for representative opaque
+    artwork instead of treating the complete source rectangle as Artwork.
+    """
+
+    source = Path(__file__).parent / "fixtures" / "opaque_background_cat.png"
+
+    assert source.is_file()
+
+    with Image.open(source) as image:
+        rgba = image.convert(
+            "RGBA",
+        )
+
+    envelope = prepare._derive_envelope(
+        rgba,
+        mode="shrink-wrap",
+    )
+
+    assert np.any(envelope)
+
+    height, width = envelope.shape
+
+    # Representative opaque-background artwork must not collapse to the
+    # historical alpha-mode failure of treating the complete raster as
+    # Artwork.
+    assert not np.all(envelope)
+
+    # The shrink-wrapped subject should have exterior background on every
+    # side rather than coinciding with the source-image rectangle.
+    assert not np.any(envelope[0, :])
+    assert not np.any(envelope[height - 1, :])
+    assert not np.any(envelope[:, 0])
+    assert not np.any(envelope[:, width - 1])
+
+    occupied_y, occupied_x = np.nonzero(
+        envelope,
+    )
+
+    assert occupied_x.min() > 0
+    assert occupied_y.min() > 0
+    assert occupied_x.max() < width - 1
+    assert occupied_y.max() < height - 1
