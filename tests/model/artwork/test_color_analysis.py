@@ -1324,3 +1324,164 @@ def test_five_tool_artwork_palette_recommendation_requires_supplied_white_identi
             resolver=resolver,
             white="test-white",
         )
+
+
+def test_five_tool_artwork_palette_recommendations_compare_all_availability_scopes(
+    tmp_path: Path,
+) -> None:
+    """
+    Five-tool recommendations independently compare printer, library,
+    and physical-catalog palette capability.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "products": [
+                    {
+                        "name": "artwork-red",
+                        "color": {
+                            "red": 255,
+                            "green": 0,
+                            "blue": 0,
+                        },
+                    },
+                    {
+                        "name": "artwork-green",
+                        "color": {
+                            "red": 0,
+                            "green": 255,
+                            "blue": 0,
+                        },
+                    },
+                    {
+                        "name": "artwork-blue",
+                        "color": {
+                            "red": 0,
+                            "green": 0,
+                            "blue": 255,
+                        },
+                    },
+                    {
+                        "name": "artwork-yellow",
+                        "color": {
+                            "red": 255,
+                            "green": 255,
+                            "blue": 0,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    colors: dict[str, object] = {
+        "test-white": _catalog_color(
+            manufacturer="Test Filament",
+            rgb=(255, 255, 255),
+        ),
+        "printer-red": _catalog_color(
+            manufacturer="Test Filament",
+            rgb=(160, 0, 0),
+        ),
+        "printer-green": _catalog_color(
+            manufacturer="Test Filament",
+            rgb=(0, 160, 0),
+        ),
+        "printer-blue": _catalog_color(
+            manufacturer="Test Filament",
+            rgb=(0, 0, 160),
+        ),
+        "printer-yellow": _catalog_color(
+            manufacturer="Test Filament",
+            rgb=(160, 160, 0),
+        ),
+        "library-red": _catalog_color(
+            manufacturer="Test Filament",
+            rgb=(220, 0, 0),
+        ),
+        "library-green": _catalog_color(
+            manufacturer="Test Filament",
+            rgb=(0, 220, 0),
+        ),
+        "library-blue": _catalog_color(
+            manufacturer="Test Filament",
+            rgb=(0, 0, 220),
+        ),
+        "library-yellow": _catalog_color(
+            manufacturer="Test Filament",
+            rgb=(220, 220, 0),
+        ),
+        "catalog-red": _catalog_color(
+            manufacturer="Test Filament",
+            rgb=(255, 0, 0),
+        ),
+        "catalog-green": _catalog_color(
+            manufacturer="Test Filament",
+            rgb=(0, 255, 0),
+        ),
+        "catalog-blue": _catalog_color(
+            manufacturer="Test Filament",
+            rgb=(0, 0, 255),
+        ),
+        "catalog-yellow": _catalog_color(
+            manufacturer="Test Filament",
+            rgb=(255, 255, 0),
+        ),
+    }
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": [
+                "test-white",
+                "printer-red",
+                "printer-green",
+                "printer-blue",
+                "printer-yellow",
+            ],
+            "library_colors": [
+                "test-white",
+                "library-red",
+                "library-green",
+                "library-blue",
+                "library-yellow",
+            ],
+        },
+        colors=colors,
+    )
+
+    recommendations = recommend_five_tool_artwork_palettes(
+        manifest=manifest,
+        resolver=resolver,
+        white="test-white",
+    )
+
+    assert tuple(color.name for color in recommendations.printer.colors) == (
+        "test-white",
+        "printer-red",
+        "printer-green",
+        "printer-blue",
+        "printer-yellow",
+    )
+
+    assert tuple(color.name for color in recommendations.library.colors) == (
+        "test-white",
+        "library-red",
+        "library-green",
+        "library-blue",
+        "library-yellow",
+    )
+
+    assert tuple(color.name for color in recommendations.catalog.colors) == (
+        "test-white",
+        "catalog-red",
+        "catalog-green",
+        "catalog-blue",
+        "catalog-yellow",
+    )
+
+    assert recommendations.printer.score > recommendations.library.score
+    assert recommendations.library.score > recommendations.catalog.score
