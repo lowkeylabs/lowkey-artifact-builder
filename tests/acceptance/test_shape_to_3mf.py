@@ -2162,3 +2162,506 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
     assert not (artwork_root / "40-extrude" / "products.json").exists()
 
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+
+@pytest.mark.slow
+def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    Shape base and Artwork fill may share one semantic color while remaining
+    independently identifiable physical components in the final 3MF.
+
+    Semantic color identity does not merge the structural base with the
+    Shape-owned Artwork fill.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    # -----------------------------------------------------
+    # Create canonical Artwork input
+    # -----------------------------------------------------
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+
+    assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
+
+    artwork_directory = project_root / "artifacts" / "fill-source"
+
+    artwork_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_source = artwork_directory / "artifact.png"
+
+    shutil.copy2(
+        fixture_source,
+        artwork_source,
+    )
+
+    # -----------------------------------------------------
+    # Configure reusable Artwork producer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "fill-source",
+        {
+            "model": "artwork",
+            "source": str(
+                artwork_source,
+            ),
+            "artwork_size": 200.0,
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Configure Shape with shared base/fill color
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "shared-color-fill-shape",
+        {
+            "model": "shape",
+            "shape_geometry": "circle",
+            "shape_size": 100.0,
+            "shape_base_color": "test-blue",
+            "shape_artwork_fill_color": "test-blue",
+            "product_dependencies": {
+                "manifest": {
+                    "artifact": "fill-source",
+                    "model": "artwork",
+                    "realization": "default",
+                    "stage": "vector",
+                    "product": "manifest",
+                },
+            },
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Build through dependency-aware orchestration
+    # -----------------------------------------------------
+
+    plans = create_build_plans(
+        "shared-color-fill-shape",
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+
+    execute_dependency_build(
+        plans[0],
+    )
+
+    shape_root = project_root / "artifacts" / "shared-color-fill-shape" / "shape" / "default"
+
+    extrude_manifest = shape_root / "30-extrude" / "products.json"
+
+    artifact = shape_root / "40-package" / "artifact.3mf"
+
+    assert extrude_manifest.is_file()
+    assert artifact.is_file()
+
+    # -----------------------------------------------------
+    # Physical manifest preserves distinct roles
+    # -----------------------------------------------------
+
+    extrusion_data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    components_by_name = {
+        component["name"]: component for component in extrusion_data["components"]
+    }
+
+    assert "base" in components_by_name
+    assert "artwork-fill" in components_by_name
+
+    assert components_by_name["base"]["color"] == {
+        "name": "test-blue",
+        "rgb": [0, 0, 255],
+    }
+
+    assert components_by_name["artwork-fill"]["color"] == {
+        "name": "test-blue",
+        "rgb": [0, 0, 255],
+    }
+
+    assert components_by_name["base"]["path"] != components_by_name["artwork-fill"]["path"]
+
+    # -----------------------------------------------------
+    # Final 3MF preserves distinct component identity
+    # -----------------------------------------------------
+
+    with zipfile.ZipFile(
+        artifact,
+    ) as archive:
+        model_name = next(
+            name
+            for name in archive.namelist()
+            if name.startswith("3D/") and name.endswith(".model")
+        )
+
+        model = ET.fromstring(
+            archive.read(
+                model_name,
+            )
+        )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    base_object = objects_by_name["shared-color-fill-shape-base"]
+
+    fill_object = objects_by_name["shared-color-fill-shape-artwork-fill"]
+
+    assert base_object.get("id") != fill_object.get("id")
+
+    # -----------------------------------------------------
+    # Both components retain the shared semantic color
+    # -----------------------------------------------------
+
+    for object_ in (
+        base_object,
+        fill_object,
+    ):
+        material_id = object_.get(
+            "pid",
+        )
+
+        assert material_id is not None
+
+        material = materials_by_id[material_id]
+
+        color = material.find(
+            f"{{{CORE_NS}}}base",
+        )
+
+        assert color is not None
+        assert color.get("name") == "test-blue"
+        assert color.get("displaycolor") == "#0000FF"
+        assert object_.get("pindex") == "0"
+
+    # -----------------------------------------------------
+    # Incorporated Artwork remains independently present
+    # -----------------------------------------------------
+
+    artwork_object_names = {
+        name
+        for name in objects_by_name
+        if name is not None
+        and name.startswith(
+            "shared-color-fill-shape-artwork-",
+        )
+        and name != "shared-color-fill-shape-artwork-fill"
+    }
+
+    assert artwork_object_names
+
+    # -----------------------------------------------------
+    # Standalone Artwork manufacturing remains unnecessary
+    # -----------------------------------------------------
+
+    artwork_root = project_root / "artifacts" / "fill-source" / "artwork" / "default"
+
+    assert (artwork_root / "30-vector" / "products.json").is_file()
+
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    "ridge_style",
+    [
+        "integrated",
+        "separate",
+    ],
+)
+def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
+    tmp_path: Path,
+    monkeypatch,
+    ridge_style: str,
+) -> None:
+    """
+    A physical outer ridge does not alter Artwork fill Z semantics.
+
+    Integrated and separate outer ridges both preserve the Shape-owned
+    Artwork-fill interval from shape_base_raise through
+    shape_base_raise + shape_artwork_raise.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    # -----------------------------------------------------
+    # Create canonical Artwork input
+    # -----------------------------------------------------
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+
+    assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
+
+    artwork_directory = project_root / "artifacts" / "ridge-fill-source"
+
+    artwork_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_source = artwork_directory / "artifact.png"
+
+    shutil.copy2(
+        fixture_source,
+        artwork_source,
+    )
+
+    # -----------------------------------------------------
+    # Configure reusable Artwork producer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "ridge-fill-source",
+        {
+            "model": "artwork",
+            "source": str(
+                artwork_source,
+            ),
+            "artwork_size": 200.0,
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Configure Shape with physical ridge and fill
+    # -----------------------------------------------------
+
+    artifact_id = f"{ridge_style}-ridge-fill-shape"
+
+    shape_base_raise = 2.0
+    shape_artwork_raise = 1.25
+
+    write_artifact_config(
+        artifact_id,
+        {
+            "model": "shape",
+            "shape_geometry": "circle",
+            "shape_size": 100.0,
+            "shape_base_raise": shape_base_raise,
+            "shape_artwork_raise": shape_artwork_raise,
+            "shape_base_color": "test-white",
+            "shape_artwork_fill_color": "test-blue",
+            "shape_outer_ridge_width": 2.0,
+            "shape_outer_ridge_raise": 1.5,
+            "shape_outer_ridge_style": ridge_style,
+            "shape_outer_ridge_color": "test-red",
+            "product_dependencies": {
+                "manifest": {
+                    "artifact": "ridge-fill-source",
+                    "model": "artwork",
+                    "realization": "default",
+                    "stage": "vector",
+                    "product": "manifest",
+                },
+            },
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Build through dependency-aware orchestration
+    # -----------------------------------------------------
+
+    plans = create_build_plans(
+        artifact_id,
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+
+    execute_dependency_build(
+        plans[0],
+    )
+
+    shape_root = project_root / "artifacts" / artifact_id / "shape" / "default"
+
+    extrude_root = shape_root / "30-extrude"
+
+    extrude_manifest = extrude_root / "products.json"
+
+    artifact = shape_root / "40-package" / "artifact.3mf"
+
+    assert extrude_manifest.is_file()
+    assert artifact.is_file()
+
+    # -----------------------------------------------------
+    # Physical component contract includes ridge and fill
+    # -----------------------------------------------------
+
+    extrusion_data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    components_by_name = {
+        component["name"]: component for component in extrusion_data["components"]
+    }
+
+    assert "base" in components_by_name
+    assert "ridge" in components_by_name
+    assert "artwork-fill" in components_by_name
+
+    artwork_component_names = {
+        name
+        for name in components_by_name
+        if str(name).startswith("artwork-") and name != "artwork-fill"
+    }
+
+    assert artwork_component_names
+
+    fill_component = components_by_name["artwork-fill"]
+
+    assert fill_component["color"] == {
+        "name": "test-blue",
+        "rgb": [0, 0, 255],
+    }
+
+    fill_path = extrude_root / str(fill_component["path"])
+
+    assert fill_path.is_file()
+    assert fill_path.stat().st_size > 0
+
+    # -----------------------------------------------------
+    # Verify actual physical fill Z interval
+    # -----------------------------------------------------
+
+    fill_text = fill_path.read_text(
+        encoding="utf-8",
+    )
+
+    z_values: list[float] = []
+
+    for line in fill_text.splitlines():
+        stripped = line.strip()
+
+        if not stripped.startswith("vertex "):
+            continue
+
+        coordinates = stripped.split()
+
+        assert len(coordinates) == 4
+
+        z_values.append(
+            float(
+                coordinates[3],
+            )
+        )
+
+    assert z_values
+
+    assert min(z_values) == pytest.approx(
+        shape_base_raise,
+    )
+
+    assert max(z_values) == pytest.approx(
+        shape_base_raise + shape_artwork_raise,
+    )
+
+    # -----------------------------------------------------
+    # Ridge and fill survive packaging independently
+    # -----------------------------------------------------
+
+    with zipfile.ZipFile(
+        artifact,
+    ) as archive:
+        model_name = next(
+            name
+            for name in archive.namelist()
+            if name.startswith("3D/") and name.endswith(".model")
+        )
+
+        model = ET.fromstring(
+            archive.read(
+                model_name,
+            )
+        )
+
+    objects_by_name = {
+        object_.get("name"): object_
+        for object_ in model.findall(
+            f".//{{{CORE_NS}}}object",
+        )
+    }
+
+    assert f"{artifact_id}-base" in objects_by_name
+    assert f"{artifact_id}-ridge" in objects_by_name
+    assert f"{artifact_id}-artwork-fill" in objects_by_name
+
+    artwork_object_names = {
+        name
+        for name in objects_by_name
+        if name is not None
+        and name.startswith(
+            f"{artifact_id}-artwork-",
+        )
+        and name != f"{artifact_id}-artwork-fill"
+    }
+
+    assert artwork_object_names
+
+    base_object = objects_by_name[f"{artifact_id}-base"]
+
+    ridge_object = objects_by_name[f"{artifact_id}-ridge"]
+
+    fill_object = objects_by_name[f"{artifact_id}-artwork-fill"]
+
+    assert (
+        len(
+            {
+                base_object.get("id"),
+                ridge_object.get("id"),
+                fill_object.get("id"),
+            }
+        )
+        == 3
+    )
+
+    # -----------------------------------------------------
+    # Standalone Artwork manufacturing remains unnecessary
+    # -----------------------------------------------------
+
+    artwork_root = project_root / "artifacts" / "ridge-fill-source" / "artwork" / "default"
+
+    assert (artwork_root / "30-vector" / "products.json").is_file()
+
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
