@@ -132,16 +132,21 @@ def test_shape_declares_structural_stage() -> None:
 
 def test_shape_structure_consumes_registered_geometry_parameters() -> None:
     """
-    Structural production consumes only policy required to construct the
-    registered Shape geometry.
+    Structural production consumes all policy that can alter registered
+    Shape geometry.
 
-    Physical X/Y size and Z dimensions belong to downstream physical
-    dimensionalization rather than registered structural production.
+    Polygon side count and rotation participate here because they alter
+    polygon structural geometry. Physical X/Y size and Z dimensions remain
+    downstream physical policy.
     """
 
     structure_stage = _structure_stage()
 
-    assert structure_stage.parameters == ("shape_geometry",)
+    assert structure_stage.parameters == (
+        "shape_geometry",
+        "shape_sides",
+        "shape_rotation",
+    )
 
 
 def test_shape_structure_produces_persistent_structure() -> None:

@@ -140,9 +140,116 @@ def _shape_execution_plan(
     )
 
 
+def _shape_structure_execution_plan(
+    *,
+    resolver: StubResolver,
+    structure_state: ProductState,
+) -> tuple[
+    BuildPlan,
+    ExecutionPlan,
+]:
+    """
+    Construct a Shape execution plan with the requested persistent
+    state for every structure product.
+    """
+
+    structure_spec = next(stage for stage in MODEL.stages if stage.name == "structure")
+
+    structure = PlannedStage(
+        spec=structure_spec,
+        inputs=(),
+        products=tuple(
+            PlannedProduct(
+                spec=product,
+                path=(Path("/project/artifacts/example/shape/default/10-structure") / product.path),
+            )
+            for product in structure_spec.products
+        ),
+    )
+
+    build_plan = BuildPlan(
+        artifact_id="example",
+        model=MODEL,
+        realization_name="default",
+        resolver=resolver,  # type: ignore[arg-type]
+        project_root=Path("/project"),
+        artifact_dir=Path("/project/artifacts/example"),
+        stages=(structure,),
+    )
+
+    execution_plan = ExecutionPlan(
+        artifact_id="example",
+        model_name="shape",
+        realization="default",
+        stages=(
+            PlannedStageExecution(
+                stage_name="structure",
+                product_states=tuple(structure_state for _ in structure.products),
+            ),
+        ),
+    )
+
+    return (
+        build_plan,
+        execution_plan,
+    )
+
+
 # =========================================================
 # Shape configuration validation
 # =========================================================
+
+
+def test_invalid_polygon_sides_fail_when_structure_requires_execution() -> None:
+    """
+    Polygon side-count configuration is validated when structural
+    geometry must be produced.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_geometry": "polygon",
+            "shape_sides": 2,
+        }
+    )
+
+    build_plan, execution_plan = _shape_structure_execution_plan(
+        resolver=resolver,
+        structure_state=ProductState.ABSENT,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_sides",
+    ):
+        validate_execution(
+            build_plan,
+            execution_plan,
+        )
+
+
+def test_invalid_historical_polygon_sides_do_not_block_current_structure() -> None:
+    """
+    Invalid historical polygon configuration is not revalidated when
+    structural geometry is already current.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_geometry": "polygon",
+            "shape_sides": 2,
+        }
+    )
+
+    build_plan, execution_plan = _shape_structure_execution_plan(
+        resolver=resolver,
+        structure_state=ProductState.CURRENT,
+    )
+
+    validate_execution(
+        build_plan,
+        execution_plan,
+    )
 
 
 def test_shape_outer_ridge_raise_may_equal_negative_base_raise() -> None:

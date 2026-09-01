@@ -38,7 +38,11 @@ MODEL = ModelSpec(
             id=10,
             name="structure",
             description=("Produce registered structural Shape geometry."),
-            parameters=("shape_geometry",),
+            parameters=(
+                "shape_geometry",
+                "shape_sides",
+                "shape_rotation",
+            ),
             products=(
                 ProductSpec(
                     name="structure",
