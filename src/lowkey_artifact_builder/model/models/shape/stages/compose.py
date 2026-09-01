@@ -139,6 +139,23 @@ class ArtworkPlacementCircle:
     radius: float
 
 
+@dataclass(frozen=True)
+class RegisteredArtworkFillRegion:
+    """
+    Registered Shape region available for Artwork fill.
+
+    The Shape interior is the outer boundary. The authoritative registered
+    Artwork envelope, transformed by the common Artwork placement transform,
+    is the inner boundary.
+
+    Both boundaries remain in registered Shape coordinates. Physical
+    dimensionalization belongs to downstream Shape stages.
+    """
+
+    outer_boundary: ET.Element
+    inner_boundary: ET.Element
+
+
 # =========================================================
 # Public interface
 # =========================================================
@@ -829,6 +846,174 @@ def _intersect_lines(
         first_start[0] + first_parameter * first_dx,
         first_start[1] + first_parameter * first_dy,
     )
+
+
+def registered_artwork_fill_region(
+    interior: ET.Element,
+    artwork: RegisteredArtwork,
+    *,
+    transform: RegisteredArtworkTransform,
+) -> RegisteredArtworkFillRegion:
+    """
+    Return the registered Shape region available for Artwork fill.
+
+    The registered Shape interior defines the outer boundary. The
+    authoritative Artwork envelope defines the occupied inner boundary and
+    is transformed using the same common placement transform as incorporated
+    Artwork.
+
+    Individual Artwork component geometry is not inspected. No physical
+    dimensions are introduced at this boundary.
+    """
+
+    root = ET.parse(
+        artwork.envelope,
+    ).getroot()
+
+    envelope = next(
+        iter(root),
+        None,
+    )
+
+    if envelope is None:
+        raise ValueError("Registered Artwork envelope requires geometry.")
+
+    inner_boundary = _transform_registered_element(
+        envelope,
+        transform=transform,
+    )
+
+    return RegisteredArtworkFillRegion(
+        outer_boundary=interior,
+        inner_boundary=inner_boundary,
+    )
+
+
+def _transform_registered_element(
+    element: ET.Element,
+    *,
+    transform: RegisteredArtworkTransform,
+) -> ET.Element:
+    """
+    Transform supported registered geometry into registered Shape space.
+
+    The common Artwork placement transform uniformly scales source registered
+    coordinates and then translates them into the Shape registered coordinate
+    system.
+    """
+
+    if element.tag == SVG_RECT:
+        x = float(
+            element.get(
+                "x",
+                "0.0",
+            )
+        )
+        y = float(
+            element.get(
+                "y",
+                "0.0",
+            )
+        )
+        width = float(
+            element.get(
+                "width",
+                "0.0",
+            )
+        )
+        height = float(
+            element.get(
+                "height",
+                "0.0",
+            )
+        )
+
+        return ET.Element(
+            SVG_RECT,
+            {
+                "x": str(
+                    x * transform.scale + transform.translate_x,
+                ),
+                "y": str(
+                    y * transform.scale + transform.translate_y,
+                ),
+                "width": str(
+                    width * transform.scale,
+                ),
+                "height": str(
+                    height * transform.scale,
+                ),
+            },
+        )
+
+    if element.tag == SVG_CIRCLE:
+        center_x = float(
+            element.get(
+                "cx",
+                "0.0",
+            )
+        )
+        center_y = float(
+            element.get(
+                "cy",
+                "0.0",
+            )
+        )
+        radius = float(
+            element.get(
+                "r",
+                "0.0",
+            )
+        )
+
+        return ET.Element(
+            SVG_CIRCLE,
+            {
+                "cx": str(
+                    center_x * transform.scale + transform.translate_x,
+                ),
+                "cy": str(
+                    center_y * transform.scale + transform.translate_y,
+                ),
+                "r": str(
+                    radius * transform.scale,
+                ),
+            },
+        )
+
+    if element.tag == SVG_POLYGON:
+        points = _read_polygon_points(
+            element,
+        )
+
+        transformed_points = tuple(
+            (
+                x * transform.scale + transform.translate_x,
+                y * transform.scale + transform.translate_y,
+            )
+            for x, y in points
+        )
+
+        return ET.Element(
+            SVG_POLYGON,
+            {
+                "points": _format_polygon_points(
+                    transformed_points,
+                ),
+            },
+        )
+
+    if element.tag == SVG_PATH:
+        raise ValueError(
+            "Registered Artwork fill does not yet support path envelope transformation."
+        )
+
+    if element.tag == SVG_GROUP:
+        raise ValueError(
+            "Registered Artwork fill does not yet support grouped envelope transformation."
+        )
+
+    raise ValueError("Registered Artwork envelope contains unsupported geometry.")
 
 
 # =========================================================
