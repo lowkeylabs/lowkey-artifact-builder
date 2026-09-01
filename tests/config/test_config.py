@@ -591,8 +591,8 @@ def test_shape_model_defaults_are_resolved(
     resolved base color rather than independently defaulted.
 
     Incorporated Artwork defaults to a 1 mm Shape-owned physical raise.
-    Artwork fill is disabled by default through the absence of a configured
-    fill color.
+    Artwork fill is disabled by default through the explicit "none"
+    semantic fill color.
     """
 
     resolver = get_resolver(
@@ -617,7 +617,7 @@ def test_shape_model_defaults_are_resolved(
     assert resolver("shape_artwork_raise") == 1.0
 
     assert resolver.has("shape_artwork_fill_color")
-    assert resolver("shape_artwork_fill_color") is None
+    assert resolver("shape_artwork_fill_color") == "none"
 
     assert resolver.source("shape_geometry") == "model"
     assert resolver.source("shape_sides") == "model"
@@ -633,6 +633,7 @@ def test_shape_model_defaults_are_resolved(
     assert resolver.source("shape_outer_ridge_color") == "derived"
 
     assert resolver.source("shape_artwork_raise") == "model"
+    assert resolver.source("shape_artwork_fill_color") == "model (overrides derived)"
 
 
 # =========================================================
@@ -887,6 +888,8 @@ def test_color_catalog_is_available(
 ) -> None:
     """
     System color reference data is available separately from parameters.
+
+    Distinct physical filament products retain distinct catalog identities.
     """
 
     resolver = get_resolver(
@@ -896,15 +899,28 @@ def test_color_catalog_is_available(
     )
 
     assert resolver.has_color("red")
+    assert resolver.has_color("fire-engine-red")
 
     red = resolver.color("red")
 
     assert red["manufacturer"] == "eSUN"
-    assert red["filament"] == "Fire Engine Red"
+    assert red["filament"] == "Red"
     assert red["rgb"] == [
-        220,
-        38,
-        38,
+        180,
+        2,
+        0,
+    ]
+
+    fire_engine_red = resolver.color(
+        "fire-engine-red",
+    )
+
+    assert fire_engine_red["manufacturer"] == "eSUN"
+    assert fire_engine_red["filament"] == "Fire Engine Red"
+    assert fire_engine_red["rgb"] == [
+        187,
+        32,
+        40,
     ]
 
 

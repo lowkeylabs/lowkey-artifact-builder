@@ -520,6 +520,120 @@ def _read_model(
 # =========================================================
 
 
+def test_package_stage_preserves_artwork_fill_component(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape packaging preserves Artwork fill as an independent physical component.
+
+    Artwork fill membership and semantic color identity are established by
+    extrusion. Packaging carries that component into the final 3MF without
+    merging it with the structural base or incorporated Artwork.
+    """
+
+    component_directory = tmp_path / "extrude"
+
+    base = component_directory / "base.stl"
+    artwork_fill = component_directory / "artwork-fill.stl"
+    artwork_1 = component_directory / "artwork-1.stl"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    _write_component_stl(
+        base,
+        solid_name="shape-base",
+    )
+
+    _write_component_stl(
+        artwork_fill,
+        solid_name="artwork-fill",
+    )
+
+    _write_component_stl(
+        artwork_1,
+        solid_name="artwork-1",
+    )
+
+    _write_component_manifest(
+        manifest,
+        (
+            (
+                "base",
+                "base.stl",
+                "test-white",
+                (255, 255, 255),
+            ),
+            (
+                "artwork-fill",
+                "artwork-fill.stl",
+                "test-blue",
+                (0, 0, 255),
+            ),
+            (
+                "artwork-1",
+                "artwork-1.stl",
+                "test-red",
+                (255, 0, 0),
+            ),
+        ),
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "example"
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    package.execute(
+        context,
+    )
+
+    model = _read_model(
+        artifact,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    assert set(objects_by_name) == {
+        "example-base",
+        "example-artwork-fill",
+        "example-artwork-1",
+    }
+
+    fill = objects_by_name["example-artwork-fill"]
+
+    material_id = fill.get(
+        "pid",
+    )
+
+    assert material_id is not None
+
+    material = materials_by_id[material_id]
+
+    color = material.find(
+        f"{{{CORE_NS}}}base",
+    )
+
+    assert color is not None
+    assert color.get("name") == "test-blue"
+    assert color.get("displaycolor") == "#0000FF"
+
+    assert fill.get("id") != objects_by_name["example-base"].get("id")
+
+    assert fill.get("id") != objects_by_name["example-artwork-1"].get("id")
+
+
 def test_package_stage_preserves_component_mesh_geometry(
     tmp_path: Path,
 ) -> None:

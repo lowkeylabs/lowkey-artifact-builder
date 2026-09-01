@@ -46,7 +46,7 @@ def test_shape_base_color_resolves_through_shared_color_mechanism(
 
     assert color == PaletteColor(
         name="white",
-        rgb=(255, 255, 255),
+        rgb=(227, 228, 212),
     )
 
 
@@ -82,7 +82,7 @@ def test_shape_derived_ridge_color_resolves_through_shared_color_mechanism(
 
     assert color == PaletteColor(
         name="red",
-        rgb=(220, 38, 38),
+        rgb=(180, 2, 0),
     )
 
 

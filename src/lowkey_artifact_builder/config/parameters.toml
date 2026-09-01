@@ -161,37 +161,296 @@ rgb = [255, 255, 255]
 # as manufacturer or color information is updated.
 #
 
+
 [colors.black]
 manufacturer = "eSUN"
 filament = "Black"
-rgb = [20, 20, 20]
+rgb = [39, 39, 41]
 
 
-[colors.brown]
+[colors.cold-white]
 manufacturer = "eSUN"
-filament = "Brown"
-rgb = [105, 63, 35]
-
-
-[colors.red]
-manufacturer = "eSUN"
-filament = "Fire Engine Red"
-rgb = [220, 38, 38]
-
-
-[colors.gold]
-manufacturer = "eSUN"
-filament = "Gold"
-rgb = [205, 165, 55]
+filament = "Cold White"
+rgb = [219, 214, 220]
 
 
 [colors.white]
 manufacturer = "eSUN"
-filament = "Cold White"
-rgb = [255, 255, 255]
+filament = "White"
+rgb = [227, 228, 212]
+
+
+[colors.milky-white]
+manufacturer = "eSUN"
+filament = "Milky White"
+rgb = [201, 201, 201]
+
+
+[colors.bone-white]
+manufacturer = "eSUN"
+filament = "Bone White"
+rgb = [199, 180, 148]
+
+
+[colors.beige]
+manufacturer = "eSUN"
+filament = "Beige"
+rgb = [253, 192, 148]
+
+
+[colors.light-beige]
+manufacturer = "eSUN"
+filament = "Light Beige"
+rgb = [229, 192, 163]
+
+
+[colors.light-khaki]
+manufacturer = "eSUN"
+filament = "Light Khaki"
+rgb = [198, 192, 168]
+
+
+[colors.grey]
+manufacturer = "eSUN"
+filament = "Grey"
+rgb = [96, 103, 131]
+
+
+[colors.concrete-grey]
+manufacturer = "eSUN"
+filament = "Concrete Grey"
+rgb = [183, 183, 181]
 
 
 [colors.silver]
 manufacturer = "eSUN"
 filament = "Silver"
-rgb = [180, 180, 180]
+rgb = [104, 103, 108]
+
+
+[colors.fire-engine-red]
+manufacturer = "eSUN"
+filament = "Fire Engine Red"
+rgb = [187, 32, 40]
+
+
+[colors.red]
+manufacturer = "eSUN"
+filament = "Red"
+rgb = [180, 2, 0]
+
+
+[colors.rgb-red]
+manufacturer = "eSUN"
+filament = "RGB Red"
+rgb = [230, 65, 63]
+
+
+[colors.brick-red]
+manufacturer = "eSUN"
+filament = "Brick Red"
+rgb = [155, 83, 71]
+
+
+[colors.magenta]
+manufacturer = "eSUN"
+filament = "Magenta"
+rgb = [224, 37, 82]
+
+
+[colors.green]
+manufacturer = "eSUN"
+filament = "Green"
+rgb = [27, 45, 57]
+
+
+[colors.olive-green]
+manufacturer = "eSUN"
+filament = "Olive Green"
+rgb = [27, 31, 17]
+
+
+[colors.pine-green]
+manufacturer = "eSUN"
+filament = "Pine Green"
+rgb = [67, 99, 78]
+
+
+[colors.peak-green]
+manufacturer = "eSUN"
+filament = "Peak Green"
+rgb = [56, 216, 68]
+
+
+[colors.rgb-green]
+manufacturer = "eSUN"
+filament = "RGB Green"
+rgb = [154, 238, 116]
+
+
+[colors.mint-green]
+manufacturer = "eSUN"
+filament = "Mint Green"
+rgb = [105, 194, 150]
+
+
+[colors.matcha-green]
+manufacturer = "eSUN"
+filament = "Matcha Green"
+rgb = [152, 159, 79]
+
+
+[colors.grass-green]
+manufacturer = "eSUN"
+filament = "Grass Green"
+rgb = [43, 100, 57]
+
+
+[colors.holly-green]
+manufacturer = "eSUN"
+filament = "Holly Green"
+rgb = [3, 89, 78]
+
+
+[colors.jade-green]
+manufacturer = "eSUN"
+filament = "Jade Green"
+rgb = [83, 236, 208]
+
+
+[colors.mustard-green]
+manufacturer = "eSUN"
+filament = "Mustard Green"
+rgb = [228, 230, 165]
+
+
+[colors.blue]
+manufacturer = "eSUN"
+filament = "Blue"
+rgb = [1, 55, 141]
+
+
+[colors.rgb-blue]
+manufacturer = "eSUN"
+filament = "RGB Blue"
+rgb = [30, 79, 207]
+
+
+[colors.dark-blue]
+manufacturer = "eSUN"
+filament = "Dark Blue"
+rgb = [38, 36, 49]
+
+
+[colors.light-blue]
+manufacturer = "eSUN"
+filament = "Light Blue"
+rgb = [22, 155, 234]
+
+
+[colors.space-blue]
+manufacturer = "eSUN"
+filament = "Space Blue"
+rgb = [80, 211, 255]
+
+
+[colors.soft-blue]
+manufacturer = "eSUN"
+filament = "Soft Blue"
+rgb = [113, 214, 232]
+
+
+[colors.very-peri]
+manufacturer = "eSUN"
+filament = "Very Peri"
+rgb = [34, 4, 126]
+
+
+[colors.haze-blue]
+manufacturer = "eSUN"
+filament = "Haze Blue"
+rgb = [122, 185, 239]
+
+
+[colors.aqua]
+manufacturer = "eSUN"
+filament = "Aqua"
+rgb = [107, 191, 227]
+
+
+[colors.brown]
+manufacturer = "eSUN"
+filament = "Brown"
+rgb = [102, 64, 51]
+
+
+[colors.light-brown]
+manufacturer = "eSUN"
+filament = "Light Brown"
+rgb = [201, 147, 103]
+
+
+[colors.pink]
+manufacturer = "eSUN"
+filament = "Pink"
+rgb = [255, 127, 111]
+
+
+[colors.peach-pink]
+manufacturer = "eSUN"
+filament = "Peach Pink"
+rgb = [238, 185, 179]
+
+
+[colors.soft-pink]
+manufacturer = "eSUN"
+filament = "Soft Pink"
+rgb = [248, 159, 147]
+
+
+[colors.yellow]
+manufacturer = "eSUN"
+filament = "Yellow"
+rgb = [255, 252, 1]
+
+
+[colors.almond-yellow]
+manufacturer = "eSUN"
+filament = "Almond Yellow"
+rgb = [233, 225, 153]
+
+
+[colors.orange]
+manufacturer = "eSUN"
+filament = "Orange"
+rgb = [255, 130, 27]
+
+
+[colors.coral-orange]
+manufacturer = "eSUN"
+filament = "Coral Orange"
+rgb = [255, 140, 73]
+
+
+[colors.apricot]
+manufacturer = "eSUN"
+filament = "Apricot"
+rgb = [230, 138, 29]
+
+
+[colors.gold]
+manufacturer = "eSUN"
+filament = "Gold"
+rgb = [237, 161, 15]
+
+
+[colors.lilac]
+manufacturer = "eSUN"
+filament = "Lilac"
+rgb = [199, 141, 191]
+
+
+[colors.purple]
+manufacturer = "eSUN"
+filament = "Purple"
+rgb = [121, 62, 182]
