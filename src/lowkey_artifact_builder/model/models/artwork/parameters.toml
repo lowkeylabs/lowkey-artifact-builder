@@ -4,7 +4,7 @@ artwork_pixels = 1024
 artwork_raise = 1.0
 artwork_fill_color = "white"
 
-artwork_envelope_mode = "alpha"
+artwork_envelope_mode = "shrink-wrap"
 
 artwork_min_island_area = 34
 artwork_island_connectivity = 8

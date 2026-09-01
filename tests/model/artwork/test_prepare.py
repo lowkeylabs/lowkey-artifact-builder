@@ -1259,3 +1259,58 @@ def test_shrink_wrap_real_opaque_artwork_does_not_use_source_rectangle() -> None
     assert occupied_y.min() > 0
     assert occupied_x.max() < width - 1
     assert occupied_y.max() < height - 1
+
+
+def test_shrink_wrap_treats_near_background_colors_as_exterior() -> None:
+    """
+    Shrink-wrap recognizes a visually uniform exterior background even
+    when its raster pixels contain small RGB variations.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (60, 60),
+        (250, 250, 250, 255),
+    )
+
+    pixels = image.load()
+    assert pixels is not None
+
+    # Introduce small deterministic variation throughout the exterior
+    # background, as occurs in real raster artwork.
+    for y in range(60):
+        for x in range(60):
+            variation = (x + y) % 6
+
+            value = 250 + variation
+
+            pixels[x, y] = (
+                value,
+                value,
+                value,
+                255,
+            )
+
+    # A clearly distinct subject occupies the center.
+    for y in range(18, 42):
+        for x in range(18, 42):
+            pixels[x, y] = (
+                30,
+                30,
+                30,
+                255,
+            )
+
+    envelope = prepare._derive_envelope(
+        image,
+        mode="shrink-wrap",
+    )
+
+    # Exterior background must be excluded.
+    assert not envelope[10, 10]
+    assert not envelope[10, 30]
+    assert not envelope[30, 10]
+    assert not envelope[50, 50]
+
+    # The subject must remain Artwork.
+    assert envelope[30, 30]

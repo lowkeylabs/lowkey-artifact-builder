@@ -110,13 +110,13 @@ shrink-wrap
 The default envelope mode is:
 
 ```text
-alpha
+shrink-wrap
 ```
 
 `alpha` derives the Artwork envelope from meaningful source alpha.
 
-`shrink-wrap` derives a conservative non-concave outer envelope by
-distinguishing exterior background from enclosed Artwork.
+`shrink-wrap` derives a conservative outer envelope by distinguishing
+exterior background from enclosed Artwork.
 
 Shrink-wrap classification depends on whether source regions belong to
 the exterior background, not merely on their color. An enclosed Artwork
@@ -371,9 +371,9 @@ shrink-wrap
 
 `alpha` derives the envelope from meaningful source alpha.
 
-`shrink-wrap` derives a conservative non-concave outer envelope by
-distinguishing exterior background from enclosed Artwork. Exterior
-classification is not determined by color equality alone.
+`shrink-wrap` derives a conservative outer envelope by distinguishing
+exterior background from enclosed Artwork. Exterior classification is not
+determined by color equality alone.
 
 `artwork_pixels` defines raster processing resolution.
 
@@ -469,9 +469,8 @@ A conforming Artwork implementation satisfies the following:
 4. `artwork_envelope_mode` defaults to `alpha`.
 5. `alpha` envelope derivation determines meaningful source foreground from
    source alpha.
-6. `shrink-wrap` envelope derivation produces a conservative non-concave
-   outer envelope by distinguishing exterior background from enclosed
-   Artwork.
+6. `shrink-wrap` envelope derivation produces a conservative outer envelope
+   by distinguishing exterior background from enclosed Artwork.
 7. Shrink-wrap does not exclude an enclosed Artwork region solely because
    its color also occurs in the exterior background.
 8. Prepared Artwork uses the configured semantic color palette.

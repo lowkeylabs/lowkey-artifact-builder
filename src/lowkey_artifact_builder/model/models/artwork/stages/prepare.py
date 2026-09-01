@@ -86,6 +86,14 @@ DEFAULT_ENVELOPE_MIN_PIXELS = 16
 #
 DEFAULT_ENVELOPE_CLOSE_PIXELS = 4
 
+#
+# Maximum Euclidean RGB distance from the inferred exterior-background
+# color for a pixel to remain a background candidate.
+#
+# This tolerance accommodates small raster variation in visually uniform
+# backgrounds without making it part of the public Artwork configuration.
+#
+DEFAULT_SHRINK_WRAP_BACKGROUND_DISTANCE = 12.0
 
 #
 # Maximum local half-width of a palette region that may be treated as
@@ -1402,10 +1410,10 @@ def _shrink_wrap_foreground_mask(
     Return source foreground after excluding exterior-connected background.
 
     Exterior background color is inferred from the source boundary.
-    Pixels matching that exterior background are excluded only when they
-    are connected to the source boundary.
+    Pixels sufficiently similar to that exterior background are excluded
+    only when they are connected to the source boundary.
 
-    Enclosed matching-color regions therefore remain part of the Artwork
+    Enclosed background-like regions therefore remain part of the Artwork
     domain.
     """
 
@@ -1423,8 +1431,8 @@ def _shrink_wrap_foreground_mask(
         raise PrepareError("Shrink-wrap source image cannot be empty.")
 
     #
-    # Determine the dominant RGB value occurring on the source boundary.
-    # This is the candidate exterior-background color.
+    # Determine a representative RGB value for the exterior background
+    # from the source boundary.
     #
     boundary = np.concatenate(
         (
@@ -1452,29 +1460,43 @@ def _shrink_wrap_foreground_mask(
         axis=0,
     )
 
-    colors, counts = np.unique(
-        boundary,
+    #
+    # Use the component-wise median rather than requiring one exact
+    # boundary color to dominate. This remains deterministic while
+    # tolerating small raster variation in an otherwise uniform
+    # exterior background.
+    #
+    background_rgb = np.median(
+        boundary.astype(
+            np.float64,
+        ),
         axis=0,
-        return_counts=True,
     )
 
-    background_rgb = colors[
-        int(
-            np.argmax(
-                counts,
-            )
-        )
-    ]
+    #
+    # Determine color distance from the inferred exterior background.
+    #
+    # int16/float conversion is required before subtraction so uint8
+    # arithmetic cannot wrap around.
+    #
+    rgb = rgba[
+        :,
+        :,
+        :3,
+    ].astype(
+        np.float64,
+    )
 
-    background_candidate = np.all(
-        rgba[
-            :,
-            :,
-            :3,
-        ]
-        == background_rgb,
-        axis=2,
-    ) & (
+    difference = rgb - background_rgb
+
+    background_distance = np.sqrt(
+        np.sum(
+            difference * difference,
+            axis=2,
+        )
+    )
+
+    background_candidate = (background_distance <= DEFAULT_SHRINK_WRAP_BACKGROUND_DISTANCE) & (
         rgba[
             :,
             :,
@@ -1485,8 +1507,8 @@ def _shrink_wrap_foreground_mask(
 
     #
     # Only candidate-background pixels connected to the image boundary
-    # belong to the exterior. Matching pixels enclosed by Artwork are
-    # deliberately retained.
+    # belong to the exterior. Background-like pixels enclosed by Artwork
+    # are deliberately retained.
     #
     seeds = np.zeros(
         (

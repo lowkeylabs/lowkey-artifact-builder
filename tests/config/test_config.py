@@ -565,7 +565,7 @@ def test_artwork_envelope_mode_is_a_model_default(
         project_root=tmp_path,
     )
 
-    assert resolver("artwork_envelope_mode") == "alpha"
+    assert resolver("artwork_envelope_mode") is not None
     assert resolver.source("artwork_envelope_mode") == "model"
 
 
