@@ -17,6 +17,24 @@ from lowkey_artifact_builder.model.validation import (
 )
 
 
+def _validate_outer_ridge_style(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require outer-ridge style to be one of the supported styles.
+    """
+
+    ridge_style = resolver(
+        "shape_outer_ridge_style",
+    )
+
+    if ridge_style not in (
+        "integrated",
+        "separate",
+    ):
+        raise ConfigError("shape_outer_ridge_style must be one of: integrated, separate.")
+
+
 def _validate_geometry(
     resolver: ConfigurationResolver,
 ) -> None:
@@ -127,11 +145,8 @@ def _validate_polygon_sides(
 
 VALIDATORS = (
     ConfigurationValidator(
-        parameters=(
-            "shape_base_raise",
-            "shape_outer_ridge_raise",
-        ),
-        validate=_validate_outer_ridge_raise,
+        parameters=("shape_geometry",),
+        validate=_validate_geometry,
     ),
     ConfigurationValidator(
         parameters=(
@@ -141,14 +156,22 @@ VALIDATORS = (
         validate=_validate_polygon_sides,
     ),
     ConfigurationValidator(
-        parameters=("shape_geometry",),
-        validate=_validate_geometry,
+        parameters=(
+            "shape_base_raise",
+            "shape_outer_ridge_raise",
+        ),
+        validate=_validate_outer_ridge_raise,
     ),
     ConfigurationValidator(
         parameters=("shape_outer_ridge_width",),
         validate=_validate_outer_ridge_width,
     ),
+    ConfigurationValidator(
+        parameters=("shape_outer_ridge_style",),
+        validate=_validate_outer_ridge_style,
+    ),
 )
+
 
 __all__ = [
     "VALIDATORS",

@@ -72,6 +72,7 @@ def _validate_shape(
         "shape_base_raise": 2.0,
         "shape_outer_ridge_width": 0.0,
         "shape_outer_ridge_raise": 1.0,
+        "shape_outer_ridge_style": "integrated",
     }
 
     resolved_values.update(
@@ -662,6 +663,93 @@ def test_invalid_historical_shape_geometry_does_not_block_current_structure() ->
     build_plan, execution_plan = _shape_structure_execution_plan(
         resolver=resolver,
         structure_state=ProductState.CURRENT,
+    )
+
+    validate_execution(
+        build_plan,
+        execution_plan,
+    )
+
+
+@pytest.mark.parametrize(
+    "ridge_style",
+    (
+        "integrated",
+        "separate",
+    ),
+)
+def test_shape_accepts_supported_outer_ridge_style(
+    ridge_style: str,
+) -> None:
+    """
+    Shape accepts every outer-ridge style defined by the model contract.
+    """
+
+    _validate_shape(
+        {
+            "shape_outer_ridge_style": ridge_style,
+        }
+    )
+
+
+def test_shape_rejects_unsupported_outer_ridge_style() -> None:
+    """
+    Outer-ridge style must be one of the model-defined styles.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_outer_ridge_style",
+    ):
+        _validate_shape(
+            {
+                "shape_outer_ridge_style": "detached",
+            }
+        )
+
+
+def test_invalid_shape_ridge_style_fails_when_compose_requires_execution() -> None:
+    """
+    Invalid ridge style is validated when compose must execute.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_outer_ridge_width": 1.0,
+            "shape_outer_ridge_style": "detached",
+        }
+    )
+
+    build_plan, execution_plan = _shape_compose_execution_plan(
+        resolver=resolver,
+        compose_state=ProductState.ABSENT,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_outer_ridge_style",
+    ):
+        validate_execution(
+            build_plan,
+            execution_plan,
+        )
+
+
+def test_invalid_historical_shape_ridge_style_does_not_block_current_compose() -> None:
+    """
+    Invalid historical ridge style is irrelevant when compose is current.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_outer_ridge_width": 1.0,
+            "shape_outer_ridge_style": "detached",
+        }
+    )
+
+    build_plan, execution_plan = _shape_compose_execution_plan(
+        resolver=resolver,
+        compose_state=ProductState.CURRENT,
     )
 
     validate_execution(
