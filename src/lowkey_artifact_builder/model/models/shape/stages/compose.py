@@ -848,6 +848,32 @@ def _intersect_lines(
     )
 
 
+def registered_artwork_fill(
+    interior: ET.Element,
+    artwork: RegisteredArtwork,
+    *,
+    transform: RegisteredArtworkTransform,
+    fill_color: str,
+) -> RegisteredArtworkFillRegion | None:
+    """
+    Resolve optional registered Artwork-fill geometry.
+
+    The Shape fill policy determines only whether fill geometry exists.
+    Enabled fill colors do not participate in registered geometry; the fill
+    region is always the Shape interior minus the transformed authoritative
+    Artwork envelope.
+    """
+
+    if fill_color == "none":
+        return None
+
+    return registered_artwork_fill_region(
+        interior,
+        artwork,
+        transform=transform,
+    )
+
+
 def registered_artwork_fill_region(
     interior: ET.Element,
     artwork: RegisteredArtwork,

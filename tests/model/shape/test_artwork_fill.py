@@ -703,3 +703,278 @@ def test_artwork_fill_region_applies_registered_group_translation_before_artwork
     ) == pytest.approx(
         0.20,
     )
+
+
+# =========================================================
+# Artwork-fill composition policy
+# =========================================================
+
+
+def test_artwork_fill_is_absent_when_fill_color_is_none(
+    tmp_path: Path,
+) -> None:
+    """
+    The default none fill policy produces no registered Artwork-fill geometry.
+
+    Fill existence is controlled by Shape's fill policy rather than by the
+    mere presence of incorporated Artwork.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    _write_rectangular_artwork_envelope(
+        envelope,
+    )
+
+    artwork = _registered_artwork(
+        envelope,
+    )
+
+    interior = _circle_interior()
+
+    transform = compose.RegisteredArtworkTransform(
+        scale=0.05,
+        width=0.60,
+        height=0.50,
+        translate_x=-0.40,
+        translate_y=-0.40,
+    )
+
+    fill = compose.registered_artwork_fill(
+        interior,
+        artwork,
+        transform=transform,
+        fill_color="none",
+    )
+
+    assert fill is None
+
+
+def test_artwork_fill_is_present_when_fill_color_is_configured(
+    tmp_path: Path,
+) -> None:
+    """
+    A configured fill color enables registered Artwork-fill geometry.
+
+    The resulting region is the registered Shape interior minus the
+    transformed authoritative Artwork envelope.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    _write_rectangular_artwork_envelope(
+        envelope,
+    )
+
+    artwork = _registered_artwork(
+        envelope,
+    )
+
+    interior = _circle_interior()
+
+    transform = compose.RegisteredArtworkTransform(
+        scale=0.05,
+        width=0.60,
+        height=0.50,
+        translate_x=-0.40,
+        translate_y=-0.40,
+    )
+
+    fill = compose.registered_artwork_fill(
+        interior,
+        artwork,
+        transform=transform,
+        fill_color="white",
+    )
+
+    assert fill is not None
+
+    assert fill.outer_boundary.tag == compose.SVG_CIRCLE
+
+    assert float(
+        fill.outer_boundary.get(
+            "r",
+            "nan",
+        )
+    ) == pytest.approx(
+        0.5,
+    )
+
+    assert fill.inner_boundary.tag == compose.SVG_RECT
+
+    assert float(
+        fill.inner_boundary.get(
+            "x",
+            "nan",
+        )
+    ) == pytest.approx(
+        -0.30,
+    )
+
+    assert float(
+        fill.inner_boundary.get(
+            "y",
+            "nan",
+        )
+    ) == pytest.approx(
+        -0.25,
+    )
+
+    assert float(
+        fill.inner_boundary.get(
+            "width",
+            "nan",
+        )
+    ) == pytest.approx(
+        0.60,
+    )
+
+    assert float(
+        fill.inner_boundary.get(
+            "height",
+            "nan",
+        )
+    ) == pytest.approx(
+        0.50,
+    )
+
+
+def test_artwork_fill_color_does_not_change_registered_fill_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Semantic fill color does not participate in registered fill geometry.
+
+    Different enabled colors produce the same registered Shape region for the
+    same Shape interior, Artwork envelope, and common Artwork transform.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    _write_rectangular_artwork_envelope(
+        envelope,
+    )
+
+    artwork = _registered_artwork(
+        envelope,
+    )
+
+    transform = compose.RegisteredArtworkTransform(
+        scale=0.05,
+        width=0.60,
+        height=0.50,
+        translate_x=-0.40,
+        translate_y=-0.40,
+    )
+
+    white_fill = compose.registered_artwork_fill(
+        _circle_interior(),
+        artwork,
+        transform=transform,
+        fill_color="white",
+    )
+
+    black_fill = compose.registered_artwork_fill(
+        _circle_interior(),
+        artwork,
+        transform=transform,
+        fill_color="black",
+    )
+
+    assert white_fill is not None
+    assert black_fill is not None
+
+    assert ET.tostring(
+        white_fill.outer_boundary,
+    ) == ET.tostring(
+        black_fill.outer_boundary,
+    )
+
+    assert ET.tostring(
+        white_fill.inner_boundary,
+    ) == ET.tostring(
+        black_fill.inner_boundary,
+    )
+
+
+def test_artwork_fill_region_is_independent_of_ridge_style(
+    tmp_path: Path,
+) -> None:
+    """
+    Ridge partitioning style does not alter registered Artwork-fill geometry.
+
+    Integrated and separate ridges having the same registered inner boundary
+    provide the same Shape interior for Artwork fill.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    _write_rectangular_artwork_envelope(
+        envelope,
+    )
+
+    artwork = _registered_artwork(
+        envelope,
+    )
+
+    transform = compose.RegisteredArtworkTransform(
+        scale=0.04,
+        width=0.48,
+        height=0.40,
+        translate_x=-0.32,
+        translate_y=-0.32,
+    )
+
+    #
+    # Ridge style determines physical component partitioning, not the
+    # registered interior boundary. With the same ridge width, integrated and
+    # separate styles therefore provide the same registered interior.
+    #
+    integrated_interior = ET.Element(
+        compose.SVG_CIRCLE,
+        {
+            "id": "ridge-inner-boundary",
+            "cx": "0.0",
+            "cy": "0.0",
+            "r": "0.45",
+        },
+    )
+
+    separate_interior = ET.Element(
+        compose.SVG_CIRCLE,
+        {
+            "id": "ridge-inner-boundary",
+            "cx": "0.0",
+            "cy": "0.0",
+            "r": "0.45",
+        },
+    )
+
+    integrated_fill = compose.registered_artwork_fill(
+        integrated_interior,
+        artwork,
+        transform=transform,
+        fill_color="white",
+    )
+
+    separate_fill = compose.registered_artwork_fill(
+        separate_interior,
+        artwork,
+        transform=transform,
+        fill_color="white",
+    )
+
+    assert integrated_fill is not None
+    assert separate_fill is not None
+
+    assert ET.tostring(
+        integrated_fill.outer_boundary,
+    ) == ET.tostring(
+        separate_fill.outer_boundary,
+    )
+
+    assert ET.tostring(
+        integrated_fill.inner_boundary,
+    ) == ET.tostring(
+        separate_fill.inner_boundary,
+    )
