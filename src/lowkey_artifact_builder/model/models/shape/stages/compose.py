@@ -900,6 +900,9 @@ def _transform_registered_element(
     The common Artwork placement transform uniformly scales source registered
     coordinates and then translates them into the Shape registered coordinate
     system.
+
+    Producer-published group translations are composed into that common
+    transform before recursively transforming group children.
     """
 
     if element.tag == SVG_RECT:
@@ -1004,16 +1007,88 @@ def _transform_registered_element(
         )
 
     if element.tag == SVG_PATH:
-        raise ValueError(
-            "Registered Artwork fill does not yet support path envelope transformation."
+        points = _registered_linear_path_points(
+            element,
+        )
+
+        transformed_points = tuple(
+            (
+                x * transform.scale + transform.translate_x,
+                y * transform.scale + transform.translate_y,
+            )
+            for x, y in points
+        )
+
+        return ET.Element(
+            SVG_PATH,
+            {
+                "d": _format_registered_linear_path(
+                    transformed_points,
+                ),
+            },
         )
 
     if element.tag == SVG_GROUP:
-        raise ValueError(
-            "Registered Artwork fill does not yet support grouped envelope transformation."
+        group_translate_x, group_translate_y = _registered_translation(
+            element.get(
+                "transform",
+            ),
         )
 
+        child_transform = RegisteredArtworkTransform(
+            scale=transform.scale,
+            width=transform.width,
+            height=transform.height,
+            translate_x=(transform.translate_x + group_translate_x * transform.scale),
+            translate_y=(transform.translate_y + group_translate_y * transform.scale),
+        )
+
+        transformed_group = ET.Element(
+            SVG_GROUP,
+        )
+
+        for child in element:
+            transformed_group.append(
+                _transform_registered_element(
+                    child,
+                    transform=child_transform,
+                )
+            )
+
+        return transformed_group
+
     raise ValueError("Registered Artwork envelope contains unsupported geometry.")
+
+
+def _format_registered_linear_path(
+    points: tuple[tuple[float, float], ...],
+) -> str:
+    """
+    Format registered vertices as a closed absolute linear SVG path.
+
+    Registered Artwork envelopes use absolute move and line commands with
+    optional path closure. Artwork-fill transformation preserves that supported
+    geometric representation after applying the common placement transform.
+    """
+
+    if not points:
+        raise ValueError("Registered Artwork envelope path requires geometry.")
+
+    first_x, first_y = points[0]
+
+    commands = [
+        f"M {first_x} {first_y}",
+    ]
+
+    commands.extend(f"L {x} {y}" for x, y in points[1:])
+
+    commands.append(
+        "Z",
+    )
+
+    return " ".join(
+        commands,
+    )
 
 
 # =========================================================

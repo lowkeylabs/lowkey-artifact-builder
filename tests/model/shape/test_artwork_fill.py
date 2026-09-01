@@ -354,3 +354,352 @@ def test_artwork_fill_region_remains_in_registered_shape_space(
     assert float(fill.inner_boundary.get("height", "nan")) == pytest.approx(
         0.40,
     )
+
+
+# =========================================================
+# Registered Artwork envelope forms
+# =========================================================
+
+
+def test_artwork_fill_region_transforms_circular_artwork_envelope(
+    tmp_path: Path,
+) -> None:
+    """
+    A circular authoritative Artwork envelope remains circular after placement.
+
+    Artwork-fill subtraction applies the same common registered Artwork
+    transform used for incorporated Artwork rather than replacing the
+    producer-published envelope with rectangular bounds.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 100 100">'
+            '<circle cx="40" cy="50" r="20"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.RegisteredArtworkTransform(
+        scale=0.01,
+        width=0.4,
+        height=0.4,
+        translate_x=-0.4,
+        translate_y=-0.5,
+    )
+
+    fill = compose.registered_artwork_fill_region(
+        _circle_interior(),
+        artwork,
+        transform=transform,
+    )
+
+    assert fill.inner_boundary.tag == compose.SVG_CIRCLE
+
+    assert float(
+        fill.inner_boundary.get(
+            "cx",
+            "nan",
+        )
+    ) == pytest.approx(
+        0.0,
+    )
+
+    assert float(
+        fill.inner_boundary.get(
+            "cy",
+            "nan",
+        )
+    ) == pytest.approx(
+        0.0,
+    )
+
+    assert float(
+        fill.inner_boundary.get(
+            "r",
+            "nan",
+        )
+    ) == pytest.approx(
+        0.2,
+    )
+
+
+def test_artwork_fill_region_transforms_polygon_artwork_envelope(
+    tmp_path: Path,
+) -> None:
+    """
+    A polygon authoritative Artwork envelope retains its registered geometry.
+
+    Every polygon vertex receives the common registered Artwork transform.
+    Shape does not replace the envelope with its rectangular occupied bounds.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 100 100">'
+            '<polygon points="20,30 60,30 70,50 60,70 20,70 10,50"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.RegisteredArtworkTransform(
+        scale=0.01,
+        width=0.6,
+        height=0.4,
+        translate_x=-0.4,
+        translate_y=-0.5,
+    )
+
+    fill = compose.registered_artwork_fill_region(
+        _circle_interior(),
+        artwork,
+        transform=transform,
+    )
+
+    assert fill.inner_boundary.tag == compose.SVG_POLYGON
+
+    points = tuple(
+        tuple(
+            float(coordinate)
+            for coordinate in point.split(
+                ",",
+            )
+        )
+        for point in fill.inner_boundary.get(
+            "points",
+            "",
+        ).split()
+    )
+
+    expected_points = (
+        (-0.2, -0.2),
+        (0.2, -0.2),
+        (0.3, 0.0),
+        (0.2, 0.2),
+        (-0.2, 0.2),
+        (-0.3, 0.0),
+    )
+
+    assert len(points) == len(expected_points)
+
+    for point, expected_point in zip(
+        points,
+        expected_points,
+        strict=True,
+    ):
+        assert point == pytest.approx(
+            expected_point,
+        )
+
+
+def test_artwork_fill_region_transforms_linear_path_artwork_envelope(
+    tmp_path: Path,
+) -> None:
+    """
+    A linear-path Artwork envelope is transformed as authoritative geometry.
+
+    Registered Artwork envelopes produced as absolute move/line paths retain
+    their path representation and receive the same common transform as the
+    incorporated Artwork.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 100 100">'
+            '<path d="M 20 30 L 60 30 L 60 70 L 20 70 Z"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.RegisteredArtworkTransform(
+        scale=0.01,
+        width=0.4,
+        height=0.4,
+        translate_x=-0.4,
+        translate_y=-0.5,
+    )
+
+    fill = compose.registered_artwork_fill_region(
+        _circle_interior(),
+        artwork,
+        transform=transform,
+    )
+
+    assert fill.inner_boundary.tag == compose.SVG_PATH
+
+    assert fill.inner_boundary.get(
+        "d",
+    ) == (
+        "M -0.2 -0.2 "
+        "L 0.19999999999999996 -0.2 "
+        "L 0.19999999999999996 0.20000000000000007 "
+        "L -0.2 0.20000000000000007 Z"
+    )
+
+
+def test_artwork_fill_region_applies_registered_group_translation_before_artwork_transform(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered envelope transforms are preserved before Artwork placement.
+
+    A producer-published group translation participates in the authoritative
+    envelope geometry before Shape applies the common registered Artwork
+    placement transform.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 100 100">'
+            '<g transform="translate(20 30)">'
+            '<rect x="5" y="10" width="40" height="20"/>'
+            "</g>"
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    transform = compose.RegisteredArtworkTransform(
+        scale=0.01,
+        width=0.4,
+        height=0.2,
+        translate_x=-0.45,
+        translate_y=-0.5,
+    )
+
+    fill = compose.registered_artwork_fill_region(
+        _circle_interior(),
+        artwork,
+        transform=transform,
+    )
+
+    assert fill.inner_boundary.tag == compose.SVG_GROUP
+
+    assert (
+        fill.inner_boundary.get(
+            "transform",
+        )
+        is None
+    )
+
+    children = tuple(
+        fill.inner_boundary,
+    )
+
+    assert len(children) == 1
+
+    transformed_rect = children[0]
+
+    assert transformed_rect.tag == compose.SVG_RECT
+
+    #
+    # Producer geometry:
+    #
+    #     rect x = 5, y = 10, width = 40, height = 20
+    #
+    # Producer group translation:
+    #
+    #     translate(20, 30)
+    #
+    # Effective source geometry:
+    #
+    #     x = 25, y = 40, width = 40, height = 20
+    #
+    # Shape Artwork transform:
+    #
+    #     scale = 0.01
+    #     translate = (-0.45, -0.5)
+    #
+    # Result:
+    #
+    #     x = -0.20
+    #     y = -0.10
+    #     width = 0.40
+    #     height = 0.20
+    #
+    assert float(
+        transformed_rect.get(
+            "x",
+            "nan",
+        )
+    ) == pytest.approx(
+        -0.20,
+    )
+
+    assert float(
+        transformed_rect.get(
+            "y",
+            "nan",
+        )
+    ) == pytest.approx(
+        -0.10,
+    )
+
+    assert float(
+        transformed_rect.get(
+            "width",
+            "nan",
+        )
+    ) == pytest.approx(
+        0.40,
+    )
+
+    assert float(
+        transformed_rect.get(
+            "height",
+            "nan",
+        )
+    ) == pytest.approx(
+        0.20,
+    )
