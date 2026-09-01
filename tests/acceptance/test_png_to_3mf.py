@@ -118,6 +118,19 @@ def test_png_builds_complete_3mf(
     assert plan.model_name == "artwork"
     assert plan.realization_name == "default"
 
+    # -----------------------------------------------------
+    # Verify backward-compatible envelope configuration
+    # -----------------------------------------------------
+
+    assert plan.resolver("artwork_envelope_mode") == "alpha"
+
+    assert (
+        plan.resolver.source(
+            "artwork_envelope_mode",
+        )
+        == "model"
+    )
+
     assert plan.artifact_dir.is_relative_to(
         project_root,
     )
