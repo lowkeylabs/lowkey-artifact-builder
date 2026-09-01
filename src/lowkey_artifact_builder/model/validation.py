@@ -29,20 +29,14 @@ from typing import Protocol
 
 class ConfigurationResolver(Protocol):
     """
-    Provide read access to resolved configuration values.
-
-    Validators depend only on resolved configuration access rather than
-    on the concrete configuration Resolver implementation.
+    Resolved configuration and shared reference data available to model
+    validation rules.
     """
 
     def __call__(
         self,
         name: str,
-    ) -> object:
-        """
-        Return one resolved configuration value.
-        """
-        ...
+    ) -> object: ...
 
 
 # =========================================================

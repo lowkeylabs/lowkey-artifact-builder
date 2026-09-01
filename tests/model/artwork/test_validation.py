@@ -1,8 +1,8 @@
 """
 Tests for Artwork model configuration validation.
 
-Artwork owns the semantic invariant relating its configured fill color
-to its ordered artwork color palette.
+Artwork owns the semantic invariants governing its configured palette,
+fill color, envelope mode, and color availability.
 """
 # File: tests/model/artwork/test_validation.py
 # Copyright 2026 LowKeyLabs LLC
@@ -39,8 +39,11 @@ class StubResolver:
     def __init__(
         self,
         values: dict[str, object],
+        *,
+        colors: dict[str, object] | None = None,
     ) -> None:
         self._values = values
+        self._colors = colors or {}
 
     def __call__(
         self,
@@ -48,12 +51,25 @@ class StubResolver:
     ) -> object:
         return self._values[name]
 
+    def has_color(
+        self,
+        name: str,
+    ) -> bool:
+        """
+        Return whether the test color catalog contains a color.
+        """
+
+        return name in self._colors
+
 
 def _validate_artwork(
     *,
     colors: object,
     fill_color: object,
     envelope_mode: object = "alpha",
+    printer_colors: object = (),
+    library_colors: object = (),
+    catalog_colors: tuple[str, ...] = (),
 ) -> None:
     """
     Apply the Artwork model's declared configuration validators.
@@ -64,7 +80,10 @@ def _validate_artwork(
             "artwork_colors": colors,
             "artwork_fill_color": fill_color,
             "artwork_envelope_mode": envelope_mode,
-        }
+            "printer_colors": printer_colors,
+            "library_colors": library_colors,
+        },
+        colors={name: {} for name in catalog_colors},
     )
 
     validate_configuration(
@@ -151,6 +170,8 @@ def test_artwork_declares_configuration_validators() -> None:
             "artwork_fill_color",
         ),
         ("artwork_envelope_mode",),
+        ("printer_colors",),
+        ("library_colors",),
     )
 
 
@@ -299,6 +320,107 @@ def test_artwork_rejects_non_string_envelope_mode() -> None:
             ),
             fill_color="white",
             envelope_mode=42,
+        )
+
+
+# =========================================================
+# Artwork color-availability validation
+# =========================================================
+
+
+def test_artwork_accepts_known_printer_colors() -> None:
+    """
+    Artwork accepts printer colors that reference known catalog colors.
+    """
+
+    _validate_artwork(
+        colors=(
+            "white",
+            "black",
+        ),
+        fill_color="white",
+        printer_colors=(
+            "red",
+            "blue",
+        ),
+        catalog_colors=(
+            "red",
+            "blue",
+        ),
+    )
+
+
+def test_artwork_rejects_unknown_printer_color() -> None:
+    """
+    Artwork rejects printer colors absent from the shared color catalog.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="printer_colors",
+    ):
+        _validate_artwork(
+            colors=(
+                "white",
+                "black",
+            ),
+            fill_color="white",
+            printer_colors=(
+                "red",
+                "unknown",
+            ),
+            catalog_colors=(
+                "red",
+                "blue",
+            ),
+        )
+
+
+def test_artwork_accepts_known_library_colors() -> None:
+    """
+    Artwork accepts library colors that reference known catalog colors.
+    """
+
+    _validate_artwork(
+        colors=(
+            "white",
+            "black",
+        ),
+        fill_color="white",
+        library_colors=(
+            "green",
+            "gold",
+        ),
+        catalog_colors=(
+            "green",
+            "gold",
+        ),
+    )
+
+
+def test_artwork_rejects_unknown_library_color() -> None:
+    """
+    Artwork rejects library colors absent from the shared color catalog.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="library_colors",
+    ):
+        _validate_artwork(
+            colors=(
+                "white",
+                "black",
+            ),
+            fill_color="white",
+            library_colors=(
+                "green",
+                "unknown",
+            ),
+            catalog_colors=(
+                "green",
+                "gold",
+            ),
         )
 
 

@@ -33,14 +33,27 @@ class StubResolver:
     def __init__(
         self,
         values: dict[str, object],
+        *,
+        colors: dict[str, object] | None = None,
     ) -> None:
         self._values = values
+        self._colors = colors or {}
 
     def __call__(
         self,
         name: str,
     ) -> object:
         return self._values[name]
+
+    def has_color(
+        self,
+        name: str,
+    ) -> bool:
+        """
+        Return whether the test color catalog contains a color.
+        """
+
+        return name in self._colors
 
 
 def _require_string(
