@@ -1050,6 +1050,364 @@ def test_shape_physical_change_reuses_registered_artwork(
 
 
 @pytest.mark.slow
+def test_registered_artwork_is_reused_across_different_shapes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    One registered Artwork product can feed physically different Shapes.
+
+    Building a second Shape with different geometry and physical size reuses
+    the current registered Artwork representation without requiring standalone
+    Artwork extrusion or packaging.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    # -----------------------------------------------------
+    # Create canonical Artwork input
+    # -----------------------------------------------------
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+
+    assert fixture_source.is_file()
+
+    artwork_directory = project_root / "artifacts" / "source-artwork"
+
+    artwork_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_input = artwork_directory / "artifact.png"
+
+    shutil.copy2(
+        fixture_source,
+        artwork_input,
+    )
+
+    # -----------------------------------------------------
+    # Configure reusable Artwork producer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "source-artwork",
+        {
+            "model": "artwork",
+            "source": str(
+                artwork_input,
+            ),
+        },
+        project_root=project_root,
+    )
+
+    artwork_dependency = {
+        "manifest": {
+            "model": "artwork",
+            "stage": "vector",
+            "product": "manifest",
+            "artifact": "source-artwork",
+            "realization": "default",
+        },
+    }
+
+    # -----------------------------------------------------
+    # Configure first Shape consumer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "circle-shape",
+        {
+            "model": "shape",
+            "shape_geometry": "circle",
+            "shape_size": 100.0,
+            "product_dependencies": artwork_dependency,
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Build first Shape
+    # -----------------------------------------------------
+
+    circle_plan = create_build_plans(
+        "circle-shape",
+        project_root=project_root,
+    )[0]
+
+    execute_dependency_build(
+        circle_plan,
+    )
+
+    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "default"
+
+    artwork_vector_manifest = artwork_root / "30-vector" / "products.json"
+
+    assert artwork_vector_manifest.is_file()
+
+    initial_vector_bytes = artwork_vector_manifest.read_bytes()
+
+    initial_component_bytes = {
+        path.name: path.read_bytes() for path in (artwork_root / "30-vector").glob("*.svg")
+    }
+
+    assert initial_component_bytes
+
+    # Shape consumption stops at registered Artwork.
+
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+    # -----------------------------------------------------
+    # Configure physically different Shape consumer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "polygon-shape",
+        {
+            "model": "shape",
+            "shape_geometry": "polygon",
+            "shape_sides": 7,
+            "shape_size": 120.0,
+            "product_dependencies": artwork_dependency,
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Build second Shape
+    # -----------------------------------------------------
+
+    polygon_plan = create_build_plans(
+        "polygon-shape",
+        project_root=project_root,
+    )[0]
+
+    execute_dependency_build(
+        polygon_plan,
+    )
+
+    # -----------------------------------------------------
+    # Verify registered Artwork was reused unchanged
+    # -----------------------------------------------------
+
+    assert artwork_vector_manifest.read_bytes() == initial_vector_bytes
+
+    reused_component_bytes = {
+        path.name: path.read_bytes() for path in (artwork_root / "30-vector").glob("*.svg")
+    }
+
+    assert reused_component_bytes == initial_component_bytes
+
+    # Neither consumer requires standalone Artwork manufacturing.
+
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+    # -----------------------------------------------------
+    # Verify both Shape artifacts exist
+    # -----------------------------------------------------
+
+    for plan in (
+        circle_plan,
+        polygon_plan,
+    ):
+        package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
+
+        artifact_product = next(
+            product for product in package_stage.products if product.spec.name == "artifact"
+        )
+
+        output = artifact_product.path
+
+        assert output.is_file()
+        assert output.stat().st_size > 0
+        assert zipfile.is_zipfile(
+            output,
+        )
+
+
+@pytest.mark.slow
+def test_second_shape_does_not_reexecute_registered_artwork_stages(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    A second Shape reuses current registered Artwork without reexecuting it.
+
+    When registered Artwork has already been produced for one Shape,
+    building a physically different Shape does not reexecute Artwork
+    preparation, rasterization, or vectorization.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    # -----------------------------------------------------
+    # Create canonical Artwork input
+    # -----------------------------------------------------
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+
+    assert fixture_source.is_file()
+
+    artwork_directory = project_root / "artifacts" / "source-artwork"
+
+    artwork_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_input = artwork_directory / "artifact.png"
+
+    shutil.copy2(
+        fixture_source,
+        artwork_input,
+    )
+
+    # -----------------------------------------------------
+    # Configure reusable Artwork producer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "source-artwork",
+        {
+            "model": "artwork",
+            "source": str(
+                artwork_input,
+            ),
+        },
+        project_root=project_root,
+    )
+
+    artwork_dependency = {
+        "manifest": {
+            "model": "artwork",
+            "stage": "vector",
+            "product": "manifest",
+            "artifact": "source-artwork",
+            "realization": "default",
+        },
+    }
+
+    # -----------------------------------------------------
+    # Configure two different Shape consumers
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "circle-shape",
+        {
+            "model": "shape",
+            "shape_geometry": "circle",
+            "shape_size": 100.0,
+            "product_dependencies": artwork_dependency,
+        },
+        project_root=project_root,
+    )
+
+    write_artifact_config(
+        "polygon-shape",
+        {
+            "model": "shape",
+            "shape_geometry": "polygon",
+            "shape_sides": 7,
+            "shape_size": 120.0,
+            "product_dependencies": artwork_dependency,
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Build first Shape and realize registered Artwork
+    # -----------------------------------------------------
+
+    circle_plan = create_build_plans(
+        "circle-shape",
+        project_root=project_root,
+    )[0]
+
+    execute_dependency_build(
+        circle_plan,
+    )
+
+    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "default"
+
+    assert (artwork_root / "10-prepare" / "trace.svg").is_file()
+    assert (artwork_root / "20-raster" / "products.json").is_file()
+    assert (artwork_root / "30-vector" / "products.json").is_file()
+
+    # -----------------------------------------------------
+    # Observe second Shape build
+    # -----------------------------------------------------
+
+    events = []
+
+    polygon_plan = create_build_plans(
+        "polygon-shape",
+        project_root=project_root,
+    )[0]
+
+    execute_dependency_build(
+        polygon_plan,
+        event_sink=events.append,
+    )
+
+    # -----------------------------------------------------
+    # Registered Artwork is not reexecuted
+    # -----------------------------------------------------
+
+    artwork_started = tuple(
+        event.stage_name
+        for event in events
+        if event.kind == "stage.started"
+        and event.artifact_id == "source-artwork"
+        and event.model_name == "artwork"
+    )
+
+    assert artwork_started == ()
+
+    # -----------------------------------------------------
+    # Second Shape manufacturing does execute
+    # -----------------------------------------------------
+
+    shape_started = tuple(
+        event.stage_name
+        for event in events
+        if event.kind == "stage.started"
+        and event.artifact_id == "polygon-shape"
+        and event.model_name == "shape"
+    )
+
+    assert shape_started == (
+        "structure",
+        "compose",
+        "extrude",
+        "package",
+    )
+
+    # -----------------------------------------------------
+    # Standalone Artwork manufacturing remains unnecessary
+    # -----------------------------------------------------
+
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+
+@pytest.mark.slow
 def test_shape_rebuilds_after_size_change(
     tmp_path: Path,
     monkeypatch,
