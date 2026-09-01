@@ -14,6 +14,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from lowkey_artifact_builder.colors import ColorError
 from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.model.models.shape.stages import compose, extrude
 
@@ -2104,4 +2105,332 @@ def test_artwork_fill_color_resolves_through_shared_palette(
             0,
             255,
         ],
+    }
+
+
+def test_artwork_fill_remains_distinct_from_base_when_colors_match(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Artwork fill remains a distinct physical component from the structural base.
+
+    Equal semantic colors do not merge or otherwise erase component identity.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    output_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_physical_fill_composition(
+        composition,
+    )
+    _write_physical_fill_manifest(
+        composition_manifest,
+        artwork_fill=_physical_fill_region(),
+    )
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        del source
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    context = _physical_fill_extrude_context(
+        composition=composition,
+        composition_manifest=composition_manifest,
+        output_manifest=output_manifest,
+    )
+
+    values = {
+        "shape_size": 100.0,
+        "shape_base_raise": 2.0,
+        "shape_base_color": "white",
+        "shape_outer_ridge_color": "white",
+        "shape_outer_ridge_raise": 1.0,
+        "shape_outer_ridge_style": "integrated",
+        "shape_artwork_raise": 0.6,
+        "shape_artwork_fill_color": "white",
+    }
+
+    context.resolver.side_effect = values.__getitem__
+
+    extrude.execute(
+        context,
+    )
+
+    products = json.loads(
+        output_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    base = next(component for component in products["components"] if component["name"] == "base")
+
+    fill = next(
+        component for component in products["components"] if component["name"] == "artwork-fill"
+    )
+
+    assert base["color"] == fill["color"]
+
+    assert base["name"] == "base"
+    assert fill["name"] == "artwork-fill"
+
+    assert base["path"] != fill["path"]
+
+
+def test_artwork_fill_remains_distinct_from_artwork_when_colors_match(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Artwork fill remains distinct from incorporated Artwork of the same color.
+
+    Shared semantic color does not merge Shape-owned fill with an Artwork
+    component or erase either component's semantic role.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    output_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_physical_fill_composition(
+        composition,
+    )
+    _write_physical_fill_manifest(
+        composition_manifest,
+        artwork_fill=_physical_fill_region(),
+    )
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        del source
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    context = _physical_fill_extrude_context(
+        composition=composition,
+        composition_manifest=composition_manifest,
+        output_manifest=output_manifest,
+    )
+
+    values = {
+        "shape_size": 100.0,
+        "shape_base_raise": 2.0,
+        "shape_base_color": "white",
+        "shape_outer_ridge_color": "white",
+        "shape_outer_ridge_raise": 1.0,
+        "shape_outer_ridge_style": "integrated",
+        "shape_artwork_raise": 0.6,
+        "shape_artwork_fill_color": "white",
+    }
+
+    context.resolver.side_effect = values.__getitem__
+
+    extrude.execute(
+        context,
+    )
+
+    products = json.loads(
+        output_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    artwork = next(
+        component for component in products["components"] if component["name"] == "artwork-1"
+    )
+
+    fill = next(
+        component for component in products["components"] if component["name"] == "artwork-fill"
+    )
+
+    assert artwork["color"] == fill["color"]
+
+    assert artwork["name"] == "artwork-1"
+    assert fill["name"] == "artwork-fill"
+
+    assert artwork["path"] != fill["path"]
+
+
+def test_invalid_artwork_fill_color_fails_through_shared_color_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Invalid Artwork-fill colors fail through normal shared color resolution.
+
+    Shape does not maintain a separate validation or interpretation mechanism
+    for enabled Artwork-fill semantic colors.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    output_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_physical_fill_composition(
+        composition,
+    )
+    _write_physical_fill_manifest(
+        composition_manifest,
+        artwork_fill=_physical_fill_region(),
+    )
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        del source
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    context = _physical_fill_extrude_context(
+        composition=composition,
+        composition_manifest=composition_manifest,
+        output_manifest=output_manifest,
+    )
+
+    values = {
+        "shape_size": 100.0,
+        "shape_base_raise": 2.0,
+        "shape_base_color": "white",
+        "shape_outer_ridge_color": "white",
+        "shape_outer_ridge_raise": 1.0,
+        "shape_outer_ridge_style": "integrated",
+        "shape_artwork_raise": 0.6,
+        "shape_artwork_fill_color": "not-a-real-color",
+    }
+
+    context.resolver.side_effect = values.__getitem__
+
+    with pytest.raises(
+        ColorError,
+        match="not-a-real-color",
+    ):
+        extrude.execute(
+            context,
+        )
+
+
+def test_artwork_fill_manifest_does_not_assign_printer_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Artwork-fill extrusion preserves semantic color without printer assignment.
+
+    Physical printer-head selection remains outside Shape's semantic component
+    manifest.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    output_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_physical_fill_composition(
+        composition,
+    )
+    _write_physical_fill_manifest(
+        composition_manifest,
+        artwork_fill=_physical_fill_region(),
+    )
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        del source
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    context = _physical_fill_extrude_context(
+        composition=composition,
+        composition_manifest=composition_manifest,
+        output_manifest=output_manifest,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    products = json.loads(
+        output_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    fill = next(
+        component for component in products["components"] if component["name"] == "artwork-fill"
+    )
+
+    assert fill["name"] == "artwork-fill"
+    assert fill["color"] == {
+        "name": "red",
+        "rgb": [
+            255,
+            0,
+            0,
+        ],
+    }
+
+    assert set(fill) == {
+        "name",
+        "path",
+        "color",
     }
