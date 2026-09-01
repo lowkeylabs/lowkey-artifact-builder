@@ -1614,3 +1614,182 @@ def test_recommend_palette_is_deterministic_for_equal_scores(
 
     assert recommendation.colors == (first,)
     assert recommendation.score == pytest.approx(1.0)
+
+
+# =========================================================
+# Palette recommendation validation
+# =========================================================
+
+
+def test_recommend_palette_rejects_empty_requested_colors() -> None:
+    """
+    Palette recommendation requires at least one requested color.
+    """
+
+    with pytest.raises(
+        ColorError,
+        match="Requested colors cannot be empty",
+    ):
+        recommend_palette(
+            (),
+            (
+                PaletteColor(
+                    name="red",
+                    rgb=(255, 0, 0),
+                ),
+            ),
+            palette_size=1,
+        )
+
+
+def test_recommend_palette_rejects_empty_candidates() -> None:
+    """
+    Palette recommendation requires at least one candidate color.
+    """
+
+    with pytest.raises(
+        ColorError,
+        match="Candidate colors cannot be empty",
+    ):
+        recommend_palette(
+            (
+                PaletteColor(
+                    name="artwork-red",
+                    rgb=(255, 0, 0),
+                ),
+            ),
+            (),
+            palette_size=1,
+        )
+
+
+@pytest.mark.parametrize(
+    "palette_size",
+    [
+        0,
+        -1,
+        True,
+    ],
+)
+def test_recommend_palette_rejects_invalid_palette_size(
+    palette_size: object,
+) -> None:
+    """
+    Palette size must be a positive integer.
+    """
+
+    with pytest.raises(
+        ColorError,
+        match="Palette size must be a positive integer",
+    ):
+        recommend_palette(
+            (
+                PaletteColor(
+                    name="artwork-red",
+                    rgb=(255, 0, 0),
+                ),
+            ),
+            (
+                PaletteColor(
+                    name="red",
+                    rgb=(255, 0, 0),
+                ),
+            ),
+            palette_size=palette_size,  # type: ignore[arg-type]
+        )
+
+
+def test_recommend_palette_rejects_palette_larger_than_candidates() -> None:
+    """
+    Requested palette size cannot exceed the available candidate colors.
+    """
+
+    with pytest.raises(
+        ColorError,
+        match="Palette size cannot exceed candidate color count",
+    ):
+        recommend_palette(
+            (
+                PaletteColor(
+                    name="artwork-red",
+                    rgb=(255, 0, 0),
+                ),
+            ),
+            (
+                PaletteColor(
+                    name="red",
+                    rgb=(255, 0, 0),
+                ),
+            ),
+            palette_size=2,
+        )
+
+
+def test_recommend_palette_rejects_too_many_mandatory_colors() -> None:
+    """
+    Mandatory colors cannot exceed the requested palette size.
+    """
+
+    red = PaletteColor(
+        name="red",
+        rgb=(255, 0, 0),
+    )
+
+    white = PaletteColor(
+        name="white",
+        rgb=(255, 255, 255),
+    )
+
+    with pytest.raises(
+        ColorError,
+        match="Mandatory color count cannot exceed palette size",
+    ):
+        recommend_palette(
+            (
+                PaletteColor(
+                    name="artwork-red",
+                    rgb=(255, 0, 0),
+                ),
+            ),
+            (
+                red,
+                white,
+            ),
+            palette_size=1,
+            mandatory=(
+                red,
+                white,
+            ),
+        )
+
+
+def test_recommend_palette_rejects_mandatory_color_not_in_candidates() -> None:
+    """
+    Every mandatory color must identify an available candidate color.
+    """
+
+    with pytest.raises(
+        ColorError,
+        match="Mandatory color is not a candidate",
+    ):
+        recommend_palette(
+            (
+                PaletteColor(
+                    name="artwork-red",
+                    rgb=(255, 0, 0),
+                ),
+            ),
+            (
+                PaletteColor(
+                    name="red",
+                    rgb=(255, 0, 0),
+                ),
+            ),
+            palette_size=1,
+            mandatory=(
+                PaletteColor(
+                    name="white",
+                    rgb=(255, 255, 255),
+                ),
+            ),
+        )

@@ -620,6 +620,31 @@ def recommend_palette(
     candidate_colors = tuple(candidates)
     mandatory_colors = tuple(mandatory)
 
+    if not requested_colors:
+        raise ColorError("Requested colors cannot be empty.")
+
+    if not candidate_colors:
+        raise ColorError("Candidate colors cannot be empty.")
+
+    if (
+        isinstance(
+            palette_size,
+            bool,
+        )
+        or not isinstance(
+            palette_size,
+            int,
+        )
+        or palette_size < 1
+    ):
+        raise ColorError("Palette size must be a positive integer.")
+
+    if palette_size > len(candidate_colors):
+        raise ColorError("Palette size cannot exceed candidate color count.")
+
+    if len(mandatory_colors) > palette_size:
+        raise ColorError("Mandatory color count cannot exceed palette size.")
+
     _validate_palette_colors(
         requested_colors,
     )
@@ -631,6 +656,12 @@ def recommend_palette(
     _validate_palette_colors(
         mandatory_colors,
     )
+
+    candidate_names = {color.name for color in candidate_colors}
+
+    for color in mandatory_colors:
+        if color.name not in candidate_names:
+            raise ColorError(f"Mandatory color is not a candidate: {color.name}")
 
     mandatory_names = {color.name for color in mandatory_colors}
 
