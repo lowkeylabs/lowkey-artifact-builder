@@ -1035,6 +1035,7 @@ def test_five_tool_artwork_palette_recommendation_requires_white(
     recommend_five_tool_artwork_palettes(
         manifest=manifest,
         resolver=resolver,
+        white="white",
     )
 
     assert calls == [
@@ -1139,8 +1140,8 @@ def test_five_tool_artwork_palette_recommendation_returns_complete_palettes(
     recommendations = recommend_five_tool_artwork_palettes(
         manifest=manifest,
         resolver=resolver,
+        white="white",
     )
-
     assert len(recommendations.printer.colors) == 5
     assert len(recommendations.library.colors) == 5
     assert len(recommendations.catalog.colors) == 5
@@ -1150,3 +1151,176 @@ def test_five_tool_artwork_palette_recommendation_returns_complete_palettes(
     assert "white" in {color.name for color in recommendations.library.colors}
 
     assert "white" in {color.name for color in recommendations.catalog.colors}
+
+
+def test_five_tool_artwork_palette_recommendation_accepts_white_identity(
+    tmp_path: Path,
+) -> None:
+    """
+    Five-tool Artwork recommendation accepts the semantic identity used
+    for the required white filament.
+    """
+    manifest = tmp_path / "products.json"
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "products": [
+                    {
+                        "name": "artwork-red",
+                        "color": {
+                            "red": 255,
+                            "green": 0,
+                            "blue": 0,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    colors: dict[str, object] = {
+        "test-white": {
+            "rgb": [255, 255, 255],
+            "manufacturer": "Test Filament",
+        },
+        "test-red": {
+            "rgb": [255, 0, 0],
+            "manufacturer": "Test Filament",
+        },
+        "test-green": {
+            "rgb": [0, 255, 0],
+            "manufacturer": "Test Filament",
+        },
+        "test-blue": {
+            "rgb": [0, 0, 255],
+            "manufacturer": "Test Filament",
+        },
+        "test-black": {
+            "rgb": [0, 0, 0],
+            "manufacturer": "Test Filament",
+        },
+    }
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": [
+                "test-white",
+                "test-red",
+                "test-green",
+                "test-blue",
+                "test-black",
+            ],
+            "library_colors": [
+                "test-white",
+                "test-red",
+                "test-green",
+                "test-blue",
+                "test-black",
+            ],
+        },
+        colors=colors,
+    )
+
+    recommendations = recommend_five_tool_artwork_palettes(
+        manifest=manifest,
+        resolver=resolver,
+        white="test-white",
+    )
+
+    assert tuple(color.name for color in recommendations.printer.colors) == (
+        "test-white",
+        "test-red",
+        "test-green",
+        "test-blue",
+        "test-black",
+    )
+
+    assert tuple(color.name for color in recommendations.library.colors) == (
+        "test-white",
+        "test-red",
+        "test-green",
+        "test-blue",
+        "test-black",
+    )
+
+
+def test_five_tool_artwork_palette_recommendation_requires_supplied_white_identity(
+    tmp_path: Path,
+) -> None:
+    """
+    The supplied white filament identity is mandatory in every
+    five-tool recommendation scope.
+    """
+    manifest = tmp_path / "products.json"
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "products": [
+                    {
+                        "name": "artwork-red",
+                        "color": {
+                            "red": 255,
+                            "green": 0,
+                            "blue": 0,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    colors: dict[str, object] = {
+        "test-white": {
+            "rgb": [255, 255, 255],
+            "manufacturer": "test",
+        },
+        "test-red": {
+            "rgb": [255, 0, 0],
+            "manufacturer": "test",
+        },
+        "test-green": {
+            "rgb": [0, 255, 0],
+            "manufacturer": "test",
+        },
+        "test-blue": {
+            "rgb": [0, 0, 255],
+            "manufacturer": "test",
+        },
+        "test-black": {
+            "rgb": [0, 0, 0],
+            "manufacturer": "test",
+        },
+    }
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": [
+                "test-red",
+                "test-green",
+                "test-blue",
+                "test-black",
+            ],
+            "library_colors": [
+                "test-white",
+                "test-red",
+                "test-green",
+                "test-blue",
+                "test-black",
+            ],
+        },
+        colors=colors,
+    )
+
+    with pytest.raises(
+        ColorError,
+        match="Mandatory color is not a candidate: test-white",
+    ):
+        recommend_five_tool_artwork_palettes(
+            manifest=manifest,
+            resolver=resolver,
+            white="test-white",
+        )

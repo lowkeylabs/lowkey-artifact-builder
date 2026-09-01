@@ -294,19 +294,19 @@ def recommend_five_tool_artwork_palettes(
     *,
     manifest: Path,
     resolver: ColorAnalysisResolver,
+    white: str,
 ) -> ArtworkPaletteRecommendations:
     """
     Recommend five-tool palettes for registered Artwork.
 
-    The five-tool Artwork use case requires white plus four
-    additional colors.
+    The five-tool Artwork use case requires the supplied white
+    filament identity plus four additional colors.
     """
-
     return recommend_registered_artwork_palettes(
         manifest=manifest,
         resolver=resolver,
         palette_size=5,
-        mandatory=("white",),
+        mandatory=(white,),
     )
 
 
