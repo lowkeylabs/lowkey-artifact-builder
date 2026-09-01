@@ -109,8 +109,10 @@ def derive_artwork_fill_color(
     Matching uses the shared generic color infrastructure. The selected
     printer color's semantic identity is preserved.
 
-    Candidate order follows printer color order, providing deterministic
-    selection when multiple candidates have equal perceptual distance.
+    Duplicate printer colors are collapsed for matching because multiple
+    printer heads may intentionally contain the same semantic color.
+    First-occurrence printer order is preserved, providing deterministic
+    selection when candidates have equal perceptual distance.
 
     An explicitly configured artwork_fill_color value overrides this
     derivation through normal configuration resolution.
@@ -120,8 +122,14 @@ def derive_artwork_fill_color(
         resolver,
     )
 
+    candidate_names = tuple(
+        dict.fromkeys(
+            printer_colors,
+        )
+    )
+
     candidates = resolve_palette(
-        printer_colors,
+        candidate_names,
         resolver.colors,
     )
 

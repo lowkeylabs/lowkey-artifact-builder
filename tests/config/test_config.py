@@ -633,6 +633,34 @@ rgb = [200, 200, 200]
     assert resolver("artwork_fill_color") == "test-red"
 
 
+def test_artwork_fill_color_derivation_accepts_duplicate_printer_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Fill-color derivation accepts duplicate printer colors.
+
+    Multiple printer heads may intentionally contain the same semantic
+    color, so deriving the fill color must not require printer color
+    identities to be unique.
+    """
+
+    _write_workspace(
+        tmp_path,
+        """
+[parameters]
+printer_colors = ["test-red", "test-white", "test-white"]
+""".lstrip(),
+    )
+
+    resolver = get_resolver(
+        "nydeli",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    assert resolver("artwork_fill_color") == "test-white"
+
+
 def test_explicit_artwork_fill_color_overrides_derivation(
     tmp_path: Path,
 ) -> None:
