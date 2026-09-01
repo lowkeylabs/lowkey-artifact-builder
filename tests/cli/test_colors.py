@@ -225,3 +225,64 @@ def test_analyze_artifact_colors_does_not_execute_build(
     monkeypatch.chdir(tmp_path)
 
     analyze_artifact_colors("nydeli")
+
+
+def test_analyze_artifact_colors_does_not_modify_configuration(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """
+    Color analysis is a read-only configuration diagnostic.
+    """
+
+    from lowkey_artifact_builder.cli.cmd_color import (
+        analyze_artifact_colors,
+    )
+
+    manifest = tmp_path / "products.json"
+
+    resolver = SimpleNamespace(
+        colors={
+            "white": {
+                "rgb": [255, 255, 255],
+                "manufacturer": "test",
+            },
+        },
+    )
+
+    plan = SimpleNamespace(
+        resolver=resolver,
+        stages=(
+            SimpleNamespace(
+                name="vector",
+                products=(
+                    SimpleNamespace(
+                        name="manifest",
+                        path=manifest,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
+        lambda artifact_id, *, project_root: plan,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.analyze_registered_artwork_colors",
+        lambda *, manifest, resolver: (),
+    )
+
+    def fail_write(*args, **kwargs) -> None:
+        raise AssertionError("color analysis must not modify configuration")
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.config.write_artifact_config",
+        fail_write,
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    analyze_artifact_colors("nydeli")
