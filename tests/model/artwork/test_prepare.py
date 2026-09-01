@@ -905,6 +905,118 @@ def test_unsupported_artwork_envelope_mode_is_rejected() -> None:
 # =========================================================
 
 
+def test_prepare_configured_shrink_wrap_changes_persistent_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Configured shrink-wrap mode affects the persistent envelope.svg
+    produced by Artwork preparation.
+    """
+
+    source = tmp_path / "source.png"
+
+    image = Image.new(
+        "RGBA",
+        (
+            60,
+            60,
+        ),
+        (
+            255,
+            255,
+            255,
+            255,
+        ),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        for y in range(
+            15,
+            45,
+        ):
+            for x in range(
+                15,
+                45,
+            ):
+                pixels[x, y] = (
+                    0,
+                    0,
+                    0,
+                    255,
+                )
+
+        image.save(
+            source,
+        )
+
+    finally:
+        image.close()
+
+    monkeypatch.setattr(
+        prepare,
+        "_trace_multicolor",
+        _fake_trace_multicolor,
+    )
+
+    monkeypatch.setattr(
+        prepare,
+        "_clip_trace_to_envelope",
+        lambda trace_path, artwork_envelope: None,
+    )
+
+    alpha_envelope = tmp_path / "alpha-envelope.svg"
+
+    alpha_context = StubContext(
+        inputs={
+            "source": source,
+        },
+        outputs={
+            "trace": tmp_path / "alpha-trace.svg",
+            "envelope": alpha_envelope,
+        },
+        resolver=_resolver(
+            envelope_mode="alpha",
+        ),
+    )
+
+    prepare.execute(
+        alpha_context,  # type: ignore[arg-type]
+    )
+
+    shrink_wrap_envelope = tmp_path / "shrink-wrap-envelope.svg"
+
+    shrink_wrap_context = StubContext(
+        inputs={
+            "source": source,
+        },
+        outputs={
+            "trace": tmp_path / "shrink-wrap-trace.svg",
+            "envelope": shrink_wrap_envelope,
+        },
+        resolver=_resolver(
+            envelope_mode="shrink-wrap",
+        ),
+    )
+
+    prepare.execute(
+        shrink_wrap_context,  # type: ignore[arg-type]
+    )
+
+    assert alpha_envelope.is_file()
+    assert shrink_wrap_envelope.is_file()
+
+    assert alpha_envelope.read_text(
+        encoding="utf-8",
+    ) != shrink_wrap_envelope.read_text(
+        encoding="utf-8",
+    )
+
+
 def test_prepare_normalization_supports_non_white_fill_color() -> None:
     """
     Image normalization can assign a non-white fill color to
