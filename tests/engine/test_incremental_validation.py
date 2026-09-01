@@ -23,13 +23,23 @@ from lowkey_artifact_builder.config import ConfigError
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     ExecutionPlan,
+    PlannedProduct,
+    PlannedProductDependency,
     PlannedStage,
     ProductFingerprint,
+    ProductState,
     StageCompletion,
     create_required_fingerprints,
     execute_incremental_build,
     prepare_incremental_build,
     write_stage_completion,
+)
+from lowkey_artifact_builder.model import (
+    ModelSpec,
+    ProductDependencyBinding,
+    ProductDependencySpec,
+    ProductSpec,
+    StageSpec,
 )
 
 type ArtworkPlanFactory = Callable[..., BuildPlan]
@@ -38,6 +48,115 @@ type ArtworkPlanFactory = Callable[..., BuildPlan]
 # =========================================================
 # Test support
 # =========================================================
+
+
+def _product_dependency_plan(
+    *,
+    tmp_path: Path,
+    resolver,
+    dependency_path: Path,
+) -> BuildPlan:
+    """
+    Construct a minimal realized consumer plan with one bound producer product.
+    """
+
+    dependency = ProductDependencySpec(
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="producer-artifact",
+        realization="default",
+    )
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=dependency_path,
+    )
+
+    stage_spec = StageSpec(
+        id=10,
+        name="consume",
+        product_dependencies=(dependency,),
+    )
+
+    stage = PlannedStage(
+        spec=stage_spec,
+        products=(
+            PlannedProduct(
+                spec=ProductSpec(
+                    name="artifact",
+                    path="artifact.dat",
+                ),
+                path=(
+                    tmp_path
+                    / "artifacts"
+                    / "consumer-artifact"
+                    / "consumer"
+                    / "default"
+                    / "10-consume"
+                    / "artifact.dat"
+                ),
+            ),
+        ),
+    )
+
+    return BuildPlan(
+        artifact_id="consumer-artifact",
+        model=ModelSpec(
+            name="consumer",
+            title="Consumer",
+            stages=(stage_spec,),
+        ),
+        realization_name="default",
+        resolver=resolver,
+        project_root=tmp_path,
+        artifact_dir=(tmp_path / "artifacts" / "consumer-artifact"),
+        stages=(stage,),
+        product_dependencies=(dependency,),
+        product_dependency_bindings=(binding,),
+        planned_product_dependencies=(planned_dependency,),
+    )
+
+
+def _record_product_dependency_current(
+    build_plan: BuildPlan,
+    *,
+    fingerprint: ProductFingerprint,
+) -> None:
+    """
+    Materialize one bound producer product with matching completion provenance.
+    """
+
+    assert len(build_plan.planned_product_dependencies) == 1
+
+    planned_dependency = build_plan.planned_product_dependencies[0]
+    binding = planned_dependency.binding
+    dependency = binding.dependency
+
+    planned_dependency.path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    planned_dependency.path.write_bytes(
+        b"producer-product",
+    )
+
+    write_stage_completion(
+        planned_dependency.path.parent,
+        StageCompletion(
+            artifact_id=binding.artifact,
+            model_name=dependency.model,
+            realization=binding.realization,
+            stage_name=dependency.stage,
+            products=(dependency.product,),
+            fingerprint=fingerprint,
+        ),
+    )
 
 
 def _materialize_external_inputs(
@@ -132,6 +251,124 @@ def _record_stage_current(
 # =========================================================
 # Incremental preparation
 # =========================================================
+
+
+def test_prepare_incremental_build_does_not_validate_blocked_consumer(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A consumer blocked on required producer work is not yet execution-ready
+    and therefore does not undergo local configuration validation.
+    """
+
+    dependency_path = (
+        tmp_path
+        / "artifacts"
+        / "producer-artifact"
+        / "producer"
+        / "default"
+        / "10-prepare"
+        / "geometry.dat"
+    )
+
+    build_plan = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+        dependency_path=dependency_path,
+    )
+
+    validated: list[ExecutionPlan] = []
+
+    def validate_execution(
+        planned_build: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> None:
+        assert planned_build is build_plan
+        validated.append(execution_plan)
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.incremental.validate_execution",
+        validate_execution,
+    )
+
+    execution_plan = prepare_incremental_build(
+        build_plan,
+    )
+
+    assert len(execution_plan.required_product_dependencies) == 1
+
+    dependency = execution_plan.required_product_dependencies[0]
+
+    assert dependency.state is ProductState.ABSENT
+    assert dependency.requires_production
+
+    assert validated == []
+
+
+def test_prepare_incremental_build_validates_consumer_when_dependency_is_current(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Once the required producer product is reusable, incremental preparation
+    validates the consumer's local execution scope.
+    """
+
+    dependency_path = (
+        tmp_path
+        / "artifacts"
+        / "producer-artifact"
+        / "producer"
+        / "default"
+        / "10-prepare"
+        / "geometry.dat"
+    )
+
+    build_plan = _product_dependency_plan(
+        tmp_path=tmp_path,
+        resolver=test_resolver,
+        dependency_path=dependency_path,
+    )
+
+    producer_fingerprint = ProductFingerprint(
+        algorithm="sha256",
+        value="a" * 64,
+    )
+
+    _record_product_dependency_current(
+        build_plan,
+        fingerprint=producer_fingerprint,
+    )
+
+    validated: list[ExecutionPlan] = []
+
+    def validate_execution(
+        planned_build: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> None:
+        assert planned_build is build_plan
+        validated.append(execution_plan)
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.incremental.validate_execution",
+        validate_execution,
+    )
+
+    execution_plan = prepare_incremental_build(
+        build_plan,
+        product_dependency_fingerprint=(lambda dependency: producer_fingerprint),
+    )
+
+    assert execution_plan.required_product_dependencies == ()
+
+    assert tuple(stage.stage_name for stage in execution_plan.required_stages) == ("consume",)
+
+    assert validated == [
+        execution_plan,
+    ]
 
 
 def test_prepare_incremental_build_validates_planned_execution(

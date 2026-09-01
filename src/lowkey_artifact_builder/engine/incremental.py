@@ -219,8 +219,10 @@ def prepare_incremental_build(
     Persistent-state-aware planning determines which stages require
     execution.
 
-    Configuration validation is applied to the resulting execution scope
-    before the plan is returned.
+    A consumer blocked by required producer work is returned without
+    validating its local configuration. Once all producer products are
+    reusable, configuration validation is applied to the resulting local
+    execution scope.
 
     No stage execution or completion persistence occurs at this boundary.
     """
@@ -229,6 +231,9 @@ def prepare_incremental_build(
         build_plan,
         product_dependency_fingerprint=product_dependency_fingerprint,
     )
+
+    if execution_plan.required_product_dependencies:
+        return execution_plan
 
     validate_execution(
         build_plan,
