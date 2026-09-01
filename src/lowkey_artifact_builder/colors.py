@@ -137,6 +137,25 @@ class ColorAssignment:
     distance: float
 
 
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class ColorMatch:
+    """
+    Match of one requested color to one candidate color.
+
+    distance:
+        Perceptual distance between the requested and matched colors.
+    """
+
+    requested: PaletteColor
+
+    color: PaletteColor
+
+    distance: float
+
+
 # =========================================================
 # Validation
 # =========================================================
@@ -496,6 +515,59 @@ def color_distance(
 
 
 # =========================================================
+# Nearest color matching
+# =========================================================
+
+
+def match_color(
+    requested: PaletteColor,
+    candidates: Sequence[PaletteColor],
+) -> ColorMatch:
+    """
+    Match one requested color to its nearest candidate.
+
+    Matching minimizes perceptual color distance. Candidate order
+    determines the selected result when multiple candidates have the
+    same distance.
+    """
+
+    if not candidates:
+        raise ColorError("Candidate colors cannot be empty.")
+
+    candidate_colors = tuple(candidates)
+
+    _validate_palette_colors(
+        (requested,),
+    )
+
+    _validate_palette_colors(
+        candidate_colors,
+    )
+
+    best_color = candidate_colors[0]
+    best_distance = color_distance(
+        requested.rgb,
+        best_color.rgb,
+    )
+
+    for candidate in candidate_colors[1:]:
+        distance = color_distance(
+            requested.rgb,
+            candidate.rgb,
+        )
+
+        if distance < best_distance:
+            best_color = candidate
+            best_distance = distance
+
+    return ColorMatch(
+        requested=requested,
+        color=best_color,
+        distance=best_distance,
+    )
+
+
+# =========================================================
 # Color assignment
 # =========================================================
 
@@ -663,6 +735,7 @@ def _validate_palette_colors(
 __all__ = [
     "ColorAssignment",
     "ColorError",
+    "ColorMatch",
     "Lab",
     "MeasuredColor",
     "PaletteColor",
@@ -670,6 +743,7 @@ __all__ = [
     "assign_colors",
     "color_distance",
     "css_rgb",
+    "match_color",
     "resolve_palette",
     "resolve_palette_color",
     "rgb_to_lab",
