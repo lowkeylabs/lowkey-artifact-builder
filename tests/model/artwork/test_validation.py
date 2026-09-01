@@ -485,3 +485,89 @@ def test_invalid_historical_artwork_fill_color_does_not_block_current_prepare() 
         build_plan,
         execution_plan,
     )
+
+
+def test_artwork_rejects_non_sequence_printer_colors() -> None:
+    """
+    Artwork printer_colors must be a sequence of semantic color names.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="printer_colors",
+    ):
+        _validate_artwork(
+            colors=(
+                "white",
+                "black",
+            ),
+            fill_color="white",
+            printer_colors="red",
+            catalog_colors=("red",),
+        )
+
+
+def test_artwork_rejects_non_string_printer_color() -> None:
+    """
+    Every printer_colors entry must be a semantic color name.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="printer_colors",
+    ):
+        _validate_artwork(
+            colors=(
+                "white",
+                "black",
+            ),
+            fill_color="white",
+            printer_colors=(
+                "red",
+                42,
+            ),
+            catalog_colors=("red",),
+        )
+
+
+def test_artwork_rejects_non_sequence_library_colors() -> None:
+    """
+    Artwork library_colors must be a sequence of semantic color names.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="library_colors",
+    ):
+        _validate_artwork(
+            colors=(
+                "white",
+                "black",
+            ),
+            fill_color="white",
+            library_colors="red",
+            catalog_colors=("red",),
+        )
+
+
+def test_artwork_rejects_non_string_library_color() -> None:
+    """
+    Every library_colors entry must be a semantic color name.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="library_colors",
+    ):
+        _validate_artwork(
+            colors=(
+                "white",
+                "black",
+            ),
+            fill_color="white",
+            library_colors=(
+                "red",
+                42,
+            ),
+            catalog_colors=("red",),
+        )
