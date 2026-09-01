@@ -315,4 +315,3 @@ If the final audit identifies another meaningful discrepancy:
 2. replace it with only the newly discovered remaining work;
 3. restart phase numbering from Phase 1;
 4. continue until HEAD conforms to the permanent specifications.
-
