@@ -236,8 +236,14 @@ def test_shape_builds_complete_3mf_without_artwork(
 
     assert base_color is not None
 
+    #
+    # This test intentionally exercises the model default.
+    # The semantic default is "white". Its RGB representation
+    # belongs to the mutable physical filament catalog and is
+    # therefore not asserted here.
+    #
+
     assert base_color.get("name") == "white"
-    assert base_color.get("displaycolor") == "#FFFFFF"
 
     assert base_object.get("pid") == base_material.get("id")
     assert base_object.get("pindex") == "0"
@@ -297,11 +303,11 @@ def test_shape_ridge_preserves_distinct_component_colors(
         "colored-shape",
         {
             "parameters": {
-                "shape_base_color": "white",
+                "shape_base_color": "test-white",
                 "shape_outer_ridge_width": 2.0,
                 "shape_outer_ridge_raise": 1.0,
                 "shape_outer_ridge_style": ridge_style,
-                "shape_outer_ridge_color": "red",
+                "shape_outer_ridge_color": "test-red",
             },
         },
         project_root=project_root,
@@ -401,7 +407,7 @@ def test_shape_ridge_preserves_distinct_component_colors(
 
     assert base_color is not None
 
-    assert base_color.get("name") == "white"
+    assert base_color.get("name") == "test-white"
     assert base_color.get("displaycolor") == "#FFFFFF"
 
     assert base_object.get("pindex") == "0"
@@ -420,8 +426,8 @@ def test_shape_ridge_preserves_distinct_component_colors(
 
     assert ridge_color is not None
 
-    assert ridge_color.get("name") == "red"
-    assert ridge_color.get("displaycolor") == "#DC2626"
+    assert ridge_color.get("name") == "test-red"
+    assert ridge_color.get("displaycolor") == "#FF0000"
 
     assert ridge_object.get("pindex") == "0"
 
@@ -673,6 +679,7 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
         "artwork-shape",
         {
             "model": "shape",
+            "shape_base_color": "test-white",
             "product_dependencies": {
                 "manifest": {
                     "model": "artwork",
@@ -851,7 +858,7 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
     )
 
     assert base_color is not None
-    assert base_color.get("name") == "white"
+    assert base_color.get("name") == "test-white"
     assert base_color.get("displaycolor") == "#FFFFFF"
     assert base_object.get("pindex") == "0"
 
