@@ -686,11 +686,11 @@ def test_package_stage_preserves_relative_component_registration(
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
 
     packaged_artwork_1 = _object_vertices(
-        objects_by_name["example-artwork-1-test-red"],
+        objects_by_name["example-artwork-1"],
     )
 
     packaged_artwork_2 = _object_vertices(
-        objects_by_name["example-artwork-2-test-blue"],
+        objects_by_name["example-artwork-2"],
     )
 
     assert _mesh_bounds(
@@ -816,9 +816,9 @@ def test_package_stage_packages_incorporated_artwork_components(
     )
 
     assert [object_.get("name") for object_ in objects] == [
-        "example-base-test-white",
-        "example-artwork-1-test-red",
-        "example-artwork-2-test-blue",
+        "example-base",
+        "example-artwork-1",
+        "example-artwork-2",
     ]
 
 
@@ -907,15 +907,15 @@ def test_package_stage_preserves_incorporated_artwork_colors(
     materials_by_id = {material.get("id"): material for material in materials}
 
     expected_colors = {
-        "example-base-test-white": (
+        "example-base": (
             "test-white",
             "#FFFFFF",
         ),
-        "example-artwork-1-test-red": (
+        "example-artwork-1": (
             "test-red",
             "#FF0000",
         ),
-        "example-artwork-2-test-blue": (
+        "example-artwork-2": (
             "test-blue",
             "#0000FF",
         ),
@@ -1057,7 +1057,7 @@ def test_package_stage_packages_single_base_component(
             "utf-8",
         )
 
-    assert "example-base-white" in model
+    assert "example-base" in model
     assert "example-ridge" not in model
 
 
@@ -1098,19 +1098,19 @@ def test_package_stage_packages_all_manifest_components(
             "utf-8",
         )
 
-    assert "example-base-white" in model
-    assert "example-ridge-white" in model
+    assert "example-base" in model
+    assert "example-ridge" in model
 
 
-def test_package_stage_uses_semantic_component_and_color_names(
+def test_package_stage_uses_semantic_component_names(
     tmp_path: Path,
 ) -> None:
     """
-    Packaged Shape components expose semantic component and color identities.
+    Packaged Shape components expose stable semantic component identities.
 
-    Object naming combines artifact identity, the component role declared by
-    the manifest, and its semantic color identity rather than depending on
-    physical STL filenames.
+    Object naming combines artifact identity with the component role declared
+    by the manifest rather than depending on physical STL filenames or
+    semantic color identity.
     """
 
     component_directory = tmp_path / "extrude"
@@ -1168,8 +1168,8 @@ def test_package_stage_uses_semantic_component_and_color_names(
     )
 
     assert [object_.get("name") for object_ in objects] == [
-        "example-base-test-white",
-        "example-ridge-test-red",
+        "example-base",
+        "example-ridge",
     ]
 
     assert all("arbitrary-base-name" not in (object_.get("name") or "") for object_ in objects)
@@ -1234,7 +1234,7 @@ def test_package_stage_preserves_base_component_color(
     )
 
     assert len(objects) == 1
-    assert objects[0].get("name") == "example-base-test-red"
+    assert objects[0].get("name") == "example-base"
 
     assert len(materials) == 1
 
@@ -1320,8 +1320,8 @@ def test_package_stage_preserves_distinct_component_colors(
     )
 
     assert [object_.get("name") for object_ in objects] == [
-        "example-base-test-white",
-        "example-ridge-test-red",
+        "example-base",
+        "example-ridge",
     ]
 
     colors = {
@@ -1578,8 +1578,8 @@ def test_package_stage_preserves_shared_component_color(
     )
 
     assert [object_.get("name") for object_ in objects] == [
-        "example-base-test-red",
-        "example-ridge-test-red",
+        "example-base",
+        "example-ridge",
     ]
 
     assert len(materials) == 2
@@ -1779,26 +1779,26 @@ def test_package_stage_preserves_mixed_structural_and_artwork_components(
     materials_by_id = {material.get("id"): material for material in materials}
 
     assert set(objects_by_name) == {
-        "example-base-test-white",
-        "example-ridge-test-red",
-        "example-artwork-1-test-red",
-        "example-artwork-2-test-blue",
+        "example-base",
+        "example-ridge",
+        "example-artwork-1",
+        "example-artwork-2",
     }
 
     expected_colors = {
-        "example-base-test-white": (
+        "example-base": (
             "test-white",
             "#FFFFFF",
         ),
-        "example-ridge-test-red": (
+        "example-ridge": (
             "test-red",
             "#FF0000",
         ),
-        "example-artwork-1-test-red": (
+        "example-artwork-1": (
             "test-red",
             "#FF0000",
         ),
-        "example-artwork-2-test-blue": (
+        "example-artwork-2": (
             "test-blue",
             "#0000FF",
         ),
@@ -1825,9 +1825,9 @@ def test_package_stage_preserves_mixed_structural_and_artwork_components(
             color.get("displaycolor"),
         ) == expected_color
 
-    assert objects_by_name["example-ridge-test-red"].get("id") != objects_by_name[
-        "example-artwork-1-test-red"
-    ].get("id")
+    assert objects_by_name["example-ridge"].get("id") != objects_by_name["example-artwork-1"].get(
+        "id"
+    )
 
 
 @pytest.mark.slow
