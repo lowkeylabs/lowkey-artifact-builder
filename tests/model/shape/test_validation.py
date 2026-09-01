@@ -66,9 +66,20 @@ def _validate_shape(
         VALIDATORS,
     )
 
+    resolved_values: dict[str, Any] = {
+        "shape_geometry": "circle",
+        "shape_sides": 8,
+        "shape_base_raise": 2.0,
+        "shape_outer_ridge_raise": 1.0,
+    }
+
+    resolved_values.update(
+        values,
+    )
+
     validate_configuration(
         StubResolver(
-            values,
+            resolved_values,
         ),
         validators=VALIDATORS,
     )
@@ -231,4 +242,87 @@ def test_invalid_historical_shape_ridge_raise_does_not_block_current_extrude() -
     validate_execution(
         build_plan,
         execution_plan,
+    )
+
+
+def test_shape_polygon_accepts_three_sides() -> None:
+    """
+    A regular polygon may use the minimum supported side count.
+    """
+
+    _validate_shape(
+        {
+            "shape_geometry": "polygon",
+            "shape_sides": 3,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 1.0,
+        }
+    )
+
+
+def test_shape_polygon_accepts_more_than_three_sides() -> None:
+    """
+    A regular polygon may use any integer side count above the minimum.
+    """
+
+    _validate_shape(
+        {
+            "shape_geometry": "polygon",
+            "shape_sides": 8,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 1.0,
+        }
+    )
+
+
+def test_shape_polygon_rejects_fewer_than_three_sides() -> None:
+    """
+    Polygon geometry requires at least three sides.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_sides",
+    ):
+        _validate_shape(
+            {
+                "shape_geometry": "polygon",
+                "shape_sides": 2,
+                "shape_base_raise": 2.0,
+                "shape_outer_ridge_raise": 1.0,
+            }
+        )
+
+
+def test_shape_polygon_rejects_non_integer_side_count() -> None:
+    """
+    Polygon side count is an integer semantic property.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_sides",
+    ):
+        _validate_shape(
+            {
+                "shape_geometry": "polygon",
+                "shape_sides": 3.5,
+                "shape_base_raise": 2.0,
+                "shape_outer_ridge_raise": 1.0,
+            }
+        )
+
+
+def test_shape_non_polygon_does_not_require_valid_polygon_side_count() -> None:
+    """
+    Polygon side-count policy does not constrain non-polygon geometry.
+    """
+
+    _validate_shape(
+        {
+            "shape_geometry": "circle",
+            "shape_sides": 2,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 1.0,
+        }
     )

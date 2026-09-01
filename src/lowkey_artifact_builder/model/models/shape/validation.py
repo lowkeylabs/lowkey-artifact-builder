@@ -50,6 +50,41 @@ def _validate_outer_ridge_raise(
         )
 
 
+def _validate_polygon_sides(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require polygon geometry to use at least three integer sides.
+    """
+
+    geometry = resolver(
+        "shape_geometry",
+    )
+
+    sides = resolver(
+        "shape_sides",
+    )
+
+    if geometry != "polygon":
+        return
+
+    if (
+        not isinstance(
+            sides,
+            int,
+        )
+        or isinstance(
+            sides,
+            bool,
+        )
+        or sides < 3
+    ):
+        raise ConfigError(
+            "shape_sides must be an integer greater than or equal to 3 "
+            "when shape_geometry is 'polygon'."
+        )
+
+
 VALIDATORS = (
     ConfigurationValidator(
         parameters=(
@@ -57,6 +92,13 @@ VALIDATORS = (
             "shape_outer_ridge_raise",
         ),
         validate=_validate_outer_ridge_raise,
+    ),
+    ConfigurationValidator(
+        parameters=(
+            "shape_geometry",
+            "shape_sides",
+        ),
+        validate=_validate_polygon_sides,
     ),
 )
 
