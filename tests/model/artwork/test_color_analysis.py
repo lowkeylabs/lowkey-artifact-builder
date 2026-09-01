@@ -7,9 +7,13 @@ Tests for Artwork color-match analysis.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from lowkey_artifact_builder.colors import PaletteColor
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
     analyze_color_matches,
+    load_registered_artwork_colors,
 )
 
 
@@ -233,3 +237,176 @@ def test_artwork_color_analysis_allows_synthetic_printer_colors() -> None:
     assert analysis[0].printer.color is test_red
     assert analysis[0].library.color is test_red
     assert analysis[0].catalog.color.name == "physical-red"
+
+
+# =========================================================
+# Registered Artwork colors
+# =========================================================
+
+
+def test_registered_artwork_colors_are_loaded_from_vector_manifest(
+    tmp_path: Path,
+) -> None:
+    """
+    Prepared Artwork semantic colors come from registered Artwork.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 100,
+                "products": [
+                    {
+                        "index": 1,
+                        "path": "color-1.svg",
+                        "name": "prepared-red",
+                        "color": {
+                            "red": 241,
+                            "green": 17,
+                            "blue": 23,
+                        },
+                    },
+                    {
+                        "index": 2,
+                        "path": "color-2.svg",
+                        "name": "prepared-blue",
+                        "color": {
+                            "red": 19,
+                            "green": 31,
+                            "blue": 227,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    colors = load_registered_artwork_colors(
+        manifest,
+    )
+
+    assert colors == (
+        PaletteColor(
+            name="prepared-red",
+            rgb=(241, 17, 23),
+        ),
+        PaletteColor(
+            name="prepared-blue",
+            rgb=(19, 31, 227),
+        ),
+    )
+
+
+def test_registered_artwork_colors_preserve_manifest_order(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork color order follows the persistent manifest.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 100,
+                "products": [
+                    {
+                        "index": 2,
+                        "path": "second.svg",
+                        "name": "second",
+                        "color": {
+                            "red": 20,
+                            "green": 30,
+                            "blue": 40,
+                        },
+                    },
+                    {
+                        "index": 1,
+                        "path": "first.svg",
+                        "name": "first",
+                        "color": {
+                            "red": 50,
+                            "green": 60,
+                            "blue": 70,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    colors = load_registered_artwork_colors(
+        manifest,
+    )
+
+    assert tuple(color.name for color in colors) == (
+        "second",
+        "first",
+    )
+
+
+def test_registered_artwork_colors_drive_color_analysis(
+    tmp_path: Path,
+) -> None:
+    """
+    Color analysis can consume semantic colors persisted by registered Artwork.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 100,
+                "products": [
+                    {
+                        "index": 1,
+                        "path": "color-1.svg",
+                        "name": "prepared-red",
+                        "color": {
+                            "red": 250,
+                            "green": 10,
+                            "blue": 10,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    artwork_colors = load_registered_artwork_colors(
+        manifest,
+    )
+
+    analysis = analyze_color_matches(
+        artwork_colors=artwork_colors,
+        printer_colors=(
+            PaletteColor(
+                name="printer-red",
+                rgb=(240, 0, 0),
+            ),
+        ),
+        library_colors=(
+            PaletteColor(
+                name="library-red",
+                rgb=(245, 5, 5),
+            ),
+        ),
+        catalog_colors=(
+            PaletteColor(
+                name="catalog-red",
+                rgb=(249, 9, 9),
+            ),
+        ),
+    )
+
+    assert analysis[0].artwork == PaletteColor(
+        name="prepared-red",
+        rgb=(250, 10, 10),
+    )
