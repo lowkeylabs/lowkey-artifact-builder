@@ -21,6 +21,7 @@ from typing import (
 )
 
 from lowkey_artifact_builder.colors import (
+    ColorError,
     ColorMatch,
     PaletteColor,
     PaletteRecommendation,
@@ -509,9 +510,20 @@ def _mandatory_colors(
     Resolve mandatory semantic color identities from candidate colors.
     """
 
-    mandatory_names = set(mandatory)
+    candidates_by_name = {color.name: color for color in candidates}
 
-    return tuple(color for color in candidates if color.name in mandatory_names)
+    colors: list[PaletteColor] = []
+
+    for name in mandatory:
+        try:
+            color = candidates_by_name[name]
+
+        except KeyError as exc:
+            raise ColorError(f"Mandatory color is not a candidate: {name}") from exc
+
+        colors.append(color)
+
+    return tuple(colors)
 
 
 __all__ = [

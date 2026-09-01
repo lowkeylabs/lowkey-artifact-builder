@@ -10,13 +10,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from lowkey_artifact_builder.colors import (
+    ColorError,
     PaletteColor,
 )
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
     analyze_color_matches,
     analyze_registered_artwork_colors,
     load_registered_artwork_colors,
+    recommend_artwork_palettes,
     recommend_registered_artwork_palettes,
 )
 
@@ -855,3 +859,88 @@ def test_registered_artwork_palette_recommendation_does_not_mutate_configuration
         "white",
         "library-red",
     ]
+
+
+def test_artwork_palette_recommendation_rejects_missing_mandatory_color() -> None:
+    """
+    Every recommendation scope must contain each mandatory color.
+    """
+
+    artwork_colors = (
+        PaletteColor(
+            name="artwork-red",
+            rgb=(255, 0, 0),
+        ),
+    )
+
+    white = PaletteColor(
+        name="white",
+        rgb=(255, 255, 255),
+    )
+
+    red = PaletteColor(
+        name="red",
+        rgb=(255, 0, 0),
+    )
+
+    with pytest.raises(
+        ColorError,
+        match="Mandatory color is not a candidate: white",
+    ):
+        recommend_artwork_palettes(
+            artwork_colors=artwork_colors,
+            printer_colors=(red,),
+            library_colors=(white, red),
+            catalog_colors=(white, red),
+            palette_size=1,
+            mandatory=("white",),
+        )
+
+
+def test_artwork_palette_recommendation_requires_mandatory_color_in_each_scope() -> None:
+    """
+    Mandatory color requirements apply independently to every scope.
+    """
+
+    artwork_colors = (
+        PaletteColor(
+            name="artwork-red",
+            rgb=(255, 0, 0),
+        ),
+    )
+
+    white = PaletteColor(
+        name="white",
+        rgb=(255, 255, 255),
+    )
+
+    red = PaletteColor(
+        name="red",
+        rgb=(255, 0, 0),
+    )
+
+    with pytest.raises(
+        ColorError,
+        match="Mandatory color is not a candidate: white",
+    ):
+        recommend_artwork_palettes(
+            artwork_colors=artwork_colors,
+            printer_colors=(white, red),
+            library_colors=(red,),
+            catalog_colors=(white, red),
+            palette_size=1,
+            mandatory=("white",),
+        )
+
+    with pytest.raises(
+        ColorError,
+        match="Mandatory color is not a candidate: white",
+    ):
+        recommend_artwork_palettes(
+            artwork_colors=artwork_colors,
+            printer_colors=(white, red),
+            library_colors=(white, red),
+            catalog_colors=(red,),
+            palette_size=1,
+            mandatory=("white",),
+        )
