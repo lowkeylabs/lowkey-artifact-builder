@@ -2232,6 +2232,7 @@ def test_vector_registration_does_not_transform_document_metadata(
     assert all(element.get("transform") is None for element in non_svg_children)
 
 
+@pytest.mark.slow
 def test_vector_registration_preserves_common_coordinates_between_envelope_and_layers(
     tmp_path: Path,
 ) -> None:

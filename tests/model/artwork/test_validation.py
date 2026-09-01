@@ -571,3 +571,71 @@ def test_artwork_rejects_non_string_library_color() -> None:
             ),
             catalog_colors=("red",),
         )
+
+
+def test_invalid_printer_colors_do_not_block_unrelated_artwork_execution() -> None:
+    """
+    Invalid printer availability does not block Artwork execution that
+    does not require printer-color analysis.
+    """
+
+    resolver = StubResolver(
+        {
+            "artwork_colors": (
+                "white",
+                "black",
+            ),
+            "artwork_fill_color": "white",
+            "artwork_envelope_mode": "alpha",
+            "printer_colors": ("unknown",),
+            "library_colors": (),
+        },
+        colors={
+            "white": {},
+            "black": {},
+        },
+    )
+
+    build_plan, execution_plan = _artwork_execution_plan(
+        resolver=resolver,
+        prepare_state=ProductState.ABSENT,
+    )
+
+    validate_execution(
+        build_plan,
+        execution_plan,
+    )
+
+
+def test_invalid_library_colors_do_not_block_unrelated_artwork_execution() -> None:
+    """
+    Invalid library availability does not block Artwork execution that
+    does not require library-color analysis.
+    """
+
+    resolver = StubResolver(
+        {
+            "artwork_colors": (
+                "white",
+                "black",
+            ),
+            "artwork_fill_color": "white",
+            "artwork_envelope_mode": "alpha",
+            "printer_colors": (),
+            "library_colors": ("unknown",),
+        },
+        colors={
+            "white": {},
+            "black": {},
+        },
+    )
+
+    build_plan, execution_plan = _artwork_execution_plan(
+        resolver=resolver,
+        prepare_state=ProductState.ABSENT,
+    )
+
+    validate_execution(
+        build_plan,
+        execution_plan,
+    )
