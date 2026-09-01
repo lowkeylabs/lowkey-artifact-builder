@@ -155,3 +155,47 @@ def test_color_report_displays_match_distances(
     assert "4.25" in output
     assert "7.50" in output
     assert "2.75" in output
+
+
+def test_colors_command_analyzes_and_displays_artifact(
+    monkeypatch,
+) -> None:
+    """
+    The colors command obtains structured analysis and displays it.
+    """
+
+    analyzed: list[str] = []
+    displayed: list[object] = []
+
+    expected_matches = object()
+
+    def fake_analyze_artifact_colors(
+        artifact_id: str,
+    ) -> object:
+        analyzed.append(artifact_id)
+        return expected_matches
+
+    def fake_display_color_matches(
+        matches: object,
+    ) -> None:
+        displayed.append(matches)
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.analyze_artifact_colors",
+        fake_analyze_artifact_colors,
+    )
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.display_color_matches",
+        fake_display_color_matches,
+    )
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        ["colors", "nydeli"],
+    )
+
+    assert result.exit_code == 0
+    assert analyzed == ["nydeli"]
+    assert displayed == [expected_matches]

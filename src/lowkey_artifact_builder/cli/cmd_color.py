@@ -55,6 +55,24 @@ def _format_match(
 
 
 # =========================================================
+# Analysis
+# =========================================================
+
+
+def analyze_artifact_colors(
+    artifact_id: str,
+) -> Sequence[ArtworkColorMatch]:
+    """
+    Analyze color matches for one configured artifact.
+
+    Artifact resolution is implemented separately from CLI orchestration.
+    """
+
+    del artifact_id
+    return ()
+
+
+# =========================================================
 # CLI
 # =========================================================
 
@@ -71,4 +89,10 @@ def cli(
     Report color matches for prepared Artwork.
     """
 
-    del artifact_id
+    matches = analyze_artifact_colors(
+        artifact_id,
+    )
+
+    display_color_matches(
+        matches,
+    )
