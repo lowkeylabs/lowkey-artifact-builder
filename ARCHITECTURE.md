@@ -2249,14 +2249,25 @@ loaded on printer head 2, and so on.
 Duplicate color names are permitted because multiple printer heads may contain
 the same color.
 
+`library_colors` identifies colors physically owned and available for
+installation on a printer.
+
 Color definitions are maintained separately as catalog data. A color name may
 identify metadata such as manufacturer, filament name, and RGB representation.
+
 The color catalog is reference data rather than an ordinary resolved parameter.
+`printer_colors` and `library_colors` are resolved configuration parameters
+whose color names reference entries in the color catalog. Neither parameter is
+required to be a subset of the other.
 
 Models may reference colors by semantic color name and resolve those names
 through the shared color catalog. Model-specific rules governing color
-selection, assignment, inheritance, and use belong in the model's
+selection, assignment, inheritance, matching, and use belong in the model's
 `DEFINITION.md`.
+
+Color analysis or recommendation does not implicitly modify resolved
+configuration.
+
 
 ---
 
