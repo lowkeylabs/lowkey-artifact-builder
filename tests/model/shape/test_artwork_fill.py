@@ -1681,3 +1681,231 @@ def test_artwork_fill_uses_shape_artwork_physical_interval(
 
     assert "circle(r = 45, $fn = 256);" in fill_source
     assert "square([60, 50], center = false);" in fill_source
+
+
+def test_artwork_fill_physical_geometry_is_independent_of_ridge_style(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Integrated and separate ridge partitioning do not alter Artwork-fill
+    physical geometry.
+
+    Fill geometry has already been established during registered composition.
+    Extrusion dimensionalizes that persistent geometry without reconstructing
+    it from physical ridge policy.
+    """
+
+    rendered_fill_sources: dict[str, str] = {}
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+        if output.name == "artwork-fill.stl":
+            rendered_fill_sources[current_style[0]] = source
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    current_style = ["integrated"]
+
+    for style in (
+        "integrated",
+        "separate",
+    ):
+        current_style[0] = style
+
+        directory = tmp_path / style
+        composition = directory / "composition.svg"
+        composition_manifest = directory / "composition-products.json"
+        output_manifest = directory / "extrude" / "products.json"
+
+        directory.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        _write_physical_fill_composition(
+            composition,
+        )
+        _write_physical_fill_manifest(
+            composition_manifest,
+            artwork_fill=_physical_fill_region(),
+        )
+
+        context = _physical_fill_extrude_context(
+            composition=composition,
+            composition_manifest=composition_manifest,
+            output_manifest=output_manifest,
+        )
+
+        values = {
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_base_color": "white",
+            "shape_outer_ridge_color": "white",
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": style,
+            "shape_artwork_raise": 0.6,
+        }
+
+        context.resolver.side_effect = values.__getitem__
+
+        extrude.execute(
+            context,
+        )
+
+    assert rendered_fill_sources["integrated"] == rendered_fill_sources["separate"]
+
+
+def test_artwork_fill_physical_geometry_does_not_manufacture_ridge_geometry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Physical Artwork fill is produced solely from its persistent registered
+    region and does not reconstruct or manufacture structural ridge geometry.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    output_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_physical_fill_composition(
+        composition,
+    )
+    _write_physical_fill_manifest(
+        composition_manifest,
+        artwork_fill=_physical_fill_region(),
+    )
+
+    rendered_sources: dict[str, str] = {}
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+        rendered_sources[output.name] = source
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    context = _physical_fill_extrude_context(
+        composition=composition,
+        composition_manifest=composition_manifest,
+        output_manifest=output_manifest,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    fill_source = rendered_sources["artwork-fill.stl"]
+
+    assert "registered_artwork_fill_outer_boundary" in fill_source
+    assert "registered_artwork_fill_inner_boundary" in fill_source
+    assert "difference()" in fill_source
+
+    assert "registered_shape_boundary" not in fill_source
+    assert "registered_ridge_inner_boundary" not in fill_source
+    assert "shape_outer_ridge_raise" not in fill_source
+
+
+def test_artwork_fill_physically_excludes_incorporated_artwork_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Physical Artwork fill excludes the incorporated Artwork envelope in X/Y.
+
+    The fill dimensionalizes the persistent registered region as the Shape
+    interior minus the same transformed authoritative Artwork envelope used
+    to place incorporated Artwork. Extrusion must preserve that subtraction
+    rather than covering the Artwork footprint.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    output_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_physical_fill_composition(
+        composition,
+    )
+    _write_physical_fill_manifest(
+        composition_manifest,
+        artwork_fill=_physical_fill_region(),
+    )
+
+    rendered_sources: dict[str, str] = {}
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+        rendered_sources[output.name] = source
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    context = _physical_fill_extrude_context(
+        composition=composition,
+        composition_manifest=composition_manifest,
+        output_manifest=output_manifest,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    fill_source = rendered_sources["artwork-fill.stl"]
+
+    assert (
+        "difference() {\n"
+        "            registered_artwork_fill_outer_boundary();\n"
+        "            registered_artwork_fill_inner_boundary();\n"
+        "        }" in fill_source
+    )
+
+    assert (
+        "module registered_artwork_fill_inner_boundary() {\n"
+        "    translate([-30, -25, 0])\n"
+        "        square([60, 50], center = false);\n"
+        "}" in fill_source
+    )
