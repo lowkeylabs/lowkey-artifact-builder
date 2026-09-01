@@ -1716,3 +1716,449 @@ def test_shape_rebuilds_after_size_change(
     assert zipfile.is_zipfile(
         output,
     )
+
+
+@pytest.mark.slow
+def test_shape_registered_artwork_defaults_to_no_artwork_fill(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    A normal Shape build does not produce Artwork fill by default.
+
+    The Shape consumes registered Artwork through the normal dependency path.
+    The default shape_artwork_fill_color of "none" must survive configuration,
+    composition, dimensionalization, and packaging without manufacturing an
+    Artwork-fill component.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    # -----------------------------------------------------
+    # Create canonical Artwork input
+    # -----------------------------------------------------
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+
+    assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
+
+    artwork_directory = project_root / "artifacts" / "fill-source"
+
+    artwork_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_source = artwork_directory / "artifact.png"
+
+    shutil.copy2(
+        fixture_source,
+        artwork_source,
+    )
+
+    # -----------------------------------------------------
+    # Configure reusable Artwork producer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "fill-source",
+        {
+            "model": "artwork",
+            "source": str(
+                artwork_source,
+            ),
+            "artwork_size": 200.0,
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Configure Shape consumer with default no-fill policy
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "shape-no-fill",
+        {
+            "model": "shape",
+            "shape_geometry": "circle",
+            "shape_size": 100.0,
+            "shape_base_color": "test-white",
+            "product_dependencies": {
+                "manifest": {
+                    "artifact": "fill-source",
+                    "model": "artwork",
+                    "realization": "default",
+                    "stage": "vector",
+                    "product": "manifest",
+                },
+            },
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Plan and build through dependency-aware orchestration
+    # -----------------------------------------------------
+
+    plans = create_build_plans(
+        "shape-no-fill",
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+
+    execute_dependency_build(
+        plans[0],
+    )
+
+    shape_root = project_root / "artifacts" / "shape-no-fill" / "shape" / "default"
+
+    compose_manifest = shape_root / "20-compose" / "products.json"
+
+    extrude_manifest = shape_root / "30-extrude" / "products.json"
+
+    artifact = shape_root / "40-package" / "artifact.3mf"
+
+    assert compose_manifest.is_file()
+    assert extrude_manifest.is_file()
+    assert artifact.is_file()
+
+    # -----------------------------------------------------
+    # Registered composition contains no fill
+    # -----------------------------------------------------
+
+    composition_data = json.loads(
+        compose_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert composition_data["artwork"] is not None
+    assert composition_data["artwork_fill"] is None
+
+    # -----------------------------------------------------
+    # Extrusion does not manufacture fill
+    # -----------------------------------------------------
+
+    extrusion_data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    component_names = {component["name"] for component in extrusion_data["components"]}
+
+    assert "base" in component_names
+    assert "artwork-fill" not in component_names
+
+    assert any(str(name).startswith("artwork-") for name in component_names)
+
+    # -----------------------------------------------------
+    # Packaging does not manufacture fill
+    # -----------------------------------------------------
+
+    with zipfile.ZipFile(
+        artifact,
+    ) as archive:
+        model_name = next(
+            name
+            for name in archive.namelist()
+            if name.startswith("3D/") and name.endswith(".model")
+        )
+
+        model = ET.fromstring(
+            archive.read(
+                model_name,
+            )
+        )
+
+    packaged_names = {
+        object_.get("name")
+        for object_ in model.findall(
+            f".//{{{CORE_NS}}}object",
+        )
+    }
+
+    assert "shape-no-fill-base" in packaged_names
+    assert "shape-no-fill-artwork-fill" not in packaged_names
+
+    assert any(
+        name is not None
+        and name.startswith(
+            "shape-no-fill-artwork-",
+        )
+        for name in packaged_names
+    )
+
+    # -----------------------------------------------------
+    # Shape consumes only reusable registered Artwork
+    # -----------------------------------------------------
+
+    artwork_root = project_root / "artifacts" / "fill-source" / "artwork" / "default"
+
+    assert (artwork_root / "30-vector" / "products.json").is_file()
+
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+
+@pytest.mark.slow
+def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    A normal Shape build carries enabled Artwork fill into artifact.3mf.
+
+    Shape consumes reusable registered Artwork, constructs the registered fill
+    region, dimensionalizes that region using Shape physical policy, preserves
+    its semantic color identity, and packages it as an independently
+    identifiable final component.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    # -----------------------------------------------------
+    # Create canonical Artwork input
+    # -----------------------------------------------------
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+
+    assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
+
+    artwork_directory = project_root / "artifacts" / "fill-source"
+
+    artwork_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_source = artwork_directory / "artifact.png"
+
+    shutil.copy2(
+        fixture_source,
+        artwork_source,
+    )
+
+    # -----------------------------------------------------
+    # Configure reusable Artwork producer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "fill-source",
+        {
+            "model": "artwork",
+            "source": str(
+                artwork_source,
+            ),
+            "artwork_size": 200.0,
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Configure Shape consumer with enabled fill
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "shape-with-fill",
+        {
+            "model": "shape",
+            "shape_geometry": "circle",
+            "shape_size": 100.0,
+            "shape_base_color": "test-white",
+            "shape_artwork_fill_color": "test-blue",
+            "product_dependencies": {
+                "manifest": {
+                    "artifact": "fill-source",
+                    "model": "artwork",
+                    "realization": "default",
+                    "stage": "vector",
+                    "product": "manifest",
+                },
+            },
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Plan and build through dependency-aware orchestration
+    # -----------------------------------------------------
+
+    plans = create_build_plans(
+        "shape-with-fill",
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+
+    execute_dependency_build(
+        plans[0],
+    )
+
+    shape_root = project_root / "artifacts" / "shape-with-fill" / "shape" / "default"
+
+    compose_manifest = shape_root / "20-compose" / "products.json"
+
+    extrude_manifest = shape_root / "30-extrude" / "products.json"
+
+    artifact = shape_root / "40-package" / "artifact.3mf"
+
+    assert compose_manifest.is_file()
+    assert extrude_manifest.is_file()
+    assert artifact.is_file()
+
+    # -----------------------------------------------------
+    # Registered composition contains fill
+    # -----------------------------------------------------
+
+    composition_data = json.loads(
+        compose_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert composition_data["artwork"] is not None
+    assert composition_data["artwork_fill"] is not None
+
+    # -----------------------------------------------------
+    # Fill is independently dimensionalized
+    # -----------------------------------------------------
+
+    extrusion_data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    components_by_name = {
+        component["name"]: component for component in extrusion_data["components"]
+    }
+
+    assert "base" in components_by_name
+    assert "artwork-fill" in components_by_name
+
+    artwork_component_names = {
+        name
+        for name in components_by_name
+        if str(name).startswith("artwork-") and name != "artwork-fill"
+    }
+
+    assert artwork_component_names
+
+    fill_component = components_by_name["artwork-fill"]
+
+    assert fill_component["color"] == {
+        "name": "test-blue",
+        "rgb": [0, 0, 255],
+    }
+
+    fill_path = extrude_manifest.parent / str(fill_component["path"])
+
+    assert fill_path.is_file()
+    assert fill_path.stat().st_size > 0
+
+    # -----------------------------------------------------
+    # Fill survives final packaging
+    # -----------------------------------------------------
+
+    with zipfile.ZipFile(
+        artifact,
+    ) as archive:
+        model_name = next(
+            name
+            for name in archive.namelist()
+            if name.startswith("3D/") and name.endswith(".model")
+        )
+
+        model = ET.fromstring(
+            archive.read(
+                model_name,
+            )
+        )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    assert "shape-with-fill-base" in objects_by_name
+    assert "shape-with-fill-artwork-fill" in objects_by_name
+
+    artwork_object_names = {
+        name
+        for name in objects_by_name
+        if name is not None
+        and name.startswith(
+            "shape-with-fill-artwork-",
+        )
+        and name != "shape-with-fill-artwork-fill"
+    }
+
+    assert artwork_object_names
+
+    # -----------------------------------------------------
+    # Fill preserves semantic color identity
+    # -----------------------------------------------------
+
+    fill_object = objects_by_name["shape-with-fill-artwork-fill"]
+
+    fill_material_id = fill_object.get(
+        "pid",
+    )
+
+    assert fill_material_id is not None
+
+    fill_material = materials_by_id[fill_material_id]
+
+    fill_color = fill_material.find(
+        f"{{{CORE_NS}}}base",
+    )
+
+    assert fill_color is not None
+    assert fill_color.get("name") == "test-blue"
+    assert fill_color.get("displaycolor") == "#0000FF"
+    assert fill_object.get("pindex") == "0"
+
+    # -----------------------------------------------------
+    # Fill remains semantically independent
+    # -----------------------------------------------------
+
+    base_object = objects_by_name["shape-with-fill-base"]
+
+    assert fill_object.get("id") != base_object.get("id")
+
+    for artwork_name in artwork_object_names:
+        assert fill_object.get("id") != objects_by_name[artwork_name].get("id")
+
+    # -----------------------------------------------------
+    # Shape consumes only reusable registered Artwork
+    # -----------------------------------------------------
+
+    artwork_root = project_root / "artifacts" / "fill-source" / "artwork" / "default"
+
+    assert (artwork_root / "30-vector" / "products.json").is_file()
+
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
