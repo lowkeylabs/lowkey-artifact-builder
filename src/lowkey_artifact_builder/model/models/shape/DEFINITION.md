@@ -1628,6 +1628,30 @@ ridge color differs from the base color.
 Incorporated Artwork color components likewise remain suitable for
 multicolor printing.
 
+Packaged 3MF component identity preserves both the semantic role of each
+physical component and its semantic printing-color identity.
+
+Component names use the form:
+
+```text
+<artifact-id>-<component-role>-<color>
+```
+
+For example:
+
+```text
+ornament-base-cold-white
+ornament-ridge-red
+ornament-artwork-black
+ornament-artwork-gold
+```
+
+The packaged component name does not depend on an intermediate component
+ordinal when semantic role and color provide sufficient identity.
+
+Component naming does not determine color assignment. The component's
+semantic color and RGB representation remain explicit packaging metadata.
+
 Packaging does not determine Shape geometry, ridge geometry, ridge
 partitioning, ridge height, ridge color policy, Artwork fitting, or
 physical dimensionalization.
@@ -1827,44 +1851,48 @@ A conforming initial Shape implementation satisfies the following:
 57. Required color distinctions remain representable through
     dimensionalization and packaging.
 
-58. Packaging occurs after physical dimensionalization.
+58. Packaged 3MF component names preserve artifact identity, semantic
+    component role, and semantic printing-color identity without relying
+    on intermediate component ordinals.
 
-59. Shape produces a valid printable 3MF containing its structural
+59. Packaging occurs after physical dimensionalization.
+
+60. Shape produces a valid printable 3MF containing its structural
     geometry and any incorporated Artwork components.
 
-60. Incorporated Artwork begins at the top surface of the Shape base at
+61. Incorporated Artwork begins at the top surface of the Shape base at
     `Z = shape_base_raise`.
 
-61. Incorporated Artwork has physical height determined by
+62. Incorporated Artwork has physical height determined by
     `shape_artwork_raise`.
 
-62. The default `shape_artwork_raise` is 1 mm.
+63. The default `shape_artwork_raise` is 1 mm.
 
-63. `shape_artwork_raise` must be greater than zero when Artwork is
+64. `shape_artwork_raise` must be greater than zero when Artwork is
     incorporated.
 
-64. All incorporated Artwork components receive the same physical Z
+65. All incorporated Artwork components receive the same physical Z
     dimensionalization.
 
-65. Standalone `artwork_raise` does not determine incorporated Artwork Z
+66. Standalone `artwork_raise` does not determine incorporated Artwork Z
     dimensionalization.
 
-66. Artwork fill existence is determined solely by the presence of
+67. Artwork fill existence is determined solely by the presence of
     `shape_artwork_fill_color`.
 
-67. When Artwork fill exists, its registered geometry is the registered
+68. When Artwork fill exists, its registered geometry is the registered
     Shape interior region minus the transformed registered Artwork
     envelope.
 
-68. Artwork fill receives the same physical Z dimensionalization as
+69. Artwork fill receives the same physical Z dimensionalization as
     incorporated Artwork.
 
-69. Artwork fill remains semantically distinct from the structural base
+70. Artwork fill remains semantically distinct from the structural base
     even when both resolve to the same printing color.
 
-70. Outer-ridge style does not change the physical Z origin or raise of
+71. Outer-ridge style does not change the physical Z origin or raise of
     incorporated Artwork or Artwork fill.
-
+    
 
 ## Initial Scope
 
