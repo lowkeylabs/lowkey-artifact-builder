@@ -1408,6 +1408,201 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
 
 
 @pytest.mark.slow
+def test_shape_policy_changes_do_not_reexecute_registered_artwork(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    Downstream Shape policy changes do not invalidate registered Artwork.
+
+    Polygon rotation, base thickness, ridge dimensions and style, and
+    structural colors belong to Shape manufacturing policy. Changing those
+    values must not cause reusable registered Artwork to be reinterpreted.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    # -----------------------------------------------------
+    # Create canonical Artwork input
+    # -----------------------------------------------------
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+
+    assert fixture_source.is_file()
+
+    artwork_directory = project_root / "artifacts" / "source-artwork"
+
+    artwork_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_input = artwork_directory / "artifact.png"
+
+    shutil.copy2(
+        fixture_source,
+        artwork_input,
+    )
+
+    # -----------------------------------------------------
+    # Configure reusable Artwork producer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "source-artwork",
+        {
+            "model": "artwork",
+            "source": str(
+                artwork_input,
+            ),
+        },
+        project_root=project_root,
+    )
+
+    artwork_dependency = {
+        "manifest": {
+            "model": "artwork",
+            "stage": "vector",
+            "product": "manifest",
+            "artifact": "source-artwork",
+            "realization": "default",
+        },
+    }
+
+    # -----------------------------------------------------
+    # Configure first Shape consumer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "initial-shape",
+        {
+            "model": "shape",
+            "shape_geometry": "polygon",
+            "shape_sides": 6,
+            "shape_rotation": 0.0,
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_base_color": "white",
+            "shape_outer_ridge_width": 1.0,
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "integrated",
+            "shape_outer_ridge_color": "white",
+            "product_dependencies": artwork_dependency,
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Realize registered Artwork through first Shape
+    # -----------------------------------------------------
+
+    initial_plan = create_build_plans(
+        "initial-shape",
+        project_root=project_root,
+    )[0]
+
+    execute_dependency_build(
+        initial_plan,
+    )
+
+    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "default"
+
+    assert (artwork_root / "10-prepare" / "trace.svg").is_file()
+    assert (artwork_root / "20-raster" / "products.json").is_file()
+    assert (artwork_root / "30-vector" / "products.json").is_file()
+
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+    # -----------------------------------------------------
+    # Configure Shape with different downstream policy
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "changed-shape",
+        {
+            "model": "shape",
+            "shape_geometry": "polygon",
+            "shape_sides": 7,
+            "shape_rotation": 22.5,
+            "shape_size": 120.0,
+            "shape_base_raise": 3.0,
+            "shape_base_color": "black",
+            "shape_outer_ridge_width": 2.0,
+            "shape_outer_ridge_raise": 1.5,
+            "shape_outer_ridge_style": "separate",
+            "shape_outer_ridge_color": "red",
+            "product_dependencies": artwork_dependency,
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Observe second Shape build
+    # -----------------------------------------------------
+
+    events = []
+
+    changed_plan = create_build_plans(
+        "changed-shape",
+        project_root=project_root,
+    )[0]
+
+    execute_dependency_build(
+        changed_plan,
+        event_sink=events.append,
+    )
+
+    # -----------------------------------------------------
+    # Registered Artwork does not reexecute
+    # -----------------------------------------------------
+
+    artwork_started = tuple(
+        event.stage_name
+        for event in events
+        if event.kind == "stage.started"
+        and event.artifact_id == "source-artwork"
+        and event.model_name == "artwork"
+    )
+
+    assert artwork_started == ()
+
+    # -----------------------------------------------------
+    # Changed Shape does execute
+    # -----------------------------------------------------
+
+    shape_started = tuple(
+        event.stage_name
+        for event in events
+        if event.kind == "stage.started"
+        and event.artifact_id == "changed-shape"
+        and event.model_name == "shape"
+    )
+
+    assert shape_started == (
+        "structure",
+        "compose",
+        "extrude",
+        "package",
+    )
+
+    # -----------------------------------------------------
+    # Standalone Artwork manufacturing remains unnecessary
+    # -----------------------------------------------------
+
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+
+@pytest.mark.slow
 def test_shape_rebuilds_after_size_change(
     tmp_path: Path,
     monkeypatch,
