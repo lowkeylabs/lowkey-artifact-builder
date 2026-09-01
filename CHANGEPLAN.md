@@ -3,23 +3,25 @@
 This document tracks the remaining incremental work required to bring
 `lowkey-artifact-builder` into conformance with its permanent specifications.
 
-The previous change plan established the current Artwork and Shape integration,
-including semantic structural colors, reusable registered Artwork, cross-model
-and cross-artifact dependencies, Shape-owned physical dimensionalization, and
-multicomponent 3MF packaging.
-
 A fresh comparison of repository HEAD against the permanent specifications
-identified one remaining substantive implementation gap in the initial Shape
-model: optional Shape-owned Artwork fill geometry is specified and configurable
-but is not yet physically produced.
+identified one remaining architectural implementation gap: the architecture now
+requires configuration validation to follow required execution, but the
+repository does not yet provide the corresponding execution-scoped validation
+mechanism.
+
+Artwork provides the first concrete model requirement for this mechanism:
+
+```text
+artwork_fill_color must be present in artwork_colors
+```
 
 This plan contains only the work remaining after that comparison.
 
 ## Status
 
 ```text
-Phase 1 — Completed
-Phase 2 — Started
+Phase 1 — Not started
+Phase 2 — Pending
 ```
 
 ## Permanent Specifications
@@ -58,285 +60,179 @@ For each slice:
 5. Make the smallest production-code change necessary to satisfy the test.
 6. Refactor only after the required behavior is green.
 7. Run the affected tests.
-8. Run the complete test, lint, formatting, and type-check suite.
+8. Run the complete test, lint, formatting, and type-check suite when the slice
+   is complete.
 9. Commit the independently working slice.
 10. Reevaluate repository HEAD before selecting the next slice.
 
 Tests should preferentially express semantic contracts and invariants rather
 than incidental implementation details.
 
-Do not introduce abstractions merely because two implementations contain
-similar code.
+Do not introduce abstractions beyond those required to express the validation
+contract established by the permanent specifications.
 
-Extract shared operations only when multiple model implementations demonstrate
-the same model-independent contract.
+# Phase 1 — Execution-Scoped Configuration Validation
 
-# Phase 1 — Complete Shape Artwork Fill Semantics
+Implement the validation semantics required by `ARCHITECTURE.md`.
 
-Implement the optional Shape-owned Artwork fill behavior already defined by:
+Configuration resolution and configuration validation are distinct
+responsibilities.
+
+Resolution determines the effective value of configuration.
+
+Validation determines whether resolved configuration required by planned
+execution is valid for the model operations that will execute.
+
+The planner determines the scope of required execution. Model-specific
+validation rules remain owned by their models.
+
+Current persistent products may satisfy dependencies without requiring
+historical configuration, source inputs, or producer stages to remain valid.
+
+## 1.1 Establish the Generic Model Validation Contract
+
+Introduce the smallest generic mechanism by which a model can declare
+validation rules over resolved configuration.
+
+Tests should establish that:
+
+* a model may declare zero validation rules;
+* a model validation rule can inspect multiple resolved configuration values;
+* a valid resolved configuration passes validation;
+* an invalid resolved configuration produces a configuration-validation error;
+* validation rules remain model-owned;
+* generic configuration and planning infrastructure does not contain
+  Artwork-specific or Shape-specific semantic rules;
+* merely resolving a configuration value does not implicitly execute
+  cross-parameter model validation.
+
+The mechanism should support cross-parameter invariants rather than being
+limited to validation of one parameter in isolation.
+
+Do not introduce a schema language, validation DSL, inheritance hierarchy, or
+other framework beyond what is required by demonstrated model validation
+needs.
+
+## 1.2 Scope Validation to Required Execution
+
+Integrate model configuration validation with planning so validation follows
+the Execution Plan.
+
+Tests should establish that:
+
+* configuration required by a stage that must execute is validated;
+* model validation relevant to that stage is applied before execution;
+* configuration used only by a stage that does not need to execute is not
+  required to validate merely because the stage exists in the model;
+* an already-current persistent product may satisfy a dependency without
+  validating the historical configuration that produced it;
+* historical source inputs are not required merely to consume an already-current
+  product;
+* validation scope follows required execution rather than the complete Defined
+  Graph;
+* validation does not alter dependency closure or product-state decisions.
+
+The planner determines which stages require execution. It must not contain
+model-specific knowledge about what constitutes valid Artwork or Shape
+configuration.
+
+## 1.3 Validate Artwork Fill-Color Membership
+
+Use Artwork as the first concrete consumer of the generic validation
+mechanism.
+
+The Artwork definition requires:
 
 ```text
-src/lowkey_artifact_builder/model/models/shape/DEFINITION.md
+artwork_fill_color ∈ artwork_colors
 ```
 
-The current repository already defines and resolves:
+Tests should establish that:
+
+* the default `artwork_fill_color` is `white`;
+* an explicitly configured non-white fill color is valid when it belongs to
+  `artwork_colors`;
+* an Artwork palette does not inherently require `white`;
+* a palette without `white` is valid when `artwork_fill_color` explicitly
+  selects another palette member;
+* a resolved `artwork_fill_color` absent from `artwork_colors` fails validation
+  when execution requiring that invariant is planned;
+* the same invalid historical Artwork configuration does not prevent reuse of
+  an already-current downstream persistent product when the stage requiring
+  the configuration will not execute.
+
+Do not restore `artwork_fill_color` as a derived value.
+
+Do not special-case Artwork validation in the generic configuration system,
+planner, or engine.
+
+## 1.4 Apply Configured Artwork Fill During Preparation
+
+Complete the existing Artwork fill-color semantic change by ensuring Artwork
+preparation uses the configured `artwork_fill_color` rather than hard-coded
+white policy.
+
+Tests should establish that:
+
+* otherwise unassigned pixels inside the derived Artwork envelope receive the
+  resolved `artwork_fill_color`;
+* the default behavior remains white;
+* an explicitly configured non-white fill color is used by preparation;
+* changing the fill color changes semantic/color assignment rather than
+  Artwork envelope geometry;
+* preparation does not independently impose a requirement that the palette
+  contain `white`;
+* preparation relies on validated resolved configuration rather than
+  reimplementing planner-level validation policy.
+
+Use the shared color catalog and existing Artwork preparation mechanisms.
+
+Do not conflate:
+
+```text
+artwork_fill_color
+```
+
+with:
 
 ```text
 shape_artwork_fill_color
 ```
 
-with a default of:
+The former belongs to Artwork preparation inside the Artwork envelope. The
+latter belongs to Shape-owned optional fill geometry around incorporated
+registered Artwork.
 
-```text
-none
-```
+## 1.5 Review Existing Validation-Like Checks
 
-but Shape extrusion does not currently use that parameter to produce physical
-fill geometry.
+Review existing model derivations and stage implementations for checks that
+currently serve as configuration validation.
 
-The permanent Shape definition requires fill geometry, when enabled, to occupy:
+In particular inspect Artwork and Shape for:
 
-```text
-registered Shape interior region
-    minus
-transformed registered Artwork envelope
-```
+* cross-parameter invariants;
+* parameter type/value checks embedded in derivations;
+* configuration checks embedded in stages;
+* checks that exist only because no model validation mechanism previously
+  existed.
 
-and to receive the same Shape-owned physical Z interval as incorporated
-Artwork:
+Move a check into the new validation mechanism only when it clearly represents
+a model configuration invariant and doing so improves conformance with the new
+architectural validation boundary.
 
-```text
-Z = shape_base_raise
-through
-Z = shape_base_raise + shape_artwork_raise
-```
+Do not migrate:
 
-Artwork fill is a semantic component distinct from both:
+* operation preconditions that depend on materialized files;
+* product validation;
+* stage-result validation;
+* filesystem validity checks;
+* checks intrinsic to the mechanics of a reusable operation.
 
-```text
-Shape structural base
-```
+Do not turn this review into a general validation refactor.
 
-and:
-
-```text
-incorporated Artwork color components
-```
-
-even when two of those components happen to use the same semantic color.
-
-## 1.1 Establish Artwork Fill Registered Geometry
-
-Add executable evidence for the registered-space geometry required by the
-Shape definition before introducing physical extrusion.
-
-Tests should establish that when:
-
-```text
-shape_artwork_fill_color = none
-```
-
-no Artwork fill component is required.
-
-When a fill color is configured, the registered fill region is:
-
-```text
-Shape interior
-    minus
-transformed Artwork envelope
-```
-
-Tests should demonstrate that:
-
-* the Shape interior region remains the boundary controlling Artwork placement;
-* the transformed Artwork envelope is subtracted from that interior;
-* the fill does not cover the transformed Artwork envelope;
-* the fill does not extend into the structural outer-ridge region;
-* fill geometry remains registered geometry until Shape extrusion;
-* fill geometry introduces no physical X/Y size;
-* fill geometry introduces no physical Z dimension;
-* changing the fill color does not change registered geometry;
-* ridge style does not change the semantic definition of the fill region.
-
-Use the transformed common Artwork envelope rather than independently deriving
-fill boundaries from individual Artwork color components.
-
-Do not rediscover Artwork structure by scanning producer or compose-stage
-directories.
-
-The persistent Shape composition already contains the information required by
-downstream dimensionalization. Extend that contract only if the current
-persistent representation cannot express the required fill geometry without
-rediscovery.
-
-## 1.2 Dimensionalize Artwork Fill
-
-Extend Shape extrusion to produce the physical Artwork fill component when
-fill is enabled.
-
-Shape owns the physical dimensionalization.
-
-Tests should establish that:
-
-* no physical fill component is produced when
-  `shape_artwork_fill_color = none`;
-
-* a configured fill color causes a physical fill component to be produced when
-  incorporated Artwork is present;
-
-* the fill receives the same Shape-owned physical X/Y mapping as the registered
-  Shape composition;
-
-* the fill begins at:
-
-  ```text
-  Z = shape_base_raise
-  ```
-
-* the fill ends at:
-
-  ```text
-  Z = shape_base_raise + shape_artwork_raise
-  ```
-
-* incorporated Artwork and Artwork fill therefore share the same physical
-  Z interval;
-
-* the fill does not replace or alter the structural Shape base;
-
-* the fill does not overlap incorporated Artwork geometry in X/Y;
-
-* the fill does not manufacture ridge geometry;
-
-* integrated and separate ridge styles do not change the fill's physical
-  Z origin or raise;
-
-* changing the fill color does not alter physical geometry.
-
-Invalid physical configurations should fail through normal Shape validation
-rather than silently producing ambiguous geometry.
-
-## 1.3 Preserve Artwork Fill Semantic Identity
-
-Associate the physical fill component with its configured semantic color.
-
-Use the shared color infrastructure already used by Artwork and Shape:
-
-```text
-PaletteColor
-resolve_palette_color()
-```
-
-Tests should establish that:
-
-* `shape_artwork_fill_color` resolves through the shared color catalog;
-* invalid semantic color names fail through the normal shared color-resolution
-  mechanism;
-* the physical-component manifest identifies the fill by semantic role;
-* the manifest preserves its semantic color name;
-* the manifest preserves the corresponding RGB representation;
-* the fill remains semantically distinct from the structural base even when
-  both use the same color;
-* the fill remains semantically distinct from incorporated Artwork components
-  that happen to use the same color;
-* semantic color identity does not determine component existence except for the
-  explicit `none` enable/disable policy already defined by the Shape model;
-* Shape does not assign the fill to a physical printer head.
-
-Do not move Shape fill-selection policy into the shared color subsystem.
-
-## 1.4 Package Artwork Fill
-
-Extend the existing Shape physical-component and packaging path so the fill
-survives into:
-
-```text
-artifact.3mf
-```
-
-Packaging should continue to consume the physical-component manifest rather
-than reconstructing Shape policy.
-
-Tests should establish that:
-
-* enabled fill appears as an independently identifiable packaged component;
-* disabled fill does not cause a packaged fill object to be invented;
-* the packaged fill preserves its semantic role;
-* the packaged fill preserves its semantic color identity;
-* the structural base remains independently identifiable;
-* incorporated Artwork color components remain independently identifiable;
-* ridge components remain governed by existing ridge semantics;
-* multiple physical components may legitimately share the same semantic color;
-* shared semantic colors do not cause semantically distinct components to be
-  merged;
-* assembled physical registration is preserved;
-* packaging does not re-resolve fill policy;
-* packaging does not assign printer heads.
-
-Use the existing shared 3MF component and packaging capability.
-
-Do not introduce a second Shape-specific 3MF mechanism.
-
-## 1.5 Shape Artwork Fill Acceptance
-
-Add end-to-end evidence through normal public configuration, planning,
-dependency resolution, execution, and packaging.
-
-At minimum demonstrate:
-
-### Fill disabled
-
-A Shape incorporating registered Artwork with:
-
-```text
-shape_artwork_fill_color = none
-```
-
-produces the expected structural and Artwork components without an Artwork
-fill component.
-
-### Fill enabled
-
-A Shape incorporating registered Artwork with an explicit fill color produces:
-
-```text
-structural Shape component(s)
-+
-Artwork fill
-+
-incorporated Artwork color components
-```
-
-in one valid multicomponent:
-
-```text
-artifact.3mf
-```
-
-### Shared semantic color
-
-Demonstrate that the structural base and Artwork fill may use the same semantic
-color while remaining distinct semantic and physical components.
-
-### Ridge interaction
-
-Demonstrate fill behavior with at least one physically present outer ridge and
-verify that ridge style does not alter the fill's specified physical Z
-semantics.
-
-Acceptance evidence should verify that:
-
-* Artwork interpretation still stops at reusable registered geometry for the
-  Shape dependency path;
-* standalone Artwork extrusion is not required;
-* standalone Artwork packaging is not required;
-* Shape owns fill physical dimensionalization;
-* registered Artwork remains reusable;
-* semantic colors survive into the final 3MF;
-* no generated filesystem path is required in artifact configuration.
-
-Completion of Phase 1 means every initial-scope Shape Artwork-fill invariant in
-`shape/DEFINITION.md` has executable implementation evidence.
+Completion of Phase 1 means the architecture's execution-scoped configuration
+validation contract is implemented and Artwork fill-color semantics provide
+executable evidence of that contract.
 
 # Phase 2 — Final Permanent-Specification Conformance Audit
 
@@ -353,180 +249,47 @@ src/lowkey_artifact_builder/model/models/shape/DEFINITION.md
 
 Do not audit HEAD against this CHANGEPLAN alone.
 
-The purpose of this phase is to determine whether any meaningful difference
-remains between the permanent specifications and the implementation.
+## 2.1 Audit Permanent Specifications
 
-## 2.1 Audit ARCHITECTURE.md
+Confirm that repository HEAD provides executable evidence for all currently
+implemented architectural and model requirements.
 
-Review every architectural invariant against repository HEAD.
+Pay particular attention to:
 
-Confirm in particular that the implementation still provides executable
-evidence for:
+* execution-scoped configuration validation;
+* separation of configuration resolution from validation;
+* model ownership of model-specific validation rules;
+* reuse of current products without recursive historical validation;
+* Artwork fill-color membership;
+* Artwork preparation using the configured fill color;
+* existing Artwork registered-geometry and packaging semantics;
+* existing Shape registered-geometry, dimensionalization, color, fill, ridge,
+  dependency, and packaging semantics;
+* absence of model-specific behavior in the generic engine.
 
-* first-class persistent products;
-* no engine-level privileged final product;
-* one canonical materialized home per product;
-* stage ownership of products;
-* logical product references;
-* centralized filesystem resolution;
-* dependency-driven execution;
-* validation of complete model definitions;
-* minimal dependency realization;
-* reuse of current products;
-* cross-model reuse;
-* cross-artifact reuse;
-* dimension-independent reusable registered geometry;
-* late physical dimensionalization;
-* registration preservation;
-* product-contract consumption rather than producer-stage coupling;
-* recursive registered composition where currently implemented;
-* model-scoped variants;
-* separation of variants from realizations;
-* manifest-defined variable collections;
-* completion state independent of directory existence;
-* absence of model-specific behavior in the generic engine;
-* absence of global artifact-path construction in model stages;
-* simple ordinary configuration;
-* structured execution behavior independent of presentation policy.
+Do not require explicitly future models or capabilities merely because they
+appear in architectural reference scenarios.
 
-Do not require future models such as ornament or keychain merely because they
-appear as architecture reference scenarios.
+## 2.2 Reevaluate Shared Operations
 
-The architecture must be capable of representing those scenarios without
-requiring them all to be implemented by the current model set.
+Review for demonstrated model-independent duplication introduced or exposed by
+the validation work.
 
-## 2.2 Audit Artwork DEFINITION.md
+Do not introduce additional abstractions unless multiple implementations
+demonstrate the same model-independent contract.
 
-Review the complete Artwork definition against HEAD.
+Model-specific policy remains model-owned.
 
-Confirm executable evidence for:
+## 2.3 Full Repository Validation
 
-* source materialization;
-* palette-based preparation;
-* Artwork envelope production;
-* raster component production;
-* registered vector geometry;
-* common registered extent;
-* stable component membership;
-* semantic color identity;
-* RGB color representation;
-* manifest-defined dynamic components;
-* dimension independence before extrusion;
-* common registration across Artwork components;
-* standalone Artwork physical dimensionalization;
-* standalone Artwork multicomponent 3MF packaging;
-* preservation of semantic colors through packaging;
-* reuse of registered Artwork without standalone extrusion or packaging.
+Run the complete repository validation suite, including slow tests.
 
-As part of this audit, explicitly resolve whether Artwork's current requirement
-that the configured palette contain:
+Use the repository's standard full-validation command.
 
-```text
-white
-```
+Any failure revealing a permanent-specification discrepancy should result in a
+new narrowly scoped implementation slice before proceeding.
 
-is part of the intended permanent Artwork contract.
-
-If the implementation intentionally requires white as the envelope-fill color
-during preparation, ensure that requirement is unambiguously represented by
-the permanent Artwork definition.
-
-If the permanent definition intentionally permits palettes without white,
-identify the implementation discrepancy and create a new narrowly scoped
-CHANGEPLAN rather than silently changing either side.
-
-Do not change this behavior merely because the implementation and specification
-use different wording. First determine whether a semantic discrepancy actually
-exists.
-
-## 2.3 Audit Shape DEFINITION.md
-
-Review every initial-scope Shape invariant against HEAD.
-
-Confirm executable evidence for:
-
-* supported structural geometries;
-* registered Shape normalization;
-* Shape interior-region semantics;
-* outer-ridge registered geometry;
-* integrated ridge semantics;
-* separate ridge semantics;
-* equivalent assembled geometry where required;
-* structural base color;
-* independent ridge color;
-* registered Artwork dependency;
-* common Artwork transformation;
-* preserved Artwork registration;
-* centered uniform fitting;
-* persistent registered composition;
-* Shape-owned physical X/Y dimensionalization;
-* Shape-owned Artwork raise;
-* optional Shape-owned Artwork fill;
-* Artwork fill geometry;
-* Artwork fill semantic color;
-* structural, fill, ridge, and Artwork component identity;
-* final multicomponent 3MF packaging.
-
-Distinguish initial-scope requirements from explicitly deferred future
-capabilities.
-
-## 2.4 Reevaluate Shared Operations
-
-Perform one final review for demonstrated model-independent duplication.
-
-In particular review:
-
-```text
-color resolution
-registered geometry transformation
-OpenSCAD rendering
-component manifests
-STL loading
-3MF component representation
-3MF packaging
-```
-
-Existing shared abstractions should be retained when they already express the
-common contract.
-
-Do not introduce a generic packaging framework, generic model pipeline, or
-generic geometry framework merely to make implementations appear structurally
-similar.
-
-Model stages should retain policy for:
-
-```text
-what components exist
-what those components mean
-which semantic colors belong to them
-how model-specific geometry is constructed
-```
-
-Shared infrastructure should remain responsible only for demonstrated
-model-independent mechanics.
-
-## 2.5 Full Repository Validation
-
-After all permanent-specification comparisons are clean, run the complete
-repository validation suite, including slow tests.
-
-At minimum run the repository's normal equivalents of:
-
-```text
-pytest
-ruff
-format checks
-pyright
-```
-
-using the standard project commands.
-
-Do not declare conformance based only on the short test suite.
-
-Any failure that reveals a permanent-specification discrepancy should result in
-a new narrowly scoped implementation slice before proceeding.
-
-## 2.6 Delete CHANGEPLAN.md
+## 2.4 Delete CHANGEPLAN.md
 
 If the final audit finds no meaningful difference between repository HEAD and:
 
@@ -542,25 +305,14 @@ and the complete repository validation suite is green, delete:
 CHANGEPLAN.md
 ```
 
-The repository should then be governed by:
-
-```text
-ARCHITECTURE.md
-model/models/<model>/DEFINITION.md
-tests
-implementation
-```
-
-Do not preserve a completed CHANGEPLAN merely as historical documentation.
+Do not preserve a completed CHANGEPLAN as historical documentation.
 
 Version control already records that history.
 
-If the final audit identifies another meaningful discrepancy, do not delete
-CHANGEPLAN.md.
-
-Instead:
+If the final audit identifies another meaningful discrepancy:
 
 1. remove completed work from this document;
 2. replace it with only the newly discovered remaining work;
 3. restart phase numbering from Phase 1;
 4. continue until HEAD conforms to the permanent specifications.
+
