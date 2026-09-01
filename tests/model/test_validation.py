@@ -7,11 +7,14 @@ Tests for model-owned configuration validation.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from lowkey_artifact_builder.config import ConfigError
 from lowkey_artifact_builder.model.validation import (
     ConfigurationResolver,
+    get_model_validators,
     validate_configuration,
 )
 
@@ -65,6 +68,66 @@ def _require_string_collection(
         raise TypeError("Expected only strings.")
 
     return tuple(value)
+
+
+def _write_model_package(
+    root: Path,
+    *,
+    name: str,
+    validation_source: str | None = None,
+) -> Path:
+    """
+    Create a minimal importable model package for discovery tests.
+    """
+
+    package = root / name
+
+    package.mkdir()
+
+    (package / "__init__.py").write_text(
+        "",
+        encoding="utf-8",
+    )
+
+    if validation_source is not None:
+        (package / "validation.py").write_text(
+            validation_source,
+            encoding="utf-8",
+        )
+
+    return package
+
+
+def _write_test_model_root(
+    tmp_path: Path,
+    *,
+    package_name: str,
+    model_name: str = "model",
+    validation_source: str | None = None,
+) -> str:
+    """
+    Create an isolated top-level package containing one test model.
+
+    Each discovery test uses a distinct top-level package name so Python's
+    import cache cannot retain a package path created by another test.
+    """
+
+    package_root = tmp_path / package_name
+
+    package_root.mkdir()
+
+    (package_root / "__init__.py").write_text(
+        "",
+        encoding="utf-8",
+    )
+
+    _write_model_package(
+        package_root,
+        name=model_name,
+        validation_source=validation_source,
+    )
+
+    return f"{package_name}.{model_name}"
 
 
 # =========================================================
@@ -186,3 +249,145 @@ def test_invalid_model_configuration_raises_config_error() -> None:
             resolver,
             validators=(validate_membership,),
         )
+
+
+# =========================================================
+# Model validator discovery
+# =========================================================
+
+
+def test_model_without_validation_module_has_no_validators(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A model need not declare configuration validators.
+    """
+
+    model_package = _write_test_model_root(
+        tmp_path,
+        package_name="validation_test_models_plain",
+    )
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    validators = get_model_validators(
+        model_package,
+    )
+
+    assert validators == ()
+
+
+def test_model_validation_module_declares_validators(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Validators declared by a model are discovered in declaration order.
+    """
+
+    model_package = _write_test_model_root(
+        tmp_path,
+        package_name="validation_test_models_declared",
+        validation_source="""
+def validate_first(resolver):
+    pass
+
+
+def validate_second(resolver):
+    pass
+
+
+VALIDATORS = (
+    validate_first,
+    validate_second,
+)
+""",
+    )
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    validators = get_model_validators(
+        model_package,
+    )
+
+    assert tuple(validator.__name__ for validator in validators) == (
+        "validate_first",
+        "validate_second",
+    )
+
+
+def test_discovering_model_validators_does_not_execute_them(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Validator discovery does not itself perform configuration validation.
+    """
+
+    model_package = _write_test_model_root(
+        tmp_path,
+        package_name="validation_test_models_not_executed",
+        validation_source="""
+def validate_configuration(resolver):
+    raise RuntimeError("validator executed")
+
+
+VALIDATORS = (
+    validate_configuration,
+)
+""",
+    )
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    validators = get_model_validators(
+        model_package,
+    )
+
+    assert len(validators) == 1
+
+
+def test_discovered_model_validator_receives_resolved_configuration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Discovered validators use the generic resolved-configuration contract.
+    """
+
+    model_package = _write_test_model_root(
+        tmp_path,
+        package_name="validation_test_models_resolved",
+        validation_source="""
+def validate_pair(resolver):
+    left = resolver("left")
+    right = resolver("right")
+
+    if left != right:
+        raise RuntimeError("resolved values differ")
+
+
+VALIDATORS = (
+    validate_pair,
+)
+""",
+    )
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    validators = get_model_validators(
+        model_package,
+    )
+
+    resolver = StubResolver(
+        {
+            "left": "same",
+            "right": "same",
+        }
+    )
+
+    validate_configuration(
+        resolver,
+        validators=validators,
+    )
