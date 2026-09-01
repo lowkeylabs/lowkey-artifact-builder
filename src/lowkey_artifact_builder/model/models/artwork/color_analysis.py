@@ -23,7 +23,9 @@ from typing import (
 from lowkey_artifact_builder.colors import (
     ColorMatch,
     PaletteColor,
+    PaletteRecommendation,
     match_color,
+    recommend_palette,
 )
 
 # =========================================================
@@ -68,6 +70,22 @@ class ArtworkColorMatch:
     library: ColorMatch
 
     catalog: ColorMatch
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class ArtworkPaletteRecommendations:
+    """
+    Palette recommendations for Artwork color-availability scopes.
+    """
+
+    printer: PaletteRecommendation
+
+    library: PaletteRecommendation
+
+    catalog: PaletteRecommendation
 
 
 # =========================================================
@@ -373,10 +391,80 @@ def analyze_color_matches(
     )
 
 
+# =========================================================
+# Palette recommendation
+# =========================================================
+
+
+def recommend_artwork_palettes(
+    *,
+    artwork_colors: Sequence[PaletteColor],
+    printer_colors: Sequence[PaletteColor],
+    library_colors: Sequence[PaletteColor],
+    catalog_colors: Sequence[PaletteColor],
+    palette_size: int,
+    mandatory: Sequence[str] = (),
+) -> ArtworkPaletteRecommendations:
+    """
+    Recommend palettes for Artwork color-availability scopes.
+
+    Printer, library, and catalog candidates are optimized independently
+    against the complete prepared Artwork palette.
+
+    Mandatory colors identify semantic color identities that must be
+    included when available in each candidate scope.
+    """
+
+    return ArtworkPaletteRecommendations(
+        printer=recommend_palette(
+            artwork_colors,
+            printer_colors,
+            palette_size=palette_size,
+            mandatory=_mandatory_colors(
+                printer_colors,
+                mandatory,
+            ),
+        ),
+        library=recommend_palette(
+            artwork_colors,
+            library_colors,
+            palette_size=palette_size,
+            mandatory=_mandatory_colors(
+                library_colors,
+                mandatory,
+            ),
+        ),
+        catalog=recommend_palette(
+            artwork_colors,
+            catalog_colors,
+            palette_size=palette_size,
+            mandatory=_mandatory_colors(
+                catalog_colors,
+                mandatory,
+            ),
+        ),
+    )
+
+
+def _mandatory_colors(
+    candidates: Sequence[PaletteColor],
+    mandatory: Sequence[str],
+) -> tuple[PaletteColor, ...]:
+    """
+    Resolve mandatory semantic color identities from candidate colors.
+    """
+
+    mandatory_names = set(mandatory)
+
+    return tuple(color for color in candidates if color.name in mandatory_names)
+
+
 __all__ = [
     "ArtworkColorMatch",
+    "ArtworkPaletteRecommendations",
     "ColorAnalysisResolver",
     "analyze_color_matches",
     "analyze_registered_artwork_colors",
     "load_registered_artwork_colors",
+    "recommend_artwork_palettes",
 ]

@@ -10,7 +10,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lowkey_artifact_builder.colors import PaletteColor
+from lowkey_artifact_builder.colors import (
+    PaletteColor,
+)
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
     analyze_color_matches,
     analyze_registered_artwork_colors,
