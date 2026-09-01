@@ -13,8 +13,56 @@ from pathlib import Path
 from lowkey_artifact_builder.colors import PaletteColor
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
     analyze_color_matches,
+    analyze_registered_artwork_colors,
     load_registered_artwork_colors,
 )
+
+# =========================================================
+# Test support
+# =========================================================
+
+
+class StubColorResolver:
+    """
+    Resolver-compatible configuration and color-catalog source.
+    """
+
+    def __init__(
+        self,
+        *,
+        values: dict[str, object],
+        colors: dict[str, object],
+    ) -> None:
+        self._values = values
+        self._colors = colors
+
+    def __call__(
+        self,
+        name: str,
+    ) -> object:
+        return self._values[name]
+
+    @property
+    def colors(
+        self,
+    ) -> dict[str, object]:
+        return self._colors
+
+
+def _catalog_color(
+    *,
+    manufacturer: str,
+    rgb: tuple[int, int, int],
+) -> dict[str, object]:
+    """
+    Return one color-catalog entry.
+    """
+
+    return {
+        "manufacturer": manufacturer,
+        "filament": "Test Filament",
+        "rgb": list(rgb),
+    }
 
 
 def test_artwork_color_analysis_matches_each_prepared_color_independently() -> None:
@@ -410,3 +458,122 @@ def test_registered_artwork_colors_drive_color_analysis(
         name="prepared-red",
         rgb=(250, 10, 10),
     )
+
+
+def test_registered_artwork_analysis_uses_resolved_availability(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork analysis uses resolved printer and library colors.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 100,
+                "products": [
+                    {
+                        "index": 1,
+                        "path": "color-1.svg",
+                        "name": "artwork-red",
+                        "color": {
+                            "red": 250,
+                            "green": 10,
+                            "blue": 10,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": ["printer-red"],
+            "library_colors": ["library-red"],
+        },
+        colors={
+            "printer-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(220, 0, 0),
+            ),
+            "library-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(240, 5, 5),
+            ),
+            "catalog-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(249, 9, 9),
+            ),
+        },
+    )
+
+    analysis = analyze_registered_artwork_colors(
+        manifest=manifest,
+        resolver=resolver,
+    )
+
+    assert analysis[0].artwork.name == "artwork-red"
+    assert analysis[0].printer.color.name == "printer-red"
+    assert analysis[0].library.color.name == "library-red"
+    assert analysis[0].catalog.color.name == "catalog-red"
+
+
+def test_registered_artwork_analysis_excludes_synthetic_catalog_entries(
+    tmp_path: Path,
+) -> None:
+    """
+    Catalog matching derives physical candidates from catalog metadata.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 100,
+                "products": [
+                    {
+                        "index": 1,
+                        "path": "color-1.svg",
+                        "name": "artwork-red",
+                        "color": {
+                            "red": 255,
+                            "green": 0,
+                            "blue": 0,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": ["test-red"],
+            "library_colors": ["test-red"],
+        },
+        colors={
+            "test-red": _catalog_color(
+                manufacturer="test",
+                rgb=(255, 0, 0),
+            ),
+            "physical-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(240, 0, 0),
+            ),
+        },
+    )
+
+    analysis = analyze_registered_artwork_colors(
+        manifest=manifest,
+        resolver=resolver,
+    )
+
+    assert analysis[0].printer.color.name == "test-red"
+    assert analysis[0].library.color.name == "test-red"
+    assert analysis[0].catalog.color.name == "physical-red"
