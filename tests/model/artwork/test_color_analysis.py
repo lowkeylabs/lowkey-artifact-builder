@@ -8,6 +8,7 @@ Tests for Artwork color-match analysis.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -15,12 +16,15 @@ import pytest
 from lowkey_artifact_builder.colors import (
     ColorError,
     PaletteColor,
+    PaletteRecommendation,
 )
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
+    ArtworkPaletteRecommendations,
     analyze_color_matches,
     analyze_registered_artwork_colors,
     load_registered_artwork_colors,
     recommend_artwork_palettes,
+    recommend_five_tool_artwork_palettes,
     recommend_registered_artwork_palettes,
 )
 
@@ -944,3 +948,205 @@ def test_artwork_palette_recommendation_requires_mandatory_color_in_each_scope()
             palette_size=1,
             mandatory=("white",),
         )
+
+
+# =========================================================
+# Five-tool palette recommendation
+# =========================================================
+
+
+def test_five_tool_artwork_palette_recommendation_requires_white(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Five-tool Artwork recommendation requires white in a five-color palette.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "products": [
+                    {
+                        "name": "artwork-red",
+                        "color": {
+                            "red": 255,
+                            "green": 0,
+                            "blue": 0,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": [],
+            "library_colors": [],
+        },
+        colors={},
+    )
+
+    calls: list[
+        tuple[
+            int,
+            tuple[str, ...],
+        ]
+    ] = []
+
+    def fake_recommend_registered_artwork_palettes(
+        *,
+        manifest: Path,
+        resolver: object,
+        palette_size: int,
+        mandatory: Sequence[str] = (),
+    ) -> ArtworkPaletteRecommendations:
+        del manifest
+        del resolver
+
+        calls.append(
+            (
+                palette_size,
+                tuple(mandatory),
+            )
+        )
+
+        empty = PaletteRecommendation(
+            colors=(),
+            score=0.0,
+        )
+
+        return ArtworkPaletteRecommendations(
+            printer=empty,
+            library=empty,
+            catalog=empty,
+        )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.model.models.artwork.color_analysis."
+        "recommend_registered_artwork_palettes",
+        fake_recommend_registered_artwork_palettes,
+    )
+
+    recommend_five_tool_artwork_palettes(
+        manifest=manifest,
+        resolver=resolver,
+    )
+
+    assert calls == [
+        (
+            5,
+            ("white",),
+        ),
+    ]
+
+
+def test_five_tool_artwork_palette_recommendation_returns_complete_palettes(
+    tmp_path: Path,
+) -> None:
+    """
+    Five-tool Artwork recommendation produces complete five-color palettes.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "products": [
+                    {
+                        "name": "artwork-red",
+                        "color": {
+                            "red": 255,
+                            "green": 0,
+                            "blue": 0,
+                        },
+                    },
+                    {
+                        "name": "artwork-green",
+                        "color": {
+                            "red": 0,
+                            "green": 255,
+                            "blue": 0,
+                        },
+                    },
+                    {
+                        "name": "artwork-blue",
+                        "color": {
+                            "red": 0,
+                            "green": 0,
+                            "blue": 255,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    colors: dict[str, object] = {
+        "white": _catalog_color(
+            manufacturer="eSUN",
+            rgb=(255, 255, 255),
+        ),
+        "red": _catalog_color(
+            manufacturer="eSUN",
+            rgb=(255, 0, 0),
+        ),
+        "green": _catalog_color(
+            manufacturer="eSUN",
+            rgb=(0, 255, 0),
+        ),
+        "blue": _catalog_color(
+            manufacturer="eSUN",
+            rgb=(0, 0, 255),
+        ),
+        "black": _catalog_color(
+            manufacturer="eSUN",
+            rgb=(0, 0, 0),
+        ),
+        "yellow": _catalog_color(
+            manufacturer="eSUN",
+            rgb=(255, 255, 0),
+        ),
+    }
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": [
+                "white",
+                "red",
+                "green",
+                "blue",
+                "black",
+            ],
+            "library_colors": [
+                "white",
+                "red",
+                "green",
+                "blue",
+                "black",
+                "yellow",
+            ],
+        },
+        colors=colors,
+    )
+
+    recommendations = recommend_five_tool_artwork_palettes(
+        manifest=manifest,
+        resolver=resolver,
+    )
+
+    assert len(recommendations.printer.colors) == 5
+    assert len(recommendations.library.colors) == 5
+    assert len(recommendations.catalog.colors) == 5
+
+    assert "white" in {color.name for color in recommendations.printer.colors}
+
+    assert "white" in {color.name for color in recommendations.library.colors}
+
+    assert "white" in {color.name for color in recommendations.catalog.colors}

@@ -290,6 +290,26 @@ def recommend_registered_artwork_palettes(
     )
 
 
+def recommend_five_tool_artwork_palettes(
+    *,
+    manifest: Path,
+    resolver: ColorAnalysisResolver,
+) -> ArtworkPaletteRecommendations:
+    """
+    Recommend five-tool palettes for registered Artwork.
+
+    The five-tool Artwork use case requires white plus four
+    additional colors.
+    """
+
+    return recommend_registered_artwork_palettes(
+        manifest=manifest,
+        resolver=resolver,
+        palette_size=5,
+        mandatory=("white",),
+    )
+
+
 def _resolve_catalog_colors(
     resolver: ColorAnalysisResolver,
     parameter: str,
@@ -534,5 +554,6 @@ __all__ = [
     "analyze_registered_artwork_colors",
     "load_registered_artwork_colors",
     "recommend_artwork_palettes",
+    "recommend_five_tool_artwork_palettes",
     "recommend_registered_artwork_palettes",
 ]
