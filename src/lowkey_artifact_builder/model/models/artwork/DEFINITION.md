@@ -30,7 +30,7 @@ physical dimensionalization.
 
 Artwork consumes one raster source:
 
-```
+```text
 source
 ```
 
@@ -45,12 +45,30 @@ location.
 
 Artwork uses an ordered semantic color palette:
 
-```
+```text
 artwork_colors
 ```
 
 `artwork_colors` is normally derived from the configured printer colors
 but may be explicitly configured.
+
+Artwork preparation uses a semantic fill color:
+
+```text
+artwork_fill_color
+```
+
+The default Artwork fill color is:
+
+```text
+white
+```
+
+The resolved `artwork_fill_color` must be present in `artwork_colors`.
+
+The fill color is used for otherwise unassigned pixels inside the derived
+Artwork envelope. `white` has no special semantic meaning other than being
+the default fill color.
 
 Each Artwork color has:
 
@@ -65,7 +83,7 @@ vector, extrusion, and packaging products.
 Preparation converts the source image into normalized artwork described
 by:
 
-```
+```text
 trace.svg
 envelope.svg
 ```
@@ -77,6 +95,14 @@ The envelope represents the outer region belonging to the artwork.
 Pixels outside the envelope do not belong to the Artwork.
 
 Prepared artwork is reduced to the configured Artwork color palette.
+
+Otherwise unassigned pixels inside the envelope are assigned the configured:
+
+```text
+artwork_fill_color
+```
+
+before color separation.
 
 ## Raster
 
@@ -95,7 +121,7 @@ Dynamic raster products are stored relative to their manifest.
 
 Raster island cleanup is controlled by:
 
-```
+```text
 artwork_min_island_area
 artwork_island_connectivity
 ```
@@ -124,7 +150,7 @@ It is not an independent layer and does not have semantic color identity.
 
 The common coordinate system is described by:
 
-```
+```text
 registered_extent
 ```
 
@@ -136,7 +162,7 @@ Registered vector geometry has no physical manufacturing size.
 
 Vector processing does not depend on:
 
-```
+```text
 artwork_size
 artwork_raise
 ```
@@ -184,14 +210,14 @@ Artwork.
 
 Extrusion introduces:
 
-```
+```text
 artwork_size
 artwork_raise
 ```
 
 The common registered coordinate system is uniformly scaled so that:
 
-```
+```text
 registered_extent -> artwork_size
 ```
 
@@ -202,13 +228,13 @@ centering individual color layers.
 
 Each color layer is extruded from:
 
-```
+```text
 Z = 0
 ```
 
 through:
 
-```
+```text
 Z = artwork_raise
 ```
 
@@ -219,7 +245,7 @@ an extrusion manifest.
 
 Packaging combines the dimensionalized Artwork components into:
 
-```
+```text
 artifact.3mf
 ```
 
@@ -238,7 +264,7 @@ Artwork extrusion or packaging.
 For the current Artwork model, a consumer of registered vector Artwork
 requires:
 
-```
+```text
 artwork/prepare
       │
       ├──────────────┐
@@ -260,7 +286,7 @@ The vector stage consumes both:
 
 The later Artwork stages:
 
-```
+```text
 artwork/extrude
 artwork/package
 ```
@@ -279,9 +305,10 @@ one common transformation to the envelope and all registered color layers.
 
 Artwork defines or consumes:
 
-```
+```text
 source
 artwork_colors
+artwork_fill_color
 artwork_pixels
 artwork_min_island_area
 artwork_island_connectivity
@@ -292,6 +319,10 @@ artwork_raise
 `source` identifies the external raster input.
 
 `artwork_colors` defines the ordered semantic palette.
+
+`artwork_fill_color` defines the semantic color assigned to otherwise
+unassigned pixels inside the Artwork envelope. It defaults to `white` and
+must be present in `artwork_colors`.
 
 `artwork_pixels` defines raster processing resolution.
 
@@ -314,7 +345,7 @@ processing.
 
 Artwork defines:
 
-```
+```text
 10 prepare
 20 raster
 30 vector
@@ -324,7 +355,7 @@ Artwork defines:
 
 with dependencies:
 
-```
+```text
 prepare
    │
    ├──────────────┐
@@ -353,7 +384,7 @@ The direct dependencies reflect the products consumed by each stage:
 
 The principal declared products are:
 
-```
+```text
 prepare/trace.svg
 prepare/envelope.svg
 raster/products.json
@@ -387,59 +418,62 @@ A conforming Artwork implementation satisfies the following:
 
 3. Prepared Artwork uses the configured semantic color palette.
 
-4. Raster color layers use one common registered coordinate system.
+4. Otherwise unassigned pixels inside the Artwork envelope use
+   `artwork_fill_color`, which must be present in `artwork_colors`.
 
-5. Raster color regions are mutually exclusive.
+5. Raster color layers use one common registered coordinate system.
 
-6. Raster island cleanup is defined in raster pixel space rather than
+6. Raster color regions are mutually exclusive.
+
+7. Raster island cleanup is defined in raster pixel space rather than
    physical space.
 
-7. Raster processing is independent of physical `artwork_size`.
+8. Raster processing is independent of physical `artwork_size`.
 
-8. Vector color layers use one common registered coordinate system.
+9. Vector color layers use one common registered coordinate system.
 
-9. Vector processing is independent of physical `artwork_size`.
+10. Vector processing is independent of physical `artwork_size`.
 
-10. The vector manifest records the common `registered_extent`.
+11. The vector manifest records the common `registered_extent`.
 
-11. The Artwork envelope uses the same registered coordinate system as the
+12. The Artwork envelope uses the same registered coordinate system as the
     vector color layers.
 
-12. The Artwork envelope represents the outer occupied region of registered
+13. The Artwork envelope represents the outer occupied region of registered
     Artwork.
 
-13. The `registered_extent` defines the common registered coordinate system;
+14. The `registered_extent` defines the common registered coordinate system;
     the envelope defines the occupied region within that coordinate system.
 
-14. All registration-preserving transformations are applied consistently to
+15. All registration-preserving transformations are applied consistently to
     the Artwork envelope and every registered color layer.
 
-15. A consumer may determine Artwork containment from the registered envelope
+16. A consumer may determine Artwork containment from the registered envelope
     without independently determining the bounds of individual color layers.
 
-16. Registered vector Artwork has no predetermined physical manufacturing
+17. Registered vector Artwork has no predetermined physical manufacturing
     size.
 
-17. Semantic color identity is preserved through the color-separated
+18. Semantic color identity is preserved through the color-separated
     products.
 
-18. Registered vector Artwork is a reusable intermediate product.
+19. Registered vector Artwork is a reusable intermediate product.
 
-19. Standalone physical dimensionalization begins at extrusion.
+20. Standalone physical dimensionalization begins at extrusion.
 
-20. Standalone extrusion uniformly maps `registered_extent` to
+21. Standalone extrusion uniformly maps `registered_extent` to
     `artwork_size`.
 
-21. All color layers receive the same dimensional transformation and
+22. All color layers receive the same dimensional transformation and
     remain registered.
 
-22. Standalone extrusion uses `artwork_raise` as the physical Z height.
+23. Standalone extrusion uses `artwork_raise` as the physical Z height.
 
-23. Standalone packaging produces a multicomponent printable 3MF.
+24. Standalone packaging produces a multicomponent printable 3MF.
 
-24. Artwork does not provide an underlying structural base.
+25. Artwork does not provide an underlying structural base.
 
-25. Another model can consume registered vector Artwork without requiring
+26. Another model can consume registered vector Artwork without requiring
     standalone Artwork extrusion or packaging.
 
 ## Scope
@@ -467,3 +501,4 @@ Artwork does not define:
 
 Those responsibilities belong to the model consuming the registered
 Artwork.
+
