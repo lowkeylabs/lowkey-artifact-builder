@@ -20,8 +20,8 @@ This plan contains only the work remaining after that comparison.
 ## Status
 
 ```text
-Phase 1 — Not started
-Phase 2 — Pending
+Phase 1 — Completed
+Phase 2 — Started
 ```
 
 ## Permanent Specifications
