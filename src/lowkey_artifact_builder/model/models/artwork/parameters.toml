@@ -2,7 +2,6 @@
 
 artwork_pixels = 1024
 artwork_raise = 1.0
-artwork_fill_color = "white"
 
 artwork_envelope_mode = "shrink-wrap"
 

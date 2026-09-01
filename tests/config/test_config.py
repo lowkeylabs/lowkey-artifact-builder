@@ -522,21 +522,19 @@ def test_artwork_model_defaults_are_resolved(
     assert resolver("artwork_min_island_area") == 34
 
 
-def test_artwork_fill_color_defaults_to_white(
+def test_artwork_fill_color_is_derived_from_printer_colors(
     tmp_path: Path,
 ) -> None:
     """
-    Artwork fill color defaults to white.
-
-    White is the default semantic fill color but has no special
-    significance beyond being the model default.
+    Artwork fill color defaults to the configured printer color
+    perceptually closest to ideal white.
     """
 
     _write_workspace(
         tmp_path,
         """
 [parameters]
-artwork_colors = ["test-red", "white", "test-blue"]
+printer_colors = ["test-red", "test-white", "test-blue"]
 """.lstrip(),
     )
 
@@ -546,7 +544,149 @@ artwork_colors = ["test-red", "white", "test-blue"]
         project_root=tmp_path,
     )
 
-    assert resolver("artwork_fill_color") == "white"
+    assert resolver("artwork_fill_color") == "test-white"
+    assert resolver.source("artwork_fill_color") == "derived"
+
+
+def test_artwork_fill_color_derivation_preserves_catalog_identity(
+    tmp_path: Path,
+) -> None:
+    """
+    Derived fill color preserves the identity of the selected
+    physical printer color rather than substituting `white`.
+    """
+
+    _write_workspace(
+        tmp_path,
+        """
+[parameters]
+printer_colors = ["black", "cold-white", "silver"]
+""".lstrip(),
+    )
+
+    resolver = get_resolver(
+        "nydeli",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    assert resolver("artwork_fill_color") == "cold-white"
+
+
+def test_artwork_fill_color_derivation_uses_perceptual_color_distance(
+    tmp_path: Path,
+) -> None:
+    """
+    Fill-color derivation selects the printer color nearest ideal
+    white according to the shared perceptual color semantics.
+    """
+
+    _write_workspace(
+        tmp_path,
+        """
+[parameters]
+printer_colors = ["test-red", "test-green", "test-white"]
+""".lstrip(),
+    )
+
+    resolver = get_resolver(
+        "nydeli",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    assert resolver("artwork_fill_color") == "test-white"
+
+
+def test_artwork_fill_color_derivation_preserves_printer_order_for_ties(
+    tmp_path: Path,
+) -> None:
+    """
+    Equal-distance fill candidates are selected deterministically
+    according to configured printer-color order.
+    """
+
+    _write_workspace(
+        tmp_path,
+        """
+[parameters]
+printer_colors = ["test-red", "test-blue"]
+
+[colors.test-red]
+manufacturer = "test"
+filament = "Test Red"
+rgb = [200, 200, 200]
+
+[colors.test-blue]
+manufacturer = "test"
+filament = "Test Blue"
+rgb = [200, 200, 200]
+""".lstrip(),
+    )
+
+    resolver = get_resolver(
+        "nydeli",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    assert resolver("artwork_fill_color") == "test-red"
+
+
+def test_explicit_artwork_fill_color_overrides_derivation(
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit Artwork fill configuration takes precedence over
+    the model derivation.
+    """
+
+    _write_workspace(
+        tmp_path,
+        """
+[parameters]
+printer_colors = ["test-red", "test-white", "test-blue"]
+artwork_fill_color = "test-blue"
+artwork_colors = ["test-red", "test-white", "test-blue"]
+""".lstrip(),
+    )
+
+    resolver = get_resolver(
+        "nydeli",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    assert resolver("artwork_fill_color") == "test-blue"
+    assert resolver.source("artwork_fill_color") == "workspace (overrides derived)"
+
+
+def test_derived_artwork_fill_color_is_present_in_derived_artwork_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Default Artwork palette and fill derivations remain mutually
+    consistent because both are derived from printer colors.
+    """
+
+    _write_workspace(
+        tmp_path,
+        """
+[parameters]
+printer_colors = ["test-red", "test-white", "test-blue"]
+""".lstrip(),
+    )
+
+    resolver = get_resolver(
+        "nydeli",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    artwork_colors = resolver("artwork_colors")
+    artwork_fill_color = resolver("artwork_fill_color")
+
+    assert artwork_fill_color in artwork_colors
 
 
 def test_artwork_envelope_mode_is_a_model_default(
@@ -595,34 +735,6 @@ artwork_fill_color = "test-red"
     )
 
     assert resolver("artwork_fill_color") == "test-red"
-
-
-def test_artwork_fill_color_is_a_model_default(
-    tmp_path: Path,
-) -> None:
-    """
-    Artwork fill color is supplied by the Artwork model defaults.
-
-    The default fill color is ordinary configurable model policy rather
-    than a value derived from the resolved Artwork palette.
-    """
-
-    _write_workspace(
-        tmp_path,
-        """
-[parameters]
-artwork_colors = ["white", "test-red"]
-""".lstrip(),
-    )
-
-    resolver = get_resolver(
-        "nydeli",
-        model="artwork",
-        project_root=tmp_path,
-    )
-
-    assert resolver("artwork_fill_color") == "white"
-    assert resolver.source("artwork_fill_color") == "model"
 
 
 def test_artwork_palette_does_not_require_white_when_fill_color_is_configured(

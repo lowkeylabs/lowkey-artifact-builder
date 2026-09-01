@@ -20,6 +20,8 @@ The Artwork model supports:
 * preparation and normalization of the source;
 * registered raster color layers;
 * registered vector color layers;
+* color-availability analysis;
+* printer-palette recommendation;
 * optional physical dimensionalization;
 * a printable multicomponent 3MF.
 
@@ -52,23 +54,40 @@ artwork_colors
 `artwork_colors` is normally derived from the configured printer colors
 but may be explicitly configured.
 
+
 Artwork preparation uses a semantic fill color:
 
 ```text
 artwork_fill_color
 ```
 
-The default Artwork fill color is:
+Unless explicitly configured, `artwork_fill_color` is derived from the
+configured `printer_colors`.
+
+The derived fill color is the configured printer color perceptually closest
+to ideal RGB white:
 
 ```text
-white
+RGB(255, 255, 255)
 ```
+
+Selection uses the generic perceptual color-distance semantics defined by the
+shared color infrastructure.
+
+The selected value preserves the semantic identity of the corresponding
+printer color. Artwork does not substitute or invent a generic `white`
+identity for the selected physical color.
+
+When multiple printer colors have equal perceptual distance from ideal white,
+printer color order determines the result.
+
+An explicitly configured `artwork_fill_color` overrides this derivation
+through normal configuration resolution.
 
 The resolved `artwork_fill_color` must be present in `artwork_colors`.
 
 The fill color is used for otherwise unassigned pixels inside the derived
-Artwork envelope. `white` has no special semantic meaning other than being
-the default fill color.
+Artwork envelope.
 
 Each Artwork color has:
 
@@ -77,6 +96,163 @@ Each Artwork color has:
 
 Semantic color identity is preserved through the color-separated raster,
 vector, extrusion, and packaging products.
+
+## Color Availability
+
+Artwork may compare its prepared semantic colors against three distinct
+color-availability scopes:
+
+```text
+printer_colors
+library_colors
+color catalog
+```
+
+`printer_colors` identifies colors currently available to the printer.
+
+`library_colors` identifies colors physically available from the user's
+filament library.
+
+The color catalog identifies known physical filament colors and provides
+their semantic identities and RGB representations.
+
+`printer_colors` and `library_colors` are independent resolved configuration
+parameters. Neither is required to be a subset of the other.
+
+Every resolved `printer_colors` or `library_colors` entry used by Artwork
+color analysis must reference a known color-catalog identity.
+
+The complete physical color catalog is distinct from the printer and library
+availability sets. Catalog entries explicitly identified as synthetic test
+colors do not participate in physical catalog-wide analysis or recommendation.
+
+Color-availability analysis is diagnostic. It does not change:
+
+* `printer_colors`;
+* `library_colors`;
+* `artwork_colors`; or
+* the color catalog.
+
+## Color Matching
+
+Registered Artwork may be analyzed against the printer, library, and physical
+catalog availability scopes.
+
+For each prepared Artwork semantic color, analysis independently determines:
+
+* the nearest printer color;
+* the nearest library color; and
+* the nearest physical catalog color.
+
+Each match preserves:
+
+* the Artwork semantic color identity;
+* the selected candidate color identity; and
+* the perceptual distance between them.
+
+Matching uses the generic perceptual color-distance semantics defined by the
+shared color infrastructure.
+
+Printer, library, and catalog matching are independent. A color selected in
+one scope does not constrain the color selected in another scope.
+
+Color analysis operates on persistent registered Artwork color information.
+Standalone Artwork extrusion and packaging are not prerequisites for analyzing
+registered Artwork colors.
+
+## Palette Recommendation
+
+Artwork may recommend fixed-size filament palettes for representing the
+complete prepared Artwork.
+
+Recommendations are produced independently for:
+
+```text
+printer
+library
+physical catalog
+```
+
+Each candidate palette is evaluated as a whole.
+
+The score for a candidate palette is the aggregate perceptual distance required
+to represent every prepared Artwork color by its nearest color in that
+candidate palette.
+
+Palette recommendation therefore optimizes the complete palette rather than
+independently selecting one filament for each Artwork color.
+
+A recommendation provides:
+
+* the selected semantic color identities; and
+* the aggregate perceptual match score.
+
+Recommendation is deterministic for the same ordered Artwork colors and
+candidate colors.
+
+A recommendation may require one or more mandatory semantic color identities.
+Every mandatory color must be present in and included by each candidate scope
+being recommended. A recommendation cannot silently omit a required mandatory
+color.
+
+Recommended palettes contain distinct semantic color identities.
+
+Like color analysis, palette recommendation is diagnostic and does not modify
+configuration or persistent Artwork products.
+
+
+## Five-Tool Palette Recommendation
+
+The current five-tool Artwork recommendation selects:
+
+```text
+one required white filament
++
+four additional filament colors
+```
+
+for a total palette size of five.
+
+The semantic identity representing the required physical white filament is
+supplied explicitly to the five-tool recommendation. It is not required to be
+the literal catalog identity `white`.
+
+The mandatory white used for palette recommendation and
+`artwork_fill_color` have distinct responsibilities.
+
+`artwork_fill_color` determines the color assigned to otherwise unassigned
+pixels inside the Artwork envelope. Unless explicitly configured, it is
+derived from the configured `printer_colors` as the color perceptually closest
+to ideal RGB white:
+
+```text
+RGB(255, 255, 255)
+```
+
+The mandatory white supplied to five-tool recommendation determines which
+physical white filament must be included in each recommended palette.
+
+Five-tool recommendations are produced independently for:
+
+* the current printer colors;
+* the filament library; and
+* the physical color catalog.
+
+The three scopes may therefore produce different recommended palettes and
+different aggregate scores.
+
+This permits comparison of:
+
+* how well the current printer configuration can represent the Artwork;
+* how well an alternative palette using available library filament can
+  represent the Artwork; and
+* how well an alternative palette using known physical catalog filament can
+  represent the Artwork.
+
+Five-tool recommendation does not automatically install filament, change
+printer configuration, change library configuration, or rewrite Artifact
+configuration.
+
 
 ## Prepare
 
@@ -236,6 +412,10 @@ consistently to the envelope and every registered color layer.
 Registered Artwork has no physical manufacturing size or physical Z
 semantics.
 
+The vector manifest preserves the semantic color identity and RGB
+representation required for subsequent color analysis and palette
+recommendation.
+
 ## Extrude
 
 Extrusion is the physical dimensionalization boundary for standalone
@@ -327,6 +507,9 @@ artwork/package
 are not prerequisites merely because another model consumes registered
 vector Artwork.
 
+Likewise, color analysis and palette recommendation operate on registered
+Artwork without requiring standalone Artwork extrusion or packaging.
+
 The consuming model is responsible for the physical size, placement, and
 dimensionalization of the registered Artwork within its own object.
 
@@ -348,6 +531,8 @@ artwork_min_island_area
 artwork_island_connectivity
 artwork_size
 artwork_raise
+printer_colors
+library_colors
 ```
 
 `source` identifies the external raster input.
@@ -355,9 +540,15 @@ artwork_raise
 `artwork_colors` defines the ordered semantic palette.
 
 `artwork_fill_color` defines the semantic color assigned to otherwise
-unassigned pixels inside the Artwork envelope. It defaults to `white` and
-must be present in `artwork_colors`.
+unassigned pixels inside the Artwork envelope.
 
+Unless explicitly configured, it is derived from `printer_colors` as the
+configured printer color perceptually closest to ideal RGB white using the
+shared perceptual color-distance semantics.
+
+The derived value preserves the selected printer color's semantic identity.
+
+The resolved `artwork_fill_color` must be present in `artwork_colors`.
 
 `artwork_envelope_mode` defines how the Artwork envelope is derived from
 the source image. It defaults to `shrink-wrap`.
@@ -389,8 +580,17 @@ Artwork.
 `artwork_raise` defines the physical Z height of standalone dimensionalized
 Artwork.
 
+`printer_colors` identifies the configured printer color availability used by Artwork fill-color derivation, color analysis, and palette recommendation.
+
+`library_colors` identifies the configured filament-library availability used
+by Artwork color analysis and palette recommendation.
+
 Physical `artwork_size` is intentionally absent from raster and vector
 processing.
+
+The shared color catalog is reference data rather than an Artwork parameter.
+Artwork consumes catalog identities and RGB representations through the
+configuration resolver when color analysis or recommendation requires them.
 
 ## Stages
 
@@ -446,6 +646,9 @@ package/artifact.3mf
 
 Product paths are local to their producing stages.
 
+Color analysis and palette recommendation are consumers of registered Artwork
+products. They do not introduce additional Artwork manufacturing stages.
+
 ## Dynamic Products
 
 Raster, vector, and extrusion stages may produce a variable number of
@@ -459,56 +662,151 @@ scanning stage directories.
 Dynamic-product paths recorded by a manifest are relative to that
 manifest's stage-local product location.
 
+
 ## Invariants
 
 A conforming Artwork implementation satisfies the following:
 
 1. Artwork consumes a materialized raster source image.
-2. Prepared Artwork is limited to its derived artwork envelope.
+
+2. Prepared Artwork is limited to its derived Artwork envelope.
+
 3. Artwork envelope derivation is controlled by `artwork_envelope_mode`.
+
 4. `artwork_envelope_mode` defaults to `shrink-wrap`.
+
 5. `alpha` envelope derivation determines meaningful source foreground from
    source alpha.
+
 6. `shrink-wrap` envelope derivation produces a conservative outer envelope
    by distinguishing exterior background from enclosed Artwork.
+
 7. Shrink-wrap does not exclude an enclosed Artwork region solely because
    its color also occurs in the exterior background.
+
 8. Prepared Artwork uses the configured semantic color palette.
-9. Otherwise unassigned pixels inside the Artwork envelope use
-   `artwork_fill_color`, which must be present in `artwork_colors`.
-10. Raster color layers use one common registered coordinate system.
-11. Raster color regions are mutually exclusive.
-12. Raster island cleanup is defined in raster pixel space rather than
+
+9. Unless explicitly configured, `artwork_fill_color` is derived from
+   `printer_colors` as the configured printer color perceptually closest to
+   ideal RGB white.
+
+10. Derived `artwork_fill_color` selection uses the shared generic perceptual
+    color-distance semantics.
+
+11. Derived `artwork_fill_color` preserves the semantic identity of the
+    selected printer color.
+
+12. Equal-distance fill-color candidates are resolved deterministically
+    according to printer color order.
+
+13. Otherwise unassigned pixels inside the Artwork envelope use
+    `artwork_fill_color`, which must be present in `artwork_colors`.
+
+14. Raster color layers use one common registered coordinate system.
+
+15. Raster color regions are mutually exclusive.
+
+16. Raster island cleanup is defined in raster pixel space rather than
     physical space.
-13. Raster processing is independent of physical `artwork_size`.
-14. Vector color layers use one common registered coordinate system.
-15. Vector processing is independent of physical `artwork_size`.
-16. The vector manifest records the common `registered_extent`.
-17. The Artwork envelope uses the same registered coordinate system as the
+
+17. Raster processing is independent of physical `artwork_size`.
+
+18. Vector color layers use one common registered coordinate system.
+
+19. Vector processing is independent of physical `artwork_size`.
+
+20. The vector manifest records the common `registered_extent`.
+
+21. The Artwork envelope uses the same registered coordinate system as the
     vector color layers.
-18. The Artwork envelope represents the outer occupied region of registered
+
+22. The Artwork envelope represents the outer occupied region of registered
     Artwork.
-19. The `registered_extent` defines the common registered coordinate system;
+
+23. The `registered_extent` defines the common registered coordinate system;
     the envelope defines the occupied region within that coordinate system.
-20. All registration-preserving transformations are applied consistently to
+
+24. All registration-preserving transformations are applied consistently to
     the Artwork envelope and every registered color layer.
-21. A consumer may determine Artwork containment from the registered envelope
+
+25. A consumer may determine Artwork containment from the registered envelope
     without independently determining the bounds of individual color layers.
-22. Registered vector Artwork has no predetermined physical manufacturing
+
+26. Registered vector Artwork has no predetermined physical manufacturing
     size.
-23. Semantic color identity is preserved through the color-separated
+
+27. Semantic color identity is preserved through the color-separated
     products.
-24. Registered vector Artwork is a reusable intermediate product.
-25. Standalone physical dimensionalization begins at extrusion.
-26. Standalone extrusion uniformly maps `registered_extent` to
+
+28. Registered vector Artwork is a reusable intermediate product.
+
+29. Standalone physical dimensionalization begins at extrusion.
+
+30. Standalone extrusion uniformly maps `registered_extent` to
     `artwork_size`.
-27. All color layers receive the same dimensional transformation and
+
+31. All color layers receive the same dimensional transformation and
     remain registered.
-28. Standalone extrusion uses `artwork_raise` as the physical Z height.
-29. Standalone packaging produces a multicomponent printable 3MF.
-30. Artwork does not provide an underlying structural base.
-31. Another model can consume registered vector Artwork without requiring
+
+32. Standalone extrusion uses `artwork_raise` as the physical Z height.
+
+33. Standalone packaging produces a multicomponent printable 3MF.
+
+34. Artwork does not provide an underlying structural base.
+
+35. Another model can consume registered vector Artwork without requiring
     standalone Artwork extrusion or packaging.
+
+36. `printer_colors` and `library_colors` are independent color-availability
+    scopes whose entries reference known catalog color identities when the
+    corresponding analysis is required.
+
+37. Artwork color analysis independently matches every prepared semantic
+    Artwork color against printer, library, and physical-catalog candidates.
+
+38. Artwork color matches preserve the requested semantic identity, selected
+    candidate identity, and perceptual distance.
+
+39. Physical catalog-wide analysis excludes catalog entries explicitly
+    identified as synthetic test colors.
+
+40. Artwork color analysis operates on registered Artwork without requiring
+    standalone Artwork extrusion or packaging.
+
+41. Artwork color analysis does not modify Artwork, printer, library, or
+    catalog configuration.
+
+42. Palette recommendation evaluates candidate palettes as complete palettes
+    against the complete prepared Artwork.
+
+43. Palette recommendation uses aggregate perceptual distance from every
+    prepared Artwork color to its nearest selected palette color as its score.
+
+44. Printer, library, and physical-catalog palette recommendations are
+    independent.
+
+45. Recommended palettes contain distinct semantic color identities.
+
+46. Mandatory palette colors must be present in and included by every
+    candidate scope being recommended.
+
+47. Palette recommendation is deterministic for the same ordered Artwork and
+    candidate colors.
+
+48. Palette recommendation does not modify Artwork, printer, library, or
+    catalog configuration.
+
+49. Five-tool Artwork recommendation produces a five-color palette consisting
+    of one explicitly supplied mandatory white filament identity plus four
+    additional colors.
+
+50. The mandatory white identity used by five-tool recommendation is explicit
+    recommendation policy and is not inferred from the literal color identity
+    `white`.
+
+51. Five-tool recommendations independently compare current printer colors,
+    library colors, and the physical color catalog.
+
 
 
 ## Scope
@@ -516,10 +814,13 @@ A conforming Artwork implementation satisfies the following:
 The Artwork model includes:
 
 * raster source interpretation;
-* artwork-envelope derivation;
+* Artwork-envelope derivation;
 * semantic color separation;
 * registered raster geometry;
 * registered vector geometry;
+* color-availability analysis;
+* fixed-size palette recommendation;
+* five-tool printer-palette recommendation;
 * standalone dimensionalization;
 * standalone multicomponent 3MF packaging;
 * reusable registered vector Artwork.
@@ -532,7 +833,9 @@ Artwork does not define:
 * hangers or handles;
 * labels or text belonging to another object;
 * placement of Artwork within another model;
-* physical sizing of Artwork when consumed by another model.
+* physical sizing of Artwork when consumed by another model;
+* automatic mutation of printer or library color configuration;
+* automatic filament installation or purchasing decisions.
 
-Those responsibilities belong to the model consuming the registered
-Artwork.
+Those responsibilities belong to the consuming model, configuration layer, or
+explicit user action as appropriate.
