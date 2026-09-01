@@ -454,3 +454,33 @@ rgb = [199, 141, 191]
 manufacturer = "eSUN"
 filament = "Purple"
 rgb = [121, 62, 182]
+
+
+#
+# Colors physically available in the local filament library.
+#
+# library_colors identifies the subset of catalog colors currently
+# owned and available for installation on the printer. It is not the
+# complete color catalog and does not describe colors currently
+# installed on the printer.
+#
+# Every library color must reference an entry in the color catalog.
+#
+
+library_colors = [
+    "grey",
+    "olive-green",
+    "matcha-green",
+    "concrete-grey",
+    "brown",
+    "mint-green",
+    "light-beige",
+    "brick-red",
+    "haze-blue",
+    "light-brown",
+    "apricot",
+    "gold",
+    "black",
+    "fire-engine-red",
+]
+
