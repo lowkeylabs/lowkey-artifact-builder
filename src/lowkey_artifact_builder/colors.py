@@ -156,6 +156,30 @@ class ColorMatch:
     distance: float
 
 
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class PaletteRecommendation:
+    """
+    Recommendation of a fixed-size palette for requested colors.
+
+    colors:
+        Candidate colors selected for the recommended palette.
+
+    score:
+        Aggregate perceptual distance required to represent every
+        requested color by its nearest color in the palette.
+    """
+
+    colors: tuple[
+        PaletteColor,
+        ...,
+    ]
+
+    score: float
+
+
 # =========================================================
 # Validation
 # =========================================================
@@ -568,6 +592,95 @@ def match_color(
 
 
 # =========================================================
+# Palette recommendation
+# =========================================================
+
+
+def recommend_palette(
+    requested: Sequence[PaletteColor],
+    candidates: Sequence[PaletteColor],
+    *,
+    palette_size: int,
+    mandatory: Sequence[PaletteColor] = (),
+) -> PaletteRecommendation:
+    """
+    Recommend the best fixed-size palette for requested colors.
+
+    Each candidate palette is scored by matching every requested color
+    independently to its nearest palette color and summing the resulting
+    perceptual distances.
+
+    Mandatory colors are included in every candidate palette.
+
+    Candidate order determines the selected result when multiple palettes
+    have the same aggregate score.
+    """
+
+    requested_colors = tuple(requested)
+    candidate_colors = tuple(candidates)
+    mandatory_colors = tuple(mandatory)
+
+    _validate_palette_colors(
+        requested_colors,
+    )
+
+    _validate_palette_colors(
+        candidate_colors,
+    )
+
+    _validate_palette_colors(
+        mandatory_colors,
+    )
+
+    mandatory_names = {color.name for color in mandatory_colors}
+
+    optional_colors = tuple(
+        color for color in candidate_colors if color.name not in mandatory_names
+    )
+
+    optional_count = palette_size - len(mandatory_colors)
+
+    best_palette: (
+        tuple[
+            PaletteColor,
+            ...,
+        ]
+        | None
+    ) = None
+
+    best_score: float | None = None
+
+    for optional in itertools.combinations(
+        optional_colors,
+        optional_count,
+    ):
+        palette = mandatory_colors + optional
+
+        score = sum(
+            min(
+                color_distance(
+                    requested_color.rgb,
+                    palette_color.rgb,
+                )
+                for palette_color in palette
+            )
+            for requested_color in requested_colors
+        )
+
+        if best_score is None or score < best_score:
+            best_palette = palette
+            best_score = score
+
+    if best_palette is None or best_score is None:
+        raise ColorError("Could not determine a palette recommendation.")
+
+    return PaletteRecommendation(
+        colors=best_palette,
+        score=best_score,
+    )
+
+
+# =========================================================
 # Color assignment
 # =========================================================
 
@@ -739,11 +852,13 @@ __all__ = [
     "Lab",
     "MeasuredColor",
     "PaletteColor",
+    "PaletteRecommendation",
     "RGB",
     "assign_colors",
     "color_distance",
     "css_rgb",
     "match_color",
+    "recommend_palette",
     "resolve_palette",
     "resolve_palette_color",
     "rgb_to_lab",

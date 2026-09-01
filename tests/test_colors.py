@@ -17,6 +17,7 @@ from lowkey_artifact_builder.colors import (
     color_distance,
     css_rgb,
     match_color,
+    recommend_palette,
     resolve_palette,
     resolve_palette_color,
     rgb_to_lab,
@@ -1285,3 +1286,331 @@ def test_match_color_rejects_empty_candidates() -> None:
             ),
             (),
         )
+
+
+# =========================================================
+# Palette recommendation
+# =========================================================
+
+
+def test_recommend_palette_honors_requested_palette_size() -> None:
+    """
+    Palette recommendation returns the requested number of colors.
+    """
+
+    requested = (
+        PaletteColor(
+            name="artwork-red",
+            rgb=(255, 0, 0),
+        ),
+        PaletteColor(
+            name="artwork-green",
+            rgb=(0, 255, 0),
+        ),
+    )
+
+    candidates = (
+        PaletteColor(
+            name="red",
+            rgb=(255, 0, 0),
+        ),
+        PaletteColor(
+            name="green",
+            rgb=(0, 255, 0),
+        ),
+        PaletteColor(
+            name="blue",
+            rgb=(0, 0, 255),
+        ),
+    )
+
+    recommendation = recommend_palette(
+        requested,
+        candidates,
+        palette_size=2,
+    )
+
+    assert len(recommendation.colors) == 2
+
+
+def test_recommend_palette_includes_mandatory_colors() -> None:
+    """
+    Mandatory colors are always included in the recommended palette.
+    """
+
+    requested = (
+        PaletteColor(
+            name="artwork-red",
+            rgb=(255, 0, 0),
+        ),
+        PaletteColor(
+            name="artwork-green",
+            rgb=(0, 255, 0),
+        ),
+    )
+
+    white = PaletteColor(
+        name="white",
+        rgb=(255, 255, 255),
+    )
+
+    candidates = (
+        PaletteColor(
+            name="red",
+            rgb=(255, 0, 0),
+        ),
+        PaletteColor(
+            name="green",
+            rgb=(0, 255, 0),
+        ),
+        white,
+    )
+
+    recommendation = recommend_palette(
+        requested,
+        candidates,
+        palette_size=2,
+        mandatory=(white,),
+    )
+
+    assert white in recommendation.colors
+    assert len(recommendation.colors) == 2
+
+
+def test_recommend_palette_contains_no_duplicate_colors() -> None:
+    """
+    Recommended palettes contain distinct semantic color identities.
+    """
+
+    requested = (
+        PaletteColor(
+            name="artwork-red",
+            rgb=(255, 0, 0),
+        ),
+        PaletteColor(
+            name="artwork-green",
+            rgb=(0, 255, 0),
+        ),
+        PaletteColor(
+            name="artwork-blue",
+            rgb=(0, 0, 255),
+        ),
+    )
+
+    candidates = (
+        PaletteColor(
+            name="red",
+            rgb=(255, 0, 0),
+        ),
+        PaletteColor(
+            name="green",
+            rgb=(0, 255, 0),
+        ),
+        PaletteColor(
+            name="blue",
+            rgb=(0, 0, 255),
+        ),
+    )
+
+    recommendation = recommend_palette(
+        requested,
+        candidates,
+        palette_size=2,
+    )
+
+    names = tuple(color.name for color in recommendation.colors)
+
+    assert len(names) == len(set(names))
+
+
+def test_recommend_palette_prefers_globally_better_palette(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Recommendation minimizes representation error across all requested colors.
+
+    The best complete palette can differ from colors obtained by considering
+    requested colors independently.
+    """
+
+    requested = (
+        PaletteColor(
+            name="artwork-first",
+            rgb=(1, 0, 0),
+        ),
+        PaletteColor(
+            name="artwork-second",
+            rgb=(2, 0, 0),
+        ),
+        PaletteColor(
+            name="artwork-third",
+            rgb=(3, 0, 0),
+        ),
+    )
+
+    first = PaletteColor(
+        name="first",
+        rgb=(10, 0, 0),
+    )
+
+    second = PaletteColor(
+        name="second",
+        rgb=(20, 0, 0),
+    )
+
+    compromise = PaletteColor(
+        name="compromise",
+        rgb=(30, 0, 0),
+    )
+
+    candidates = (
+        first,
+        second,
+        compromise,
+    )
+
+    distances = {
+        (requested[0].rgb, first.rgb): 0.0,
+        (requested[0].rgb, second.rgb): 100.0,
+        (requested[0].rgb, compromise.rgb): 10.0,
+        (requested[1].rgb, first.rgb): 100.0,
+        (requested[1].rgb, second.rgb): 0.0,
+        (requested[1].rgb, compromise.rgb): 10.0,
+        (requested[2].rgb, first.rgb): 100.0,
+        (requested[2].rgb, second.rgb): 100.0,
+        (requested[2].rgb, compromise.rgb): 10.0,
+    }
+
+    def fake_color_distance(
+        left: tuple[int, int, int],
+        right: tuple[int, int, int],
+    ) -> float:
+        return distances[
+            (
+                left,
+                right,
+            )
+        ]
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.colors.color_distance",
+        fake_color_distance,
+    )
+
+    recommendation = recommend_palette(
+        requested,
+        candidates,
+        palette_size=1,
+    )
+
+    #
+    # Independent nearest matches use all three candidate identities:
+    #
+    #     first  -> first       0
+    #     second -> second      0
+    #     third  -> compromise 10
+    #
+    # A one-color printer cannot use all three. Across the complete Artwork,
+    # compromise is the best single palette:
+    #
+    #     compromise = 10 + 10 + 10 = 30
+    #     first      = 0 + 100 + 100 = 200
+    #     second     = 100 + 0 + 100 = 200
+    #
+
+    assert recommendation.colors == (compromise,)
+    assert recommendation.score == pytest.approx(30.0)
+
+
+def test_recommend_palette_exposes_aggregate_score() -> None:
+    """
+    Palette recommendations expose total representation distance.
+    """
+
+    requested = (
+        PaletteColor(
+            name="artwork-red",
+            rgb=(240, 20, 20),
+        ),
+        PaletteColor(
+            name="artwork-blue",
+            rgb=(20, 20, 240),
+        ),
+    )
+
+    red = PaletteColor(
+        name="red",
+        rgb=(255, 0, 0),
+    )
+
+    blue = PaletteColor(
+        name="blue",
+        rgb=(0, 0, 255),
+    )
+
+    recommendation = recommend_palette(
+        requested,
+        (
+            red,
+            blue,
+        ),
+        palette_size=2,
+    )
+
+    expected_score = color_distance(
+        requested[0].rgb,
+        red.rgb,
+    ) + color_distance(
+        requested[1].rgb,
+        blue.rgb,
+    )
+
+    assert recommendation.score == pytest.approx(expected_score)
+
+
+def test_recommend_palette_is_deterministic_for_equal_scores(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Equal-scoring palettes preserve deterministic candidate ordering.
+    """
+
+    requested = (
+        PaletteColor(
+            name="artwork",
+            rgb=(1, 0, 0),
+        ),
+    )
+
+    first = PaletteColor(
+        name="first",
+        rgb=(10, 0, 0),
+    )
+
+    second = PaletteColor(
+        name="second",
+        rgb=(20, 0, 0),
+    )
+
+    def fake_color_distance(
+        left: tuple[int, int, int],
+        right: tuple[int, int, int],
+    ) -> float:
+        return 1.0
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.colors.color_distance",
+        fake_color_distance,
+    )
+
+    recommendation = recommend_palette(
+        requested,
+        (
+            first,
+            second,
+        ),
+        palette_size=1,
+    )
+
+    assert recommendation.colors == (first,)
+    assert recommendation.score == pytest.approx(1.0)
