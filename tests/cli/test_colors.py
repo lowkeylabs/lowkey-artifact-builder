@@ -88,13 +88,16 @@ def test_colors_command_analyzes_and_displays_artifact(
     monkeypatch,
 ) -> None:
     """
-    The colors command obtains structured analysis and displays it.
+    The colors command obtains and displays structured color diagnostics.
     """
 
     analyzed: list[str] = []
-    displayed: list[object] = []
+    recommended: list[str] = []
+    displayed_matches: list[object] = []
+    displayed_recommendations: list[object] = []
 
     expected_matches = object()
+    expected_recommendations = object()
 
     def fake_analyze_artifact_colors(
         artifact_id: str,
@@ -102,18 +105,27 @@ def test_colors_command_analyzes_and_displays_artifact(
         analyzed.append(artifact_id)
         return expected_matches
 
-    def fake_display_color_matches(
-        matches: object,
-    ) -> None:
-        displayed.append(matches)
+    def fake_recommend_artifact_colors(
+        artifact_id: str,
+    ) -> object:
+        recommended.append(artifact_id)
+        return expected_recommendations
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.analyze_artifact_colors",
         fake_analyze_artifact_colors,
     )
     monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.recommend_artifact_colors",
+        fake_recommend_artifact_colors,
+    )
+    monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.display_color_matches",
-        fake_display_color_matches,
+        displayed_matches.append,
+    )
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.display_palette_recommendations",
+        displayed_recommendations.append,
     )
 
     runner = CliRunner()
@@ -125,7 +137,9 @@ def test_colors_command_analyzes_and_displays_artifact(
 
     assert result.exit_code == 0
     assert analyzed == ["nydeli"]
-    assert displayed == [expected_matches]
+    assert recommended == ["nydeli"]
+    assert displayed_matches == [expected_matches]
+    assert displayed_recommendations == [expected_recommendations]
 
 
 # =========================================================
@@ -243,6 +257,148 @@ def test_analyze_artifact_colors_uses_registered_artwork_manifest(
         (
             manifest,
             resolver,
+        )
+    ]
+
+
+def test_recommend_artifact_colors_uses_registered_artwork_manifest(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """
+    Artifact palette recommendation consumes registered Artwork.
+
+    Five-tool recommendation uses the resolved Artwork fill color as its
+    mandatory palette color.
+    """
+
+    from lowkey_artifact_builder.cli.cmd_color import (
+        recommend_artifact_colors,
+    )
+
+    manifest = tmp_path / "products.json"
+    expected_recommendations = object()
+
+    class FakeResolver:
+        colors = {}
+
+        def __call__(
+            self,
+            name: str,
+        ) -> object:
+            assert name == "artwork_fill_color"
+            return "cold-white"
+
+    resolver = FakeResolver()
+
+    plan = SimpleNamespace(
+        resolver=resolver,
+        stages=(
+            SimpleNamespace(
+                name="vector",
+                products=(
+                    SimpleNamespace(
+                        name="manifest",
+                        path=manifest,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    planned: list[
+        tuple[
+            str,
+            str,
+            tuple[ProductRef, ...],
+            Path,
+        ]
+    ] = []
+
+    recommended: list[
+        tuple[
+            object,
+            object,
+            str,
+        ]
+    ] = []
+
+    def fake_create_build_plan(
+        artifact_id: str,
+        *,
+        realization: str,
+        targets: tuple[ProductRef, ...],
+        project_root: Path,
+    ) -> object:
+        planned.append(
+            (
+                artifact_id,
+                realization,
+                targets,
+                project_root,
+            )
+        )
+        return plan
+
+    def fake_recommend_five_tool_artwork_palettes(
+        *,
+        manifest,
+        resolver,
+        white,
+    ) -> object:
+        recommended.append(
+            (
+                manifest,
+                resolver,
+                white,
+            )
+        )
+        return expected_recommendations
+
+    _patch_artwork_identity_resolver(
+        monkeypatch,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
+        fake_create_build_plan,
+    )
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.recommend_five_tool_artwork_palettes",
+        fake_recommend_five_tool_artwork_palettes,
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    result = recommend_artifact_colors(
+        "nydeli",
+    )
+
+    assert result is expected_recommendations
+
+    assert len(planned) == 1
+
+    artifact_id, realization, targets, project_root = planned[0]
+
+    assert artifact_id == "nydeli"
+    assert realization == "default"
+    assert project_root == tmp_path
+
+    assert len(targets) == 1
+
+    target = targets[0]
+
+    assert target.artifact == "nydeli"
+    assert target.model == "artwork"
+    assert target.realization == "default"
+    assert target.stage == "vector"
+    assert target.product == "manifest"
+
+    assert recommended == [
+        (
+            manifest,
+            resolver,
+            "cold-white",
         )
     ]
 

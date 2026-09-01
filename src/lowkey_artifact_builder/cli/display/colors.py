@@ -9,9 +9,13 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from lowkey_artifact_builder.colors import ColorMatch
+from lowkey_artifact_builder.colors import (
+    ColorMatch,
+    PaletteRecommendation,
+)
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
     ArtworkColorMatch,
+    ArtworkPaletteRecommendations,
 )
 
 from .common import (
@@ -59,6 +63,49 @@ def _format_match(
     return f"{match.color.name} {match.distance:.2f}"
 
 
+# =========================================================
+# Palette recommendation
+# =========================================================
+
+
+def display_palette_recommendations(
+    recommendations: ArtworkPaletteRecommendations,
+) -> None:
+    """
+    Display structured Artwork palette recommendations.
+    """
+
+    table = create_table()
+
+    table.add_column("Scope")
+    table.add_column("Palette")
+    table.add_column("Score")
+
+    for scope, recommendation in (
+        ("Printer", recommendations.printer),
+        ("Library", recommendations.library),
+        ("Catalog", recommendations.catalog),
+    ):
+        table.add_row(
+            scope,
+            _format_palette(recommendation),
+            f"{recommendation.score:.2f}",
+        )
+
+    console.print(table)
+
+
+def _format_palette(
+    recommendation: PaletteRecommendation,
+) -> str:
+    """
+    Format one recommended palette for presentation.
+    """
+
+    return ", ".join(color.name for color in recommendation.colors)
+
+
 __all__ = [
     "display_color_matches",
+    "display_palette_recommendations",
 ]

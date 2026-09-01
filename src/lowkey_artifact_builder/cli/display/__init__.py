@@ -18,6 +18,7 @@ from lowkey_artifact_builder.cli.display.build import (
 )
 from lowkey_artifact_builder.cli.display.colors import (
     display_color_matches,
+    display_palette_recommendations,
 )
 from lowkey_artifact_builder.cli.display.common import (
     console,
@@ -44,5 +45,6 @@ __all__ = [
     "display_model_workplan",
     "display_model_workplans",
     "display_models",
+    "display_palette_recommendations",
     "format_value",
 ]

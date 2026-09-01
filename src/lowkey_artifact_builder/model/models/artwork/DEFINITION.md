@@ -206,31 +206,32 @@ configuration or persistent Artwork products.
 The current five-tool Artwork recommendation selects:
 
 ```text
-one required white filament
+resolved artwork filler
 +
 four additional filament colors
 ```
 
 for a total palette size of five.
 
-The semantic identity representing the required physical white filament is
-supplied explicitly to the five-tool recommendation. It is not required to be
-the literal catalog identity `white`.
-
-The mandatory white used for palette recommendation and
-`artwork_fill_color` have distinct responsibilities.
+The resolved `artwork_fill_color` is the mandatory color for five-tool
+palette recommendation. Because `artwork_fill_color` is normally derived
+as the configured printer color perceptually closest to ideal RGB white,
+the recommendation preserves the physical semantic identity of the
+printer's effective white color.
 
 `artwork_fill_color` determines the color assigned to otherwise unassigned
-pixels inside the Artwork envelope. Unless explicitly configured, it is
-derived from the configured `printer_colors` as the color perceptually closest
-to ideal RGB white:
+pixels inside the Artwork envelope and the mandatory color included in each
+five-tool palette recommendation.
 
-```text
+Unless explicitly configured, `artwork_fill_color` is derived from the
+configured `printer_colors` as the color perceptually closest to ideal RGB
+white:
+
 RGB(255, 255, 255)
-```
 
-The mandatory white supplied to five-tool recommendation determines which
-physical white filament must be included in each recommended palette.
+Five-tool recommendation uses the resolved `artwork_fill_color` semantic
+identity directly. It does not independently select, infer, or substitute a
+separate white color identity.
 
 Five-tool recommendations are produced independently for:
 
@@ -797,12 +798,12 @@ A conforming Artwork implementation satisfies the following:
     catalog configuration.
 
 49. Five-tool Artwork recommendation produces a five-color palette consisting
-    of one explicitly supplied mandatory white filament identity plus four
+    of the resolved `artwork_fill_color` as a mandatory palette color plus four
     additional colors.
 
-50. The mandatory white identity used by five-tool recommendation is explicit
-    recommendation policy and is not inferred from the literal color identity
-    `white`.
+50. Five-tool Artwork recommendation uses the resolved `artwork_fill_color`
+    semantic identity directly. It does not independently select, infer, or
+    substitute a separate white color identity.
 
 51. Five-tool recommendations independently compare current printer colors,
     library colors, and the physical color catalog.
