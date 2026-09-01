@@ -522,6 +522,121 @@ def test_artwork_model_defaults_are_resolved(
     assert resolver("artwork_min_island_area") == 34
 
 
+def test_artwork_fill_color_defaults_to_white(
+    tmp_path: Path,
+) -> None:
+    """
+    Artwork fill color defaults to white.
+
+    White is the default semantic fill color but has no special
+    significance beyond being the model default.
+    """
+
+    _write_workspace(
+        tmp_path,
+        """
+[parameters]
+artwork_colors = ["test-red", "white", "test-blue"]
+""".lstrip(),
+    )
+
+    resolver = get_resolver(
+        "nydeli",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    assert resolver("artwork_fill_color") == "white"
+
+
+def test_artwork_fill_color_can_be_explicitly_configured(
+    tmp_path: Path,
+) -> None:
+    """
+    Artwork fill color may explicitly select a non-white palette color.
+
+    The configured fill color is ordinary semantic color policy rather
+    than a special requirement for white.
+    """
+
+    _write_workspace(
+        tmp_path,
+        """
+[parameters]
+artwork_colors = ["test-red", "test-blue"]
+artwork_fill_color = "test-red"
+""".lstrip(),
+    )
+
+    resolver = get_resolver(
+        "nydeli",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    assert resolver("artwork_fill_color") == "test-red"
+
+
+def test_artwork_fill_color_is_a_model_default(
+    tmp_path: Path,
+) -> None:
+    """
+    Artwork fill color is supplied by the Artwork model defaults.
+
+    The default fill color is ordinary configurable model policy rather
+    than a value derived from the resolved Artwork palette.
+    """
+
+    _write_workspace(
+        tmp_path,
+        """
+[parameters]
+artwork_colors = ["white", "test-red"]
+""".lstrip(),
+    )
+
+    resolver = get_resolver(
+        "nydeli",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    assert resolver("artwork_fill_color") == "white"
+    assert resolver.source("artwork_fill_color") == "model"
+
+
+def test_artwork_palette_does_not_require_white_when_fill_color_is_configured(
+    tmp_path: Path,
+) -> None:
+    """
+    Artwork palettes do not require white.
+
+    A palette containing no white color is valid when artwork_fill_color
+    selects another member of the configured Artwork palette.
+    """
+
+    _write_workspace(
+        tmp_path,
+        """
+[parameters]
+artwork_colors = ["test-red", "test-blue"]
+artwork_fill_color = "test-blue"
+""".lstrip(),
+    )
+
+    resolver = get_resolver(
+        "nydeli",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    assert resolver("artwork_colors") == [
+        "test-red",
+        "test-blue",
+    ]
+    assert resolver("artwork_fill_color") == "test-blue"
+
+
 def test_artwork_size_has_no_default(
     tmp_path: Path,
 ) -> None:

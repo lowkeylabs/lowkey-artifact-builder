@@ -1761,6 +1761,15 @@ Execution Plan
 If required products are already current, their producing stages do not need
 to execute again.
 
+Configuration validation follows the Execution Plan.
+
+Resolved configuration required by stages that will execute must be valid for those stages. Configuration used only to produce an already-current product does not need to remain valid merely because that product is consumed by the current build.
+
+A current persistent product is consumed according to its product contract. Reusing that product does not require revalidating the historical configuration, source inputs, or upstream stages that originally produced it.
+
+The planner determines which stages must execute and therefore which resolved configuration participates in execution validation. Model-specific configuration rules remain owned by the applicable model rather than by the generic planner.
+
+
 ---
 
 # 21. Product State and Resumability
@@ -2528,6 +2537,14 @@ Engine operations may emit structured semantic execution events.
 
 Execution semantics must not depend upon logging configuration, CLI
 verbosity, progress rendering, threading, or user-interface policy.
+
+## Invariant 26 — Validation follows required execution
+
+Configuration validation applies to the stages required by the Execution Plan.
+
+Configuration and source inputs used only to produce an already-current persistent product do not need to remain valid in order for that product to be reused.
+
+The planner determines the scope of required execution; model-specific validation rules remain model-owned.
 
 ---
 

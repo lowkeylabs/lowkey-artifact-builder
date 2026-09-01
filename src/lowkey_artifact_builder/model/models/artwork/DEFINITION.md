@@ -501,4 +501,3 @@ Artwork does not define:
 
 Those responsibilities belong to the model consuming the registered
 Artwork.
-

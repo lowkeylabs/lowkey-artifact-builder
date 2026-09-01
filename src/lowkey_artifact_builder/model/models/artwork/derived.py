@@ -91,37 +91,6 @@ def derive_artwork_colors(
     return tuple(colors)
 
 
-def derive_artwork_fill_color(
-    resolver: Resolver,
-) -> str:
-    """
-    Derive the artwork fill color.
-
-    White is the default physical fill/background color when it is
-    available in the artwork palette.
-
-    The fill color is used to receive any unassigned geometry inside
-    the artwork envelope.
-    """
-
-    artwork_colors = resolver("artwork_colors")
-
-    if not isinstance(
-        artwork_colors,
-        list | tuple,
-    ):
-        raise ValueError("artwork_colors must be a list or tuple.")
-
-    if not artwork_colors:
-        raise ValueError("artwork_colors cannot be empty.")
-
-    for color in artwork_colors:
-        if color == "white":
-            return color
-
-    raise ValueError("artwork_colors must contain 'white' to derive artwork_fill_color.")
-
-
 # =========================================================
 # Registry
 # =========================================================
@@ -129,8 +98,8 @@ def derive_artwork_fill_color(
 
 DERIVED = {
     "artwork_colors": derive_artwork_colors,
-    "artwork_fill_color": derive_artwork_fill_color,
 }
+
 
 # =========================================================
 # Exports
@@ -140,5 +109,4 @@ DERIVED = {
 __all__ = [
     "DERIVED",
     "derive_artwork_colors",
-    "derive_artwork_fill_color",
 ]
