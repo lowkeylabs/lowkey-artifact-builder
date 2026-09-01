@@ -220,9 +220,9 @@ def execute(
     Composition consumes registered Shape structure and establishes structural
     partition geometry in the same registered coordinate system.
 
-    When registered Artwork participates, its declared component membership
-    and one common placement transformation are retained by the persistent
-    composition manifest.
+    When registered Artwork participates, its declared component membership,
+    one common placement transformation, and optional registered Artwork-fill
+    geometry are retained by the persistent composition manifest.
 
     Physical ridge width is interpreted relative to physical Shape size so the
     resulting partition boundary can be represented in registered space.
@@ -270,6 +270,7 @@ def execute(
 
     artwork: RegisteredArtwork | None = None
     artwork_transform: RegisteredArtworkTransform | None = None
+    artwork_fill: RegisteredArtworkFillRegion | None = None
 
     if context.has_input(
         "artwork.vector.manifest",
@@ -287,11 +288,25 @@ def execute(
             composition=composition_output,
         )
 
+        fill_color = str(
+            context.resolver("shape_artwork_fill_color"),
+        )
+
+        artwork_fill = registered_artwork_fill(
+            registered_interior_region(
+                composition_output,
+            ),
+            artwork,
+            transform=artwork_transform,
+            fill_color=fill_color,
+        )
+
     _write_composition_manifest(
         manifest_output,
         composition=composition_output,
         artwork=artwork,
         artwork_transform=artwork_transform,
+        artwork_fill=artwork_fill,
     )
 
 
@@ -301,13 +316,14 @@ def _write_composition_manifest(
     composition: Path,
     artwork: RegisteredArtwork | None = None,
     artwork_transform: RegisteredArtworkTransform | None = None,
+    artwork_fill: RegisteredArtworkFillRegion | None = None,
 ) -> None:
     """
     Write the persistent registered Shape composition manifest.
 
-    Structural composition and optional registered Artwork membership are
-    declared explicitly so downstream stages do not discover products by
-    scanning stage directories.
+    Structural composition, optional registered Artwork membership, and
+    optional registered Artwork-fill geometry are declared explicitly so
+    downstream stages do not rediscover composition from producer geometry.
 
     Incorporated Artwork components are materialized beside the persistent
     composition manifest so every declared relative component path resolves
@@ -337,6 +353,13 @@ def _write_composition_manifest(
     manifest = {
         "composition": composition.name,
         "artwork": artwork_manifest,
+        "artwork_fill": (
+            _registered_artwork_fill_manifest(
+                artwork_fill,
+            )
+            if artwork_fill is not None
+            else None
+        ),
     }
 
     path.write_text(
@@ -345,6 +368,133 @@ def _write_composition_manifest(
             indent=2,
         ),
         encoding="utf-8",
+    )
+
+
+def _registered_artwork_fill_manifest(
+    fill: RegisteredArtworkFillRegion,
+) -> dict[str, Any]:
+    """
+    Serialize registered Artwork-fill geometry.
+
+    The resulting manifest contains the already-composed registered boundaries
+    needed by downstream dimensionalization. Producer Artwork geometry does not
+    need to be reopened to reconstruct the fill region.
+    """
+
+    return {
+        "outer_boundary": _registered_element_manifest(
+            fill.outer_boundary,
+        ),
+        "inner_boundary": _registered_element_manifest(
+            fill.inner_boundary,
+        ),
+    }
+
+
+def _registered_element_manifest(
+    element: ET.Element,
+) -> dict[str, Any]:
+    """
+    Serialize supported registered geometry for persistent composition.
+
+    Geometry remains in registered Shape coordinates. No physical dimensions
+    or semantic color are introduced by this representation.
+    """
+
+    if element.tag == SVG_CIRCLE:
+        return {
+            "type": "circle",
+            "cx": float(
+                element.get(
+                    "cx",
+                    "0.0",
+                )
+            ),
+            "cy": float(
+                element.get(
+                    "cy",
+                    "0.0",
+                )
+            ),
+            "r": float(
+                element.get(
+                    "r",
+                    "0.0",
+                )
+            ),
+        }
+
+    if element.tag == SVG_RECT:
+        return {
+            "type": "rect",
+            "x": float(
+                element.get(
+                    "x",
+                    "0.0",
+                )
+            ),
+            "y": float(
+                element.get(
+                    "y",
+                    "0.0",
+                )
+            ),
+            "width": float(
+                element.get(
+                    "width",
+                    "0.0",
+                )
+            ),
+            "height": float(
+                element.get(
+                    "height",
+                    "0.0",
+                )
+            ),
+        }
+
+    if element.tag == SVG_POLYGON:
+        return {
+            "type": "polygon",
+            "points": [
+                {
+                    "x": x,
+                    "y": y,
+                }
+                for x, y in _read_polygon_points(
+                    element,
+                )
+            ],
+        }
+
+    if element.tag == SVG_PATH:
+        return {
+            "type": "path",
+            "points": [
+                {
+                    "x": x,
+                    "y": y,
+                }
+                for x, y in _registered_linear_path_points(
+                    element,
+                )
+            ],
+        }
+
+    if element.tag == SVG_GROUP:
+        return {
+            "type": "group",
+            "children": [
+                _registered_element_manifest(
+                    child,
+                )
+                for child in element
+            ],
+        }
+
+    raise ValueError(
+        "Registered Artwork fill contains unsupported geometry.",
     )
 
 

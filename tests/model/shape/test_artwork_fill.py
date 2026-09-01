@@ -7,16 +7,131 @@ Tests for Shape Artwork-fill registered geometry.
 
 from __future__ import annotations
 
+import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
+from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.model.models.shape.stages import compose
 
 # =========================================================
 # Helpers
 # =========================================================
+
+
+def _write_registered_structure(
+    path: Path,
+) -> None:
+    """
+    Write representative registered circular Shape structure.
+    """
+
+    path.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="-0.5 -0.5 1.0 1.0">'
+            '<circle cx="0.0" cy="0.0" r="0.5"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_registered_artwork_manifest(
+    path: Path,
+) -> None:
+    """
+    Write representative registered Artwork consumed by Shape composition.
+    """
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    envelope = path.parent / "envelope.svg"
+
+    _write_rectangular_artwork_envelope(
+        envelope,
+    )
+
+    component = path.parent / "white.svg"
+
+    component.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 16 16">'
+            '<rect x="2" y="3" width="12" height="10"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    path.write_text(
+        json.dumps(
+            {
+                "registered_extent": 16,
+                "envelope": "envelope.svg",
+                "products": [
+                    {
+                        "index": 1,
+                        "path": "white.svg",
+                        "name": "white",
+                        "color": {
+                            "red": 255,
+                            "green": 255,
+                            "blue": 255,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _compose_context(
+    *,
+    structure: Path,
+    artwork_manifest: Path,
+    composition: Path,
+    manifest: Path,
+    fill_color: str,
+) -> Mock:
+    """
+    Create a Shape compose-stage context with registered Artwork.
+    """
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    inputs = {
+        "structure.structure": structure,
+        "artwork.vector.manifest": artwork_manifest,
+    }
+
+    outputs = {
+        "composition": composition,
+        "manifest": manifest,
+    }
+
+    values = {
+        "shape_size": 100.0,
+        "shape_outer_ridge_width": 5.0,
+        "shape_outer_ridge_style": "integrated",
+        "shape_artwork_fill_color": fill_color,
+    }
+
+    context.input.side_effect = inputs.__getitem__
+    context.has_input.side_effect = inputs.__contains__
+    context.output.side_effect = outputs.__getitem__
+    context.resolver.side_effect = values.__getitem__
+
+    return context
 
 
 def _write_rectangular_artwork_envelope(
@@ -978,3 +1093,200 @@ def test_artwork_fill_region_is_independent_of_ridge_style(
     ) == ET.tostring(
         separate_fill.inner_boundary,
     )
+
+
+# =========================================================
+# Persistent Artwork-fill composition
+# =========================================================
+
+
+def test_compose_stage_persists_no_artwork_fill_when_disabled(
+    tmp_path: Path,
+) -> None:
+    """
+    Disabled Artwork fill remains explicitly absent across composition.
+
+    Incorporated Artwork alone does not cause downstream stages to infer or
+    manufacture fill geometry.
+    """
+
+    structure = tmp_path / "structure.svg"
+    artwork_manifest = tmp_path / "artwork" / "products.json"
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_registered_structure(
+        structure,
+    )
+    _write_registered_artwork_manifest(
+        artwork_manifest,
+    )
+
+    context = _compose_context(
+        structure=structure,
+        artwork_manifest=artwork_manifest,
+        composition=composition,
+        manifest=manifest,
+        fill_color="none",
+    )
+
+    compose.execute(
+        context,
+    )
+
+    products = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert products["artwork"] is not None
+    assert products["artwork_fill"] is None
+
+
+def test_compose_stage_persists_enabled_artwork_fill_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Enabled Artwork fill survives the persistent composition boundary.
+
+    The persistent fill uses the registered Shape interior as its outer
+    boundary and the transformed authoritative Artwork envelope as its inner
+    boundary.
+    """
+
+    structure = tmp_path / "structure.svg"
+    artwork_manifest = tmp_path / "artwork" / "products.json"
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_registered_structure(
+        structure,
+    )
+    _write_registered_artwork_manifest(
+        artwork_manifest,
+    )
+
+    context = _compose_context(
+        structure=structure,
+        artwork_manifest=artwork_manifest,
+        composition=composition,
+        manifest=manifest,
+        fill_color="white",
+    )
+
+    compose.execute(
+        context,
+    )
+
+    products = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    fill = products["artwork_fill"]
+
+    assert fill is not None
+
+    assert fill["outer_boundary"]["type"] == "circle"
+    assert fill["outer_boundary"]["cx"] == pytest.approx(
+        0.0,
+    )
+    assert fill["outer_boundary"]["cy"] == pytest.approx(
+        0.0,
+    )
+    assert fill["outer_boundary"]["r"] == pytest.approx(
+        0.45,
+    )
+
+    assert fill["inner_boundary"]["type"] == "rect"
+
+    #
+    # The exact placement scale is determined by fitting the authoritative
+    # 12 x 10 Artwork envelope inside the registered radius-0.45 interior.
+    #
+    envelope_radius = (6.0**2 + 5.0**2) ** 0.5
+    scale = 0.45 / envelope_radius
+
+    assert fill["inner_boundary"]["x"] == pytest.approx(
+        -6.0 * scale,
+    )
+    assert fill["inner_boundary"]["y"] == pytest.approx(
+        -5.0 * scale,
+    )
+    assert fill["inner_boundary"]["width"] == pytest.approx(
+        12.0 * scale,
+    )
+    assert fill["inner_boundary"]["height"] == pytest.approx(
+        10.0 * scale,
+    )
+
+
+def test_persistent_artwork_fill_remains_registered_and_self_contained(
+    tmp_path: Path,
+) -> None:
+    """
+    Persistent Artwork fill contains the registered geometry extrusion needs.
+
+    Downstream dimensionalization must not need the producer's Artwork envelope
+    to reconstruct the fill region. No physical X/Y or Z dimensions are
+    introduced by composition.
+    """
+
+    structure = tmp_path / "structure.svg"
+    artwork_manifest = tmp_path / "artwork" / "products.json"
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_registered_structure(
+        structure,
+    )
+    _write_registered_artwork_manifest(
+        artwork_manifest,
+    )
+
+    context = _compose_context(
+        structure=structure,
+        artwork_manifest=artwork_manifest,
+        composition=composition,
+        manifest=manifest,
+        fill_color="white",
+    )
+
+    compose.execute(
+        context,
+    )
+
+    products = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    fill = products["artwork_fill"]
+
+    assert fill is not None
+
+    #
+    # The persistent fill contract carries its resulting registered
+    # boundaries directly rather than requiring downstream stages to reopen
+    # the producer's Artwork envelope and repeat composition.
+    #
+    assert set(fill) == {
+        "outer_boundary",
+        "inner_boundary",
+    }
+
+    serialized = json.dumps(
+        fill,
+    )
+
+    #
+    # Composition contains registered geometry only. Physical Shape
+    # dimensionalization remains downstream.
+    #
+    assert "shape_size" not in serialized
+    assert "shape_base_raise" not in serialized
+    assert "shape_artwork_raise" not in serialized
+    assert '"z"' not in serialized.lower()

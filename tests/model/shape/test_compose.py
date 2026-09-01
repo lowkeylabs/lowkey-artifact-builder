@@ -268,22 +268,25 @@ def _configure_shape_resolver(
     context: Mock,
     *,
     shape_size: float = 100.0,
-    ridge_width: float = 0.0,
+    ridge_width: float = 5.0,
     ridge_style: str = "integrated",
+    fill_color: str = "none",
 ) -> Mock:
     """
-    Configure representative Shape composition parameters.
+    Configure representative Shape parameters for registered composition.
     """
-
-    resolver = Mock()
 
     values = {
         "shape_size": shape_size,
         "shape_outer_ridge_width": ridge_width,
         "shape_outer_ridge_style": ridge_style,
+        "shape_artwork_fill_color": fill_color,
     }
 
-    resolver.side_effect = values.__getitem__
+    resolver = Mock(
+        side_effect=values.__getitem__,
+    )
+
     context.resolver = resolver
 
     return resolver
@@ -1880,6 +1883,7 @@ def test_compose_stage_manifest_declares_structural_composition(
     assert manifest == {
         "composition": "composition.svg",
         "artwork": None,
+        "artwork_fill": None,
     }
 
 
