@@ -26,11 +26,16 @@ from lowkey_artifact_builder.engine import (
 )
 from lowkey_artifact_builder.engine.validation import (
     required_configuration_parameters,
+    validate_required_configuration,
 )
 from lowkey_artifact_builder.model import (
     ModelSpec,
     ProductSpec,
     StageSpec,
+)
+from lowkey_artifact_builder.model.validation import (
+    ConfigurationResolver,
+    ConfigurationValidator,
 )
 
 # =========================================================
@@ -387,3 +392,154 @@ def test_required_configuration_does_not_change_execution_plan() -> None:
     assert before == (required_execution,)
 
     assert after == before
+
+
+# =========================================================
+# Execution-scoped model validation
+# =========================================================
+
+
+def test_required_model_validator_executes() -> None:
+    """
+    A model validator relevant to required configuration is executed.
+    """
+
+    calls: list[str] = []
+
+    def validate(
+        resolver: ConfigurationResolver,
+    ) -> None:
+        calls.append("validated")
+        assert resolver("fill_color") == "red"
+
+    validator = ConfigurationValidator(
+        parameters=("fill_color",),
+        validate=validate,
+    )
+
+    validate_required_configuration(
+        lambda name: {
+            "fill_color": "red",
+        }[name],
+        required_parameters=("fill_color",),
+        validators=(validator,),
+    )
+
+    assert calls == [
+        "validated",
+    ]
+
+
+def test_model_validator_irrelevant_to_required_configuration_is_skipped() -> None:
+    """
+    A validator whose configuration is used only by non-executing stages
+    is not executed.
+    """
+
+    calls: list[str] = []
+
+    def validate(
+        resolver: ConfigurationResolver,
+    ) -> None:
+        del resolver
+        calls.append("validated")
+
+    validator = ConfigurationValidator(
+        parameters=("historical_parameter",),
+        validate=validate,
+    )
+
+    validate_required_configuration(
+        lambda name: {
+            "historical_parameter": "invalid",
+        }[name],
+        required_parameters=("current_parameter",),
+        validators=(validator,),
+    )
+
+    assert calls == []
+
+
+def test_cross_parameter_validator_runs_when_any_required_parameter_is_relevant() -> None:
+    """
+    A cross-parameter invariant participates when required execution consumes
+    any configuration governed by that invariant.
+    """
+
+    observed: list[tuple[object, object]] = []
+
+    def validate(
+        resolver: ConfigurationResolver,
+    ) -> None:
+        observed.append(
+            (
+                resolver("palette"),
+                resolver("fill_color"),
+            )
+        )
+
+    validator = ConfigurationValidator(
+        parameters=(
+            "palette",
+            "fill_color",
+        ),
+        validate=validate,
+    )
+
+    validate_required_configuration(
+        lambda name: {
+            "palette": ("red", "blue"),
+            "fill_color": "red",
+        }[name],
+        required_parameters=("fill_color",),
+        validators=(validator,),
+    )
+
+    assert observed == [
+        (
+            ("red", "blue"),
+            "red",
+        ),
+    ]
+
+
+def test_irrelevant_invalid_model_configuration_does_not_fail() -> None:
+    """
+    Invalid historical configuration does not matter when its validator is
+    irrelevant to required execution.
+    """
+
+    def validate(
+        resolver: ConfigurationResolver,
+    ) -> None:
+        fill_color = resolver("fill_color")
+        palette = resolver("palette")
+
+        if not isinstance(fill_color, str):
+            raise TypeError("Expected fill_color to be a string.")
+
+        if not isinstance(palette, tuple):
+            raise TypeError("Expected palette to be a tuple.")
+
+        if not all(isinstance(color, str) for color in palette):
+            raise TypeError("Expected palette to contain only strings.")
+
+        if fill_color not in palette:
+            raise ValueError("fill color is not in palette")
+
+    validator = ConfigurationValidator(
+        parameters=(
+            "palette",
+            "fill_color",
+        ),
+        validate=validate,
+    )
+
+    validate_required_configuration(
+        lambda name: {
+            "palette": ("red", "blue"),
+            "fill_color": "invalid",
+        }[name],
+        required_parameters=("package_format",),
+        validators=(validator,),
+    )

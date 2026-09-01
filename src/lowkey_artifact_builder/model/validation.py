@@ -6,9 +6,9 @@ Validation is distinct from configuration resolution.
 Configuration resolution determines effective values. Validation determines
 whether resolved values satisfy model-specific invariants.
 
-This module provides the generic mechanisms for discovering and executing
-model-owned validators. Determining which validators participate in a
-particular build belongs to planning.
+This module provides the generic mechanisms for declaring, discovering, and
+executing model-owned validators. Determining which validators participate in
+a particular build belongs to execution-scoped validation.
 """
 # File: src/lowkey_artifact_builder/model/validation.py
 # Copyright 2026 LowKeyLabs LLC
@@ -17,6 +17,7 @@ particular build belongs to planning.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from importlib import import_module
 from types import ModuleType
 from typing import Protocol
@@ -49,10 +50,34 @@ class ConfigurationResolver(Protocol):
 # =========================================================
 
 
-type ConfigurationValidator = Callable[
+type ConfigurationValidation = Callable[
     [ConfigurationResolver],
     None,
 ]
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class ConfigurationValidator:
+    """
+    One model-owned resolved-configuration invariant.
+
+    Parameters identify the resolved configuration governed by the invariant.
+
+    The execution-scoped validation layer uses this declaration to determine
+    whether the invariant is relevant to required execution.
+
+    Validate performs the model-owned semantic check. A validator may inspect
+    any of its governed parameters, allowing cross-parameter invariants to be
+    expressed without placing model-specific knowledge in generic planning or
+    validation infrastructure.
+    """
+
+    parameters: tuple[str, ...]
+
+    validate: ConfigurationValidation
 
 
 # =========================================================
@@ -112,8 +137,10 @@ def _get_declared_validators(
     if not isinstance(validators, tuple):
         raise TypeError(f"{module.__name__}.VALIDATORS must be a tuple.")
 
-    if not all(callable(validator) for validator in validators):
-        raise TypeError(f"{module.__name__}.VALIDATORS must contain only callables.")
+    if not all(isinstance(validator, ConfigurationValidator) for validator in validators):
+        raise TypeError(
+            f"{module.__name__}.VALIDATORS must contain only ConfigurationValidator instances."
+        )
 
     return validators
 
@@ -141,7 +168,9 @@ def validate_configuration(
     """
 
     for validator in validators:
-        validator(resolver)
+        validator.validate(
+            resolver,
+        )
 
 
 # =========================================================

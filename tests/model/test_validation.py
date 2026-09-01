@@ -14,6 +14,7 @@ import pytest
 from lowkey_artifact_builder.config import ConfigError
 from lowkey_artifact_builder.model.validation import (
     ConfigurationResolver,
+    ConfigurationValidator,
     get_model_validators,
     validate_configuration,
 )
@@ -148,6 +149,31 @@ def test_model_with_no_validators_is_valid() -> None:
     )
 
 
+def test_model_validator_declares_relevant_parameters() -> None:
+    """
+    A model validator explicitly declares the configuration governed by
+    its invariant.
+    """
+
+    def validate_pair(
+        resolver: ConfigurationResolver,
+    ) -> None:
+        del resolver
+
+    validator = ConfigurationValidator(
+        parameters=(
+            "left",
+            "right",
+        ),
+        validate=validate_pair,
+    )
+
+    assert validator.parameters == (
+        "left",
+        "right",
+    )
+
+
 def test_model_validator_can_inspect_multiple_resolved_values() -> None:
     """
     Model validators may express cross-parameter invariants.
@@ -165,6 +191,14 @@ def test_model_validator_can_inspect_multiple_resolved_values() -> None:
             )
         )
 
+    validator = ConfigurationValidator(
+        parameters=(
+            "left",
+            "right",
+        ),
+        validate=validate_pair,
+    )
+
     resolver = StubResolver(
         {
             "left": "alpha",
@@ -174,7 +208,7 @@ def test_model_validator_can_inspect_multiple_resolved_values() -> None:
 
     validate_configuration(
         resolver,
-        validators=(validate_pair,),
+        validators=(validator,),
     )
 
     assert observed == [
@@ -203,6 +237,14 @@ def test_valid_model_configuration_passes_validation() -> None:
         if selected not in allowed:
             raise ConfigError("selected must belong to allowed.")
 
+    validator = ConfigurationValidator(
+        parameters=(
+            "selected",
+            "allowed",
+        ),
+        validate=validate_membership,
+    )
+
     resolver = StubResolver(
         {
             "selected": "red",
@@ -212,7 +254,7 @@ def test_valid_model_configuration_passes_validation() -> None:
 
     validate_configuration(
         resolver,
-        validators=(validate_membership,),
+        validators=(validator,),
     )
 
 
@@ -234,6 +276,14 @@ def test_invalid_model_configuration_raises_config_error() -> None:
         if selected not in allowed:
             raise ConfigError("selected must belong to allowed.")
 
+    validator = ConfigurationValidator(
+        parameters=(
+            "selected",
+            "allowed",
+        ),
+        validate=validate_membership,
+    )
+
     resolver = StubResolver(
         {
             "selected": "green",
@@ -247,8 +297,49 @@ def test_invalid_model_configuration_raises_config_error() -> None:
     ):
         validate_configuration(
             resolver,
-            validators=(validate_membership,),
+            validators=(validator,),
         )
+
+
+def test_validating_configuration_executes_validators_in_declaration_order() -> None:
+    """
+    Generic validation preserves model validator declaration order.
+    """
+
+    observed: list[str] = []
+
+    def validate_first(
+        resolver: ConfigurationResolver,
+    ) -> None:
+        del resolver
+        observed.append("first")
+
+    def validate_second(
+        resolver: ConfigurationResolver,
+    ) -> None:
+        del resolver
+        observed.append("second")
+
+    resolver = StubResolver({})
+
+    validate_configuration(
+        resolver,
+        validators=(
+            ConfigurationValidator(
+                parameters=("first",),
+                validate=validate_first,
+            ),
+            ConfigurationValidator(
+                parameters=("second",),
+                validate=validate_second,
+            ),
+        ),
+    )
+
+    assert observed == [
+        "first",
+        "second",
+    ]
 
 
 # =========================================================
@@ -290,6 +381,9 @@ def test_model_validation_module_declares_validators(
         tmp_path,
         package_name="validation_test_models_declared",
         validation_source="""
+from lowkey_artifact_builder.model.validation import ConfigurationValidator
+
+
 def validate_first(resolver):
     pass
 
@@ -299,8 +393,14 @@ def validate_second(resolver):
 
 
 VALIDATORS = (
-    validate_first,
-    validate_second,
+    ConfigurationValidator(
+        parameters=("first",),
+        validate=validate_first,
+    ),
+    ConfigurationValidator(
+        parameters=("second",),
+        validate=validate_second,
+    ),
 )
 """,
     )
@@ -311,9 +411,14 @@ VALIDATORS = (
         model_package,
     )
 
-    assert tuple(validator.__name__ for validator in validators) == (
+    assert tuple(validator.validate.__name__ for validator in validators) == (
         "validate_first",
         "validate_second",
+    )
+
+    assert tuple(validator.parameters for validator in validators) == (
+        ("first",),
+        ("second",),
     )
 
 
@@ -329,12 +434,18 @@ def test_discovering_model_validators_does_not_execute_them(
         tmp_path,
         package_name="validation_test_models_not_executed",
         validation_source="""
+from lowkey_artifact_builder.model.validation import ConfigurationValidator
+
+
 def validate_configuration(resolver):
     raise RuntimeError("validator executed")
 
 
 VALIDATORS = (
-    validate_configuration,
+    ConfigurationValidator(
+        parameters=("value",),
+        validate=validate_configuration,
+    ),
 )
 """,
     )
@@ -360,6 +471,9 @@ def test_discovered_model_validator_receives_resolved_configuration(
         tmp_path,
         package_name="validation_test_models_resolved",
         validation_source="""
+from lowkey_artifact_builder.model.validation import ConfigurationValidator
+
+
 def validate_pair(resolver):
     left = resolver("left")
     right = resolver("right")
@@ -369,7 +483,13 @@ def validate_pair(resolver):
 
 
 VALIDATORS = (
-    validate_pair,
+    ConfigurationValidator(
+        parameters=(
+            "left",
+            "right",
+        ),
+        validate=validate_pair,
+    ),
 )
 """,
     )
