@@ -537,3 +537,66 @@ def test_registered_artwork_analysis_excludes_synthetic_catalog_entries(
     assert analysis[0].printer.color.name == "test-red"
     assert analysis[0].library.color.name == "test-red"
     assert analysis[0].catalog.color.name == "physical-red"
+
+
+def test_registered_artwork_analysis_does_not_mutate_configuration(
+    tmp_path: Path,
+) -> None:
+    """
+    Artwork color analysis does not mutate resolved color configuration.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 100,
+                "products": [
+                    {
+                        "index": 1,
+                        "path": "color-1.svg",
+                        "name": "artwork-red",
+                        "color": {
+                            "red": 250,
+                            "green": 10,
+                            "blue": 10,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    printer_colors = ["printer-red"]
+    library_colors = ["library-red"]
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": printer_colors,
+            "library_colors": library_colors,
+        },
+        colors={
+            "printer-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(220, 0, 0),
+            ),
+            "library-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(240, 5, 5),
+            ),
+            "catalog-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(249, 9, 9),
+            ),
+        },
+    )
+
+    analyze_registered_artwork_colors(
+        manifest=manifest,
+        resolver=resolver,
+    )
+
+    assert printer_colors == ["printer-red"]
+    assert library_colors == ["library-red"]
