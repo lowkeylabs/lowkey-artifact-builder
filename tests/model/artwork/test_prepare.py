@@ -701,6 +701,205 @@ def test_shrink_wrap_envelope_mode_excludes_opaque_exterior_background() -> None
         image.close()
 
 
+def test_shrink_wrap_preserves_enclosed_region_matching_exterior_background() -> None:
+    """
+    Shrink-wrap does not exclude an enclosed Artwork region solely because
+    its color matches the exterior background.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (
+            80,
+            80,
+        ),
+        (
+            255,
+            255,
+            255,
+            255,
+        ),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        #
+        # A solid black Artwork body separates its interior from the
+        # white exterior background.
+        #
+        for y in range(
+            15,
+            65,
+        ):
+            for x in range(
+                15,
+                65,
+            ):
+                pixels[x, y] = (
+                    0,
+                    0,
+                    0,
+                    255,
+                )
+
+        #
+        # This white region has exactly the same RGB value as the
+        # exterior background, but it is enclosed by Artwork.
+        #
+        for y in range(
+            30,
+            50,
+        ):
+            for x in range(
+                30,
+                50,
+            ):
+                pixels[x, y] = (
+                    255,
+                    255,
+                    255,
+                    255,
+                )
+
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        assert not envelope[0, 0]
+
+        assert envelope[20, 20]
+        assert envelope[40, 40]
+
+    finally:
+        image.close()
+
+
+def test_shrink_wrap_bridges_exterior_connected_concavity() -> None:
+    """
+    Shrink-wrap produces a conservative outer envelope rather than
+    following a deep exterior-connected concavity into the Artwork.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (
+            80,
+            80,
+        ),
+        (
+            255,
+            255,
+            255,
+            255,
+        ),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        #
+        # Begin with a large solid Artwork body.
+        #
+        for y in range(
+            15,
+            65,
+        ):
+            for x in range(
+                15,
+                65,
+            ):
+                pixels[x, y] = (
+                    0,
+                    0,
+                    0,
+                    255,
+                )
+
+        #
+        # Cut a deep background-colored channel from the exterior into
+        # the top of the Artwork. The channel remains connected to the
+        # exterior background.
+        #
+        for y in range(
+            0,
+            45,
+        ):
+            for x in range(
+                37,
+                43,
+            ):
+                pixels[x, y] = (
+                    255,
+                    255,
+                    255,
+                    255,
+                )
+
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        #
+        # True exterior remains excluded.
+        #
+        assert not envelope[0, 0]
+
+        #
+        # Ordinary Artwork remains enclosed.
+        #
+        assert envelope[40, 25]
+        assert envelope[40, 55]
+
+        #
+        # The deep exterior-connected concavity is bridged by the
+        # conservative outer envelope.
+        #
+        assert envelope[30, 40]
+
+    finally:
+        image.close()
+
+
+def test_unsupported_artwork_envelope_mode_is_rejected() -> None:
+    """
+    Artwork preparation rejects envelope modes not defined by the model.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (
+            40,
+            40,
+        ),
+        (
+            255,
+            255,
+            255,
+            255,
+        ),
+    )
+
+    try:
+        with pytest.raises(
+            prepare.PrepareError,
+            match="Unsupported artwork envelope mode",
+        ):
+            prepare._derive_envelope(
+                image,
+                mode="aggressive",
+            )
+
+    finally:
+        image.close()
+
+
 # =========================================================
 # Artwork fill semantics
 # =========================================================
