@@ -466,7 +466,7 @@ A conforming Artwork implementation satisfies the following:
 1. Artwork consumes a materialized raster source image.
 2. Prepared Artwork is limited to its derived artwork envelope.
 3. Artwork envelope derivation is controlled by `artwork_envelope_mode`.
-4. `artwork_envelope_mode` defaults to `alpha`.
+4. `artwork_envelope_mode` defaults to `shrink-wrap`.
 5. `alpha` envelope derivation determines meaningful source foreground from
    source alpha.
 6. `shrink-wrap` envelope derivation produces a conservative outer envelope

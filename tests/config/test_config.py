@@ -553,7 +553,7 @@ def test_artwork_envelope_mode_is_a_model_default(
     tmp_path: Path,
 ) -> None:
     """
-    Artwork envelope derivation defaults to alpha mode.
+    Artwork envelope derivation has a model-owned default.
 
     The default is model-owned configuration rather than stage-local
     fallback behavior.
