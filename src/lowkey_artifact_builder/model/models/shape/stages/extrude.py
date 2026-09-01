@@ -231,6 +231,16 @@ def execute(
                     "shape_artwork_raise must be greater than zero when Artwork is incorporated."
                 )
 
+        shape_artwork_fill_color: PaletteColor | None = None
+
+        if artwork_fill is not None:
+            shape_artwork_fill_color = resolve_palette_color(
+                context.resolver(
+                    "shape_artwork_fill_color",
+                ),
+                context.resolver.colors,
+            )
+
         ridge = _load_ridge(
             composition,
         )
@@ -334,6 +344,7 @@ def execute(
             ridge_color=shape_outer_ridge_color,
             artwork_components=artwork_components,
             artwork_fill_components=artwork_fill_components,
+            artwork_fill_color=shape_artwork_fill_color,
         )
 
         if not manifest.is_file():
@@ -1254,15 +1265,13 @@ def _write_component_manifest(
         tuple[str, str],
         ...,
     ] = (),
+    artwork_fill_color: PaletteColor | None = None,
 ) -> None:
     """
     Write the physical-component manifest for Shape extrusion.
 
-    Structural and incorporated Artwork components preserve their semantic
-    printing-color identity for downstream packaging.
-
-    Artwork fill is retained as a distinct physical component. Its semantic
-    color is assigned by the later fill-color slice.
+    Structural, Artwork-fill, and incorporated Artwork components preserve
+    their semantic printing-color identity for downstream packaging.
     """
 
     colors = {
@@ -1297,14 +1306,25 @@ def _write_component_manifest(
             }
         )
 
+    if artwork_fill_components and artwork_fill_color is None:
+        raise ValueError("Physical Artwork-fill components require a semantic color.")
+
     for (
         name,
         component_path,
     ) in artwork_fill_components:
+        assert artwork_fill_color is not None
+
         manifest_components.append(
             {
                 "name": name,
                 "path": component_path,
+                "color": {
+                    "name": artwork_fill_color.name,
+                    "rgb": list(
+                        artwork_fill_color.rgb,
+                    ),
+                },
             }
         )
 

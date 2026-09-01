@@ -1445,6 +1445,7 @@ def _physical_fill_extrude_context(
         "shape_outer_ridge_raise": 1.0,
         "shape_outer_ridge_style": "integrated",
         "shape_artwork_raise": 0.6,
+        "shape_artwork_fill_color": "red",
     }
 
     context.input.side_effect = inputs.__getitem__
@@ -1760,6 +1761,7 @@ def test_artwork_fill_physical_geometry_is_independent_of_ridge_style(
             "shape_outer_ridge_raise": 1.0,
             "shape_outer_ridge_style": style,
             "shape_artwork_raise": 0.6,
+            "shape_artwork_fill_color": "red",
         }
 
         context.resolver.side_effect = values.__getitem__
@@ -1909,3 +1911,197 @@ def test_artwork_fill_physically_excludes_incorporated_artwork_envelope(
         "        square([60, 50], center = false);\n"
         "}" in fill_source
     )
+
+
+def test_artwork_fill_manifest_preserves_semantic_color(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Physical Artwork fill preserves its configured semantic color identity.
+
+    Shape extrusion records both the semantic color name and its resolved RGB
+    representation for downstream packaging.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    output_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_physical_fill_composition(
+        composition,
+    )
+    _write_physical_fill_manifest(
+        composition_manifest,
+        artwork_fill=_physical_fill_region(),
+    )
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        del source
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    context = _physical_fill_extrude_context(
+        composition=composition,
+        composition_manifest=composition_manifest,
+        output_manifest=output_manifest,
+    )
+
+    values = {
+        "shape_size": 100.0,
+        "shape_base_raise": 2.0,
+        "shape_base_color": "white",
+        "shape_outer_ridge_color": "white",
+        "shape_outer_ridge_raise": 1.0,
+        "shape_outer_ridge_style": "integrated",
+        "shape_artwork_raise": 0.6,
+        "shape_artwork_fill_color": "red",
+    }
+
+    context.resolver.side_effect = values.__getitem__
+
+    context.resolver.colors = {
+        "white": {
+            "red": 255,
+            "green": 255,
+            "blue": 255,
+        },
+        "red": {
+            "red": 255,
+            "green": 0,
+            "blue": 0,
+        },
+    }
+
+    extrude.execute(
+        context,
+    )
+
+    products = json.loads(
+        output_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    fill = next(
+        component for component in products["components"] if component["name"] == "artwork-fill"
+    )
+
+    assert fill["color"] == {
+        "name": "red",
+        "rgb": [
+            255,
+            0,
+            0,
+        ],
+    }
+
+
+def test_artwork_fill_color_resolves_through_shared_palette(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Artwork-fill semantic colors use the common palette-resolution mechanism.
+
+    Shape does not maintain a separate fill-color interpretation.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    output_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_physical_fill_composition(
+        composition,
+    )
+    _write_physical_fill_manifest(
+        composition_manifest,
+        artwork_fill=_physical_fill_region(),
+    )
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        del source
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    context = _physical_fill_extrude_context(
+        composition=composition,
+        composition_manifest=composition_manifest,
+        output_manifest=output_manifest,
+    )
+
+    values = {
+        "shape_size": 100.0,
+        "shape_base_raise": 2.0,
+        "shape_base_color": "white",
+        "shape_outer_ridge_color": "white",
+        "shape_outer_ridge_raise": 1.0,
+        "shape_outer_ridge_style": "integrated",
+        "shape_artwork_raise": 0.6,
+        "shape_artwork_fill_color": "blue",
+    }
+
+    context.resolver.side_effect = values.__getitem__
+
+    context.resolver.colors = {
+        "white": {
+            "red": 255,
+            "green": 255,
+            "blue": 255,
+        },
+    }
+
+    extrude.execute(
+        context,
+    )
+
+    products = json.loads(
+        output_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    fill = next(
+        component for component in products["components"] if component["name"] == "artwork-fill"
+    )
+
+    assert fill["color"] == {
+        "name": "blue",
+        "rgb": [
+            0,
+            0,
+            255,
+        ],
+    }
