@@ -7,8 +7,7 @@ before converting it into a multicolor SVG trace.
 Preparation establishes the physical artwork envelope. Pixels outside
 that envelope are transparent. Pixels inside the envelope are made
 opaque: existing artwork is preserved while transparent or
-insufficiently opaque pixels are filled using the configured white
-artwork color.
+insufficiently opaque pixels are filled using the configured Artwork color.
 
 The stage produces:
 
@@ -121,7 +120,8 @@ def execute(
         3. Identify meaningful visible source artwork.
         4. Construct the physical artwork envelope.
         5. Write envelope.svg.
-        6. Fill transparent regions inside the envelope with white.
+        6. Fill otherwise-unassigned regions inside the envelope with the
+        configured Artwork fill color.
         7. Quantize all pixels inside the envelope to exact configured
            artwork colors.
         8. Trace the quantized raster with Inkscape.
@@ -156,7 +156,10 @@ def execute(
         colors,
     )
 
-    fill_color = _require_fill_color(
+    fill_color = _resolve_fill_color(
+        context.resolver(
+            "artwork_fill_color",
+        ),
         palette,
     )
 
@@ -230,7 +233,7 @@ def execute(
     #
     # Inside:
     #     opaque, with transparent source regions filled using the
-    #     configured white artwork color
+    #     configured configured artwork color
     #
     normalized = _normalize_image(
         image,
@@ -1259,7 +1262,8 @@ def _cleanup_thin_features(
     )
 
 
-def _require_fill_color(
+def _resolve_fill_color(
+    value: Any,
     palette: tuple[
         tuple[
             str,
@@ -1269,87 +1273,26 @@ def _require_fill_color(
     ],
 ) -> tuple[int, int, int]:
     """
-    Return the configured white artwork color.
-
-    White is used to make transparent regions inside the physical
-    artwork envelope printable.
+    Resolve the configured semantic Artwork fill color from the palette.
     """
 
+    if (
+        not isinstance(
+            value,
+            str,
+        )
+        or not value.strip()
+    ):
+        raise PrepareError("artwork_fill_color must be a non-empty color name.")
+
+    fill_color = value.strip()
+
     for name, rgb in palette:
-        if name == "white":
+        if name == fill_color:
             return rgb
 
     raise PrepareError(
-        "Artwork preparation requires 'white' in artwork_colors "
-        "to fill transparent regions inside the artwork envelope."
-    )
-
-
-def _resolve_fill_color(
-    context: StageContext,
-    colors: tuple[str, ...],
-) -> tuple[int, int, int]:
-    """
-    Resolve the white artwork color used to fill the envelope interior.
-
-    The RGB value comes from the artifact resolver's color catalog.
-    """
-
-    if "white" not in colors:
-        raise PrepareError(
-            "Artwork preparation requires 'white' in artwork_colors to fill the artwork envelope."
-        )
-
-    value = context.resolver.color(
-        "white",
-    )
-
-    if not isinstance(
-        value,
-        Mapping,
-    ):
-        raise PrepareError("Configured white color has no valid catalog definition.")
-
-    rgb = value.get(
-        "rgb",
-    )
-
-    if (
-        isinstance(
-            rgb,
-            str | bytes,
-        )
-        or not isinstance(
-            rgb,
-            Sequence,
-        )
-        or len(rgb) != 3
-    ):
-        raise PrepareError("Configured white color must define a three-component RGB value.")
-
-    components: list[int] = []
-
-    for component in rgb:
-        if (
-            isinstance(
-                component,
-                bool,
-            )
-            or not isinstance(
-                component,
-                int,
-            )
-            or component < 0
-            or component > 255
-        ):
-            raise PrepareError("Configured white color contains an invalid RGB component.")
-
-        components.append(component)
-
-    return (
-        components[0],
-        components[1],
-        components[2],
+        f"Configured artwork_fill_color {fill_color!r} is not present in artwork_colors."
     )
 
 
