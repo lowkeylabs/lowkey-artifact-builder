@@ -2442,3 +2442,196 @@ artwork_island_connectivity = 8
         0.0,
         abs=0.25,
     )
+
+
+def test_package_stage_does_not_invent_disabled_artwork_fill(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape packaging does not invent an Artwork fill component.
+
+    Artwork-fill existence is established upstream. When extrusion declares
+    structural and incorporated Artwork components without Artwork fill,
+    packaging preserves that component membership without re-resolving Shape
+    fill policy.
+    """
+
+    component_directory = tmp_path / "extrude"
+
+    base = component_directory / "base.stl"
+    artwork_1 = component_directory / "artwork-1.stl"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    _write_component_stl(
+        base,
+        solid_name="shape-base",
+    )
+
+    _write_component_stl(
+        artwork_1,
+        solid_name="artwork-1",
+    )
+
+    _write_component_manifest(
+        manifest,
+        (
+            (
+                "base",
+                "base.stl",
+                "test-white",
+                (255, 255, 255),
+            ),
+            (
+                "artwork-1",
+                "artwork-1.stl",
+                "test-red",
+                (255, 0, 0),
+            ),
+        ),
+    )
+
+    resolver = Mock()
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "example"
+    context.resolver = resolver
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    package.execute(
+        context,
+    )
+
+    model = _read_model(
+        artifact,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    assert {object_.get("name") for object_ in objects} == {
+        "example-base",
+        "example-artwork-1",
+    }
+
+    resolver.assert_not_called()
+
+
+def test_package_stage_preserves_same_color_artwork_fill_identity(
+    tmp_path: Path,
+) -> None:
+    """
+    Shared semantic color does not merge Shape physical components.
+
+    Structural base, Artwork fill, and incorporated Artwork remain
+    independently identifiable packaged components even when all three
+    use the same semantic printing color.
+    """
+
+    component_directory = tmp_path / "extrude"
+
+    base = component_directory / "base.stl"
+    artwork_fill = component_directory / "artwork-fill.stl"
+    artwork_1 = component_directory / "artwork-1.stl"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    _write_component_stl(
+        base,
+        solid_name="shape-base",
+    )
+
+    _write_component_stl(
+        artwork_fill,
+        solid_name="artwork-fill",
+    )
+
+    _write_component_stl(
+        artwork_1,
+        solid_name="artwork-1",
+    )
+
+    _write_component_manifest(
+        manifest,
+        (
+            (
+                "base",
+                "base.stl",
+                "test-blue",
+                (0, 0, 255),
+            ),
+            (
+                "artwork-fill",
+                "artwork-fill.stl",
+                "test-blue",
+                (0, 0, 255),
+            ),
+            (
+                "artwork-1",
+                "artwork-1.stl",
+                "test-blue",
+                (0, 0, 255),
+            ),
+        ),
+    )
+
+    resolver = Mock()
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "example"
+    context.resolver = resolver
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    package.execute(
+        context,
+    )
+
+    model = _read_model(
+        artifact,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    assert set(objects_by_name) == {
+        "example-base",
+        "example-artwork-fill",
+        "example-artwork-1",
+    }
+
+    assert len({objects_by_name[name].get("id") for name in objects_by_name}) == 3
+
+    for object_ in objects_by_name.values():
+        material_id = object_.get(
+            "pid",
+        )
+
+        assert material_id is not None
+
+        material = materials_by_id[material_id]
+
+        color = material.find(
+            f"{{{CORE_NS}}}base",
+        )
+
+        assert color is not None
+        assert color.get("name") == "test-blue"
+        assert color.get("displaycolor") == "#0000FF"
+
+    resolver.assert_not_called()
