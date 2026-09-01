@@ -73,6 +73,7 @@ def _validate_shape(
         "shape_outer_ridge_width": 0.0,
         "shape_outer_ridge_raise": 1.0,
         "shape_outer_ridge_style": "integrated",
+        "shape_base_color": "white",
     }
 
     resolved_values.update(
@@ -750,6 +751,98 @@ def test_invalid_historical_shape_ridge_style_does_not_block_current_compose() -
     build_plan, execution_plan = _shape_compose_execution_plan(
         resolver=resolver,
         compose_state=ProductState.CURRENT,
+    )
+
+    validate_execution(
+        build_plan,
+        execution_plan,
+    )
+
+
+def test_shape_accepts_nonempty_base_color() -> None:
+    """
+    Shape base color may be any nonempty semantic color name.
+    """
+
+    _validate_shape(
+        {
+            "shape_base_color": "test-red",
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "base_color",
+    (
+        "",
+        "   ",
+        None,
+    ),
+)
+def test_shape_rejects_invalid_base_color(
+    base_color: object,
+) -> None:
+    """
+    Shape base color must be a nonempty semantic color name.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_base_color",
+    ):
+        _validate_shape(
+            {
+                "shape_base_color": base_color,
+            }
+        )
+
+
+def test_invalid_shape_base_color_fails_when_extrude_requires_execution() -> None:
+    """
+    Invalid base color is validated when extrusion must execute.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_base_raise": 2.0,
+            "shape_base_color": "",
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "integrated",
+        }
+    )
+
+    build_plan, execution_plan = _shape_execution_plan(
+        resolver=resolver,
+        extrude_state=ProductState.ABSENT,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_base_color",
+    ):
+        validate_execution(
+            build_plan,
+            execution_plan,
+        )
+
+
+def test_invalid_historical_shape_base_color_does_not_block_current_extrude() -> None:
+    """
+    Invalid historical base color is irrelevant when extrusion is current.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_base_raise": 2.0,
+            "shape_base_color": "",
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "integrated",
+        }
+    )
+
+    build_plan, execution_plan = _shape_execution_plan(
+        resolver=resolver,
+        extrude_state=ProductState.CURRENT,
     )
 
     validate_execution(

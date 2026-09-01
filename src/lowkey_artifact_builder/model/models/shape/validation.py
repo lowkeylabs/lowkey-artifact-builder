@@ -143,6 +143,27 @@ def _validate_polygon_sides(
         )
 
 
+def _validate_base_color(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require the base color to be a nonempty semantic color name.
+    """
+
+    base_color = resolver(
+        "shape_base_color",
+    )
+
+    if (
+        not isinstance(
+            base_color,
+            str,
+        )
+        or not base_color.strip()
+    ):
+        raise ConfigError("shape_base_color must be a nonempty color name.")
+
+
 VALIDATORS = (
     ConfigurationValidator(
         parameters=("shape_geometry",),
@@ -169,6 +190,10 @@ VALIDATORS = (
     ConfigurationValidator(
         parameters=("shape_outer_ridge_style",),
         validate=_validate_outer_ridge_style,
+    ),
+    ConfigurationValidator(
+        parameters=("shape_base_color",),
+        validate=_validate_base_color,
     ),
 )
 
