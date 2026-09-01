@@ -48,6 +48,30 @@ def _validate_fill_color_membership(
         raise ConfigError("artwork_fill_color must be present in artwork_colors.")
 
 
+def _validate_envelope_mode(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require a supported Artwork envelope derivation mode.
+    """
+
+    envelope_mode = resolver(
+        "artwork_envelope_mode",
+    )
+
+    if not isinstance(
+        envelope_mode,
+        str,
+    ):
+        raise ConfigError("artwork_envelope_mode must be a mode name.")
+
+    if envelope_mode not in (
+        "alpha",
+        "shrink-wrap",
+    ):
+        raise ConfigError("artwork_envelope_mode must be 'alpha' or 'shrink-wrap'.")
+
+
 VALIDATORS = (
     ConfigurationValidator(
         parameters=(
@@ -55,6 +79,10 @@ VALIDATORS = (
             "artwork_fill_color",
         ),
         validate=_validate_fill_color_membership,
+    ),
+    ConfigurationValidator(
+        parameters=("artwork_envelope_mode",),
+        validate=_validate_envelope_mode,
     ),
 )
 

@@ -549,6 +549,26 @@ artwork_colors = ["test-red", "white", "test-blue"]
     assert resolver("artwork_fill_color") == "white"
 
 
+def test_artwork_envelope_mode_is_a_model_default(
+    tmp_path: Path,
+) -> None:
+    """
+    Artwork envelope derivation defaults to alpha mode.
+
+    The default is model-owned configuration rather than stage-local
+    fallback behavior.
+    """
+
+    resolver = get_resolver(
+        "nydeli",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    assert resolver("artwork_envelope_mode") == "alpha"
+    assert resolver.source("artwork_envelope_mode") == "model"
+
+
 def test_artwork_fill_color_can_be_explicitly_configured(
     tmp_path: Path,
 ) -> None:

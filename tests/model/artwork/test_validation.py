@@ -53,6 +53,7 @@ def _validate_artwork(
     *,
     colors: object,
     fill_color: object,
+    envelope_mode: object = "alpha",
 ) -> None:
     """
     Apply the Artwork model's declared configuration validators.
@@ -62,6 +63,7 @@ def _validate_artwork(
         {
             "artwork_colors": colors,
             "artwork_fill_color": fill_color,
+            "artwork_envelope_mode": envelope_mode,
         }
     )
 
@@ -133,9 +135,10 @@ def _artwork_execution_plan(
 # =========================================================
 
 
-def test_artwork_declares_fill_color_membership_validator() -> None:
+def test_artwork_declares_configuration_validators() -> None:
     """
-    Artwork owns a validator governing its palette/fill-color invariant.
+    Artwork owns validators governing its model-specific configuration
+    invariants.
     """
 
     validators = get_named_model_validators(
@@ -147,6 +150,7 @@ def test_artwork_declares_fill_color_membership_validator() -> None:
             "artwork_colors",
             "artwork_fill_color",
         ),
+        ("artwork_envelope_mode",),
     )
 
 
@@ -227,6 +231,74 @@ def test_artwork_fill_color_membership_uses_semantic_color_name() -> None:
                 "black",
             ),
             fill_color="test-white",
+        )
+
+
+def test_artwork_alpha_envelope_mode_is_valid() -> None:
+    """
+    Artwork accepts alpha envelope derivation.
+    """
+
+    _validate_artwork(
+        colors=(
+            "white",
+            "black",
+        ),
+        fill_color="white",
+        envelope_mode="alpha",
+    )
+
+
+def test_artwork_shrink_wrap_envelope_mode_is_valid() -> None:
+    """
+    Artwork accepts shrink-wrap envelope derivation.
+    """
+
+    _validate_artwork(
+        colors=(
+            "white",
+            "black",
+        ),
+        fill_color="white",
+        envelope_mode="shrink-wrap",
+    )
+
+
+def test_artwork_rejects_unsupported_envelope_mode() -> None:
+    """
+    Artwork rejects envelope modes outside its defined model semantics.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="artwork_envelope_mode",
+    ):
+        _validate_artwork(
+            colors=(
+                "white",
+                "black",
+            ),
+            fill_color="white",
+            envelope_mode="aggressive",
+        )
+
+
+def test_artwork_rejects_non_string_envelope_mode() -> None:
+    """
+    Artwork envelope mode must be a semantic mode name.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="artwork_envelope_mode",
+    ):
+        _validate_artwork(
+            colors=(
+                "white",
+                "black",
+            ),
+            fill_color="white",
+            envelope_mode=42,
         )
 
 
