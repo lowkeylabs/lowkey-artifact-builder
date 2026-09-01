@@ -17,9 +17,15 @@ import click
 from lowkey_artifact_builder.cli.display import (
     display_color_matches,
 )
+from lowkey_artifact_builder.config import (
+    get_resolver,
+)
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     create_build_plan,
+)
+from lowkey_artifact_builder.model import (
+    ProductRef,
 )
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
     ArtworkColorMatch,
@@ -38,12 +44,38 @@ def analyze_artifact_colors(
     Analyze color matches for one configured artifact.
 
     Analysis consumes the existing registered Artwork manifest identified
-    by build planning without executing the build.
+    by targeted build planning without executing the build.
     """
+
+    project_root = Path.cwd()
+
+    resolver = get_resolver(
+        artifact_id,
+        project_root=project_root,
+    )
+
+    model = resolver("model")
+    realization = resolver("realization")
+
+    if not isinstance(model, str):
+        raise RuntimeError("Artifact model must resolve to a string.")
+
+    if not isinstance(realization, str):
+        raise RuntimeError("Artifact realization must resolve to a string.")
+
+    target = ProductRef(
+        artifact=artifact_id,
+        model=model,
+        realization=realization,
+        stage="vector",
+        product="manifest",
+    )
 
     plan = create_build_plan(
         artifact_id,
-        project_root=Path.cwd(),
+        realization=realization,
+        targets=(target,),
+        project_root=project_root,
     )
 
     manifest = _registered_artwork_manifest(
