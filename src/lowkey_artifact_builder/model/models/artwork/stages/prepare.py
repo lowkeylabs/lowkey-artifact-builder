@@ -72,6 +72,8 @@ DEFAULT_OPTIMIZE = 0.2
 #
 DEFAULT_ALPHA_THRESHOLD = 128
 
+DEFAULT_ENVELOPE_MODE = "alpha"
+
 #
 # Small connected foreground regions below this size are treated as
 # source-image noise during envelope construction.
@@ -203,15 +205,20 @@ def execute(
     )
 
     #
-    # Determine meaningful source foreground and construct the
+    # Determine the configured envelope strategy and construct the
     # physical artwork envelope.
     #
-    foreground = _foreground_mask(
-        image,
-    )
+    try:
+        envelope_mode = context.resolver(
+            "artwork_envelope_mode",
+        )
 
-    envelope = _build_envelope(
-        foreground,
+    except KeyError:
+        envelope_mode = DEFAULT_ENVELOPE_MODE
+
+    envelope = _derive_envelope(
+        image,
+        mode=envelope_mode,
     )
 
     if not np.any(envelope):
@@ -1359,6 +1366,186 @@ def _load_source_image(
 # =========================================================
 # Foreground detection
 # =========================================================
+
+
+def _derive_envelope(
+    image: Image.Image,
+    *,
+    mode: str,
+) -> np.ndarray:
+    """
+    Derive the Artwork envelope using the configured model strategy.
+    """
+
+    if mode == "alpha":
+        foreground = _foreground_mask(
+            image,
+        )
+
+    elif mode == "shrink-wrap":
+        foreground = _shrink_wrap_foreground_mask(
+            image,
+        )
+
+    else:
+        raise PrepareError(f"Unsupported artwork envelope mode: {mode!r}.")
+
+    return _build_envelope(
+        foreground,
+    )
+
+
+def _shrink_wrap_foreground_mask(
+    image: Image.Image,
+) -> np.ndarray:
+    """
+    Return source foreground after excluding exterior-connected background.
+
+    Exterior background color is inferred from the source boundary.
+    Pixels matching that exterior background are excluded only when they
+    are connected to the source boundary.
+
+    Enclosed matching-color regions therefore remain part of the Artwork
+    domain.
+    """
+
+    rgba = np.asarray(
+        image,
+        dtype=np.uint8,
+    )
+
+    if rgba.ndim != 3 or rgba.shape[2] != 4:
+        raise PrepareError("Shrink-wrap source image must be RGBA.")
+
+    height, width = rgba.shape[:2]
+
+    if height < 1 or width < 1:
+        raise PrepareError("Shrink-wrap source image cannot be empty.")
+
+    #
+    # Determine the dominant RGB value occurring on the source boundary.
+    # This is the candidate exterior-background color.
+    #
+    boundary = np.concatenate(
+        (
+            rgba[
+                0,
+                :,
+                :3,
+            ],
+            rgba[
+                height - 1,
+                :,
+                :3,
+            ],
+            rgba[
+                :,
+                0,
+                :3,
+            ],
+            rgba[
+                :,
+                width - 1,
+                :3,
+            ],
+        ),
+        axis=0,
+    )
+
+    colors, counts = np.unique(
+        boundary,
+        axis=0,
+        return_counts=True,
+    )
+
+    background_rgb = colors[
+        int(
+            np.argmax(
+                counts,
+            )
+        )
+    ]
+
+    background_candidate = np.all(
+        rgba[
+            :,
+            :,
+            :3,
+        ]
+        == background_rgb,
+        axis=2,
+    ) & (
+        rgba[
+            :,
+            :,
+            3,
+        ]
+        >= DEFAULT_ALPHA_THRESHOLD
+    )
+
+    #
+    # Only candidate-background pixels connected to the image boundary
+    # belong to the exterior. Matching pixels enclosed by Artwork are
+    # deliberately retained.
+    #
+    seeds = np.zeros(
+        (
+            height,
+            width,
+        ),
+        dtype=bool,
+    )
+
+    seeds[
+        0,
+        :,
+    ] = background_candidate[
+        0,
+        :,
+    ]
+
+    seeds[
+        height - 1,
+        :,
+    ] = background_candidate[
+        height - 1,
+        :,
+    ]
+
+    seeds[
+        :,
+        0,
+    ] |= background_candidate[
+        :,
+        0,
+    ]
+
+    seeds[
+        :,
+        width - 1,
+    ] |= background_candidate[
+        :,
+        width - 1,
+    ]
+
+    exterior = np.asarray(
+        ndimage.binary_propagation(
+            seeds,
+            mask=background_candidate,
+        ),
+        dtype=bool,
+    )
+
+    meaningful = (
+        rgba[
+            :,
+            :,
+            3,
+        ]
+        >= DEFAULT_ALPHA_THRESHOLD
+    )
+
+    return meaningful & ~exterior
 
 
 def _foreground_mask(

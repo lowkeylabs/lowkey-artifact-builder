@@ -113,23 +113,29 @@ def _resolver(
     *,
     colors: list[str] | None = None,
     fill_color: str = "white",
+    envelope_mode: str | None = None,
 ) -> StubResolver:
     """
     Return standard prepare-stage configuration.
     """
 
+    values: dict[str, Any] = {
+        "artwork_colors": (
+            colors
+            if colors is not None
+            else [
+                "white",
+                "black",
+            ]
+        ),
+        "artwork_fill_color": fill_color,
+    }
+
+    if envelope_mode is not None:
+        values["artwork_envelope_mode"] = envelope_mode
+
     return StubResolver(
-        {
-            "artwork_colors": (
-                colors
-                if colors is not None
-                else [
-                    "white",
-                    "black",
-                ]
-            ),
-            "artwork_fill_color": fill_color,
-        }
+        values,
     )
 
 
@@ -523,6 +529,176 @@ def test_prepare_temporary_raster_is_stage_local_and_removed(
 
     assert trace.is_file()
     assert envelope.is_file()
+
+
+# =========================================================
+# Artwork envelope semantics
+# =========================================================
+
+
+def test_prepare_defaults_to_alpha_envelope_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Artwork preparation defaults to alpha envelope derivation when no
+    envelope mode is explicitly configured.
+    """
+
+    source = tmp_path / "source.png"
+
+    _write_source(
+        source,
+    )
+
+    context = StubContext(
+        inputs={
+            "source": source,
+        },
+        outputs={
+            "trace": tmp_path / "trace.svg",
+            "envelope": tmp_path / "envelope.svg",
+        },
+        resolver=_resolver(),
+    )
+
+    observed_modes: list[str] = []
+
+    def observed_derive_envelope(
+        image: Image.Image,
+        *,
+        mode: str,
+    ) -> np.ndarray:
+        observed_modes.append(
+            mode,
+        )
+
+        return prepare._build_envelope(
+            prepare._foreground_mask(
+                image,
+            )
+        )
+
+    monkeypatch.setattr(
+        prepare,
+        "_derive_envelope",
+        observed_derive_envelope,
+    )
+
+    monkeypatch.setattr(
+        prepare,
+        "_trace_multicolor",
+        _fake_trace_multicolor,
+    )
+
+    monkeypatch.setattr(
+        prepare,
+        "_clip_trace_to_envelope",
+        lambda trace_path, artwork_envelope: None,
+    )
+
+    prepare.execute(context)  # type: ignore[arg-type]
+
+    assert observed_modes == [
+        "alpha",
+    ]
+
+
+def test_alpha_envelope_mode_preserves_existing_alpha_behavior() -> None:
+    """
+    Alpha envelope mode preserves the existing alpha-derived envelope
+    behavior.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (
+            40,
+            40,
+        ),
+        (
+            255,
+            255,
+            255,
+            255,
+        ),
+    )
+
+    try:
+        expected = prepare._build_envelope(
+            prepare._foreground_mask(
+                image,
+            )
+        )
+
+        envelope = prepare._derive_envelope(
+            image,
+            mode="alpha",
+        )
+
+        assert np.array_equal(
+            envelope,
+            expected,
+        )
+
+    finally:
+        image.close()
+
+
+def test_shrink_wrap_envelope_mode_excludes_opaque_exterior_background() -> None:
+    """
+    Shrink-wrap excludes opaque exterior background that alpha envelope
+    derivation would otherwise treat as Artwork.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (
+            60,
+            60,
+        ),
+        (
+            255,
+            255,
+            255,
+            255,
+        ),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        for y in range(
+            15,
+            45,
+        ):
+            for x in range(
+                15,
+                45,
+            ):
+                pixels[x, y] = (
+                    0,
+                    0,
+                    0,
+                    255,
+                )
+
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        assert not envelope[0, 0]
+        assert not envelope[0, 59]
+        assert not envelope[59, 0]
+        assert not envelope[59, 59]
+
+        assert envelope[30, 30]
+
+    finally:
+        image.close()
 
 
 # =========================================================
