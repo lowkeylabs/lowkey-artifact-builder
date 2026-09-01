@@ -94,6 +94,39 @@ The envelope represents the outer region belonging to the artwork.
 
 Pixels outside the envelope do not belong to the Artwork.
 
+Artwork envelope derivation is controlled by:
+
+```text
+artwork_envelope_mode
+```
+
+Supported envelope modes are:
+
+```text
+alpha
+shrink-wrap
+```
+
+The default envelope mode is:
+
+```text
+alpha
+```
+
+`alpha` derives the Artwork envelope from meaningful source alpha.
+
+`shrink-wrap` derives a conservative non-concave outer envelope by
+distinguishing exterior background from enclosed Artwork.
+
+Shrink-wrap classification depends on whether source regions belong to
+the exterior background, not merely on their color. An enclosed Artwork
+region is not excluded solely because its color also occurs in the
+exterior background.
+
+Envelope derivation affects interpretation of the source Artwork. It does
+not alter the registered coordinate system or the semantics of downstream
+Artwork products.
+
 Prepared artwork is reduced to the configured Artwork color palette.
 
 Otherwise unassigned pixels inside the envelope are assigned the configured:
@@ -309,6 +342,7 @@ Artwork defines or consumes:
 source
 artwork_colors
 artwork_fill_color
+artwork_envelope_mode
 artwork_pixels
 artwork_min_island_area
 artwork_island_connectivity
@@ -323,6 +357,23 @@ artwork_raise
 `artwork_fill_color` defines the semantic color assigned to otherwise
 unassigned pixels inside the Artwork envelope. It defaults to `white` and
 must be present in `artwork_colors`.
+
+
+`artwork_envelope_mode` defines how the Artwork envelope is derived from
+the source image. It defaults to `alpha`.
+
+Supported envelope modes are:
+
+```text
+alpha
+shrink-wrap
+```
+
+`alpha` derives the envelope from meaningful source alpha.
+
+`shrink-wrap` derives a conservative non-concave outer envelope by
+distinguishing exterior background from enclosed Artwork. Exterior
+classification is not determined by color equality alone.
 
 `artwork_pixels` defines raster processing resolution.
 
@@ -413,68 +464,53 @@ manifest's stage-local product location.
 A conforming Artwork implementation satisfies the following:
 
 1. Artwork consumes a materialized raster source image.
-
 2. Prepared Artwork is limited to its derived artwork envelope.
-
-3. Prepared Artwork uses the configured semantic color palette.
-
-4. Otherwise unassigned pixels inside the Artwork envelope use
+3. Artwork envelope derivation is controlled by `artwork_envelope_mode`.
+4. `artwork_envelope_mode` defaults to `alpha`.
+5. `alpha` envelope derivation determines meaningful source foreground from
+   source alpha.
+6. `shrink-wrap` envelope derivation produces a conservative non-concave
+   outer envelope by distinguishing exterior background from enclosed
+   Artwork.
+7. Shrink-wrap does not exclude an enclosed Artwork region solely because
+   its color also occurs in the exterior background.
+8. Prepared Artwork uses the configured semantic color palette.
+9. Otherwise unassigned pixels inside the Artwork envelope use
    `artwork_fill_color`, which must be present in `artwork_colors`.
-
-5. Raster color layers use one common registered coordinate system.
-
-6. Raster color regions are mutually exclusive.
-
-7. Raster island cleanup is defined in raster pixel space rather than
-   physical space.
-
-8. Raster processing is independent of physical `artwork_size`.
-
-9. Vector color layers use one common registered coordinate system.
-
-10. Vector processing is independent of physical `artwork_size`.
-
-11. The vector manifest records the common `registered_extent`.
-
-12. The Artwork envelope uses the same registered coordinate system as the
+10. Raster color layers use one common registered coordinate system.
+11. Raster color regions are mutually exclusive.
+12. Raster island cleanup is defined in raster pixel space rather than
+    physical space.
+13. Raster processing is independent of physical `artwork_size`.
+14. Vector color layers use one common registered coordinate system.
+15. Vector processing is independent of physical `artwork_size`.
+16. The vector manifest records the common `registered_extent`.
+17. The Artwork envelope uses the same registered coordinate system as the
     vector color layers.
-
-13. The Artwork envelope represents the outer occupied region of registered
+18. The Artwork envelope represents the outer occupied region of registered
     Artwork.
-
-14. The `registered_extent` defines the common registered coordinate system;
+19. The `registered_extent` defines the common registered coordinate system;
     the envelope defines the occupied region within that coordinate system.
-
-15. All registration-preserving transformations are applied consistently to
+20. All registration-preserving transformations are applied consistently to
     the Artwork envelope and every registered color layer.
-
-16. A consumer may determine Artwork containment from the registered envelope
+21. A consumer may determine Artwork containment from the registered envelope
     without independently determining the bounds of individual color layers.
-
-17. Registered vector Artwork has no predetermined physical manufacturing
+22. Registered vector Artwork has no predetermined physical manufacturing
     size.
-
-18. Semantic color identity is preserved through the color-separated
+23. Semantic color identity is preserved through the color-separated
     products.
-
-19. Registered vector Artwork is a reusable intermediate product.
-
-20. Standalone physical dimensionalization begins at extrusion.
-
-21. Standalone extrusion uniformly maps `registered_extent` to
+24. Registered vector Artwork is a reusable intermediate product.
+25. Standalone physical dimensionalization begins at extrusion.
+26. Standalone extrusion uniformly maps `registered_extent` to
     `artwork_size`.
-
-22. All color layers receive the same dimensional transformation and
+27. All color layers receive the same dimensional transformation and
     remain registered.
-
-23. Standalone extrusion uses `artwork_raise` as the physical Z height.
-
-24. Standalone packaging produces a multicomponent printable 3MF.
-
-25. Artwork does not provide an underlying structural base.
-
-26. Another model can consume registered vector Artwork without requiring
+28. Standalone extrusion uses `artwork_raise` as the physical Z height.
+29. Standalone packaging produces a multicomponent printable 3MF.
+30. Artwork does not provide an underlying structural base.
+31. Another model can consume registered vector Artwork without requiring
     standalone Artwork extrusion or packaging.
+
 
 ## Scope
 
