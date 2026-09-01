@@ -17,6 +17,7 @@ from lowkey_artifact_builder.model.models.artwork.color_analysis import (
     analyze_color_matches,
     analyze_registered_artwork_colors,
     load_registered_artwork_colors,
+    recommend_registered_artwork_palettes,
 )
 
 # =========================================================
@@ -602,3 +603,255 @@ def test_registered_artwork_analysis_does_not_mutate_configuration(
 
     assert printer_colors == ["printer-red"]
     assert library_colors == ["library-red"]
+
+
+# =========================================================
+# Registered Artwork palette recommendation
+# =========================================================
+
+
+def test_registered_artwork_palette_recommendation_uses_resolved_availability(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork recommendations use resolved printer and library colors.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 100,
+                "products": [
+                    {
+                        "index": 1,
+                        "path": "color-1.svg",
+                        "name": "artwork-red",
+                        "color": {
+                            "red": 250,
+                            "green": 10,
+                            "blue": 10,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": [
+                "white",
+                "printer-red",
+            ],
+            "library_colors": [
+                "white",
+                "library-red",
+            ],
+        },
+        colors={
+            "white": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(255, 255, 255),
+            ),
+            "printer-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(220, 0, 0),
+            ),
+            "library-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(240, 5, 5),
+            ),
+            "catalog-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(249, 9, 9),
+            ),
+        },
+    )
+
+    recommendations = recommend_registered_artwork_palettes(
+        manifest=manifest,
+        resolver=resolver,
+        palette_size=2,
+        mandatory=("white",),
+    )
+
+    assert tuple(color.name for color in recommendations.printer.colors) == (
+        "white",
+        "printer-red",
+    )
+
+    assert tuple(color.name for color in recommendations.library.colors) == (
+        "white",
+        "library-red",
+    )
+
+    assert tuple(color.name for color in recommendations.catalog.colors) == (
+        "white",
+        "catalog-red",
+    )
+
+
+def test_registered_artwork_palette_recommendation_excludes_synthetic_catalog_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Physical-catalog recommendations exclude synthetic test colors.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 100,
+                "products": [
+                    {
+                        "index": 1,
+                        "path": "color-1.svg",
+                        "name": "artwork-red",
+                        "color": {
+                            "red": 255,
+                            "green": 0,
+                            "blue": 0,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": [
+                "white",
+                "test-red",
+            ],
+            "library_colors": [
+                "white",
+                "test-red",
+            ],
+        },
+        colors={
+            "white": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(255, 255, 255),
+            ),
+            "test-red": _catalog_color(
+                manufacturer="test",
+                rgb=(255, 0, 0),
+            ),
+            "physical-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(240, 0, 0),
+            ),
+        },
+    )
+
+    recommendations = recommend_registered_artwork_palettes(
+        manifest=manifest,
+        resolver=resolver,
+        palette_size=2,
+        mandatory=("white",),
+    )
+
+    assert tuple(color.name for color in recommendations.printer.colors) == (
+        "white",
+        "test-red",
+    )
+
+    assert tuple(color.name for color in recommendations.library.colors) == (
+        "white",
+        "test-red",
+    )
+
+    assert tuple(color.name for color in recommendations.catalog.colors) == (
+        "white",
+        "physical-red",
+    )
+
+
+def test_registered_artwork_palette_recommendation_does_not_mutate_configuration(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork recommendation does not mutate color configuration.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 100,
+                "products": [
+                    {
+                        "index": 1,
+                        "path": "color-1.svg",
+                        "name": "artwork-red",
+                        "color": {
+                            "red": 250,
+                            "green": 10,
+                            "blue": 10,
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    printer_colors = [
+        "white",
+        "printer-red",
+    ]
+
+    library_colors = [
+        "white",
+        "library-red",
+    ]
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": printer_colors,
+            "library_colors": library_colors,
+        },
+        colors={
+            "white": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(255, 255, 255),
+            ),
+            "printer-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(220, 0, 0),
+            ),
+            "library-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(240, 5, 5),
+            ),
+            "catalog-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(249, 9, 9),
+            ),
+        },
+    )
+
+    recommend_registered_artwork_palettes(
+        manifest=manifest,
+        resolver=resolver,
+        palette_size=2,
+        mandatory=("white",),
+    )
+
+    assert printer_colors == [
+        "white",
+        "printer-red",
+    ]
+
+    assert library_colors == [
+        "white",
+        "library-red",
+    ]

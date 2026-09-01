@@ -234,6 +234,61 @@ def analyze_registered_artwork_colors(
     )
 
 
+def recommend_registered_artwork_palettes(
+    *,
+    manifest: Path,
+    resolver: ColorAnalysisResolver,
+    palette_size: int,
+    mandatory: Sequence[str] = (),
+) -> ArtworkPaletteRecommendations:
+    """
+    Recommend palettes for registered Artwork using resolved availability.
+
+    Artwork semantic colors are read from the persistent registered
+    Artwork manifest.
+
+    Printer and library candidates are selected by their resolved
+    configuration values.
+
+    Catalog-wide candidates are physical filament entries from the
+    complete color catalog. Synthetic test entries remain available
+    when explicitly selected by printer or library configuration but
+    are excluded from physical catalog-wide recommendation.
+    """
+
+    artwork_colors = load_registered_artwork_colors(
+        manifest,
+    )
+
+    printer_colors = _resolve_catalog_colors(
+        resolver,
+        "printer_colors",
+    )
+
+    library_colors = _resolve_catalog_colors(
+        resolver,
+        "library_colors",
+    )
+
+    catalog_colors = tuple(
+        _palette_color(
+            name,
+            entry,
+        )
+        for name, entry in resolver.colors.items()
+        if _is_physical_catalog_color(entry)
+    )
+
+    return recommend_artwork_palettes(
+        artwork_colors=artwork_colors,
+        printer_colors=printer_colors,
+        library_colors=library_colors,
+        catalog_colors=catalog_colors,
+        palette_size=palette_size,
+        mandatory=mandatory,
+    )
+
+
 def _resolve_catalog_colors(
     resolver: ColorAnalysisResolver,
     parameter: str,
@@ -467,4 +522,5 @@ __all__ = [
     "analyze_registered_artwork_colors",
     "load_registered_artwork_colors",
     "recommend_artwork_palettes",
+    "recommend_registered_artwork_palettes",
 ]
