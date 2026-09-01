@@ -17,6 +17,27 @@ from lowkey_artifact_builder.model.validation import (
 )
 
 
+def _validate_outer_ridge_width(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require outer-ridge width to be nonnegative.
+    """
+
+    ridge_width = resolver(
+        "shape_outer_ridge_width",
+    )
+
+    if not isinstance(
+        ridge_width,
+        int | float,
+    ):
+        raise ConfigError("shape_outer_ridge_width must be numeric.")
+
+    if ridge_width < 0:
+        raise ConfigError("shape_outer_ridge_width must be greater than or equal to 0.")
+
+
 def _validate_outer_ridge_raise(
     resolver: ConfigurationResolver,
 ) -> None:
@@ -100,8 +121,11 @@ VALIDATORS = (
         ),
         validate=_validate_polygon_sides,
     ),
+    ConfigurationValidator(
+        parameters=("shape_outer_ridge_width",),
+        validate=_validate_outer_ridge_width,
+    ),
 )
-
 
 __all__ = [
     "VALIDATORS",

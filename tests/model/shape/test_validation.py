@@ -70,6 +70,7 @@ def _validate_shape(
         "shape_geometry": "circle",
         "shape_sides": 8,
         "shape_base_raise": 2.0,
+        "shape_outer_ridge_width": 0.0,
         "shape_outer_ridge_raise": 1.0,
     }
 
@@ -82,6 +83,61 @@ def _validate_shape(
             resolved_values,
         ),
         validators=VALIDATORS,
+    )
+
+
+def _shape_compose_execution_plan(
+    *,
+    resolver: StubResolver,
+    compose_state: ProductState,
+) -> tuple[
+    BuildPlan,
+    ExecutionPlan,
+]:
+    """
+    Construct a Shape execution plan with the requested persistent
+    state for every compose product.
+    """
+
+    compose_spec = next(stage for stage in MODEL.stages if stage.name == "compose")
+
+    compose = PlannedStage(
+        spec=compose_spec,
+        inputs=(),
+        products=tuple(
+            PlannedProduct(
+                spec=product,
+                path=(Path("/project/artifacts/example/shape/default/20-compose") / product.path),
+            )
+            for product in compose_spec.products
+        ),
+    )
+
+    build_plan = BuildPlan(
+        artifact_id="example",
+        model=MODEL,
+        realization_name="default",
+        resolver=resolver,  # type: ignore[arg-type]
+        project_root=Path("/project"),
+        artifact_dir=Path("/project/artifacts/example"),
+        stages=(compose,),
+    )
+
+    execution_plan = ExecutionPlan(
+        artifact_id="example",
+        model_name="shape",
+        realization="default",
+        stages=(
+            PlannedStageExecution(
+                stage_name="compose",
+                product_states=tuple(compose_state for _ in compose.products),
+            ),
+        ),
+    )
+
+    return (
+        build_plan,
+        execution_plan,
     )
 
 
@@ -432,4 +488,93 @@ def test_shape_non_polygon_does_not_require_valid_polygon_side_count() -> None:
             "shape_base_raise": 2.0,
             "shape_outer_ridge_raise": 1.0,
         }
+    )
+
+
+def test_shape_outer_ridge_width_may_be_zero() -> None:
+    """
+    Zero ridge width validly disables the outer ridge.
+    """
+
+    _validate_shape(
+        {
+            "shape_outer_ridge_width": 0.0,
+        }
+    )
+
+
+def test_shape_outer_ridge_width_may_be_positive() -> None:
+    """
+    Positive ridge width validly enables the outer ridge.
+    """
+
+    _validate_shape(
+        {
+            "shape_outer_ridge_width": 2.0,
+        }
+    )
+
+
+def test_shape_outer_ridge_width_cannot_be_negative() -> None:
+    """
+    Negative outer-ridge width is invalid Shape configuration.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_outer_ridge_width",
+    ):
+        _validate_shape(
+            {
+                "shape_outer_ridge_width": -0.1,
+            }
+        )
+
+
+def test_invalid_shape_ridge_width_fails_when_compose_requires_execution() -> None:
+    """
+    Invalid ridge width is validated when composition must execute.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_outer_ridge_width": -0.1,
+        }
+    )
+
+    build_plan, execution_plan = _shape_compose_execution_plan(
+        resolver=resolver,
+        compose_state=ProductState.ABSENT,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_outer_ridge_width",
+    ):
+        validate_execution(
+            build_plan,
+            execution_plan,
+        )
+
+
+def test_invalid_historical_shape_ridge_width_does_not_block_current_compose() -> None:
+    """
+    Invalid historical ridge width is not revalidated when composition
+    products are already current.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_outer_ridge_width": -0.1,
+        }
+    )
+
+    build_plan, execution_plan = _shape_compose_execution_plan(
+        resolver=resolver,
+        compose_state=ProductState.CURRENT,
+    )
+
+    validate_execution(
+        build_plan,
+        execution_plan,
     )
