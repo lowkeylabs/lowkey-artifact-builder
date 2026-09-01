@@ -159,3 +159,77 @@ def test_artwork_color_analysis_keeps_availability_scopes_independent() -> None:
 
     assert result.catalog.distance < result.library.distance
     assert result.library.distance < result.printer.distance
+
+
+def test_artwork_color_analysis_excludes_synthetic_catalog_colors() -> None:
+    """
+    Catalog-wide matching excludes synthetic colors reserved for tests.
+    """
+
+    artwork = PaletteColor(
+        name="artwork-red",
+        rgb=(255, 0, 0),
+    )
+
+    analysis = analyze_color_matches(
+        artwork_colors=(artwork,),
+        printer_colors=(
+            PaletteColor(
+                name="printer-red",
+                rgb=(200, 0, 0),
+            ),
+        ),
+        library_colors=(
+            PaletteColor(
+                name="library-red",
+                rgb=(210, 0, 0),
+            ),
+        ),
+        catalog_colors=(
+            PaletteColor(
+                name="test-red",
+                rgb=(255, 0, 0),
+            ),
+            PaletteColor(
+                name="fire-engine-red",
+                rgb=(240, 0, 0),
+            ),
+        ),
+        synthetic_catalog_colors=("test-red",),
+    )
+
+    assert analysis[0].catalog.color.name == "fire-engine-red"
+
+
+def test_artwork_color_analysis_allows_synthetic_printer_colors() -> None:
+    """
+    Synthetic colors remain usable in explicitly configured printer candidates.
+    """
+
+    artwork = PaletteColor(
+        name="artwork-red",
+        rgb=(255, 0, 0),
+    )
+
+    test_red = PaletteColor(
+        name="test-red",
+        rgb=(255, 0, 0),
+    )
+
+    analysis = analyze_color_matches(
+        artwork_colors=(artwork,),
+        printer_colors=(test_red,),
+        library_colors=(test_red,),
+        catalog_colors=(
+            test_red,
+            PaletteColor(
+                name="physical-red",
+                rgb=(240, 0, 0),
+            ),
+        ),
+        synthetic_catalog_colors=("test-red",),
+    )
+
+    assert analysis[0].printer.color is test_red
+    assert analysis[0].library.color is test_red
+    assert analysis[0].catalog.color.name == "physical-red"

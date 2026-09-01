@@ -7,7 +7,10 @@ Artwork color-match analysis.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import (
+    Collection,
+    Sequence,
+)
 from dataclasses import dataclass
 
 from lowkey_artifact_builder.colors import (
@@ -41,13 +44,18 @@ def analyze_color_matches(
     printer_colors: Sequence[PaletteColor],
     library_colors: Sequence[PaletteColor],
     catalog_colors: Sequence[PaletteColor],
+    synthetic_catalog_colors: Collection[str] = (),
 ) -> tuple[ArtworkColorMatch, ...]:
     """
     Analyze prepared Artwork colors against available color scopes.
 
     Each prepared Artwork semantic color is independently matched
-    against printer, library, and catalog candidates.
+    against printer, library, and physical-catalog candidates.
     """
+
+    physical_catalog_colors = tuple(
+        color for color in catalog_colors if color.name not in synthetic_catalog_colors
+    )
 
     return tuple(
         ArtworkColorMatch(
@@ -62,7 +70,7 @@ def analyze_color_matches(
             ),
             catalog=match_color(
                 artwork,
-                catalog_colors,
+                physical_catalog_colors,
             ),
         )
         for artwork in artwork_colors
