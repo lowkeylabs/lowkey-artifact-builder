@@ -156,3 +156,29 @@ def test_invalid_shape_color_fails_through_shared_color_mechanism(
             resolver("shape_base_color"),
             resolver.colors,
         )
+
+
+def test_shape_ridge_color_derivation_does_not_validate_base_color(
+    tmp_path: Path,
+) -> None:
+    """
+    Ridge-color derivation does not enforce Shape configuration validity.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "parameters": {
+                "shape_base_color": "",
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert resolver("shape_outer_ridge_color") == ""

@@ -41,22 +41,14 @@ def derive_shape_outer_ridge_color(
 
     An explicitly configured shape_outer_ridge_color value overrides
     this derivation through normal configuration resolution.
+
+    Shape configuration validity is enforced separately by the model's
+    configuration validators.
     """
 
-    shape_base_color = resolver(
+    return resolver(
         "shape_base_color",
     )
-
-    if (
-        not isinstance(
-            shape_base_color,
-            str,
-        )
-        or not shape_base_color.strip()
-    ):
-        raise ValueError("shape_base_color must be a non-empty color name.")
-
-    return shape_base_color.strip()
 
 
 def derive_shape_artwork_fill_color(
