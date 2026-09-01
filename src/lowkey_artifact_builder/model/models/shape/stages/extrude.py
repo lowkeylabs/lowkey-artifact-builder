@@ -42,6 +42,9 @@ BASE_COMPONENT_PATH = "base.stl"
 RIDGE_COMPONENT_NAME = "ridge"
 RIDGE_COMPONENT_PATH = "ridge.stl"
 
+ARTWORK_FILL_COMPONENT_NAME = "artwork-fill"
+ARTWORK_FILL_COMPONENT_PATH = "artwork-fill.stl"
+
 
 # =========================================================
 # Registered geometry
@@ -111,6 +114,19 @@ class RegisteredPolygonRidge:
 
     outer: RegisteredPolygon
     inner: RegisteredPolygon
+
+
+@dataclass(frozen=True)
+class RegisteredArtworkFill:
+    """
+    Registered Shape-owned Artwork-fill geometry.
+
+    The fill occupies the registered Shape interior outside the transformed
+    authoritative Artwork envelope.
+    """
+
+    outer_boundary: dict[str, object]
+    inner_boundary: dict[str, object]
 
 
 type RegisteredRidge = RegisteredCircleRidge | RegisteredSquareRidge | RegisteredPolygonRidge
@@ -196,6 +212,10 @@ def execute(
 
     try:
         artwork = _load_composed_artwork(
+            composition_manifest,
+        )
+
+        artwork_fill = _load_artwork_fill(
             composition_manifest,
         )
 
@@ -293,12 +313,27 @@ def execute(
                 shape_artwork_raise=shape_artwork_raise,
             )
 
+        artwork_fill_components: tuple[
+            tuple[str, str],
+            ...,
+        ] = ()
+
+        if artwork_fill is not None:
+            artwork_fill_components = _render_artwork_fill_component(
+                artwork_fill,
+                manifest.parent,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+                shape_artwork_raise=shape_artwork_raise,
+            )
+
         _write_component_manifest(
             manifest,
             components,
             base_color=shape_base_color,
             ridge_color=shape_outer_ridge_color,
             artwork_components=artwork_components,
+            artwork_fill_components=artwork_fill_components,
         )
 
         if not manifest.is_file():
@@ -324,6 +359,51 @@ def execute(
 # =========================================================
 # Physical component production
 # =========================================================
+
+
+def _render_artwork_fill_component(
+    artwork_fill: RegisteredArtworkFill,
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_artwork_raise: float,
+) -> tuple[
+    tuple[str, str],
+    ...,
+]:
+    """
+    Dimensionalize the persistent registered Artwork-fill region.
+
+    Artwork fill receives the same Shape-owned physical X/Y mapping and
+    physical Z interval as incorporated Artwork.
+    """
+
+    output_path = output_directory / ARTWORK_FILL_COMPONENT_PATH
+
+    source = _build_artwork_fill_scad(
+        artwork_fill,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+        shape_artwork_raise=shape_artwork_raise,
+    )
+
+    render_stl_source(
+        source,
+        output_path,
+    )
+
+    _require_component(
+        output_path,
+        component_name=ARTWORK_FILL_COMPONENT_NAME,
+    )
+
+    return (
+        (
+            ARTWORK_FILL_COMPONENT_NAME,
+            ARTWORK_FILL_COMPONENT_PATH,
+        ),
+    )
 
 
 def _render_artwork_components(
@@ -1170,12 +1250,19 @@ def _write_component_manifest(
         tuple[str, str, dict[str, object]],
         ...,
     ] = (),
+    artwork_fill_components: tuple[
+        tuple[str, str],
+        ...,
+    ] = (),
 ) -> None:
     """
     Write the physical-component manifest for Shape extrusion.
 
     Structural and incorporated Artwork components preserve their semantic
     printing-color identity for downstream packaging.
+
+    Artwork fill is retained as a distinct physical component. Its semantic
+    color is assigned by the later fill-color slice.
     """
 
     colors = {
@@ -1207,6 +1294,17 @@ def _write_component_manifest(
                 "name": name,
                 "path": component_path,
                 "color": color,
+            }
+        )
+
+    for (
+        name,
+        component_path,
+    ) in artwork_fill_components:
+        manifest_components.append(
+            {
+                "name": name,
+                "path": component_path,
             }
         )
 
@@ -1331,6 +1429,284 @@ def _build_scad(
         ),
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+    )
+
+
+def _build_artwork_fill_scad(
+    artwork_fill: RegisteredArtworkFill,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_artwork_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for Shape-owned Artwork fill.
+
+    Registered fill geometry is dimensionalized using Shape's physical X/Y
+    size and receives the same physical Z interval as incorporated Artwork.
+    """
+
+    outer = _build_registered_fill_boundary_scad(
+        artwork_fill.outer_boundary,
+        shape_size=shape_size,
+    )
+
+    inner = _build_registered_fill_boundary_scad(
+        artwork_fill.inner_boundary,
+        shape_size=shape_size,
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_artwork_raise = {shape_artwork_raise:g};\n"
+        "\n"
+        "module registered_artwork_fill_outer_boundary() {\n"
+        f"{_indent_scad(outer, 4)}"
+        "}\n"
+        "\n"
+        "module registered_artwork_fill_inner_boundary() {\n"
+        f"{_indent_scad(inner, 4)}"
+        "}\n"
+        "\n"
+        "translate([0, 0, shape_base_raise])\n"
+        "    linear_extrude(\n"
+        "        height = shape_artwork_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        difference() {\n"
+        "            registered_artwork_fill_outer_boundary();\n"
+        "            registered_artwork_fill_inner_boundary();\n"
+        "        }\n"
+    )
+
+
+def _build_registered_fill_boundary_scad(
+    boundary: dict[str, object],
+    *,
+    shape_size: float,
+) -> str:
+    """
+    Build physical OpenSCAD geometry from one persisted registered boundary.
+    """
+
+    boundary_type = boundary.get(
+        "type",
+    )
+
+    if boundary_type == "circle":
+        cx = (
+            _registered_fill_number(
+                boundary,
+                "cx",
+                boundary_type="circle",
+            )
+            * shape_size
+        )
+
+        cy = (
+            _registered_fill_number(
+                boundary,
+                "cy",
+                boundary_type="circle",
+            )
+            * shape_size
+        )
+
+        radius = (
+            _registered_fill_number(
+                boundary,
+                "r",
+                boundary_type="circle",
+            )
+            * shape_size
+        )
+
+        return f"translate([{cx:g}, {cy:g}, 0])\n    circle(r = {radius:g}, $fn = 256);\n"
+
+    if boundary_type == "rect":
+        x = (
+            _registered_fill_number(
+                boundary,
+                "x",
+                boundary_type="rect",
+            )
+            * shape_size
+        )
+
+        y = (
+            _registered_fill_number(
+                boundary,
+                "y",
+                boundary_type="rect",
+            )
+            * shape_size
+        )
+
+        width = (
+            _registered_fill_number(
+                boundary,
+                "width",
+                boundary_type="rect",
+            )
+            * shape_size
+        )
+
+        height = (
+            _registered_fill_number(
+                boundary,
+                "height",
+                boundary_type="rect",
+            )
+            * shape_size
+        )
+
+        return (
+            f"translate([{x:g}, {y:g}, 0])\n    square([{width:g}, {height:g}], center = false);\n"
+        )
+
+    if boundary_type in {
+        "polygon",
+        "path",
+    }:
+        points = boundary.get(
+            "points",
+        )
+
+        if not isinstance(
+            points,
+            list,
+        ):
+            raise ValueError(f"Registered Artwork-fill {boundary_type} boundary requires points.")
+
+        physical_points: list[str] = []
+
+        for point in points:
+            if not isinstance(
+                point,
+                dict,
+            ):
+                raise ValueError(
+                    f"Registered Artwork-fill {boundary_type} point must be an object."
+                )
+
+            x = (
+                _registered_fill_number(
+                    point,
+                    "x",
+                    boundary_type=boundary_type,
+                )
+                * shape_size
+            )
+
+            y = (
+                _registered_fill_number(
+                    point,
+                    "y",
+                    boundary_type=boundary_type,
+                )
+                * shape_size
+            )
+
+            physical_points.append(
+                f"[{x:g}, {y:g}]",
+            )
+
+        return (
+            "polygon(points = ["
+            + ", ".join(
+                physical_points,
+            )
+            + "]);\n"
+        )
+
+    if boundary_type == "group":
+        children = boundary.get(
+            "children",
+        )
+
+        if not isinstance(
+            children,
+            list,
+        ):
+            raise ValueError("Registered Artwork-fill group boundary requires children.")
+
+        child_sources: list[str] = []
+
+        for child in children:
+            if not isinstance(
+                child,
+                dict,
+            ):
+                raise ValueError("Registered Artwork-fill group child must be an object.")
+
+            child_sources.append(
+                _build_registered_fill_boundary_scad(
+                    child,
+                    shape_size=shape_size,
+                )
+            )
+
+        return (
+            "union() {\n"
+            + "".join(
+                _indent_scad(
+                    child,
+                    4,
+                )
+                for child in child_sources
+            )
+            + "}\n"
+        )
+
+    raise ValueError(f"Unsupported registered Artwork-fill boundary type: {boundary_type!r}.")
+
+
+def _registered_fill_number(
+    data: dict[str, object],
+    name: str,
+    *,
+    boundary_type: object,
+) -> float:
+    """
+    Return one numeric value from persistent registered fill geometry.
+    """
+
+    value = data.get(
+        name,
+    )
+
+    if not isinstance(
+        value,
+        int | float,
+    ) or isinstance(
+        value,
+        bool,
+    ):
+        raise ValueError(
+            f"Registered Artwork-fill {boundary_type!r} boundary requires numeric {name!r}."
+        )
+
+    return float(
+        value,
+    )
+
+
+def _indent_scad(
+    source: str,
+    spaces: int,
+) -> str:
+    """
+    Indent generated OpenSCAD source.
+    """
+
+    prefix = " " * spaces
+
+    return "".join(
+        prefix + line
+        for line in source.splitlines(
+            keepends=True,
+        )
     )
 
 
@@ -2139,6 +2515,61 @@ def _composition_has_artwork(
             "artwork",
         )
         is not None
+    )
+
+
+def _load_artwork_fill(
+    composition_manifest: Path,
+) -> RegisteredArtworkFill | None:
+    """
+    Load persistent registered Artwork-fill geometry.
+
+    Extrusion consumes the compose-stage fill contract directly rather than
+    rediscovering the Artwork envelope or reconstructing fill policy.
+    """
+
+    data = json.loads(
+        composition_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    artwork_fill = data.get(
+        "artwork_fill",
+    )
+
+    if artwork_fill is None:
+        return None
+
+    if not isinstance(
+        artwork_fill,
+        dict,
+    ):
+        raise ValueError("Registered Shape composition Artwork fill must be an object.")
+
+    outer_boundary = artwork_fill.get(
+        "outer_boundary",
+    )
+
+    inner_boundary = artwork_fill.get(
+        "inner_boundary",
+    )
+
+    if not isinstance(
+        outer_boundary,
+        dict,
+    ):
+        raise ValueError("Registered Shape composition Artwork fill requires an outer boundary.")
+
+    if not isinstance(
+        inner_boundary,
+        dict,
+    ):
+        raise ValueError("Registered Shape composition Artwork fill requires an inner boundary.")
+
+    return RegisteredArtworkFill(
+        outer_boundary=outer_boundary,
+        inner_boundary=inner_boundary,
     )
 
 

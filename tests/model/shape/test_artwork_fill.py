@@ -15,7 +15,7 @@ from unittest.mock import Mock
 import pytest
 
 from lowkey_artifact_builder.engine import StageContext
-from lowkey_artifact_builder.model.models.shape.stages import compose
+from lowkey_artifact_builder.model.models.shape.stages import compose, extrude
 
 # =========================================================
 # Helpers
@@ -1290,3 +1290,394 @@ def test_persistent_artwork_fill_remains_registered_and_self_contained(
     assert "shape_base_raise" not in serialized
     assert "shape_artwork_raise" not in serialized
     assert '"z"' not in serialized.lower()
+
+
+# =========================================================
+# Physical Artwork-fill dimensionalization
+# =========================================================
+
+
+def _write_physical_fill_composition(
+    composition: Path,
+) -> None:
+    """
+    Write representative registered Shape geometry for fill extrusion.
+    """
+
+    composition.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="-0.5 -0.5 1 1">'
+            '<circle id="shape-boundary" cx="0" cy="0" r="0.5"/>'
+            '<circle id="ridge-inner-boundary" cx="0" cy="0" r="0.45"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_physical_fill_artwork_component(
+    path: Path,
+) -> None:
+    """
+    Write one representative registered Artwork component.
+    """
+
+    path.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'viewBox="0 0 16 16">'
+            '<rect x="2" y="3" width="12" height="10"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_physical_fill_manifest(
+    path: Path,
+    *,
+    artwork_fill: dict[str, object] | None,
+) -> None:
+    """
+    Write a persistent Shape composition manifest for physical fill tests.
+
+    Incorporated Artwork is retained so the tests exercise the actual
+    Artwork-fill case rather than a fill detached from Artwork.
+    """
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_component = path.parent / "white.svg"
+
+    _write_physical_fill_artwork_component(
+        artwork_component,
+    )
+
+    path.write_text(
+        json.dumps(
+            {
+                "composition": "composition.svg",
+                "artwork": {
+                    "registered_extent": {
+                        "width": 16.0,
+                        "height": 16.0,
+                    },
+                    "transform": {
+                        "scale": 0.05,
+                        "translate_x": -0.4,
+                        "translate_y": -0.4,
+                    },
+                    "components": [
+                        {
+                            "index": 1,
+                            "path": artwork_component.name,
+                            "name": "white",
+                            "color": {
+                                "red": 255,
+                                "green": 255,
+                                "blue": 255,
+                            },
+                        },
+                    ],
+                },
+                "artwork_fill": artwork_fill,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _physical_fill_region() -> dict[str, object]:
+    """
+    Return representative persisted registered Artwork-fill geometry.
+    """
+
+    return {
+        "outer_boundary": {
+            "type": "circle",
+            "cx": 0.0,
+            "cy": 0.0,
+            "r": 0.45,
+        },
+        "inner_boundary": {
+            "type": "rect",
+            "x": -0.30,
+            "y": -0.25,
+            "width": 0.60,
+            "height": 0.50,
+        },
+    }
+
+
+def _physical_fill_extrude_context(
+    *,
+    composition: Path,
+    composition_manifest: Path,
+    output_manifest: Path,
+) -> Mock:
+    """
+    Configure Shape extrusion for Artwork-fill dimensionalization tests.
+    """
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    inputs = {
+        "compose.composition": composition,
+        "compose.manifest": composition_manifest,
+    }
+
+    outputs = {
+        "manifest": output_manifest,
+    }
+
+    values = {
+        "shape_size": 100.0,
+        "shape_base_raise": 2.0,
+        "shape_base_color": "white",
+        "shape_outer_ridge_color": "white",
+        "shape_outer_ridge_raise": 1.0,
+        "shape_outer_ridge_style": "integrated",
+        "shape_artwork_raise": 0.6,
+    }
+
+    context.input.side_effect = inputs.__getitem__
+    context.output.side_effect = outputs.__getitem__
+    context.resolver.side_effect = values.__getitem__
+
+    context.resolver.colors = {
+        "white": {
+            "red": 255,
+            "green": 255,
+            "blue": 255,
+        },
+    }
+
+    return context
+
+
+def test_extrude_produces_no_artwork_fill_component_when_fill_is_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Disabled registered Artwork fill does not become a physical component.
+
+    Incorporated Artwork continues through physical dimensionalization, but
+    extrusion must not infer fill geometry when persistent composition declares
+    that no fill exists.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    output_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_physical_fill_composition(
+        composition,
+    )
+    _write_physical_fill_manifest(
+        composition_manifest,
+        artwork_fill=None,
+    )
+
+    rendered_paths: list[Path] = []
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        del source
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+        rendered_paths.append(
+            output,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    context = _physical_fill_extrude_context(
+        composition=composition,
+        composition_manifest=composition_manifest,
+        output_manifest=output_manifest,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    products = json.loads(
+        output_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    component_names = {component["name"] for component in products["components"]}
+
+    assert "base" in component_names
+    assert "artwork-1" in component_names
+    assert "artwork-fill" not in component_names
+
+    assert all(path.name != "artwork-fill.stl" for path in rendered_paths)
+
+
+def test_extrude_produces_artwork_fill_component_when_fill_is_enabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Persisted registered Artwork fill becomes a distinct physical component.
+
+    Fill does not replace the structural base or incorporated Artwork.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    output_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_physical_fill_composition(
+        composition,
+    )
+    _write_physical_fill_manifest(
+        composition_manifest,
+        artwork_fill=_physical_fill_region(),
+    )
+
+    rendered_paths: list[Path] = []
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        del source
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+        rendered_paths.append(
+            output,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    context = _physical_fill_extrude_context(
+        composition=composition,
+        composition_manifest=composition_manifest,
+        output_manifest=output_manifest,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    products = json.loads(
+        output_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    component_names = {component["name"] for component in products["components"]}
+
+    assert "base" in component_names
+    assert "artwork-fill" in component_names
+    assert "artwork-1" in component_names
+
+    assert tmp_path / "extrude" / "artwork-fill.stl" in rendered_paths
+
+
+def test_artwork_fill_uses_shape_artwork_physical_interval(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Artwork fill receives Shape-owned physical X/Y and Artwork Z dimensions.
+
+    For a 100 mm Shape with a 2 mm base and 0.6 mm Artwork raise, fill is
+    dimensionalized using the Shape's 100 mm X/Y mapping and occupies
+    Z = 2.0 through 2.6 mm.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    output_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_physical_fill_composition(
+        composition,
+    )
+    _write_physical_fill_manifest(
+        composition_manifest,
+        artwork_fill=_physical_fill_region(),
+    )
+
+    rendered_sources: dict[str, str] = {}
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+        rendered_sources[output.name] = source
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    context = _physical_fill_extrude_context(
+        composition=composition,
+        composition_manifest=composition_manifest,
+        output_manifest=output_manifest,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    fill_source = rendered_sources["artwork-fill.stl"]
+
+    assert "shape_size = 100;" in fill_source
+    assert "shape_base_raise = 2;" in fill_source
+    assert "shape_artwork_raise = 0.6;" in fill_source
+
+    assert "translate([0, 0, shape_base_raise])" in fill_source
+
+    assert "height = shape_artwork_raise" in fill_source
+
+    assert "circle(r = 45, $fn = 256);" in fill_source
+    assert "square([60, 50], center = false);" in fill_source
