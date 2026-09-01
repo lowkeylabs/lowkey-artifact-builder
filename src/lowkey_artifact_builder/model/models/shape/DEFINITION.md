@@ -1892,7 +1892,7 @@ A conforming initial Shape implementation satisfies the following:
 
 71. Outer-ridge style does not change the physical Z origin or raise of
     incorporated Artwork or Artwork fill.
-    
+
 
 ## Initial Scope
 

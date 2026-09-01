@@ -117,6 +117,7 @@ def execute(
                 name=_component_name(
                     context.artifact_id,
                     physical_component.name,
+                    physical_component.color.name,
                 ),
                 mesh=load_stl(
                     physical_component.path,
@@ -360,27 +361,28 @@ def _load_component_color(
 def _component_name(
     artifact_id: str,
     component_name: str,
+    color_name: str,
 ) -> str:
     """
     Return the semantic 3MF object name for a Shape component.
 
-    Object naming combines artifact identity with the semantic component role
-    declared by extrusion rather than depending on the component's filesystem
-    name or semantic color.
+    Object naming combines artifact identity, the semantic component role
+    declared by extrusion, and the semantic printing-color identity
+    established upstream.
 
-    Component identity and color identity remain distinct. Changing a
-    component's semantic color therefore does not change the identity of the
-    physical component.
+    The component name remains independent from its filesystem name. Color
+    identity is included in the packaged object name while remaining explicit
+    packaging metadata on the component itself.
 
     For example:
 
-        coaster-base
-        coaster-ridge
-        ornament-artwork-1
-        ornament-artwork-2
+        coaster-base-cold-white
+        coaster-ridge-red
+        ornament-artwork-1-black
+        ornament-artwork-2-gold
     """
 
-    return f"{artifact_id}-{component_name}"
+    return f"{artifact_id}-{component_name}-{color_name}"
 
 
 __all__ = [
