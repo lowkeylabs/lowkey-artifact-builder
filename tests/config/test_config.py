@@ -717,6 +717,42 @@ printer_colors = ["test-red", "test-white", "test-blue"]
     assert artwork_fill_color in artwork_colors
 
 
+def test_explicit_artwork_colors_do_not_change_fill_color_derivation(
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit Artwork colors do not influence fill-color derivation.
+
+    Unless explicitly configured itself, artwork_fill_color derives from
+    printer_colors even when artwork_colors has been independently
+    configured.
+    """
+
+    _write_workspace(
+        tmp_path,
+        """
+[parameters]
+printer_colors = ["test-red", "test-white", "test-blue"]
+artwork_colors = ["test-red", "test-blue"]
+""".lstrip(),
+    )
+
+    resolver = get_resolver(
+        "nydeli",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    assert resolver("artwork_colors") == [
+        "test-red",
+        "test-blue",
+    ]
+    assert resolver("artwork_fill_color") == "test-white"
+
+    assert resolver.source("artwork_colors") == "workspace (overrides derived)"
+    assert resolver.source("artwork_fill_color") == "derived"
+
+
 def test_artwork_envelope_mode_is_a_model_default(
     tmp_path: Path,
 ) -> None:
