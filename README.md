@@ -78,7 +78,7 @@ A workspace might contain:
 ```text
 customer-project/
 ├── workspace.toml
-├── 2121_stuart.png
+├── clean_bg_house.png
 ├── goldberry.png
 └── artifacts/
 ```
@@ -92,7 +92,7 @@ An artifact is an individual object managed by the build system.
 Every artifact has an `artifact_id`, for example:
 
 ```text
-2121_stuart
+clean_bg_house
 goldberry
 fan_district
 ```

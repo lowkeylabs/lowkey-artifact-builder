@@ -34,18 +34,18 @@ from lowkey_artifact_builder.model.models.shape.stages import compose, extrude, 
 # =========================================================
 
 
-def _build_2121_stuart_registered_artwork(
+def _build_clean_bg_house_registered_artwork(
     project_root: Path,
 ) -> Path:
     """
-    Build the real 2121_stuart fixture through registered Artwork vectorization.
+    Build the real clean_bg_house fixture through registered Artwork vectorization.
     """
 
-    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "2121_stuart.png"
+    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "clean_bg_house.png"
 
     assert fixture.is_file()
 
-    source = project_root / "2121_stuart.png"
+    source = project_root / "clean_bg_house.png"
 
     shutil.copyfile(
         fixture,
@@ -64,17 +64,17 @@ artwork_island_connectivity = 8
     )
 
     write_artifact_config(
-        "2121_stuart",
+        "clean_bg_house",
         {
             "model": "artwork",
-            "source": "2121_stuart.png",
+            "source": "clean_bg_house.png",
             "artwork_size": 200.0,
         },
         project_root=project_root,
     )
 
     plan = create_build_plan(
-        "2121_stuart",
+        "clean_bg_house",
         project_root=project_root,
     )
 
@@ -85,7 +85,7 @@ artwork_island_connectivity = 8
     return (
         project_root
         / "artifacts"
-        / "2121_stuart"
+        / "clean_bg_house"
         / "artwork"
         / "default"
         / "30-vector"
@@ -93,11 +93,11 @@ artwork_island_connectivity = 8
     )
 
 
-def _build_2121_stuart_shape_components(
+def _build_clean_bg_house_shape_components(
     project_root: Path,
 ) -> Path:
     """
-    Produce the real 2121_stuart physical Artwork components for packaging.
+    Produce the real clean_bg_house physical Artwork components for packaging.
 
     The Shape reproduces the reported regression case:
 
@@ -107,7 +107,7 @@ def _build_2121_stuart_shape_components(
         2 mm outer ridge
     """
 
-    vector_manifest = _build_2121_stuart_registered_artwork(
+    vector_manifest = _build_clean_bg_house_registered_artwork(
         project_root,
     )
 
@@ -1945,11 +1945,11 @@ def test_package_stage_preserves_mixed_structural_and_artwork_components(
 
 
 @pytest.mark.slow
-def test_real_2121_stuart_package_preserves_artwork_physical_geometry(
+def test_real_clean_bg_house_package_preserves_artwork_physical_geometry(
     tmp_path: Path,
 ) -> None:
     """
-    Shape packaging preserves the real 2121_stuart physical Artwork geometry.
+    Shape packaging preserves the real clean_bg_house physical Artwork geometry.
 
     The real registered Artwork is composed into the reported 120 mm
     seven-sided Shape with a 2 mm outer ridge and physically dimensionalized
@@ -1960,7 +1960,7 @@ def test_real_2121_stuart_package_preserves_artwork_physical_geometry(
     center, crop, or otherwise reinterpret the geometry.
     """
 
-    manifest = _build_2121_stuart_shape_components(
+    manifest = _build_clean_bg_house_shape_components(
         tmp_path,
     )
 
@@ -1997,7 +1997,7 @@ def test_real_2121_stuart_package_preserves_artwork_physical_geometry(
     context = Mock(
         spec=StageContext,
     )
-    context.artifact_id = "2121_stuart_shape"
+    context.artifact_id = "clean_bg_house_shape"
     context.input.return_value = manifest
     context.output.return_value = artifact
 
@@ -2059,22 +2059,22 @@ def test_real_2121_stuart_package_preserves_artwork_physical_geometry(
 
 
 @pytest.mark.slow
-def test_real_2121_stuart_end_to_end_shape_compose_contains_registered_artwork(
+def test_real_clean_bg_house_end_to_end_shape_compose_contains_registered_artwork(
     tmp_path: Path,
 ) -> None:
     """
     A normal Shape build persists its bound registered Artwork in composition.
 
-    The configured Shape consumes the real 2121_stuart Artwork vector manifest.
+    The configured Shape consumes the real clean_bg_house Artwork vector manifest.
     Normal dependency planning and execution must therefore carry that
     registered Artwork into the persistent Shape composition manifest.
     """
 
-    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "2121_stuart.png"
+    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "clean_bg_house.png"
 
     assert fixture.is_file()
 
-    source = tmp_path / "2121_stuart.png"
+    source = tmp_path / "clean_bg_house.png"
 
     shutil.copyfile(
         fixture,
@@ -2093,17 +2093,17 @@ artwork_island_connectivity = 8
     )
 
     write_artifact_config(
-        "2121_stuart",
+        "clean_bg_house",
         {
             "model": "artwork",
-            "source": "2121_stuart.png",
+            "source": "clean_bg_house.png",
             "artwork_size": 200.0,
         },
         project_root=tmp_path,
     )
 
     write_artifact_config(
-        "2121_stuart_shape",
+        "clean_bg_house_shape",
         {
             "model": "shape",
             "shape_geometry": "polygon",
@@ -2113,7 +2113,7 @@ artwork_island_connectivity = 8
             "shape_outer_ridge_width": 2.0,
             "product_dependencies": {
                 "manifest": {
-                    "artifact": "2121_stuart",
+                    "artifact": "clean_bg_house",
                     "model": "artwork",
                     "realization": "default",
                     "stage": "vector",
@@ -2125,7 +2125,7 @@ artwork_island_connectivity = 8
     )
 
     plans = create_build_plans(
-        "2121_stuart_shape",
+        "clean_bg_house_shape",
         project_root=tmp_path,
     )
 
@@ -2136,7 +2136,7 @@ artwork_island_connectivity = 8
     compose_manifest = (
         tmp_path
         / "artifacts"
-        / "2121_stuart_shape"
+        / "clean_bg_house_shape"
         / "shape"
         / "default"
         / "20-compose"
@@ -2166,23 +2166,23 @@ artwork_island_connectivity = 8
 
 
 @pytest.mark.slow
-def test_real_2121_stuart_end_to_end_shape_extrude_contains_artwork_components(
+def test_real_clean_bg_house_end_to_end_shape_extrude_contains_artwork_components(
     tmp_path: Path,
 ) -> None:
     """
     A normal Shape build propagates incorporated Artwork into extrusion.
 
-    The configured Shape consumes the real 2121_stuart registered Artwork
+    The configured Shape consumes the real clean_bg_house registered Artwork
     manifest. Normal dependency planning and execution must therefore produce
     physical Artwork components in the Shape extrusion manifest before
     packaging begins.
     """
 
-    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "2121_stuart.png"
+    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "clean_bg_house.png"
 
     assert fixture.is_file()
 
-    source = tmp_path / "2121_stuart.png"
+    source = tmp_path / "clean_bg_house.png"
 
     shutil.copyfile(
         fixture,
@@ -2201,17 +2201,17 @@ artwork_island_connectivity = 8
     )
 
     write_artifact_config(
-        "2121_stuart",
+        "clean_bg_house",
         {
             "model": "artwork",
-            "source": "2121_stuart.png",
+            "source": "clean_bg_house.png",
             "artwork_size": 200.0,
         },
         project_root=tmp_path,
     )
 
     write_artifact_config(
-        "2121_stuart_shape",
+        "clean_bg_house_shape",
         {
             "model": "shape",
             "shape_geometry": "polygon",
@@ -2221,7 +2221,7 @@ artwork_island_connectivity = 8
             "shape_outer_ridge_width": 2.0,
             "product_dependencies": {
                 "manifest": {
-                    "artifact": "2121_stuart",
+                    "artifact": "clean_bg_house",
                     "model": "artwork",
                     "realization": "default",
                     "stage": "vector",
@@ -2233,7 +2233,7 @@ artwork_island_connectivity = 8
     )
 
     plans = create_build_plans(
-        "2121_stuart_shape",
+        "clean_bg_house_shape",
         project_root=tmp_path,
     )
 
@@ -2244,7 +2244,7 @@ artwork_island_connectivity = 8
     extrude_manifest = (
         tmp_path
         / "artifacts"
-        / "2121_stuart_shape"
+        / "clean_bg_house_shape"
         / "shape"
         / "default"
         / "30-extrude"
@@ -2280,7 +2280,7 @@ artwork_island_connectivity = 8
 
 
 @pytest.mark.slow
-def test_real_2121_stuart_end_to_end_shape_package_fills_placement_circle(
+def test_real_clean_bg_house_end_to_end_shape_package_fills_placement_circle(
     tmp_path: Path,
 ) -> None:
     """
@@ -2288,7 +2288,7 @@ def test_real_2121_stuart_end_to_end_shape_package_fills_placement_circle(
 
     The reported regression case is built through normal engine orchestration:
 
-        real 2121_stuart PNG
+        real clean_bg_house PNG
         -> registered Artwork
         -> 120 mm seven-sided Shape
         -> 2 mm outer ridge
@@ -2301,11 +2301,11 @@ def test_real_2121_stuart_end_to_end_shape_package_fills_placement_circle(
     dimensionalization, and packaging path rather than an isolated stage.
     """
 
-    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "2121_stuart.png"
+    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "clean_bg_house.png"
 
     assert fixture.is_file()
 
-    source = tmp_path / "2121_stuart.png"
+    source = tmp_path / "clean_bg_house.png"
 
     shutil.copyfile(
         fixture,
@@ -2324,17 +2324,17 @@ artwork_island_connectivity = 8
     )
 
     write_artifact_config(
-        "2121_stuart",
+        "clean_bg_house",
         {
             "model": "artwork",
-            "source": "2121_stuart.png",
+            "source": "clean_bg_house.png",
             "artwork_size": 200.0,
         },
         project_root=tmp_path,
     )
 
     write_artifact_config(
-        "2121_stuart_shape",
+        "clean_bg_house_shape",
         {
             "model": "shape",
             "shape_geometry": "polygon",
@@ -2344,7 +2344,7 @@ artwork_island_connectivity = 8
             "shape_outer_ridge_width": 2.0,
             "product_dependencies": {
                 "manifest": {
-                    "artifact": "2121_stuart",
+                    "artifact": "clean_bg_house",
                     "model": "artwork",
                     "realization": "default",
                     "stage": "vector",
@@ -2356,7 +2356,7 @@ artwork_island_connectivity = 8
     )
 
     plans = create_build_plans(
-        "2121_stuart_shape",
+        "clean_bg_house_shape",
         project_root=tmp_path,
     )
 
@@ -2364,7 +2364,7 @@ artwork_island_connectivity = 8
         plans,
     )
 
-    realization_root = tmp_path / "artifacts" / "2121_stuart_shape" / "shape" / "default"
+    realization_root = tmp_path / "artifacts" / "clean_bg_house_shape" / "shape" / "default"
 
     composition = realization_root / "20-compose" / "composition.svg"
 

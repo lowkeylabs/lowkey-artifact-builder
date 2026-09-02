@@ -30,22 +30,22 @@ from lowkey_artifact_builder.model.models.shape.stages import compose, extrude, 
 # =========================================================
 
 
-def _build_2121_stuart_registered_artwork(
+def _build_clean_bg_house_registered_artwork(
     project_root: Path,
 ) -> Path:
     """
-    Build the real 2121_stuart fixture through registered Artwork vectorization.
+    Build the real clean_bg_house fixture through registered Artwork vectorization.
 
     The source Artwork has artwork_size=200.0, matching the real artifact
     configuration. Shape nevertheless consumes its dimension-independent
     registered vector product and owns subsequent physical dimensionalization.
     """
 
-    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "2121_stuart.png"
+    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "clean_bg_house.png"
 
     assert fixture.is_file()
 
-    source = project_root / "2121_stuart.png"
+    source = project_root / "clean_bg_house.png"
 
     shutil.copyfile(
         fixture,
@@ -64,17 +64,17 @@ artwork_island_connectivity = 8
     )
 
     write_artifact_config(
-        "2121_stuart",
+        "clean_bg_house",
         {
             "model": "artwork",
-            "source": "2121_stuart.png",
+            "source": "clean_bg_house.png",
             "artwork_size": 200.0,
         },
         project_root=project_root,
     )
 
     plan = create_build_plan(
-        "2121_stuart",
+        "clean_bg_house",
         project_root=project_root,
     )
 
@@ -85,7 +85,7 @@ artwork_island_connectivity = 8
     return (
         project_root
         / "artifacts"
-        / "2121_stuart"
+        / "clean_bg_house"
         / "artwork"
         / "default"
         / "30-vector"
@@ -93,7 +93,7 @@ artwork_island_connectivity = 8
     )
 
 
-def _compose_2121_stuart_into_heptagon(
+def _compose_clean_bg_house_into_heptagon(
     project_root: Path,
     vector_manifest: Path,
 ) -> tuple[
@@ -101,7 +101,7 @@ def _compose_2121_stuart_into_heptagon(
     float,
 ]:
     """
-    Compose real 2121_stuart registered Artwork into the real Shape geometry.
+    Compose real clean_bg_house registered Artwork into the real Shape geometry.
 
     The Shape matches the reported artifact:
 
@@ -1314,22 +1314,22 @@ def test_small_offset_circular_artwork_is_physically_centered_after_extrusion(
 
 
 @pytest.mark.slow
-def test_real_2121_stuart_physically_fills_heptagon_placement_circle(
+def test_real_clean_bg_house_physically_fills_heptagon_placement_circle(
     tmp_path: Path,
 ) -> None:
     """
-    Real 2121_stuart Artwork fills the physical placement circle of the
+    Real clean_bg_house Artwork fills the physical placement circle of the
     reported 120 mm seven-sided Shape with a 2 mm outer ridge.
 
     This protects the complete registered-Artwork-to-physical-Shape scaling
     boundary using the real regression fixture rather than synthetic geometry.
     """
 
-    vector_manifest = _build_2121_stuart_registered_artwork(
+    vector_manifest = _build_clean_bg_house_registered_artwork(
         tmp_path,
     )
 
-    artwork, placement_radius = _compose_2121_stuart_into_heptagon(
+    artwork, placement_radius = _compose_clean_bg_house_into_heptagon(
         tmp_path,
         vector_manifest,
     )
@@ -1387,22 +1387,22 @@ def test_real_2121_stuart_physically_fills_heptagon_placement_circle(
 
 
 @pytest.mark.slow
-def test_real_2121_stuart_is_physically_centered_in_heptagon_placement_circle(
+def test_real_clean_bg_house_is_physically_centered_in_heptagon_placement_circle(
     tmp_path: Path,
 ) -> None:
     """
-    Real 2121_stuart Artwork remains centered after physical extrusion into
+    Real clean_bg_house Artwork remains centered after physical extrusion into
     the reported 120 mm seven-sided Shape with a 2 mm outer ridge.
 
     The union of all physically rendered Artwork components must share the
     Shape origin used by the common Artwork placement circle.
     """
 
-    vector_manifest = _build_2121_stuart_registered_artwork(
+    vector_manifest = _build_clean_bg_house_registered_artwork(
         tmp_path,
     )
 
-    artwork, _placement_radius = _compose_2121_stuart_into_heptagon(
+    artwork, _placement_radius = _compose_clean_bg_house_into_heptagon(
         tmp_path,
         vector_manifest,
     )
@@ -1454,11 +1454,11 @@ def test_real_2121_stuart_is_physically_centered_in_heptagon_placement_circle(
 
 
 @pytest.mark.slow
-def test_write_real_2121_stuart_artwork_placement_diagnostics(
+def test_write_real_clean_bg_house_artwork_placement_diagnostics(
     tmp_path: Path,
 ) -> None:
     """
-    Render physical diagnostics for the real 2121_stuart placement regression.
+    Render physical diagnostics for the real clean_bg_house placement regression.
 
     The diagnostic 3MF contains:
 
@@ -1472,11 +1472,11 @@ def test_write_real_2121_stuart_artwork_placement_diagnostics(
     All geometry is expressed in the same physical coordinate system.
     """
 
-    vector_manifest = _build_2121_stuart_registered_artwork(
+    vector_manifest = _build_clean_bg_house_registered_artwork(
         tmp_path,
     )
 
-    artwork, placement_radius = _compose_2121_stuart_into_heptagon(
+    artwork, placement_radius = _compose_clean_bg_house_into_heptagon(
         tmp_path,
         vector_manifest,
     )

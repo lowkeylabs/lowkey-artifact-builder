@@ -10,7 +10,7 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-added-large-files
-        exclude: ^(projects/.*\.png|tests/model/artwork/fixtures/2121_stuart\.png)$
+        exclude: ^(projects/.*\.png|tests/model/artwork/fixtures/clean_bg_house\.png)$
       - id: check-case-conflict
       - id: check-merge-conflict
       - id: check-toml

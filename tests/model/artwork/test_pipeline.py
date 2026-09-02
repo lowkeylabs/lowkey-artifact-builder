@@ -44,11 +44,11 @@ pytestmark = pytest.mark.slow
 # =========================================================
 
 
-def _build_2121_stuart_artwork(
+def _build_clean_bg_house_artwork(
     project_root: Path,
 ) -> Path:
     """
-    Build the real 2121_stuart Artwork fixture.
+    Build the real clean_bg_house Artwork fixture.
 
     The fixture reproduces the registered Artwork consumed by Shape in the
     regression case under investigation. Its physical artwork_size matches
@@ -56,11 +56,11 @@ def _build_2121_stuart_artwork(
     remains dimension-independent.
     """
 
-    fixture = Path(__file__).parent / "fixtures" / "2121_stuart.png"
+    fixture = Path(__file__).parent / "fixtures" / "clean_bg_house.png"
 
     assert fixture.is_file()
 
-    source = project_root / "2121_stuart.png"
+    source = project_root / "clean_bg_house.png"
 
     shutil.copyfile(
         fixture,
@@ -79,17 +79,17 @@ artwork_island_connectivity = 8
     )
 
     write_artifact_config(
-        "2121_stuart",
+        "clean_bg_house",
         {
             "model": "artwork",
-            "source": "2121_stuart.png",
+            "source": "clean_bg_house.png",
             "artwork_size": 200.0,
         },
         project_root=project_root,
     )
 
     plan = create_build_plan(
-        "2121_stuart",
+        "clean_bg_house",
         project_root=project_root,
     )
 
@@ -97,7 +97,7 @@ artwork_island_connectivity = 8
         plan,
     )
 
-    return project_root / "artifacts" / "2121_stuart" / "artwork" / "default"
+    return project_root / "artifacts" / "clean_bg_house" / "artwork" / "default"
 
 
 def _svg_occupied_bounds(
@@ -193,7 +193,7 @@ def _svg_occupied_bounds(
 
             if command is None:
                 raise AssertionError(
-                    f"2121_stuart regression fixture contains unexpected SVG path token: {token!r}"
+                    f"clean_bg_house regression fixture contains unexpected SVG path token: {token!r}"
                 )
 
             if command in {
@@ -287,7 +287,7 @@ def _svg_occupied_bounds(
                 continue
 
             raise AssertionError(
-                f"2121_stuart regression fixture contains unsupported SVG path command: {command!r}"
+                f"clean_bg_house regression fixture contains unsupported SVG path command: {command!r}"
             )
 
     assert points, f"SVG contains no supported occupied path geometry: {path}"
@@ -1032,11 +1032,11 @@ def test_artwork_pipeline_executes_named_realizations_independently(
     assert ornament_artifact != coaster_artifact
 
 
-def test_2121_stuart_registered_envelope_matches_registered_component_extent(
+def test_clean_bg_house_registered_envelope_matches_registered_component_extent(
     tmp_path: Path,
 ) -> None:
     """
-    The real 2121_stuart registered envelope and registered color components
+    The real clean_bg_house registered envelope and registered color components
     share one common occupied coordinate extent.
 
     The authoritative envelope used by Shape for placement must describe the
@@ -1044,7 +1044,7 @@ def test_2121_stuart_registered_envelope_matches_registered_component_extent(
     subsequently dimensionalizes.
     """
 
-    realization = _build_2121_stuart_artwork(
+    realization = _build_clean_bg_house_artwork(
         tmp_path,
     )
 
@@ -1085,11 +1085,11 @@ def test_2121_stuart_registered_envelope_matches_registered_component_extent(
     )
 
 
-def test_2121_stuart_registered_envelope_and_components_share_occupied_center(
+def test_clean_bg_house_registered_envelope_and_components_share_occupied_center(
     tmp_path: Path,
 ) -> None:
     """
-    The real 2121_stuart envelope and registered component union have the
+    The real clean_bg_house envelope and registered component union have the
     same occupied center.
 
     Shape centers the authoritative envelope in its placement circle. The
@@ -1097,7 +1097,7 @@ def test_2121_stuart_registered_envelope_and_components_share_occupied_center(
     being displaced within the envelope used for fitting.
     """
 
-    realization = _build_2121_stuart_artwork(
+    realization = _build_clean_bg_house_artwork(
         tmp_path,
     )
 

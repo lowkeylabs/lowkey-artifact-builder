@@ -306,9 +306,9 @@ For example:
 
 ```text
 artifacts/
-├── 2121_stuart.3mf
+├── clean_bg_house.3mf
 │
-└── 2121_stuart/
+└── clean_bg_house/
     ├── holder/
     │   ├── model.scad
     │   └── model.stl
