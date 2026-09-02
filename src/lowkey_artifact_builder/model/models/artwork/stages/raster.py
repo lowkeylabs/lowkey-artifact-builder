@@ -262,10 +262,12 @@ def execute(
             )
         )
 
-        assignments = assign_colors(
+        assignment_result = assign_colors(
             measured_colors,
             palette,
         )
+
+        assignments = assignment_result.assignments
 
         bounds = _square_bounds(
             trace,

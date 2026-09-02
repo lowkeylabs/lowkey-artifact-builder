@@ -21,7 +21,10 @@ from typing import Any
 import pytest
 from PIL import Image
 
-from lowkey_artifact_builder.colors import PaletteColor
+from lowkey_artifact_builder.colors import (
+    ColorAssignmentResult,
+    PaletteColor,
+)
 from lowkey_artifact_builder.model.models.artwork.stages import raster
 
 # =========================================================
@@ -235,7 +238,10 @@ def test_raster_uses_declared_prepare_trace(
     monkeypatch.setattr(
         raster,
         "assign_colors",
-        lambda measured, palette: (assignment,),
+        lambda measured, palette: ColorAssignmentResult(
+            assignments=(assignment,),
+            distance=assignment.distance,
+        ),
     )
 
     monkeypatch.setattr(
@@ -357,7 +363,10 @@ def test_raster_places_dynamic_pngs_beside_declared_manifest(
     monkeypatch.setattr(
         raster,
         "assign_colors",
-        lambda measured, palette: (assignment,),
+        lambda measured, palette: ColorAssignmentResult(
+            assignments=(assignment,),
+            distance=assignment.distance,
+        ),
     )
 
     monkeypatch.setattr(

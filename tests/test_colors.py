@@ -494,7 +494,7 @@ def test_assign_colors_assigns_exact_matches() -> None:
     Exact measured colors map to their matching palette colors.
     """
 
-    assignments = assign_colors(
+    result = assign_colors(
         (
             MeasuredColor(
                 index=1,
@@ -549,6 +549,8 @@ def test_assign_colors_assigns_exact_matches() -> None:
         ),
     )
 
+    assignments = result.assignments
+
     assert tuple(assignment.color.name for assignment in assignments) == (
         "white",
         "red",
@@ -582,7 +584,7 @@ def test_assign_colors_preserves_measured_order() -> None:
         ),
     )
 
-    assignments = assign_colors(
+    result = assign_colors(
         measured,
         (
             PaletteColor(
@@ -604,6 +606,8 @@ def test_assign_colors_preserves_measured_order() -> None:
         ),
     )
 
+    assignments = result.assignments
+
     assert tuple(assignment.measured.index for assignment in assignments) == (
         7,
         3,
@@ -620,7 +624,7 @@ def test_assign_colors_uses_nearest_perceptual_matches() -> None:
     Near matches map to the perceptually closest palette colors.
     """
 
-    assignments = assign_colors(
+    result = assign_colors(
         (
             MeasuredColor(
                 index=1,
@@ -675,6 +679,8 @@ def test_assign_colors_uses_nearest_perceptual_matches() -> None:
         ),
     )
 
+    assignments = result.assignments
+
     assert tuple(assignment.color.name for assignment in assignments) == (
         "red",
         "black",
@@ -687,7 +693,7 @@ def test_assign_colors_is_one_to_one() -> None:
     Each palette color is assigned exactly once.
     """
 
-    assignments = assign_colors(
+    result = assign_colors(
         (
             MeasuredColor(
                 index=1,
@@ -726,6 +732,7 @@ def test_assign_colors_is_one_to_one() -> None:
         ),
     )
 
+    assignments = result.assignments
     names = [assignment.color.name for assignment in assignments]
 
     assert sorted(names) == [
@@ -823,7 +830,7 @@ def test_assign_colors_finds_global_minimum(
         fake_color_distance,
     )
 
-    assignments = assign_colors(
+    result = assign_colors(
         measured,
         palette,
     )
@@ -843,6 +850,8 @@ def test_assign_colors_finds_global_minimum(
     #
     # total = 3.1
     #
+
+    assignments = result.assignments
 
     assert tuple(assignment.color.name for assignment in assignments) == (
         "second",
@@ -905,7 +914,7 @@ def test_assign_colors_selects_one_color_from_multiple_candidates() -> None:
     One measured color selects its best match from a larger candidate set.
     """
 
-    assignments = assign_colors(
+    result = assign_colors(
         (
             MeasuredColor(
                 index=7,
@@ -944,6 +953,8 @@ def test_assign_colors_selects_one_color_from_multiple_candidates() -> None:
         ),
     )
 
+    assignments = result.assignments
+
     assert len(assignments) == 1
     assert assignments[0].measured.index == 7
     assert assignments[0].color.name == "red"
@@ -957,7 +968,7 @@ def test_assign_colors_selects_best_subset_from_larger_candidate_set() -> None:
     unused.
     """
 
-    assignments = assign_colors(
+    result = assign_colors(
         (
             MeasuredColor(
                 index=1,
@@ -1019,6 +1030,8 @@ def test_assign_colors_selects_best_subset_from_larger_candidate_set() -> None:
             ),
         ),
     )
+
+    assignments = result.assignments
 
     assert tuple(assignment.color.name for assignment in assignments) == (
         "red",
@@ -1919,3 +1932,163 @@ def test_recommend_palette_rejects_mandatory_color_not_in_candidates() -> None:
                 ),
             ),
         )
+
+
+def test_assign_colors_finds_global_minimum_from_larger_candidate_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Assignment selects the globally optimal distinct subset and pairing
+    when more candidates than measured colors are available.
+    """
+
+    measured = (
+        MeasuredColor(
+            index=1,
+            rgb=(1, 0, 0),
+        ),
+        MeasuredColor(
+            index=2,
+            rgb=(2, 0, 0),
+        ),
+    )
+
+    first = PaletteColor(
+        name="first",
+        rgb=(10, 0, 0),
+    )
+    second = PaletteColor(
+        name="second",
+        rgb=(20, 0, 0),
+    )
+    unused = PaletteColor(
+        name="unused",
+        rgb=(30, 0, 0),
+    )
+
+    distances = {
+        (measured[0].rgb, first.rgb): 1.0,
+        (measured[0].rgb, second.rgb): 2.0,
+        (measured[0].rgb, unused.rgb): 50.0,
+        (measured[1].rgb, first.rgb): 1.1,
+        (measured[1].rgb, second.rgb): 100.0,
+        (measured[1].rgb, unused.rgb): 50.0,
+    }
+
+    def fake_color_distance(
+        left: tuple[int, int, int],
+        right: tuple[int, int, int],
+    ) -> float:
+        return distances[(left, right)]
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.colors.color_distance",
+        fake_color_distance,
+    )
+
+    result = assign_colors(
+        measured,
+        (
+            first,
+            second,
+            unused,
+        ),
+    )
+
+    assignments = result.assignments
+
+    assert tuple(assignment.color.name for assignment in assignments) == (
+        "second",
+        "first",
+    )
+
+    assert tuple(assignment.distance for assignment in assignments) == pytest.approx(
+        (
+            2.0,
+            1.1,
+        )
+    )
+
+
+def test_assign_colors_preserves_candidate_order_for_equal_optima(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Equal-scoring assignments deterministically prefer candidate input order.
+    """
+
+    measured = (
+        MeasuredColor(
+            index=1,
+            rgb=(1, 0, 0),
+        ),
+    )
+
+    first = PaletteColor(
+        name="first",
+        rgb=(10, 0, 0),
+    )
+    second = PaletteColor(
+        name="second",
+        rgb=(20, 0, 0),
+    )
+    third = PaletteColor(
+        name="third",
+        rgb=(30, 0, 0),
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.colors.color_distance",
+        lambda left, right: 1.0,
+    )
+
+    result = assign_colors(
+        measured,
+        (
+            first,
+            second,
+            third,
+        ),
+    )
+
+    assignments = result.assignments
+
+    assert assignments[0].color is first
+    assert assignments[0].distance == pytest.approx(1.0)
+
+
+def test_assign_colors_exposes_aggregate_distance() -> None:
+    """
+    A complete color assignment exposes its aggregate perceptual distance.
+    """
+
+    result = assign_colors(
+        (
+            MeasuredColor(
+                index=1,
+                rgb=(250, 10, 10),
+            ),
+            MeasuredColor(
+                index=2,
+                rgb=(10, 10, 250),
+            ),
+        ),
+        (
+            PaletteColor(
+                name="red",
+                rgb=(255, 0, 0),
+            ),
+            PaletteColor(
+                name="blue",
+                rgb=(0, 0, 255),
+            ),
+            PaletteColor(
+                name="white",
+                rgb=(255, 255, 255),
+            ),
+        ),
+    )
+
+    assert result.distance == pytest.approx(
+        sum(assignment.distance for assignment in result.assignments)
+    )

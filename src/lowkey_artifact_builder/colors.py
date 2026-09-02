@@ -141,6 +141,29 @@ class ColorAssignment:
     frozen=True,
     slots=True,
 )
+class ColorAssignmentResult:
+    """
+    Complete one-to-one color assignment.
+
+    assignments:
+        Individual measured-to-palette color assignments.
+
+    distance:
+        Aggregate perceptual distance across all assignments.
+    """
+
+    assignments: tuple[
+        ColorAssignment,
+        ...,
+    ]
+
+    distance: float
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
 class ColorMatch:
     """
     Match of one requested color to one candidate color.
@@ -719,10 +742,7 @@ def recommend_palette(
 def assign_colors(
     measured: Sequence[MeasuredColor],
     palette: Sequence[PaletteColor],
-) -> tuple[
-    ColorAssignment,
-    ...,
-]:
+) -> ColorAssignmentResult:
     """
     Assign measured colors to palette colors.
 
@@ -806,7 +826,7 @@ def assign_colors(
     if best_assignment is None or best_distances is None or best_total is None:
         raise ColorError("Could not determine a color assignment.")
 
-    return tuple(
+    assignments = tuple(
         ColorAssignment(
             measured=measured_color,
             color=palette_color,
@@ -818,6 +838,11 @@ def assign_colors(
             best_distances,
             strict=True,
         )
+    )
+
+    return ColorAssignmentResult(
+        assignments=assignments,
+        distance=sum(assignment.distance for assignment in assignments),
     )
 
 
