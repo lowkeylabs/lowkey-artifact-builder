@@ -47,35 +47,29 @@ def _require_color_catalog(
     return resolver
 
 
-def _validate_fill_color_membership(
+def _validate_artifact_color_count(
     resolver: ConfigurationResolver,
 ) -> None:
     """
-    Require artwork_fill_color to belong to artwork_colors.
+    Require artifact_color_count to be a positive integer.
     """
 
-    colors = resolver(
-        "artwork_colors",
+    color_count = resolver(
+        "artifact_color_count",
     )
 
-    fill_color = resolver(
-        "artwork_fill_color",
-    )
-
-    if not isinstance(
-        fill_color,
-        str,
+    if (
+        not isinstance(
+            color_count,
+            int,
+        )
+        or isinstance(
+            color_count,
+            bool,
+        )
+        or color_count <= 0
     ):
-        raise ConfigError("artwork_fill_color must be a color name.")
-
-    if not isinstance(
-        colors,
-        list | tuple,
-    ) or not all(isinstance(color, str) for color in colors):
-        raise ConfigError("artwork_colors must be a sequence of color names.")
-
-    if fill_color not in colors:
-        raise ConfigError("artwork_fill_color must be present in artwork_colors.")
+        raise ConfigError("artifact_color_count must be a positive integer.")
 
 
 def _validate_envelope_mode(
@@ -116,14 +110,26 @@ def _validate_printer_colors(
     if not isinstance(
         colors,
         list | tuple,
-    ) or not all(isinstance(color, str) for color in colors):
+    ) or not all(
+        isinstance(
+            color,
+            str,
+        )
+        for color in colors
+    ):
         raise ConfigError("printer_colors must be a sequence of color names.")
 
     catalog = _require_color_catalog(
         resolver,
     )
 
-    unknown_colors = tuple(color for color in colors if not catalog.has_color(color))
+    unknown_colors = tuple(
+        color
+        for color in colors
+        if not catalog.has_color(
+            color,
+        )
+    )
 
     if unknown_colors:
         raise ConfigError(
@@ -147,14 +153,26 @@ def _validate_library_colors(
     if not isinstance(
         colors,
         list | tuple,
-    ) or not all(isinstance(color, str) for color in colors):
+    ) or not all(
+        isinstance(
+            color,
+            str,
+        )
+        for color in colors
+    ):
         raise ConfigError("library_colors must be a sequence of color names.")
 
     catalog = _require_color_catalog(
         resolver,
     )
 
-    unknown_colors = tuple(color for color in colors if not catalog.has_color(color))
+    unknown_colors = tuple(
+        color
+        for color in colors
+        if not catalog.has_color(
+            color,
+        )
+    )
 
     if unknown_colors:
         raise ConfigError(
@@ -166,11 +184,8 @@ def _validate_library_colors(
 
 VALIDATORS = (
     ConfigurationValidator(
-        parameters=(
-            "artwork_colors",
-            "artwork_fill_color",
-        ),
-        validate=_validate_fill_color_membership,
+        parameters=("artifact_color_count",),
+        validate=_validate_artifact_color_count,
     ),
     ConfigurationValidator(
         parameters=("artwork_envelope_mode",),

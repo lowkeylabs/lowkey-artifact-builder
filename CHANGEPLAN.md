@@ -5,7 +5,30 @@ permanent Artwork model specification:
 
 ```text
 src/lowkey_artifact_builder/model/models/artwork/DEFINITION.md
-````
+```
+
+# Status
+
+```text
+Phase 1 - Started
+Phase 2 - Not started
+Phase 3 - Not started
+Phase 4 - Not started
+Phase 5 - Not started
+Phase 6 - Not started
+Phase 7 - Not started
+Phase 8 - Not started
+Phase 9 - Not started
+```
+
+# Target
+
+This change plan realigns the Artwork implementation and CLI with the
+permanent Artwork model specification:
+
+```text
+src/lowkey_artifact_builder/model/models/artwork/DEFINITION.md
+```
 
 The permanent specification is authoritative.
 

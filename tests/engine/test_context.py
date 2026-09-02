@@ -801,16 +801,8 @@ def test_create_stage_context_preserves_unoverridden_parameters(
 
     assert context.resolver("artwork_pixels") == 2048
 
-    assert context.resolver("artwork_colors") == test_resolver(
-        "artwork_colors",
-    )
-
-    assert context.resolver("artwork_min_island_area") == test_resolver(
-        "artwork_min_island_area",
-    )
-
-    assert context.resolver("artwork_island_connectivity") == test_resolver(
-        "artwork_island_connectivity",
+    assert context.resolver("printer_colors") == test_resolver(
+        "printer_colors",
     )
 
 

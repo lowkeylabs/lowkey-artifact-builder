@@ -72,31 +72,30 @@ def test_artwork_prepare_external_input() -> None:
 
 def test_artwork_prepare_parameters() -> None:
     """
-    Artwork preparation consumes the artwork palette and configured
-    fill color.
+    Artwork preparation depends on trace cardinality and envelope policy.
+
+    Artifact colors are discovered by preparation rather than supplied
+    as configured physical colors.
     """
 
     stages = {stage.name: stage for stage in MODEL.stages}
 
     assert stages["prepare"].parameters == (
-        "artwork_colors",
-        "artwork_fill_color",
+        "artifact_color_count",
+        "artwork_envelope_mode",
     )
 
 
 def test_artwork_raster_is_independent_of_physical_size() -> None:
     """
-    Raster generation operates in raster coordinates and does not
-    depend on physical manufacturing dimensions.
-
-    Island cleanup is defined in the raster coordinate space, so
-    artwork_size must not participate in raster generation.
+    Raster generation establishes the printer realization in registered
+    raster coordinates without depending on physical manufacturing size.
     """
 
     stages = {stage.name: stage for stage in MODEL.stages}
 
     assert stages["raster"].parameters == (
-        "artwork_colors",
+        "printer_colors",
         "artwork_pixels",
         "artwork_min_island_area",
         "artwork_island_connectivity",
@@ -118,17 +117,15 @@ def test_artwork_vector_is_independent_of_physical_size() -> None:
 
 def test_artwork_extrude_introduces_physical_dimensions() -> None:
     """
-    Extrusion is the artwork model's physical dimensionalization boundary.
+    Extrusion is the Artwork model's physical dimensionalization boundary.
 
-    Registered vector geometry remains independent of manufacturing size
-    until extrusion, where physical artwork size and extrusion height are
-    introduced.
+    Printer assignment is persistent product information established
+    upstream rather than an extrusion configuration parameter.
     """
 
     stages = {stage.name: stage for stage in MODEL.stages}
 
     assert stages["extrude"].parameters == (
-        "artwork_colors",
         "artwork_size",
         "artwork_raise",
     )
@@ -160,20 +157,18 @@ def test_artwork_stage_products() -> None:
 
 def test_artwork_model_parameters() -> None:
     """
-    Model parameters include configuration consumed through inputs.
+    Artwork model parameters contain configuration actually required by
+    its declared stages and external inputs.
 
-    External input parameters participate in the model's complete
-    configuration requirements even though they are not ordinary stage
-    parameters.
-
-    Parameters consumed by multiple stages appear once, ordered by
-    their first occurrence in the model workflow.
+    Derived Artifact colors are product information rather than model
+    configuration.
     """
 
     assert MODEL.parameters == (
         "source",
-        "artwork_colors",
-        "artwork_fill_color",
+        "artifact_color_count",
+        "artwork_envelope_mode",
+        "printer_colors",
         "artwork_pixels",
         "artwork_min_island_area",
         "artwork_island_connectivity",

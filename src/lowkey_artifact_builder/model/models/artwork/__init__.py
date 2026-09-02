@@ -1,25 +1,16 @@
 """
-Artwork vector stage.
+Artwork model definition.
 
-The vector stage converts registered raster color layers into
-registered vector geometry without assigning physical manufacturing
-dimensions.
+The Artwork model converts source raster artwork into registered
+multicolor geometry and, when required, physically dimensionalized
+printable components.
 
-The raster manifest identifies the dynamically generated raster layers
-that participate in this stage. One common square crop is calculated
-from the union of all raster layers and applied to every layer so that
-registration is preserved.
+Artifact colors are discovered from the source artwork during
+preparation. Physical printer-color assignments are established during
+rasterization and preserved as product information downstream.
 
-Each cropped raster layer is traced by Inkscape. All resulting SVG
-documents retain the common coordinate system established by the
-registered raster crop.
-
-Physical dimensionalization is the responsibility of a downstream
-consumer.
-
-Filesystem layout, dependency resolution, and configuration resolution
-are responsibilities of the build engine. This implementation consumes
-only the paths and values supplied through StageContext.
+Filesystem layout, dependency resolution, configuration resolution,
+and execution planning are responsibilities of the build engine.
 """
 # File: src/lowkey_artifact_builder/model/models/artwork/__init__.py
 # Copyright 2026 LowKeyLabs LLC
@@ -77,7 +68,10 @@ STAGES = (
     StageSpec(
         id=10,
         name="prepare",
-        description=("Trace the source artwork using the configured artwork palette."),
+        description=(
+            "Trace the source artwork using the configured Artifact "
+            "color count and derive its envelope."
+        ),
         inputs=(
             InputSpec(
                 name="source",
@@ -89,8 +83,8 @@ STAGES = (
             ),
         ),
         parameters=(
-            "artwork_colors",
-            "artwork_fill_color",
+            "artifact_color_count",
+            "artwork_envelope_mode",
         ),
         products=(
             ProductSpec(
@@ -108,10 +102,13 @@ STAGES = (
     StageSpec(
         id=20,
         name="raster",
-        description=("Build registered, mutually exclusive raster color layers."),
+        description=(
+            "Build registered, mutually exclusive raster color layers "
+            "and establish printer-color assignments."
+        ),
         dependencies=("prepare",),
         parameters=(
-            "artwork_colors",
+            "printer_colors",
             "artwork_pixels",
             "artwork_min_island_area",
             "artwork_island_connectivity",
@@ -122,7 +119,8 @@ STAGES = (
                 path="products.json",
                 description=(
                     "Manifest describing the generated raster color "
-                    "layers and their artwork color assignments."
+                    "layers and their Artifact and printer color "
+                    "assignments."
                 ),
             ),
         ),
@@ -140,17 +138,16 @@ STAGES = (
             ProductSpec(
                 name="manifest",
                 path="products.json",
-                description=("Manifest describing the generated vector color layers."),
+                description=("Manifest describing the generated registered vector color layers."),
             ),
         ),
     ),
     StageSpec(
         id=40,
         name="extrude",
-        description=("Extrude vector color layers into printable STL components."),
+        description=("Extrude registered vector color layers into printable STL components."),
         dependencies=("vector",),
         parameters=(
-            "artwork_colors",
             "artwork_size",
             "artwork_raise",
         ),
@@ -160,7 +157,7 @@ STAGES = (
                 path="products.json",
                 description=(
                     "Manifest describing the generated artwork STL "
-                    "components and their artwork colors."
+                    "components and their preserved color assignments."
                 ),
             ),
         ),
@@ -179,6 +176,7 @@ STAGES = (
         ),
     ),
 )
+
 
 # =========================================================
 # Model
@@ -223,9 +221,9 @@ def register_stage_implementations(
     registry: StageImplementationRegistry,
 ) -> None:
     """
-    Register executable stage implementations for the artwork model.
+    Register executable stage implementations for the Artwork model.
 
-    Implementation discovery is delegated to the artwork stages
+    Implementation discovery is delegated to the Artwork stages
     package so this module remains primarily the declarative model
     definition and public registration surface.
     """

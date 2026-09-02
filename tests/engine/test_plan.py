@@ -94,20 +94,12 @@ def test_create_build_plan_retains_resolver(
     assert prepare.name == "prepare"
 
     assert prepare.spec.parameters == (
-        "artwork_colors",
-        "artwork_fill_color",
+        "artifact_color_count",
+        "artwork_envelope_mode",
     )
 
-    assert plan.resolver("artwork_colors") == [
-        "white",
-        "black",
-    ]
-
-    assert plan.resolver.source("artwork_colors") == "test"
-
-    assert plan.resolver("artwork_fill_color") == "white"
-
-    assert plan.resolver.source("artwork_fill_color") == "test"
+    assert plan.resolver("artifact_color_count") == 2
+    assert plan.resolver.source("artifact_color_count") == "test"
 
 
 def test_create_build_plan_resolves_external_input(

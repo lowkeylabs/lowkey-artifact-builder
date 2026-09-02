@@ -38,11 +38,12 @@ def test_resolver() -> Resolver:
             "model": "artwork",
             "realization": "default",
             "source": "source.png",
-            "artwork_colors": [
-                "white",
+            "artifact_color_count": 2,
+            "artwork_envelope_mode": "shrink-wrap",
+            "printer_colors": [
+                "cold-white",
                 "black",
             ],
-            "artwork_fill_color": "white",
             "artwork_pixels": 1024,
             "artwork_min_island_area": 0.5,
             "artwork_island_connectivity": 8,
@@ -53,13 +54,18 @@ def test_resolver() -> Resolver:
             "model": "test",
             "realization": "test",
             "source": "test",
-            "artwork_colors": "test",
-            "artwork_fill_color": "test",
+            "artifact_color_count": "test",
+            "artwork_envelope_mode": "test",
+            "printer_colors": "test",
             "artwork_pixels": "test",
             "artwork_min_island_area": "test",
             "artwork_island_connectivity": "test",
             "artwork_size": "test",
             "artwork_raise": "test",
+        },
+        colors={
+            "cold-white": {},
+            "black": {},
         },
     )
 

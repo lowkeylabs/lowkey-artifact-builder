@@ -17,12 +17,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from lowkey_artifact_builder.colors import (
-    PaletteColor,
-    match_color,
-    resolve_palette,
-)
-
 if TYPE_CHECKING:
     from lowkey_artifact_builder.config import Resolver
 
@@ -32,36 +26,19 @@ if TYPE_CHECKING:
 # =========================================================
 
 
-def derive_artwork_colors(
+def derive_artifact_color_count(
     resolver: Resolver,
-) -> tuple[str, ...]:
+) -> int:
     """
-    Derive artwork colors from the configured printer colors.
+    Derive the default Artifact color count from printer capacity.
 
-    By default, artwork may use every color configured for the printer.
+    Each configured printer color represents an available printer
+    position and therefore contributes to the default trace cardinality.
 
-    Printer color order is preserved.
+    Duplicate semantic colors are intentional and still represent
+    distinct printer positions.
 
-    Duplicate printer colors are intentional and are also preserved.
-    For example:
-
-        printer_colors = [
-            "black",
-            "white",
-            "red",
-            "red",
-        ]
-
-    produces:
-
-        artwork_colors = (
-            "black",
-            "white",
-            "red",
-            "red",
-        )
-
-    An explicitly configured artwork_colors value overrides this
+    An explicitly configured artifact_color_count value overrides this
     derivation through normal configuration resolution.
     """
 
@@ -73,12 +50,14 @@ def derive_artwork_colors(
         printer_colors,
         list | tuple,
     ):
-        raise ValueError("printer_colors must be a list or tuple.")
+        raise ValueError(
+            "printer_colors must be a list or tuple.",
+        )
 
     if not printer_colors:
-        raise ValueError("printer_colors cannot be empty.")
-
-    colors: list[str] = []
+        raise ValueError(
+            "printer_colors cannot be empty.",
+        )
 
     for color in printer_colors:
         if (
@@ -88,62 +67,11 @@ def derive_artwork_colors(
             )
             or not color.strip()
         ):
-            raise ValueError("printer_colors must contain non-empty color names.")
+            raise ValueError(
+                "printer_colors must contain non-empty color names.",
+            )
 
-        colors.append(
-            color.strip(),
-        )
-
-    return tuple(colors)
-
-
-def derive_artwork_fill_color(
-    resolver: Resolver,
-) -> str:
-    """
-    Derive the Artwork fill color from configured printer colors.
-
-    The default fill is the configured printer color perceptually
-    closest to ideal RGB white.
-
-    Matching uses the shared generic color infrastructure. The selected
-    printer color's semantic identity is preserved.
-
-    Duplicate printer colors are collapsed for matching because multiple
-    printer heads may intentionally contain the same semantic color.
-    First-occurrence printer order is preserved, providing deterministic
-    selection when candidates have equal perceptual distance.
-
-    An explicitly configured artwork_fill_color value overrides this
-    derivation through normal configuration resolution.
-    """
-
-    printer_colors = derive_artwork_colors(
-        resolver,
-    )
-
-    candidate_names = tuple(
-        dict.fromkeys(
-            printer_colors,
-        )
-    )
-
-    candidates = resolve_palette(
-        candidate_names,
-        resolver.colors,
-    )
-
-    ideal_white = PaletteColor(
-        name="ideal-white",
-        rgb=(255, 255, 255),
-    )
-
-    match = match_color(
-        ideal_white,
-        candidates,
-    )
-
-    return match.color.name
+    return len(printer_colors)
 
 
 # =========================================================
@@ -152,8 +80,7 @@ def derive_artwork_fill_color(
 
 
 DERIVED = {
-    "artwork_colors": derive_artwork_colors,
-    "artwork_fill_color": derive_artwork_fill_color,
+    "artifact_color_count": derive_artifact_color_count,
 }
 
 
@@ -164,6 +91,5 @@ DERIVED = {
 
 __all__ = [
     "DERIVED",
-    "derive_artwork_colors",
-    "derive_artwork_fill_color",
+    "derive_artifact_color_count",
 ]

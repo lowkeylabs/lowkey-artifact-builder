@@ -1,8 +1,8 @@
 """
 Tests for Artwork model configuration validation.
 
-Artwork owns the semantic invariants governing its configured palette,
-fill color, envelope mode, and color availability.
+Artwork owns the semantic invariants governing its configured color count,
+envelope mode, and physical color availability.
 """
 # File: tests/model/artwork/test_validation.py
 # Copyright 2026 LowKeyLabs LLC
@@ -64,8 +64,7 @@ class StubResolver:
 
 def _validate_artwork(
     *,
-    colors: object,
-    fill_color: object,
+    artifact_color_count: object = 2,
     envelope_mode: object = "alpha",
     printer_colors: object = (),
     library_colors: object = (),
@@ -77,8 +76,7 @@ def _validate_artwork(
 
     resolver = StubResolver(
         {
-            "artwork_colors": colors,
-            "artwork_fill_color": fill_color,
+            "artifact_color_count": artifact_color_count,
             "artwork_envelope_mode": envelope_mode,
             "printer_colors": printer_colors,
             "library_colors": library_colors,
@@ -104,7 +102,7 @@ def _artwork_execution_plan(
 ]:
     """
     Construct an Artwork execution plan with the requested persistent
-    state for every prepare product.
+    state for every Prepare product.
     """
 
     prepare_spec = next(stage for stage in MODEL.stages if stage.name == "prepare")
@@ -165,93 +163,85 @@ def test_artwork_declares_configuration_validators() -> None:
     )
 
     assert tuple(validator.parameters for validator in validators) == (
-        (
-            "artwork_colors",
-            "artwork_fill_color",
-        ),
+        ("artifact_color_count",),
         ("artwork_envelope_mode",),
         ("printer_colors",),
         ("library_colors",),
     )
 
 
-def test_artwork_fill_color_may_be_non_white_palette_member() -> None:
+@pytest.mark.parametrize(
+    "artifact_color_count",
+    [
+        1,
+        3,
+        5,
+    ],
+)
+def test_artwork_accepts_positive_artifact_color_count(
+    artifact_color_count: int,
+) -> None:
     """
-    Artwork accepts an explicitly configured non-white fill color when
-    that color belongs to the configured palette.
+    Artwork accepts any positive integer Artifact color count.
     """
 
     _validate_artwork(
-        colors=(
-            "red",
-            "blue",
-        ),
-        fill_color="red",
+        artifact_color_count=artifact_color_count,
     )
 
 
-def test_artwork_palette_does_not_require_white() -> None:
+def test_artwork_color_count_may_be_smaller_than_printer_capacity() -> None:
     """
-    White has no special membership requirement in the Artwork palette.
+    Artifact color count is independent of printer capacity once
+    explicitly resolved.
+
+    A printer may provide more physical colors than the Artwork requests.
     """
 
     _validate_artwork(
-        colors=(
+        artifact_color_count=3,
+        printer_colors=(
             "red",
+            "green",
             "blue",
-        ),
-        fill_color="blue",
-    )
-
-
-def test_artwork_fill_color_must_belong_to_palette() -> None:
-    """
-    Artwork rejects a resolved fill color absent from artwork_colors.
-    """
-
-    with pytest.raises(
-        ConfigError,
-        match="artwork_fill_color",
-    ):
-        _validate_artwork(
-            colors=(
-                "red",
-                "blue",
-            ),
-            fill_color="green",
-        )
-
-
-def test_artwork_default_white_fill_color_is_valid_palette_member() -> None:
-    """
-    Artwork accepts the default white fill color when white belongs to
-    the configured palette.
-    """
-
-    _validate_artwork(
-        colors=(
-            "white",
             "black",
+            "white",
         ),
-        fill_color="white",
+        catalog_colors=(
+            "red",
+            "green",
+            "blue",
+            "black",
+            "white",
+        ),
     )
 
 
-def test_artwork_fill_color_membership_uses_semantic_color_name() -> None:
+@pytest.mark.parametrize(
+    "artifact_color_count",
+    [
+        0,
+        -1,
+        1.5,
+        "3",
+        True,
+    ],
+)
+def test_artwork_rejects_invalid_artifact_color_count(
+    artifact_color_count: object,
+) -> None:
     """
-    Artwork fill-color membership is determined by semantic color identity.
+    Artifact color count must be a positive integer.
+
+    Boolean values are rejected even though bool is an int subclass.
     """
 
     with pytest.raises(
         ConfigError,
-        match="artwork_fill_color",
+        match="artifact_color_count",
     ):
         _validate_artwork(
-            colors=(
-                "white",
-                "black",
-            ),
-            fill_color="test-white",
+            artifact_color_count=artifact_color_count,
         )
 
 
@@ -261,11 +251,6 @@ def test_artwork_alpha_envelope_mode_is_valid() -> None:
     """
 
     _validate_artwork(
-        colors=(
-            "white",
-            "black",
-        ),
-        fill_color="white",
         envelope_mode="alpha",
     )
 
@@ -276,11 +261,6 @@ def test_artwork_shrink_wrap_envelope_mode_is_valid() -> None:
     """
 
     _validate_artwork(
-        colors=(
-            "white",
-            "black",
-        ),
-        fill_color="white",
         envelope_mode="shrink-wrap",
     )
 
@@ -295,11 +275,6 @@ def test_artwork_rejects_unsupported_envelope_mode() -> None:
         match="artwork_envelope_mode",
     ):
         _validate_artwork(
-            colors=(
-                "white",
-                "black",
-            ),
-            fill_color="white",
             envelope_mode="aggressive",
         )
 
@@ -314,11 +289,6 @@ def test_artwork_rejects_non_string_envelope_mode() -> None:
         match="artwork_envelope_mode",
     ):
         _validate_artwork(
-            colors=(
-                "white",
-                "black",
-            ),
-            fill_color="white",
             envelope_mode=42,
         )
 
@@ -334,11 +304,6 @@ def test_artwork_accepts_known_printer_colors() -> None:
     """
 
     _validate_artwork(
-        colors=(
-            "white",
-            "black",
-        ),
-        fill_color="white",
         printer_colors=(
             "red",
             "blue",
@@ -360,11 +325,6 @@ def test_artwork_rejects_unknown_printer_color() -> None:
         match="printer_colors",
     ):
         _validate_artwork(
-            colors=(
-                "white",
-                "black",
-            ),
-            fill_color="white",
             printer_colors=(
                 "red",
                 "unknown",
@@ -382,11 +342,6 @@ def test_artwork_accepts_known_library_colors() -> None:
     """
 
     _validate_artwork(
-        colors=(
-            "white",
-            "black",
-        ),
-        fill_color="white",
         library_colors=(
             "green",
             "gold",
@@ -408,11 +363,6 @@ def test_artwork_rejects_unknown_library_color() -> None:
         match="library_colors",
     ):
         _validate_artwork(
-            colors=(
-                "white",
-                "black",
-            ),
-            fill_color="white",
             library_colors=(
                 "green",
                 "unknown",
@@ -422,69 +372,6 @@ def test_artwork_rejects_unknown_library_color() -> None:
                 "gold",
             ),
         )
-
-
-# =========================================================
-# Execution-scoped Artwork validation
-# =========================================================
-
-
-def test_invalid_artwork_fill_color_fails_when_prepare_requires_execution() -> None:
-    """
-    Artwork fill-color membership is validated when preparation must
-    execute.
-    """
-
-    resolver = StubResolver(
-        {
-            "artwork_colors": (
-                "red",
-                "blue",
-            ),
-            "artwork_fill_color": "green",
-        }
-    )
-
-    build_plan, execution_plan = _artwork_execution_plan(
-        resolver=resolver,
-        prepare_state=ProductState.ABSENT,
-    )
-
-    with pytest.raises(
-        ConfigError,
-        match="artwork_fill_color",
-    ):
-        validate_execution(
-            build_plan,
-            execution_plan,
-        )
-
-
-def test_invalid_historical_artwork_fill_color_does_not_block_current_prepare() -> None:
-    """
-    Invalid historical Artwork configuration is not revalidated when
-    preparation is already current and therefore does not execute.
-    """
-
-    resolver = StubResolver(
-        {
-            "artwork_colors": (
-                "red",
-                "blue",
-            ),
-            "artwork_fill_color": "green",
-        }
-    )
-
-    build_plan, execution_plan = _artwork_execution_plan(
-        resolver=resolver,
-        prepare_state=ProductState.CURRENT,
-    )
-
-    validate_execution(
-        build_plan,
-        execution_plan,
-    )
 
 
 def test_artwork_rejects_non_sequence_printer_colors() -> None:
@@ -497,11 +384,6 @@ def test_artwork_rejects_non_sequence_printer_colors() -> None:
         match="printer_colors",
     ):
         _validate_artwork(
-            colors=(
-                "white",
-                "black",
-            ),
-            fill_color="white",
             printer_colors="red",
             catalog_colors=("red",),
         )
@@ -517,11 +399,6 @@ def test_artwork_rejects_non_string_printer_color() -> None:
         match="printer_colors",
     ):
         _validate_artwork(
-            colors=(
-                "white",
-                "black",
-            ),
-            fill_color="white",
             printer_colors=(
                 "red",
                 42,
@@ -540,11 +417,6 @@ def test_artwork_rejects_non_sequence_library_colors() -> None:
         match="library_colors",
     ):
         _validate_artwork(
-            colors=(
-                "white",
-                "black",
-            ),
-            fill_color="white",
             library_colors="red",
             catalog_colors=("red",),
         )
@@ -560,11 +432,6 @@ def test_artwork_rejects_non_string_library_color() -> None:
         match="library_colors",
     ):
         _validate_artwork(
-            colors=(
-                "white",
-                "black",
-            ),
-            fill_color="white",
             library_colors=(
                 "red",
                 42,
@@ -573,27 +440,78 @@ def test_artwork_rejects_non_string_library_color() -> None:
         )
 
 
-def test_invalid_printer_colors_do_not_block_unrelated_artwork_execution() -> None:
+# =========================================================
+# Execution-scoped Artwork validation
+# =========================================================
+
+
+def test_invalid_artifact_color_count_fails_when_prepare_requires_execution() -> None:
     """
-    Invalid printer availability does not block Artwork execution that
-    does not require printer-color analysis.
+    Artifact color count is validated when Prepare must execute.
     """
 
     resolver = StubResolver(
         {
-            "artwork_colors": (
-                "white",
-                "black",
-            ),
-            "artwork_fill_color": "white",
+            "artifact_color_count": 0,
+            "artwork_envelope_mode": "alpha",
+        }
+    )
+
+    build_plan, execution_plan = _artwork_execution_plan(
+        resolver=resolver,
+        prepare_state=ProductState.ABSENT,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="artifact_color_count",
+    ):
+        validate_execution(
+            build_plan,
+            execution_plan,
+        )
+
+
+def test_invalid_historical_artifact_color_count_does_not_block_current_prepare() -> None:
+    """
+    Invalid historical Artwork configuration is not revalidated when
+    Prepare is already current and therefore does not execute.
+    """
+
+    resolver = StubResolver(
+        {
+            "artifact_color_count": 0,
+            "artwork_envelope_mode": "alpha",
+        }
+    )
+
+    build_plan, execution_plan = _artwork_execution_plan(
+        resolver=resolver,
+        prepare_state=ProductState.CURRENT,
+    )
+
+    validate_execution(
+        build_plan,
+        execution_plan,
+    )
+
+
+def test_invalid_printer_colors_do_not_block_prepare_execution() -> None:
+    """
+    Invalid printer availability does not block Prepare.
+
+    Printer colors belong to Raster execution rather than source
+    preparation.
+    """
+
+    resolver = StubResolver(
+        {
+            "artifact_color_count": 3,
             "artwork_envelope_mode": "alpha",
             "printer_colors": ("unknown",),
             "library_colors": (),
         },
-        colors={
-            "white": {},
-            "black": {},
-        },
+        colors={},
     )
 
     build_plan, execution_plan = _artwork_execution_plan(
@@ -607,27 +525,21 @@ def test_invalid_printer_colors_do_not_block_unrelated_artwork_execution() -> No
     )
 
 
-def test_invalid_library_colors_do_not_block_unrelated_artwork_execution() -> None:
+def test_invalid_library_colors_do_not_block_prepare_execution() -> None:
     """
-    Invalid library availability does not block Artwork execution that
-    does not require library-color analysis.
+    Invalid library availability does not block Prepare.
+
+    Library colors are not required to prepare registered Artwork.
     """
 
     resolver = StubResolver(
         {
-            "artwork_colors": (
-                "white",
-                "black",
-            ),
-            "artwork_fill_color": "white",
+            "artifact_color_count": 3,
             "artwork_envelope_mode": "alpha",
             "printer_colors": (),
             "library_colors": ("unknown",),
         },
-        colors={
-            "white": {},
-            "black": {},
-        },
+        colors={},
     )
 
     build_plan, execution_plan = _artwork_execution_plan(
