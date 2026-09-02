@@ -1212,5 +1212,3 @@ def test_prepare_does_not_require_white_when_fill_color_is_configured(
 
     assert trace.is_file()
     assert envelope.is_file()
-
-

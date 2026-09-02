@@ -16,9 +16,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 from PIL import Image
+from scipy import ndimage
 
 from lowkey_artifact_builder.model.models.artwork.stages import prepare
-
 
 # =========================================================
 # Test support
@@ -259,4 +259,1020 @@ def test_shrink_wrap_real_artwork_does_not_use_source_rectangle(
 
     finally:
         image.close()
-    
+
+
+def test_shrink_wrap_preserves_enclosed_color_matching_transparent_exterior() -> None:
+    """
+    An enclosed Artwork region is not excluded solely because its RGB
+    matches the transparent exterior background.
+
+    Shrink-wrap classifies exterior background by region membership,
+    rather than treating every occurrence of the exterior RGB as
+    background.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (100, 100),
+        (255, 255, 255, 0),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        #
+        # Create one solid Artwork domain.
+        #
+        for y in range(20, 80):
+            for x in range(20, 80):
+                pixels[x, y] = (
+                    0,
+                    0,
+                    0,
+                    255,
+                )
+
+        #
+        # Put a legitimate opaque white region inside the Artwork.
+        #
+        # Its RGB is identical to the transparent exterior background,
+        # but it belongs to the enclosed Artwork domain.
+        #
+        for y in range(40, 60):
+            for x in range(40, 60):
+                pixels[x, y] = (
+                    255,
+                    255,
+                    255,
+                    255,
+                )
+
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        #
+        # Exterior background remains outside the Artwork.
+        #
+        assert not envelope[
+            0,
+            0,
+        ]
+
+        #
+        # Ordinary Artwork remains inside.
+        #
+        assert envelope[
+            30,
+            30,
+        ]
+
+        #
+        # Most importantly, the enclosed white region remains inside
+        # even though its RGB matches the exterior background.
+        #
+        assert envelope[
+            50,
+            50,
+        ]
+
+    finally:
+        image.close()
+
+
+def test_shrink_wrap_preserves_known_artwork_region_in_real_house() -> None:
+    """
+    Shrink-wrap preserves a known Artwork region in representative
+    clean-background house Artwork.
+
+    The sampled point lies within the green house facade. Green is
+    semantic Artwork in this fixture and therefore belongs inside the
+    Artwork envelope.
+    """
+
+    image = _load_fixture(
+        "clean_bg_house.png",
+    )
+
+    try:
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        #
+        # This point lies well inside the green house facade rather
+        # than on an antialiased edge or exterior background.
+        #
+        assert envelope[
+            255,
+            448,
+        ]
+
+    finally:
+        image.close()
+
+
+def test_shrink_wrap_preserves_non_white_artwork_at_exterior_boundary() -> None:
+    """
+    Shrink-wrap includes non-white Artwork up to its exterior boundary.
+
+    White exterior background is excluded, while non-white pixels
+    adjacent to that background remain part of the Artwork envelope.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (100, 100),
+        (255, 255, 255, 255),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        #
+        # Create a red Artwork region surrounded directly by the
+        # white exterior background.
+        #
+        for y in range(30, 70):
+            for x in range(30, 70):
+                pixels[x, y] = (
+                    220,
+                    40,
+                    40,
+                    255,
+                )
+
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        #
+        # Exterior white background is not Artwork.
+        #
+        assert not envelope[
+            50,
+            29,
+        ]
+
+        #
+        # The immediately adjacent red pixel is Artwork.
+        #
+        assert envelope[
+            50,
+            30,
+        ]
+
+    finally:
+        image.close()
+
+
+def test_shrink_wrap_follows_red_artwork_boundary_in_real_house() -> None:
+    """
+    Shrink-wrap includes red Artwork at the exterior boundary of
+    representative clean-background house Artwork.
+
+    The white or near-white region immediately outside that Artwork is
+    excluded from the envelope.
+    """
+
+    image = _load_fixture(
+        "clean_bg_house.png",
+    )
+
+    try:
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        rgba = np.asarray(
+            image,
+            dtype=np.uint8,
+        )
+
+        #
+        # Find red Artwork pixels in the lower portion of the image,
+        # where the flower bed and brickwork reach the exterior edge
+        # of the composition.
+        #
+        red = (
+            (rgba[:, :, 0] >= 160)
+            & (rgba[:, :, 1] <= 100)
+            & (rgba[:, :, 2] <= 100)
+            & (rgba[:, :, 3] >= prepare.DEFAULT_ALPHA_THRESHOLD)
+        )
+
+        height = red.shape[0]
+
+        red[
+            : height // 2,
+            :,
+        ] = False
+
+        #
+        # Every meaningful red source pixel is Artwork and therefore
+        # must lie inside the shrink-wrapped envelope.
+        #
+        assert np.any(
+            red,
+        )
+
+        assert np.all(
+            envelope[red],
+        )
+
+    finally:
+        image.close()
+
+
+def test_write_real_house_envelope_overlay_for_visual_inspection(
+    tmp_path: Path,
+) -> None:
+    """
+    Produce a diagnostic SVG showing the representative house source
+    with its derived shrink-wrap envelope overlaid for visual inspection.
+    """
+
+    import base64
+    import io
+
+    image = _load_fixture(
+        "clean_bg_house.png",
+    )
+
+    try:
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        height, width = envelope.shape
+
+        #
+        # Embed the original fixture directly in the diagnostic SVG so
+        # the output is self-contained and can be opened independently.
+        #
+        buffer = io.BytesIO()
+
+        image.save(
+            buffer,
+            format="PNG",
+        )
+
+        encoded = base64.b64encode(
+            buffer.getvalue(),
+        ).decode(
+            "ascii",
+        )
+
+        #
+        # Derive the envelope boundary independently of the production
+        # SVG writer. This diagnostic should visualize the production
+        # envelope mask rather than exercise another production
+        # transformation.
+        #
+        from scipy import ndimage
+
+        interior = np.asarray(
+            ndimage.binary_erosion(
+                envelope,
+                structure=np.ones(
+                    (3, 3),
+                    dtype=bool,
+                ),
+                border_value=0,
+            ),
+            dtype=bool,
+        )
+
+        boundary = envelope & ~interior
+
+        boundary_image = np.zeros(
+            (height, width, 4),
+            dtype=np.uint8,
+        )
+
+        boundary_image[boundary] = (
+            255,
+            0,
+            0,
+            255,
+        )
+
+        overlay = Image.fromarray(
+            boundary_image,
+            mode="RGBA",
+        )
+
+        overlay_buffer = io.BytesIO()
+
+        overlay.save(
+            overlay_buffer,
+            format="PNG",
+        )
+
+        overlay_encoded = base64.b64encode(
+            overlay_buffer.getvalue(),
+        ).decode(
+            "ascii",
+        )
+
+        output = tmp_path / "clean_bg_house-envelope-overlay.svg"
+
+        output.write_text(
+            f"""\
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    xmlns:xlink="http://www.w3.org/1999/xlink"
+    width="{width}"
+    height="{height}"
+    viewBox="0 0 {width} {height}"
+>
+    <image
+        x="0"
+        y="0"
+        width="{width}"
+        height="{height}"
+        href="data:image/png;base64,{encoded}"
+    />
+    <image
+        x="0"
+        y="0"
+        width="{width}"
+        height="{height}"
+        href="data:image/png;base64,{overlay_encoded}"
+    />
+</svg>
+""",
+            encoding="utf-8",
+        )
+
+        assert output.is_file()
+
+        print(f"\nEnvelope overlay SVG: {output}")
+
+    finally:
+        image.close()
+
+
+def test_shrink_wrap_excludes_substantial_exterior_white_background_in_real_house() -> None:
+    """
+    Shrink-wrap excludes substantial exterior white background surrounding
+    the representative clean-background house Artwork.
+
+    The source is circularly cropped. Transparent pixels outside the crop
+    connect to white/near-white background inside the crop. Most of that
+    connected white background must remain outside the Artwork envelope.
+
+    Shrink-wrap may incorporate limited exterior-connected white regions
+    when doing so repairs a narrow, disproportionately deep concavity.
+    """
+
+    image = _load_fixture(
+        "clean_bg_house.png",
+    )
+
+    try:
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        rgba = np.asarray(
+            image,
+            dtype=np.uint8,
+        )
+
+        transparent = rgba[:, :, 3] < prepare.DEFAULT_ALPHA_THRESHOLD
+
+        white = (
+            (rgba[:, :, 0] >= prepare.DEFAULT_SHRINK_WRAP_WHITE_MINIMUM)
+            & (rgba[:, :, 1] >= prepare.DEFAULT_SHRINK_WRAP_WHITE_MINIMUM)
+            & (rgba[:, :, 2] >= prepare.DEFAULT_SHRINK_WRAP_WHITE_MINIMUM)
+            & (rgba[:, :, 3] >= prepare.DEFAULT_ALPHA_THRESHOLD)
+        )
+
+        background_candidate = transparent | white
+
+        assert np.any(
+            transparent,
+        )
+
+        assert np.any(
+            white,
+        )
+
+        boundary_seed = np.zeros_like(
+            background_candidate,
+            dtype=bool,
+        )
+
+        boundary_seed[0, :] = background_candidate[0, :]
+        boundary_seed[-1, :] = background_candidate[-1, :]
+        boundary_seed[:, 0] = background_candidate[:, 0]
+        boundary_seed[:, -1] = background_candidate[:, -1]
+
+        exterior_background = np.asarray(
+            ndimage.binary_propagation(
+                boundary_seed,
+                mask=background_candidate,
+            ),
+            dtype=bool,
+        )
+
+        exterior_white = exterior_background & white
+
+        assert np.any(
+            exterior_white,
+        ), (
+            "Expected exterior background connectivity to reach "
+            "white background inside the circular crop."
+        )
+
+        excluded_exterior_white = exterior_white & ~envelope
+
+        assert np.any(
+            excluded_exterior_white,
+        ), (
+            "Shrink-wrap failed to exclude exterior-connected white "
+            "background surrounding the Artwork."
+        )
+
+        excluded_fraction = np.count_nonzero(
+            excluded_exterior_white,
+        ) / np.count_nonzero(
+            exterior_white,
+        )
+
+        assert excluded_fraction >= 0.90, (
+            "Shrink-wrap incorporated too much exterior-connected white "
+            "background into the Artwork envelope: "
+            f"{excluded_fraction:.1%} remained excluded."
+        )
+
+    finally:
+        image.close()
+
+
+def test_report_real_house_exterior_background_colors() -> None:
+    """
+    Report the visible colors encountered where transparent exterior
+    connects to the clean-background house crop.
+
+    This is diagnostic characterization of the representative fixture,
+    not a normative color threshold.
+    """
+
+    image = _load_fixture(
+        "clean_bg_house.png",
+    )
+
+    try:
+        rgba = np.asarray(
+            image,
+            dtype=np.uint8,
+        )
+
+        alpha = rgba[
+            :,
+            :,
+            3,
+        ]
+
+        transparent = alpha < prepare.DEFAULT_ALPHA_THRESHOLD
+
+        meaningful = ~transparent
+
+        #
+        # Find meaningful pixels immediately adjacent to the transparent
+        # exterior.
+        #
+        adjacent = (
+            np.asarray(
+                ndimage.binary_dilation(
+                    transparent,
+                    structure=np.ones(
+                        (
+                            3,
+                            3,
+                        ),
+                        dtype=bool,
+                    ),
+                ),
+                dtype=bool,
+            )
+            & meaningful
+        )
+
+        samples = rgba[
+            adjacent,
+            :3,
+        ]
+
+        assert samples.size > 0
+
+        minimum = np.min(
+            samples,
+            axis=0,
+        )
+
+        maximum = np.max(
+            samples,
+            axis=0,
+        )
+
+        median = np.median(
+            samples,
+            axis=0,
+        )
+
+        percentiles = np.percentile(
+            samples,
+            (
+                1,
+                5,
+                25,
+                50,
+                75,
+                95,
+                99,
+            ),
+            axis=0,
+        )
+
+        print(
+            "\n"
+            f"Adjacent meaningful pixels: {len(samples)}\n"
+            f"RGB minimum: {minimum.tolist()}\n"
+            f"RGB maximum: {maximum.tolist()}\n"
+            f"RGB median: {median.tolist()}\n"
+            "RGB percentiles:\n"
+            f"  1%:  {percentiles[0].tolist()}\n"
+            f"  5%:  {percentiles[1].tolist()}\n"
+            f" 25%:  {percentiles[2].tolist()}\n"
+            f" 50%:  {percentiles[3].tolist()}\n"
+            f" 75%:  {percentiles[4].tolist()}\n"
+            f" 95%:  {percentiles[5].tolist()}\n"
+            f" 99%:  {percentiles[6].tolist()}"
+        )
+
+    finally:
+        image.close()
+
+
+def test_shrink_wrap_crosses_transparent_crop_into_white_exterior_background() -> None:
+    """
+    Shrink-wrap treats transparent exterior and connected white background
+    as one exterior background domain.
+
+    A transparent crop boundary must not prevent connected white background
+    inside the crop from being excluded from the Artwork envelope.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (100, 100),
+        (255, 255, 255, 0),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        #
+        # Simulate an opaque white crop surrounded by transparency.
+        #
+        for y in range(10, 90):
+            for x in range(10, 90):
+                pixels[x, y] = (
+                    255,
+                    255,
+                    255,
+                    255,
+                )
+
+        #
+        # Place non-white Artwork inside the white crop.
+        #
+        for y in range(30, 70):
+            for x in range(30, 70):
+                pixels[x, y] = (
+                    0,
+                    0,
+                    0,
+                    255,
+                )
+
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        #
+        # Transparent rectangular exterior remains outside.
+        #
+        assert not envelope[
+            0,
+            0,
+        ]
+
+        #
+        # White background inside the transparent crop boundary is still
+        # exterior background.
+        #
+        assert not envelope[
+            20,
+            20,
+        ]
+
+        #
+        # Non-white Artwork remains inside the envelope.
+        #
+        assert envelope[
+            50,
+            50,
+        ]
+
+    finally:
+        image.close()
+
+
+def test_real_house_shrink_wrap_preserves_exterior_classification_during_envelope_build() -> None:
+    """
+    Envelope construction does not reintroduce exterior background
+    identified by shrink-wrap classification.
+
+    Shrink-wrap distinguishes foreground from known exterior background.
+    Subsequent envelope morphology may fill ordinary enclosed holes, but
+    must preserve the exclusion of known exterior background.
+    """
+
+    image = _load_fixture(
+        "clean_bg_house.png",
+    )
+
+    try:
+        foreground, exterior = prepare._shrink_wrap_foreground_mask(
+            image,
+        )
+
+        assert np.any(
+            foreground,
+        )
+
+        assert np.any(
+            exterior,
+        )
+
+        #
+        # Classification establishes disjoint foreground and exterior
+        # domains.
+        #
+        assert not np.any(foreground & exterior)
+
+        envelope = prepare._build_envelope(
+            foreground,
+            excluded=exterior,
+        )
+
+        #
+        # Envelope morphology must not reintroduce anything already
+        # classified as exterior background.
+        #
+        assert not np.any(envelope & exterior)
+
+    finally:
+        image.close()
+
+
+def test_envelope_build_fills_enclosed_foreground_hole() -> None:
+    """
+    Envelope construction fills a region completely enclosed by foreground.
+
+    The envelope describes the outer occupied Artwork region rather than
+    preserving internal holes in the foreground mask.
+    """
+
+    foreground = np.zeros(
+        (
+            100,
+            100,
+        ),
+        dtype=bool,
+    )
+
+    foreground[
+        20:80,
+        20:80,
+    ] = True
+
+    foreground[
+        40:60,
+        40:60,
+    ] = False
+
+    envelope = prepare._build_envelope(
+        foreground,
+    )
+
+    assert envelope[
+        30,
+        30,
+    ]
+
+    assert envelope[
+        50,
+        50,
+    ]
+
+    assert not envelope[
+        10,
+        10,
+    ]
+
+
+def test_shrink_wrap_bridges_narrow_deep_exterior_concavity() -> None:
+    """
+    Shrink-wrap rejects a narrow exterior intrusion that would create
+    a disproportionately deep concavity in the Artwork envelope.
+
+    A small opening in an otherwise substantial Artwork boundary must
+    not allow exterior background to penetrate deeply into the physical
+    envelope.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (200, 200),
+        (255, 255, 255, 255),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        #
+        # Create one large solid Artwork region surrounded by white
+        # exterior background.
+        #
+        for y in range(30, 170):
+            for x in range(30, 170):
+                pixels[x, y] = (
+                    0,
+                    0,
+                    0,
+                    255,
+                )
+
+        #
+        # Cut a narrow exterior-connected channel deeply into the
+        # Artwork from the right.
+        #
+        # The opening is only four pixels high but penetrates 100 pixels
+        # into an otherwise substantial Artwork domain.
+        #
+        for y in range(98, 102):
+            for x in range(70, 170):
+                pixels[x, y] = (
+                    255,
+                    255,
+                    255,
+                    255,
+                )
+
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        #
+        # Ordinary exterior background remains outside.
+        #
+        assert not envelope[
+            100,
+            180,
+        ]
+
+        #
+        # Artwork on both sides of the narrow intrusion remains inside.
+        #
+        assert envelope[
+            90,
+            120,
+        ]
+
+        assert envelope[
+            110,
+            120,
+        ]
+
+        #
+        # The narrow entrance must not create a deep concavity in the
+        # physical envelope.
+        #
+        assert envelope[
+            100,
+            80,
+        ]
+
+    finally:
+        image.close()
+
+
+def test_shrink_wrap_preserves_broad_shallow_exterior_concavity() -> None:
+    """
+    Shrink-wrap preserves a broad, shallow concavity in the Artwork
+    boundary.
+
+    Exterior-connected background is legitimate envelope geometry when
+    its opening is broad relative to its penetration depth.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (200, 200),
+        (255, 255, 255, 255),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        #
+        # Create one large solid Artwork region surrounded by white
+        # exterior background.
+        #
+        for y in range(30, 170):
+            for x in range(30, 170):
+                pixels[x, y] = (
+                    0,
+                    0,
+                    0,
+                    255,
+                )
+
+        #
+        # Cut a broad but shallow concavity into the right side.
+        #
+        # The opening is 60 pixels high while penetrating only
+        # 20 pixels into the Artwork.
+        #
+        for y in range(70, 130):
+            for x in range(150, 170):
+                pixels[x, y] = (
+                    255,
+                    255,
+                    255,
+                    255,
+                )
+
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        #
+        # Ordinary exterior remains outside.
+        #
+        assert not envelope[
+            100,
+            180,
+        ]
+
+        #
+        # Artwork surrounding the concavity remains inside.
+        #
+        assert envelope[
+            60,
+            155,
+        ]
+
+        assert envelope[
+            140,
+            155,
+        ]
+
+        #
+        # The broad, shallow concavity is legitimate exterior geometry
+        # and must remain outside the envelope.
+        #
+        assert not envelope[
+            100,
+            155,
+        ]
+
+        #
+        # Artwork immediately beyond the depth of the concavity remains
+        # inside.
+        #
+        assert envelope[
+            100,
+            145,
+        ]
+
+    finally:
+        image.close()
+
+
+def test_shrink_wrap_preserves_narrow_shallow_exterior_concavity() -> None:
+    """
+    Shrink-wrap preserves a narrow, shallow exterior concavity.
+
+    A narrow opening alone is not sufficient reason to bridge exterior
+    background. Narrow concavities remain legitimate when they penetrate
+    only a short distance into the Artwork envelope.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (200, 200),
+        (255, 255, 255, 255),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        #
+        # Large solid Artwork region surrounded by white exterior.
+        #
+        for y in range(30, 170):
+            for x in range(30, 170):
+                pixels[x, y] = (
+                    0,
+                    0,
+                    0,
+                    255,
+                )
+
+        #
+        # Narrow but shallow exterior-connected crevice.
+        #
+        # Its width matches the narrow/deep regression, but it penetrates
+        # only a short distance into the Artwork.
+        #
+        for y in range(98, 102):
+            for x in range(155, 170):
+                pixels[x, y] = (
+                    255,
+                    255,
+                    255,
+                    255,
+                )
+
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        #
+        # Ordinary exterior remains outside.
+        #
+        assert not envelope[
+            100,
+            180,
+        ]
+
+        #
+        # Artwork surrounding the crevice remains inside.
+        #
+        assert envelope[
+            90,
+            160,
+        ]
+
+        assert envelope[
+            110,
+            160,
+        ]
+
+        #
+        # The narrow opening is legitimate because its penetration is
+        # shallow. Shrink-wrap must therefore preserve the crevice.
+        #
+        assert not envelope[
+            100,
+            160,
+        ]
+
+        #
+        # Artwork immediately beyond the end of the crevice remains inside.
+        #
+        assert envelope[
+            100,
+            150,
+        ]
+
+    finally:
+        image.close()
