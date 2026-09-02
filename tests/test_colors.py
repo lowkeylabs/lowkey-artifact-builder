@@ -900,14 +900,140 @@ def test_assign_colors_rejects_empty_palette() -> None:
         )
 
 
-def test_assign_colors_rejects_different_counts() -> None:
+def test_assign_colors_selects_one_color_from_multiple_candidates() -> None:
     """
-    One-to-one assignment requires equal color counts.
+    One measured color selects its best match from a larger candidate set.
+    """
+
+    assignments = assign_colors(
+        (
+            MeasuredColor(
+                index=7,
+                rgb=(
+                    250,
+                    10,
+                    10,
+                ),
+            ),
+        ),
+        (
+            PaletteColor(
+                name="black",
+                rgb=(
+                    0,
+                    0,
+                    0,
+                ),
+            ),
+            PaletteColor(
+                name="red",
+                rgb=(
+                    255,
+                    0,
+                    0,
+                ),
+            ),
+            PaletteColor(
+                name="white",
+                rgb=(
+                    255,
+                    255,
+                    255,
+                ),
+            ),
+        ),
+    )
+
+    assert len(assignments) == 1
+    assert assignments[0].measured.index == 7
+    assert assignments[0].color.name == "red"
+
+
+def test_assign_colors_selects_best_subset_from_larger_candidate_set() -> None:
+    """
+    Assignment selects only the globally best distinct candidate subset.
+
+    Candidate colors that are not needed for the optimal assignment remain
+    unused.
+    """
+
+    assignments = assign_colors(
+        (
+            MeasuredColor(
+                index=1,
+                rgb=(
+                    250,
+                    10,
+                    10,
+                ),
+            ),
+            MeasuredColor(
+                index=2,
+                rgb=(
+                    10,
+                    10,
+                    250,
+                ),
+            ),
+        ),
+        (
+            PaletteColor(
+                name="black",
+                rgb=(
+                    0,
+                    0,
+                    0,
+                ),
+            ),
+            PaletteColor(
+                name="red",
+                rgb=(
+                    255,
+                    0,
+                    0,
+                ),
+            ),
+            PaletteColor(
+                name="green",
+                rgb=(
+                    0,
+                    255,
+                    0,
+                ),
+            ),
+            PaletteColor(
+                name="blue",
+                rgb=(
+                    0,
+                    0,
+                    255,
+                ),
+            ),
+            PaletteColor(
+                name="white",
+                rgb=(
+                    255,
+                    255,
+                    255,
+                ),
+            ),
+        ),
+    )
+
+    assert tuple(assignment.color.name for assignment in assignments) == (
+        "red",
+        "blue",
+    )
+
+
+def test_assign_colors_rejects_insufficient_candidates() -> None:
+    """
+    Every measured color requires one distinct candidate identity.
     """
 
     with pytest.raises(
         ColorError,
-        match="Measured color count must equal palette color count",
+        match="Palette color count cannot be smaller than measured color count",
     ):
         assign_colors(
             (
@@ -919,20 +1045,20 @@ def test_assign_colors_rejects_different_counts() -> None:
                         0,
                     ),
                 ),
+                MeasuredColor(
+                    index=2,
+                    rgb=(
+                        0,
+                        0,
+                        255,
+                    ),
+                ),
             ),
             (
                 PaletteColor(
                     name="red",
                     rgb=(
                         255,
-                        0,
-                        0,
-                    ),
-                ),
-                PaletteColor(
-                    name="black",
-                    rgb=(
-                        0,
                         0,
                         0,
                     ),

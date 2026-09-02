@@ -729,12 +729,12 @@ def assign_colors(
     Assignment is one-to-one and minimizes total perceptual color
     distance across all assignments.
 
-    The number of measured colors must equal the number of palette
-    colors.
+    The palette may contain more colors than are required. Each measured
+    color is assigned to one distinct palette color, and unused palette
+    colors remain unassigned.
 
     This exhaustive assignment is intentionally simple. Artifact
-    palettes are expected to contain only a small number of colors;
-    five colors require only 120 permutations.
+    palettes are expected to contain only a small number of colors.
     """
 
     if not measured:
@@ -743,21 +743,24 @@ def assign_colors(
     if not palette:
         raise ColorError("Palette colors cannot be empty.")
 
-    if len(measured) != len(palette):
+    if len(palette) < len(measured):
         raise ColorError(
-            "Measured color count must equal palette color count. "
+            "Palette color count cannot be smaller than measured color count. "
             f"Measured {len(measured)}, palette {len(palette)}."
         )
 
     measured_colors = tuple(measured)
-
     palette_colors = tuple(palette)
 
-    _validate_measured_colors(measured_colors)
+    _validate_measured_colors(
+        measured_colors,
+    )
 
-    _validate_palette_colors(palette_colors)
+    _validate_palette_colors(
+        palette_colors,
+    )
 
-    best_palette: (
+    best_assignment: (
         tuple[
             PaletteColor,
             ...,
@@ -775,38 +778,43 @@ def assign_colors(
 
     best_total: float | None = None
 
-    for candidate in itertools.permutations(palette_colors):
+    for candidate_assignment in itertools.permutations(
+        palette_colors,
+        len(measured_colors),
+    ):
         distances = tuple(
             color_distance(
-                layer.rgb,
-                color.rgb,
+                measured_color.rgb,
+                palette_color.rgb,
             )
-            for layer, color in zip(
+            for measured_color, palette_color in zip(
                 measured_colors,
-                candidate,
+                candidate_assignment,
                 strict=True,
             )
         )
 
-        total = sum(distances)
+        total = sum(
+            distances,
+        )
 
         if best_total is None or total < best_total:
-            best_total = total
-            best_palette = candidate
+            best_assignment = candidate_assignment
             best_distances = distances
+            best_total = total
 
-    if best_palette is None or best_distances is None:
+    if best_assignment is None or best_distances is None or best_total is None:
         raise ColorError("Could not determine a color assignment.")
 
     return tuple(
         ColorAssignment(
-            measured=layer,
-            color=color,
+            measured=measured_color,
+            color=palette_color,
             distance=distance,
         )
-        for layer, color, distance in zip(
+        for measured_color, palette_color, distance in zip(
             measured_colors,
-            best_palette,
+            best_assignment,
             best_distances,
             strict=True,
         )
