@@ -106,13 +106,23 @@ class RasterLayer:
 
     path: Path
 
-    name: str
+    artifact_color_index: int
 
-    color: tuple[
+    artifact_color: tuple[
         int,
         int,
         int,
     ]
+
+    printer_color_name: str
+
+    printer_color: tuple[
+        int,
+        int,
+        int,
+    ]
+
+    distance: float
 
 
 @dataclass(
@@ -411,12 +421,16 @@ def _load_raster_manifest(
             "path",
         )
 
-        name = product.get(
-            "name",
+        artifact_color_data = product.get(
+            "artifact_color",
         )
 
-        color_data = product.get(
-            "color",
+        printer_color_data = product.get(
+            "printer_color",
+        )
+
+        distance = product.get(
+            "distance",
         )
 
         if (
@@ -441,40 +455,118 @@ def _load_raster_manifest(
         ):
             raise VectorError(f"Raster product {index} has no valid path.")
 
-        if (
-            not isinstance(
-                name,
-                str,
-            )
-            or not name.strip()
-        ):
-            raise VectorError(f"Raster product {index} has no valid color name.")
-
-        name = name.strip()
-
         if not isinstance(
-            color_data,
+            artifact_color_data,
             dict,
         ):
-            raise VectorError(f"Raster product {index} has no valid color.")
+            raise VectorError(f"Raster product {index} has no valid Artifact color.")
 
-        color = (
+        artifact_color_index = artifact_color_data.get(
+            "index",
+        )
+
+        artifact_rgb_data = artifact_color_data.get(
+            "rgb",
+        )
+
+        if (
+            isinstance(
+                artifact_color_index,
+                bool,
+            )
+            or not isinstance(
+                artifact_color_index,
+                int,
+            )
+            or artifact_color_index < 1
+        ):
+            raise VectorError(f"Raster product {index} has no valid Artifact color index.")
+
+        if not isinstance(
+            artifact_rgb_data,
+            dict,
+        ):
+            raise VectorError(f"Raster product {index} has no valid Artifact RGB.")
+
+        artifact_color = (
             _color_component(
-                color_data,
+                artifact_rgb_data,
                 "red",
                 index,
             ),
             _color_component(
-                color_data,
+                artifact_rgb_data,
                 "green",
                 index,
             ),
             _color_component(
-                color_data,
+                artifact_rgb_data,
                 "blue",
                 index,
             ),
         )
+
+        if not isinstance(
+            printer_color_data,
+            dict,
+        ):
+            raise VectorError(f"Raster product {index} has no valid printer color.")
+
+        printer_color_name = printer_color_data.get(
+            "name",
+        )
+
+        printer_rgb_data = printer_color_data.get(
+            "rgb",
+        )
+
+        if (
+            not isinstance(
+                printer_color_name,
+                str,
+            )
+            or not printer_color_name.strip()
+        ):
+            raise VectorError(f"Raster product {index} has no valid printer color name.")
+
+        printer_color_name = printer_color_name.strip()
+
+        if not isinstance(
+            printer_rgb_data,
+            dict,
+        ):
+            raise VectorError(f"Raster product {index} has no valid printer RGB.")
+
+        printer_color = (
+            _color_component(
+                printer_rgb_data,
+                "red",
+                index,
+            ),
+            _color_component(
+                printer_rgb_data,
+                "green",
+                index,
+            ),
+            _color_component(
+                printer_rgb_data,
+                "blue",
+                index,
+            ),
+        )
+
+        if (
+            isinstance(
+                distance,
+                bool,
+            )
+            or not isinstance(
+                distance,
+                int | float,
+            )
+            or distance < 0
+        ):
+            raise VectorError(f"Raster product {index} has no valid assignment distance.")
 
         path = manifest.parent / filename
 
@@ -485,8 +577,11 @@ def _load_raster_manifest(
             RasterLayer(
                 index=index,
                 path=path,
-                name=name,
-                color=color,
+                artifact_color_index=artifact_color_index,
+                artifact_color=artifact_color,
+                printer_color_name=printer_color_name,
+                printer_color=printer_color,
+                distance=float(distance),
             )
         )
 
@@ -495,10 +590,15 @@ def _load_raster_manifest(
     if len(indexes) != len(set(indexes)):
         raise VectorError("Raster product indexes must be unique.")
 
-    names = [layer.name for layer in result]
+    artifact_color_indexes = [layer.artifact_color_index for layer in result]
 
-    if len(names) != len(set(names)):
-        raise VectorError("Raster product color names must be unique.")
+    if len(artifact_color_indexes) != len(set(artifact_color_indexes)):
+        raise VectorError("Artifact color indexes must be unique.")
+
+    printer_color_names = [layer.printer_color_name for layer in result]
+
+    if len(printer_color_names) != len(set(printer_color_names)):
+        raise VectorError("Raster product printer color names must be unique.")
 
     result.sort(
         key=lambda layer: layer.index,
@@ -1062,18 +1162,32 @@ def _write_manifest(
 
     Envelope and dynamic-product paths are relative to the manifest's
     stage-local product location.
+
+    Artifact color identity and RGB are preserved independently from the
+    physical printer-color assignment used to reproduce each region.
     """
 
     products = [
         {
             "index": raster.index,
             "path": vector.name,
-            "name": raster.name,
-            "color": {
-                "red": raster.color[0],
-                "green": raster.color[1],
-                "blue": raster.color[2],
+            "artifact_color": {
+                "index": raster.artifact_color_index,
+                "rgb": {
+                    "red": raster.artifact_color[0],
+                    "green": raster.artifact_color[1],
+                    "blue": raster.artifact_color[2],
+                },
             },
+            "printer_color": {
+                "name": raster.printer_color_name,
+                "rgb": {
+                    "red": raster.printer_color[0],
+                    "green": raster.printer_color[1],
+                    "blue": raster.printer_color[2],
+                },
+            },
+            "distance": raster.distance,
         }
         for raster, vector in layers
     ]

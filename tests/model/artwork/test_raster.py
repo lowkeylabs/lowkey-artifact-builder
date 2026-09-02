@@ -476,16 +476,21 @@ def test_raster_manifest_describes_stage_local_products(
             {
                 "index": 1,
                 "path": "color-1.png",
-                "name": "white",
-                "color": {
-                    "red": 255,
-                    "green": 255,
-                    "blue": 255,
+                "artifact_color": {
+                    "index": 1,
+                    "rgb": {
+                        "red": 250,
+                        "green": 250,
+                        "blue": 250,
+                    },
                 },
-                "trace_color": {
-                    "red": 250,
-                    "green": 250,
-                    "blue": 250,
+                "printer_color": {
+                    "name": "white",
+                    "rgb": {
+                        "red": 255,
+                        "green": 255,
+                        "blue": 255,
+                    },
                 },
                 "distance": 1.25,
             }
@@ -605,3 +610,237 @@ def test_raster_manifest_records_source_registration_bounds(
         "size": 80.0,
         "pixels": 100,
     }
+
+
+# =========================================================
+# Artifact-color persistence tests
+# =========================================================
+
+
+def test_raster_manifest_records_one_artifact_color_per_traced_region(
+    tmp_path: Path,
+) -> None:
+    """
+    Each traced color region has one stable Artifact color identity.
+
+    Artifact color identity is derived from traced-region identity rather
+    than from a configured physical filament color.
+    """
+
+    output_directory = tmp_path / "rasters"
+
+    layers = [
+        output_directory / "color-1.png",
+        output_directory / "color-2.png",
+        output_directory / "color-3.png",
+    ]
+
+    for layer in layers:
+        _write_layer(layer)
+
+    manifest = output_directory / "products.json"
+
+    assignments = (
+        raster.ColorAssignment(
+            measured=raster.MeasuredColor(
+                index=1,
+                rgb=(17, 43, 91),
+            ),
+            color=PaletteColor(
+                name="physical-a",
+                rgb=(10, 40, 90),
+            ),
+            distance=1.0,
+        ),
+        raster.ColorAssignment(
+            measured=raster.MeasuredColor(
+                index=2,
+                rgb=(103, 47, 29),
+            ),
+            color=PaletteColor(
+                name="physical-b",
+                rgb=(100, 50, 30),
+            ),
+            distance=2.0,
+        ),
+        raster.ColorAssignment(
+            measured=raster.MeasuredColor(
+                index=3,
+                rgb=(211, 173, 61),
+            ),
+            color=PaletteColor(
+                name="physical-c",
+                rgb=(210, 170, 60),
+            ),
+            distance=3.0,
+        ),
+    )
+
+    raster._write_manifest(
+        manifest,
+        layers,
+        assignments,
+        pixels=20,
+        bounds=raster.RasterBounds(
+            x=0.0,
+            y=0.0,
+            size=20.0,
+        ),
+    )
+
+    data = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert [product["artifact_color"]["index"] for product in data["products"]] == [
+        1,
+        2,
+        3,
+    ]
+
+
+def test_raster_manifest_preserves_traced_rgb_as_artifact_rgb(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact RGB is the RGB discovered by multicolor tracing.
+
+    It is preserved independently of the RGB of the assigned physical
+    printer color.
+    """
+
+    output_directory = tmp_path / "rasters"
+
+    layer = output_directory / "color-1.png"
+
+    _write_layer(layer)
+
+    manifest = output_directory / "products.json"
+
+    assignment = raster.ColorAssignment(
+        measured=raster.MeasuredColor(
+            index=1,
+            rgb=(
+                17,
+                43,
+                91,
+            ),
+        ),
+        color=PaletteColor(
+            name="physical-blue",
+            rgb=(
+                20,
+                40,
+                90,
+            ),
+        ),
+        distance=1.25,
+    )
+
+    raster._write_manifest(
+        manifest,
+        [layer],
+        (assignment,),
+        pixels=20,
+        bounds=raster.RasterBounds(
+            x=0.0,
+            y=0.0,
+            size=20.0,
+        ),
+    )
+
+    data = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    product = data["products"][0]
+
+    assert product["artifact_color"] == {
+        "index": 1,
+        "rgb": {
+            "red": 17,
+            "green": 43,
+            "blue": 91,
+        },
+    }
+
+
+def test_raster_manifest_keeps_artifact_color_separate_from_physical_color(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact color information is represented independently from the
+    physical color assigned to manufacture that region.
+    """
+
+    output_directory = tmp_path / "rasters"
+
+    layer = output_directory / "color-1.png"
+
+    _write_layer(layer)
+
+    manifest = output_directory / "products.json"
+
+    assignment = raster.ColorAssignment(
+        measured=raster.MeasuredColor(
+            index=1,
+            rgb=(
+                17,
+                43,
+                91,
+            ),
+        ),
+        color=PaletteColor(
+            name="physical-blue",
+            rgb=(
+                20,
+                40,
+                90,
+            ),
+        ),
+        distance=1.25,
+    )
+
+    raster._write_manifest(
+        manifest,
+        [layer],
+        (assignment,),
+        pixels=20,
+        bounds=raster.RasterBounds(
+            x=0.0,
+            y=0.0,
+            size=20.0,
+        ),
+    )
+
+    data = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    product = data["products"][0]
+
+    assert product["artifact_color"] == {
+        "index": 1,
+        "rgb": {
+            "red": 17,
+            "green": 43,
+            "blue": 91,
+        },
+    }
+
+    assert product["printer_color"] == {
+        "name": "physical-blue",
+        "rgb": {
+            "red": 20,
+            "green": 40,
+            "blue": 90,
+        },
+    }
+
+    assert product["artifact_color"]["rgb"] != product["printer_color"]["rgb"]

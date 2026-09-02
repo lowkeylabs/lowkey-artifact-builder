@@ -1132,35 +1132,41 @@ def _write_manifest(
 
     Each product records:
 
-        name
-            Semantic configured artwork color.
+        artifact_color
+            Stable Artifact color-region identity and the RGB value
+            discovered by multicolor tracing.
 
-        color
-            Configured RGB representation of that semantic color.
-
-        trace_color
-            RGB value measured from the corresponding Inkscape trace
-            object.
+        printer_color
+            Physical printer-color identity and RGB assigned to reproduce
+            the Artifact color.
 
         distance
-            Perceptual distance between the measured trace color and
-            the assigned configured color.
+            Perceptual distance between the Artifact RGB and assigned
+            printer RGB.
+
+    Artifact color information and printer-color assignment remain
+    explicitly distinct product information.
     """
 
     products = [
         {
             "index": index,
             "path": layer.name,
-            "name": assignment.color.name,
-            "color": {
-                "red": assignment.color.rgb[0],
-                "green": assignment.color.rgb[1],
-                "blue": assignment.color.rgb[2],
+            "artifact_color": {
+                "index": assignment.measured.index,
+                "rgb": {
+                    "red": assignment.measured.rgb[0],
+                    "green": assignment.measured.rgb[1],
+                    "blue": assignment.measured.rgb[2],
+                },
             },
-            "trace_color": {
-                "red": assignment.measured.rgb[0],
-                "green": assignment.measured.rgb[1],
-                "blue": assignment.measured.rgb[2],
+            "printer_color": {
+                "name": assignment.color.name,
+                "rgb": {
+                    "red": assignment.color.rgb[0],
+                    "green": assignment.color.rgb[1],
+                    "blue": assignment.color.rgb[2],
+                },
             },
             "distance": assignment.distance,
         }

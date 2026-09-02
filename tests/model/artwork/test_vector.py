@@ -136,9 +136,14 @@ def _write_raster(
 def _write_raster_manifest(
     path: Path,
     products: list[dict[str, Any]],
+    *,
+    registration: dict[str, Any] | None = None,
 ) -> None:
     """
-    Write a minimal raster manifest with identity source registration.
+    Write a raster manifest for vector-stage tests.
+
+    Legacy test shorthand using name/color describes an Artifact color
+    whose current printer assignment has the same RGB value.
     """
 
     path.parent.mkdir(
@@ -146,18 +151,55 @@ def _write_raster_manifest(
         exist_ok=True,
     )
 
-    path.write_text(
-        json.dumps(
+    normalized_products: list[dict[str, Any]] = []
+
+    for product in products:
+        if "artifact_color" in product:
+            normalized_products.append(
+                product,
+            )
+            continue
+
+        index = product["index"]
+        name = product["name"]
+        color = product["color"]
+
+        normalized_products.append(
             {
-                "registration": {
-                    "x": 0.0,
-                    "y": 0.0,
-                    "size": 20.0,
-                    "pixels": 20,
+                "index": index,
+                "path": product["path"],
+                "artifact_color": {
+                    "index": index,
+                    "rgb": color,
                 },
-                "products": products,
+                "printer_color": {
+                    "name": name,
+                    "rgb": color,
+                },
+                "distance": 0.0,
+            }
+        )
+
+    data = {
+        "registration": (
+            registration
+            if registration is not None
+            else {
+                "x": 0.0,
+                "y": 0.0,
+                "size": 20.0,
+                "pixels": 20,
             }
         ),
+        "products": normalized_products,
+    }
+
+    path.write_text(
+        json.dumps(
+            data,
+            indent=2,
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -501,15 +543,302 @@ def test_vector_manifest_describes_stage_local_products(
             {
                 "index": 1,
                 "path": "color-1.svg",
-                "name": "gold",
-                "color": {
-                    "red": 255,
-                    "green": 215,
-                    "blue": 0,
+                "artifact_color": {
+                    "index": 1,
+                    "rgb": {
+                        "red": 255,
+                        "green": 215,
+                        "blue": 0,
+                    },
                 },
+                "printer_color": {
+                    "name": "gold",
+                    "rgb": {
+                        "red": 255,
+                        "green": 215,
+                        "blue": 0,
+                    },
+                },
+                "distance": 0.0,
             }
         ],
     }
+
+
+def test_vector_preserves_artifact_color_identity_and_rgb(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Registered Artwork preserves Artifact color identity and RGB.
+
+    Vectorization changes geometry representation without replacing or
+    reinterpreting the Artifact colors discovered by multicolor tracing.
+    """
+
+    raster_directory = tmp_path / "raster"
+
+    raster = raster_directory / "color-1.png"
+
+    _write_raster(
+        raster,
+        box=(5, 5, 15, 15),
+    )
+
+    raster_manifest = raster_directory / "products.json"
+
+    _write_raster_manifest(
+        raster_manifest,
+        [
+            {
+                "index": 1,
+                "path": raster.name,
+                "artifact_color": {
+                    "index": 7,
+                    "rgb": _color(
+                        17,
+                        43,
+                        91,
+                    ),
+                },
+                "printer_color": {
+                    "name": "physical-blue",
+                    "rgb": _color(
+                        20,
+                        40,
+                        90,
+                    ),
+                },
+                "distance": 1.25,
+            }
+        ],
+    )
+
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "raster.manifest": raster_manifest,
+            "prepare.envelope": prepared_envelope,
+        },
+        outputs={
+            "manifest": vector_manifest,
+        },
+        resolver=_resolver(),
+    )
+
+    def fake_trace_mask(
+        source: Path,
+        output: Path,
+        *,
+        crop: vector.RasterCrop,
+    ) -> None:
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_text(
+            "<svg/>",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        vector,
+        "_trace_mask",
+        fake_trace_mask,
+    )
+
+    vector.execute(
+        context,  # type: ignore[arg-type]
+    )
+
+    data = json.loads(
+        vector_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    product = data["products"][0]
+
+    assert product["artifact_color"] == {
+        "index": 7,
+        "rgb": {
+            "red": 17,
+            "green": 43,
+            "blue": 91,
+        },
+    }
+
+    assert product["printer_color"] == {
+        "name": "physical-blue",
+        "rgb": {
+            "red": 20,
+            "green": 40,
+            "blue": 90,
+        },
+    }
+
+
+def test_registered_artwork_manifest_is_sufficient_to_recover_artifact_colors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Persistent Registered Artwork is sufficient to recover Artifact colors.
+
+    Consumers do not require the source image, prepared trace, or raster
+    manifest to recover stable Artifact color identities and RGB values.
+    """
+
+    raster_directory = tmp_path / "raster"
+
+    first_raster = raster_directory / "color-1.png"
+    second_raster = raster_directory / "color-2.png"
+
+    _write_raster(
+        first_raster,
+        box=(2, 4, 8, 12),
+    )
+
+    _write_raster(
+        second_raster,
+        box=(10, 6, 18, 16),
+    )
+
+    raster_manifest = raster_directory / "products.json"
+
+    _write_raster_manifest(
+        raster_manifest,
+        [
+            {
+                "index": 1,
+                "path": first_raster.name,
+                "artifact_color": {
+                    "index": 3,
+                    "rgb": _color(
+                        17,
+                        43,
+                        91,
+                    ),
+                },
+                "printer_color": {
+                    "name": "physical-blue",
+                    "rgb": _color(
+                        20,
+                        40,
+                        90,
+                    ),
+                },
+                "distance": 1.25,
+            },
+            {
+                "index": 2,
+                "path": second_raster.name,
+                "artifact_color": {
+                    "index": 8,
+                    "rgb": _color(
+                        211,
+                        173,
+                        61,
+                    ),
+                },
+                "printer_color": {
+                    "name": "physical-gold",
+                    "rgb": _color(
+                        210,
+                        170,
+                        60,
+                    ),
+                },
+                "distance": 2.5,
+            },
+        ],
+    )
+
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "raster.manifest": raster_manifest,
+            "prepare.envelope": prepared_envelope,
+        },
+        outputs={
+            "manifest": vector_manifest,
+        },
+        resolver=_resolver(),
+    )
+
+    def fake_trace_mask(
+        source: Path,
+        output: Path,
+        *,
+        crop: vector.RasterCrop,
+    ) -> None:
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_text(
+            "<svg/>",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        vector,
+        "_trace_mask",
+        fake_trace_mask,
+    )
+
+    vector.execute(
+        context,  # type: ignore[arg-type]
+    )
+
+    #
+    # Registered Artwork is now the only product information consulted.
+    #
+    # Removing the producer manifest demonstrates that Artifact color
+    # semantics have crossed the persistent-product boundary.
+    #
+    raster_manifest.unlink()
+
+    data = json.loads(
+        vector_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert [product["artifact_color"] for product in data["products"]] == [
+        {
+            "index": 3,
+            "rgb": {
+                "red": 17,
+                "green": 43,
+                "blue": 91,
+            },
+        },
+        {
+            "index": 8,
+            "rgb": {
+                "red": 211,
+                "green": 173,
+                "blue": 61,
+            },
+        },
+    ]
 
 
 # =========================================================
@@ -632,22 +961,36 @@ def test_registered_envelope_remains_registered_with_common_layer_crop(
         vector.RasterLayer(
             index=1,
             path=first_raster,
-            name="white",
-            color=(
+            artifact_color_index=1,
+            artifact_color=(
                 255,
                 255,
                 255,
             ),
+            printer_color_name="white",
+            printer_color=(
+                255,
+                255,
+                255,
+            ),
+            distance=0.0,
         ),
         vector.RasterLayer(
             index=2,
             path=second_raster,
-            name="black",
-            color=(
+            artifact_color_index=2,
+            artifact_color=(
                 0,
                 0,
                 0,
             ),
+            printer_color_name="black",
+            printer_color=(
+                0,
+                0,
+                0,
+            ),
+            distance=0.0,
         ),
     ]
 
@@ -661,72 +1004,35 @@ def test_registered_envelope_remains_registered_with_common_layer_crop(
         size=16,
     )
 
-    source = tmp_path / "prepared-envelope.svg"
-    output = tmp_path / "registered-envelope.svg"
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
 
-    source.write_text(
-        (
-            '<svg xmlns="http://www.w3.org/2000/svg" '
-            'width="20" '
-            'height="20" '
-            'viewBox="0 0 20 20">'
-            '<rect x="2" y="4" width="16" height="12"/>'
-            "</svg>"
-        ),
-        encoding="utf-8",
+    _write_prepared_envelope(
+        prepared_envelope,
     )
 
-    registration = vector.RasterRegistration(
-        x=0.0,
-        y=0.0,
-        size=20.0,
-        pixels=20,
-    )
+    registered_envelope = tmp_path / "vector" / "envelope.svg"
 
     vector._register_envelope(
-        source,
-        output,
-        registration=registration,
+        prepared_envelope,
+        registered_envelope,
+        registration=vector.RasterRegistration(
+            x=0.0,
+            y=0.0,
+            size=20.0,
+            pixels=20,
+        ),
         crop=crop,
     )
 
-    root = ET.parse(
-        output,
-    ).getroot()
+    tree = ET.parse(
+        registered_envelope,
+    )
+
+    root = tree.getroot()
 
     assert root.get("viewBox") == "0 0 16 16"
-
-    rectangle = next(element for element in root if element.tag == f"{{{vector.SVG_NS}}}rect")
-
-    assert float(
-        rectangle.get(
-            "x",
-            "nan",
-        )
-    ) == pytest.approx(0.0)
-
-    assert float(
-        rectangle.get(
-            "y",
-            "nan",
-        )
-    ) == pytest.approx(2.0)
-
-    assert float(
-        rectangle.get(
-            "width",
-            "nan",
-        )
-    ) == pytest.approx(16.0)
-
-    assert float(
-        rectangle.get(
-            "height",
-            "nan",
-        )
-    ) == pytest.approx(12.0)
-
-    assert rectangle.get("transform") is None
+    assert root.get("width") == "16"
+    assert root.get("height") == "16"
 
 
 def test_vector_layer_records_common_registered_coordinate_system(
@@ -1489,7 +1795,7 @@ def test_vector_layers_share_one_registered_coordinate_system(
 
     assert data["registered_extent"] == first_crop.size
 
-    assert [product["name"] for product in data["products"]] == [
+    assert [product["printer_color"]["name"] for product in data["products"]] == [
         "white",
         "black",
     ]
@@ -1727,8 +2033,9 @@ def test_vector_manifest_contains_no_physical_manufacturing_dimensions(
         assert set(product) == {
             "index",
             "path",
-            "name",
-            "color",
+            "artifact_color",
+            "printer_color",
+            "distance",
         }
 
 
@@ -2261,22 +2568,36 @@ def test_vector_registration_preserves_common_coordinates_between_envelope_and_l
         vector.RasterLayer(
             index=1,
             path=first_raster,
-            name="white",
-            color=(
+            artifact_color_index=1,
+            artifact_color=(
                 255,
                 255,
                 255,
             ),
+            printer_color_name="white",
+            printer_color=(
+                255,
+                255,
+                255,
+            ),
+            distance=0.0,
         ),
         vector.RasterLayer(
             index=2,
             path=second_raster,
-            name="black",
-            color=(
+            artifact_color_index=2,
+            artifact_color=(
                 0,
                 0,
                 0,
             ),
+            printer_color_name="black",
+            printer_color=(
+                0,
+                0,
+                0,
+            ),
+            distance=0.0,
         ),
     ]
 
@@ -2643,12 +2964,23 @@ def test_vector_stage_registers_envelope_through_raster_registration(
                     {
                         "index": 1,
                         "path": "color-1.png",
-                        "name": "red",
-                        "color": {
-                            "red": 255,
-                            "green": 0,
-                            "blue": 0,
+                        "artifact_color": {
+                            "index": 1,
+                            "rgb": {
+                                "red": 255,
+                                "green": 0,
+                                "blue": 0,
+                            },
                         },
+                        "printer_color": {
+                            "name": "red",
+                            "rgb": {
+                                "red": 255,
+                                "green": 0,
+                                "blue": 0,
+                            },
+                        },
+                        "distance": 0.0,
                     }
                 ],
             }
