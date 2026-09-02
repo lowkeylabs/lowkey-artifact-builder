@@ -12,9 +12,9 @@ configured artwork raise.
 
 The vector manifest identifies the dynamically generated vector layers
 that participate in this stage and records their common registered
-coordinate extent. The generated STL components are dynamic products
-whose filenames, geometry associations, semantic color names, and color
-assignments are recorded in the declared extrusion manifest.
+coordinate extent. Artifact color information and physical printer
+assignments are preserved through extrusion into the declared extrusion
+manifest.
 
 Filesystem layout, dependency resolution, and configuration resolution
 are responsibilities of the build engine. This implementation consumes
@@ -61,23 +61,34 @@ class ExtrudeError(RuntimeError):
 )
 class VectorLayer:
     """
-    One vector layer described by the vector manifest.
+    One registered vector color layer.
 
-    name preserves the semantic artwork color assigned by the raster
-    stage and propagated by the vector stage.
+    Artifact color identity and RGB describe the color discovered from
+    the Artwork. Printer color identity and RGB describe the physical
+    assignment established during rasterization.
     """
 
     index: int
 
     path: Path
 
-    name: str
+    artifact_color_index: int
 
-    color: tuple[
+    artifact_color: tuple[
         int,
         int,
         int,
     ]
+
+    printer_color_name: str
+
+    printer_color: tuple[
+        int,
+        int,
+        int,
+    ]
+
+    distance: float
 
 
 @dataclass(
@@ -117,9 +128,6 @@ def execute(
             Manifest describing the registered vector color layers and
             their common registered coordinate extent.
 
-        artwork_colors
-            Resolved artwork palette.
-
         artwork_size
             Physical width and height of the dimensionalized artwork in
             millimeters.
@@ -132,7 +140,8 @@ def execute(
 
         manifest
             Manifest describing the dynamically generated STL
-            components and their semantic artwork color assignments.
+            components while preserving Artifact color information and
+            physical printer assignments from Registered Artwork.
     """
 
     vector_manifest = context.input(
@@ -141,10 +150,6 @@ def execute(
 
     extrude_manifest = context.output(
         "manifest",
-    )
-
-    artwork_colors = context.resolver(
-        "artwork_colors",
     )
 
     artwork_size = _positive_number(
@@ -163,9 +168,6 @@ def execute(
 
     if not vector_manifest.is_file():
         raise ExtrudeError(f"Vector product manifest does not exist: {vector_manifest}")
-
-    if not artwork_colors:
-        raise ExtrudeError("Artwork palette is empty.")
 
     extrude_manifest.parent.mkdir(
         parents=True,
@@ -335,8 +337,8 @@ def _load_vector_manifest(
     registered_extent describes the common square coordinate system
     shared by every vector layer.
 
-    Semantic color names assigned by the raster stage are required and
-    preserved together with their configured RGB representations.
+    Artifact color identity and RGB remain distinct from the physical
+    printer identity and RGB assigned during rasterization.
     """
 
     try:
@@ -359,7 +361,9 @@ def _load_vector_manifest(
         ),
     )
 
-    products = data.get("products")
+    products = data.get(
+        "products",
+    )
 
     if not isinstance(
         products,
@@ -379,13 +383,25 @@ def _load_vector_manifest(
         ):
             raise ExtrudeError("Vector manifest contains an invalid product.")
 
-        index = product.get("index")
+        index = product.get(
+            "index",
+        )
 
-        filename = product.get("path")
+        filename = product.get(
+            "path",
+        )
 
-        name = product.get("name")
+        artifact_color_data = product.get(
+            "artifact_color",
+        )
 
-        color_data = product.get("color")
+        printer_color_data = product.get(
+            "printer_color",
+        )
+
+        distance = product.get(
+            "distance",
+        )
 
         if (
             isinstance(
@@ -409,40 +425,118 @@ def _load_vector_manifest(
         ):
             raise ExtrudeError(f"Vector product {index} has no valid path.")
 
-        if (
-            not isinstance(
-                name,
-                str,
-            )
-            or not name.strip()
-        ):
-            raise ExtrudeError(f"Vector product {index} has no valid color name.")
-
-        name = name.strip()
-
         if not isinstance(
-            color_data,
+            artifact_color_data,
             dict,
         ):
-            raise ExtrudeError(f"Vector product {index} has no valid color.")
+            raise ExtrudeError(f"Vector product {index} has no valid Artifact color.")
 
-        color = (
+        artifact_color_index = artifact_color_data.get(
+            "index",
+        )
+
+        artifact_rgb_data = artifact_color_data.get(
+            "rgb",
+        )
+
+        if (
+            isinstance(
+                artifact_color_index,
+                bool,
+            )
+            or not isinstance(
+                artifact_color_index,
+                int,
+            )
+            or artifact_color_index < 1
+        ):
+            raise ExtrudeError(f"Vector product {index} has no valid Artifact color index.")
+
+        if not isinstance(
+            artifact_rgb_data,
+            dict,
+        ):
+            raise ExtrudeError(f"Vector product {index} has no valid Artifact RGB.")
+
+        artifact_color = (
             _color_component(
-                color_data,
+                artifact_rgb_data,
                 "red",
                 index,
             ),
             _color_component(
-                color_data,
+                artifact_rgb_data,
                 "green",
                 index,
             ),
             _color_component(
-                color_data,
+                artifact_rgb_data,
                 "blue",
                 index,
             ),
         )
+
+        if not isinstance(
+            printer_color_data,
+            dict,
+        ):
+            raise ExtrudeError(f"Vector product {index} has no valid printer color.")
+
+        printer_color_name = printer_color_data.get(
+            "name",
+        )
+
+        printer_rgb_data = printer_color_data.get(
+            "rgb",
+        )
+
+        if (
+            not isinstance(
+                printer_color_name,
+                str,
+            )
+            or not printer_color_name.strip()
+        ):
+            raise ExtrudeError(f"Vector product {index} has no valid printer color name.")
+
+        printer_color_name = printer_color_name.strip()
+
+        if not isinstance(
+            printer_rgb_data,
+            dict,
+        ):
+            raise ExtrudeError(f"Vector product {index} has no valid printer RGB.")
+
+        printer_color = (
+            _color_component(
+                printer_rgb_data,
+                "red",
+                index,
+            ),
+            _color_component(
+                printer_rgb_data,
+                "green",
+                index,
+            ),
+            _color_component(
+                printer_rgb_data,
+                "blue",
+                index,
+            ),
+        )
+
+        if (
+            isinstance(
+                distance,
+                bool,
+            )
+            or not isinstance(
+                distance,
+                int | float,
+            )
+            or distance < 0
+        ):
+            raise ExtrudeError(f"Vector product {index} has no valid assignment distance.")
 
         path = manifest.parent / filename
 
@@ -456,8 +550,11 @@ def _load_vector_manifest(
             VectorLayer(
                 index=index,
                 path=path,
-                name=name,
-                color=color,
+                artifact_color_index=artifact_color_index,
+                artifact_color=artifact_color,
+                printer_color_name=printer_color_name,
+                printer_color=printer_color,
+                distance=float(distance),
             )
         )
 
@@ -466,12 +563,19 @@ def _load_vector_manifest(
     if len(indexes) != len(set(indexes)):
         raise ExtrudeError("Vector product indexes must be unique.")
 
-    names = [layer.name for layer in result]
+    artifact_color_indexes = [layer.artifact_color_index for layer in result]
 
-    if len(names) != len(set(names)):
-        raise ExtrudeError("Vector product color names must be unique.")
+    if len(artifact_color_indexes) != len(set(artifact_color_indexes)):
+        raise ExtrudeError("Artifact color indexes must be unique.")
 
-    result.sort(key=lambda layer: layer.index)
+    printer_color_names = [layer.printer_color_name for layer in result]
+
+    if len(printer_color_names) != len(set(printer_color_names)):
+        raise ExtrudeError("Vector product printer color names must be unique.")
+
+    result.sort(
+        key=lambda layer: layer.index,
+    )
 
     return VectorManifest(
         registered_extent=registered_extent,
@@ -628,20 +732,31 @@ def _write_manifest(
     """
     Write the extrusion product manifest.
 
-    Semantic artwork color names and their configured RGB
-    representations are propagated unchanged from the vector stage.
+    Artifact color information and physical printer assignments are
+    propagated unchanged from Registered Artwork.
     """
 
     products = [
         {
             "index": vector.index,
             "path": stl.name,
-            "name": vector.name,
-            "color": {
-                "red": vector.color[0],
-                "green": vector.color[1],
-                "blue": vector.color[2],
+            "artifact_color": {
+                "index": vector.artifact_color_index,
+                "rgb": {
+                    "red": vector.artifact_color[0],
+                    "green": vector.artifact_color[1],
+                    "blue": vector.artifact_color[2],
+                },
             },
+            "printer_color": {
+                "name": vector.printer_color_name,
+                "rgb": {
+                    "red": vector.printer_color[0],
+                    "green": vector.printer_color[1],
+                    "blue": vector.printer_color[2],
+                },
+            },
+            "distance": vector.distance,
         }
         for vector, stl in layers
     ]

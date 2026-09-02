@@ -80,13 +80,46 @@ def _color(
     blue: int,
 ) -> dict[str, int]:
     """
-    Return a vector-manifest RGB color.
+    Return a manifest RGB color.
     """
 
     return {
         "red": red,
         "green": green,
         "blue": blue,
+    }
+
+
+def _product(
+    *,
+    index: int,
+    path: str,
+    artifact_color_index: int,
+    artifact_rgb: tuple[int, int, int],
+    printer_color_name: str,
+    printer_rgb: tuple[int, int, int],
+    distance: float,
+) -> dict[str, Any]:
+    """
+    Return one registered vector product.
+    """
+
+    return {
+        "index": index,
+        "path": path,
+        "artifact_color": {
+            "index": artifact_color_index,
+            "rgb": _color(
+                *artifact_rgb,
+            ),
+        },
+        "printer_color": {
+            "name": printer_color_name,
+            "rgb": _color(
+                *printer_rgb,
+            ),
+        },
+        "distance": distance,
     }
 
 
@@ -123,13 +156,28 @@ def _resolver() -> StubResolver:
 
     return StubResolver(
         {
-            "artwork_colors": [
-                "white",
-                "black",
-            ],
             "artwork_size": 150.0,
             "artwork_raise": 1.0,
         }
+    )
+
+
+def _fake_render_stl_source(
+    source: str,
+    output: Path,
+) -> None:
+    """
+    Materialize a fake STL product.
+    """
+
+    output.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    output.write_text(
+        "stl",
+        encoding="utf-8",
     )
 
 
@@ -166,16 +214,23 @@ def test_extrude_uses_declared_vector_manifest(
     _write_vector_manifest(
         vector_manifest,
         [
-            {
-                "index": 1,
-                "path": svg.name,
-                "name": "white",
-                "color": _color(
+            _product(
+                index=1,
+                path=svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    250,
+                    250,
+                    250,
+                ),
+                printer_color_name="white",
+                printer_rgb=(
                     255,
                     255,
                     255,
                 ),
-            }
+                distance=1.25,
+            )
         ],
     )
 
@@ -199,14 +254,9 @@ def test_extrude_uses_declared_vector_manifest(
     ) -> None:
         rendered_sources.append(source)
 
-        output.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        output.write_text(
-            "stl",
-            encoding="utf-8",
+        _fake_render_stl_source(
+            source,
+            output,
         )
 
     monkeypatch.setattr(
@@ -258,26 +308,40 @@ def test_extrude_places_dynamic_stls_beside_declared_manifest(
     _write_vector_manifest(
         vector_manifest,
         [
-            {
-                "index": 2,
-                "path": second_svg.name,
-                "name": "black",
-                "color": _color(
+            _product(
+                index=2,
+                path=second_svg.name,
+                artifact_color_index=2,
+                artifact_rgb=(
+                    5,
+                    5,
+                    5,
+                ),
+                printer_color_name="black",
+                printer_rgb=(
                     0,
                     0,
                     0,
                 ),
-            },
-            {
-                "index": 1,
-                "path": first_svg.name,
-                "name": "white",
-                "color": _color(
+                distance=1.5,
+            ),
+            _product(
+                index=1,
+                path=first_svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    250,
+                    250,
+                    250,
+                ),
+                printer_color_name="white",
+                printer_rgb=(
                     255,
                     255,
                     255,
                 ),
-            },
+                distance=1.25,
+            ),
         ],
     )
 
@@ -303,14 +367,9 @@ def test_extrude_places_dynamic_stls_beside_declared_manifest(
     ) -> None:
         rendered_outputs.append(output)
 
-        output.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        output.write_text(
-            "stl",
-            encoding="utf-8",
+        _fake_render_stl_source(
+            source,
+            output,
         )
 
     monkeypatch.setattr(
@@ -357,16 +416,23 @@ def test_extrude_manifest_describes_stage_local_products(
     _write_vector_manifest(
         vector_manifest,
         [
-            {
-                "index": 1,
-                "path": svg.name,
-                "name": "gold",
-                "color": _color(
+            _product(
+                index=1,
+                path=svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    250,
+                    205,
+                    10,
+                ),
+                printer_color_name="gold",
+                printer_rgb=(
                     255,
                     215,
                     0,
                 ),
-            }
+                distance=3.5,
+            )
         ],
     )
 
@@ -382,24 +448,10 @@ def test_extrude_manifest_describes_stage_local_products(
         resolver=_resolver(),
     )
 
-    def fake_render_stl_source(
-        source: str,
-        output: Path,
-    ) -> None:
-        output.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        output.write_text(
-            "stl",
-            encoding="utf-8",
-        )
-
     monkeypatch.setattr(
         extrude,
         "render_stl_source",
-        fake_render_stl_source,
+        _fake_render_stl_source,
     )
 
     extrude.execute(context)  # type: ignore[arg-type]
@@ -416,15 +468,130 @@ def test_extrude_manifest_describes_stage_local_products(
             {
                 "index": 1,
                 "path": "color-1.stl",
-                "name": "gold",
-                "color": {
-                    "red": 255,
-                    "green": 215,
-                    "blue": 0,
+                "artifact_color": {
+                    "index": 1,
+                    "rgb": {
+                        "red": 250,
+                        "green": 205,
+                        "blue": 10,
+                    },
                 },
+                "printer_color": {
+                    "name": "gold",
+                    "rgb": {
+                        "red": 255,
+                        "green": 215,
+                        "blue": 0,
+                    },
+                },
+                "distance": 3.5,
             }
         ],
     }
+
+
+# =========================================================
+# Color-semantic tests
+# =========================================================
+
+
+def test_extrude_preserves_artifact_and_printer_color_semantics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Extrusion preserves Artifact color identity and RGB separately from
+    the physical printer assignment.
+
+    Physical dimensionalization does not reinterpret either color.
+    """
+
+    vector_directory = tmp_path / "vector"
+
+    svg = vector_directory / "color.svg"
+
+    vector_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    svg.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "manifest.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path=svg.name,
+                artifact_color_index=7,
+                artifact_rgb=(
+                    17,
+                    43,
+                    91,
+                ),
+                printer_color_name="physical-blue",
+                printer_rgb=(
+                    20,
+                    40,
+                    90,
+                ),
+                distance=1.25,
+            )
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "manifest.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=_resolver(),
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        _fake_render_stl_source,
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    product = data["products"][0]
+
+    assert product["artifact_color"] == {
+        "index": 7,
+        "rgb": {
+            "red": 17,
+            "green": 43,
+            "blue": 91,
+        },
+    }
+
+    assert product["printer_color"] == {
+        "name": "physical-blue",
+        "rgb": {
+            "red": 20,
+            "green": 40,
+            "blue": 90,
+        },
+    }
+
+    assert product["distance"] == 1.25
 
 
 # =========================================================
