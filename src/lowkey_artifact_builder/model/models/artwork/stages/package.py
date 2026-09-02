@@ -8,9 +8,9 @@ Filesystem layout and dependency resolution are responsibilities of the build
 engine. This implementation consumes only paths supplied through StageContext.
 
 The extrusion manifest identifies the dynamically generated STL components
-that participate in the final artifact. Packaging preserves the semantic color
-identity and RGB representation established upstream without re-resolving
-Artwork color policy.
+that participate in the final artifact. Packaging preserves the physical
+printer color assignment established upstream without re-resolving Artwork
+color policy.
 """
 # File: src/lowkey_artifact_builder/model/models/artwork/stages/package.py
 # Copyright 2026 LowKeyLabs LLC
@@ -56,8 +56,8 @@ class ExtrudedComponent:
     """
     One independently printable Artwork component.
 
-    The extrusion manifest establishes component order, path, semantic color
-    name, and RGB representation. Packaging preserves those semantics while
+    The extrusion manifest establishes component order, path, and physical
+    printer color assignment. Packaging preserves that assignment while
     constructing the final 3MF.
     """
 
@@ -90,9 +90,10 @@ def execute(
         artifact
             Final multicomponent 3MF artifact.
 
-    Packaging does not determine Artwork component membership or resolve
-    semantic colors. Those properties are established upstream and preserved
-    through the shared 3MF component representation.
+    Packaging does not determine Artwork component membership or assign
+    physical printer colors. Those properties are established upstream.
+    Packaging uses the preserved printer assignment when constructing the
+    shared 3MF component representation.
     """
 
     extrude_manifest = context.input(
@@ -215,7 +216,7 @@ def _load_extrude_manifest(
     names = [component.color.name for component in result]
 
     if len(names) != len(set(names)):
-        raise PackageError("Extrusion product color names must be unique.")
+        raise PackageError("Extrusion product printer color names must be unique.")
 
     result.sort(
         key=lambda component: component.index,
@@ -230,6 +231,9 @@ def _load_component(
 ) -> ExtrudedComponent:
     """
     Load and validate one extrusion product.
+
+    The physical 3MF component color is determined exclusively by the
+    printer assignment preserved in the extrusion manifest.
     """
 
     if not isinstance(
@@ -246,12 +250,8 @@ def _load_component(
         "path",
     )
 
-    name = product.get(
-        "name",
-    )
-
-    color_data = product.get(
-        "color",
+    printer_color_data = product.get(
+        "printer_color",
     )
 
     if (
@@ -276,38 +276,52 @@ def _load_component(
     ):
         raise PackageError(f"Extrusion product {index} has no valid path.")
 
-    if (
-        not isinstance(
-            name,
-            str,
-        )
-        or not name.strip()
-    ):
-        raise PackageError(f"Extrusion product {index} has no valid color name.")
-
-    name = name.strip()
-
     if not isinstance(
-        color_data,
+        printer_color_data,
         dict,
     ):
-        raise PackageError(f"Extrusion product {index} has no valid color.")
+        raise PackageError(f"Extrusion product {index} has no valid printer color.")
+
+    printer_color_name = printer_color_data.get(
+        "name",
+    )
+
+    printer_rgb_data = printer_color_data.get(
+        "rgb",
+    )
+
+    if (
+        not isinstance(
+            printer_color_name,
+            str,
+        )
+        or not printer_color_name.strip()
+    ):
+        raise PackageError(f"Extrusion product {index} has no valid printer color name.")
+
+    printer_color_name = printer_color_name.strip()
+
+    if not isinstance(
+        printer_rgb_data,
+        dict,
+    ):
+        raise PackageError(f"Extrusion product {index} has no valid printer RGB.")
 
     color = PaletteColor(
-        name=name,
+        name=printer_color_name,
         rgb=(
             _color_component(
-                color_data,
+                printer_rgb_data,
                 "red",
                 index,
             ),
             _color_component(
-                color_data,
+                printer_rgb_data,
                 "green",
                 index,
             ),
             _color_component(
-                color_data,
+                printer_rgb_data,
                 "blue",
                 index,
             ),
@@ -376,9 +390,9 @@ def _component_name(
     """
     Return the semantic 3MF object name for one Artwork component.
 
-    Artwork's independently printable components are identified by semantic
-    color. Object names therefore combine artifact identity with the semantic
-    color name established upstream.
+    Independently printable components are identified by their assigned
+    physical printer color. Object names therefore combine artifact identity
+    with the printer color identity established upstream.
 
     For example:
 

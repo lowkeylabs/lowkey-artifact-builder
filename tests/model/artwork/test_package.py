@@ -5,9 +5,11 @@ The package stage consumes dimensionalized Artwork components through the
 extrusion manifest and packages them through the shared 3MF component
 representation.
 
-Filesystem layout remains a build-engine responsibility. Component membership,
-semantic color identity, and RGB metadata are established upstream and must be
-preserved by packaging.
+Filesystem layout remains a build-engine responsibility. Artifact color
+information and physical printer assignments are established upstream.
+Packaging must use the printer assignment for the physical 3MF component
+while preserving the distinction between Artifact and printer color
+semantics at its input boundary.
 """
 # File: tests/model/artwork/test_package.py
 # Copyright 2026 LowKeyLabs LLC
@@ -88,13 +90,49 @@ def _color(
     blue: int,
 ) -> dict[str, int]:
     """
-    Return Artwork extrusion-manifest RGB metadata.
+    Return extrusion-manifest RGB metadata.
     """
 
     return {
         "red": red,
         "green": green,
         "blue": blue,
+    }
+
+
+def _product(
+    *,
+    index: int,
+    path: str,
+    artifact_color_index: int,
+    artifact_rgb: tuple[int, int, int],
+    printer_color_name: str,
+    printer_rgb: tuple[int, int, int],
+    distance: float,
+) -> dict[str, Any]:
+    """
+    Return one dimensionalized Artwork product.
+
+    Artifact color describes the color discovered from the Artwork.
+    Printer color describes the physical assignment used for packaging.
+    """
+
+    return {
+        "index": index,
+        "path": path,
+        "artifact_color": {
+            "index": artifact_color_index,
+            "rgb": _color(
+                *artifact_rgb,
+            ),
+        },
+        "printer_color": {
+            "name": printer_color_name,
+            "rgb": _color(
+                *printer_rgb,
+            ),
+        },
+        "distance": distance,
     }
 
 
@@ -145,16 +183,23 @@ def test_package_uses_declared_artifact_output(
     _write_extrude_manifest(
         manifest,
         [
-            {
-                "index": 1,
-                "path": stl.name,
-                "name": "white",
-                "color": _color(
+            _product(
+                index=1,
+                path=stl.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    250,
+                    250,
+                    250,
+                ),
+                printer_color_name="white",
+                printer_rgb=(
                     255,
                     255,
                     255,
                 ),
-            },
+                distance=1.25,
+            ),
         ],
     )
 
@@ -240,26 +285,40 @@ def test_package_resolves_dynamic_stls_relative_to_manifest(
     _write_extrude_manifest(
         manifest,
         [
-            {
-                "index": 2,
-                "path": second_stl.name,
-                "name": "green",
-                "color": _color(
+            _product(
+                index=2,
+                path=second_stl.name,
+                artifact_color_index=2,
+                artifact_rgb=(
+                    8,
+                    245,
+                    14,
+                ),
+                printer_color_name="green",
+                printer_rgb=(
                     0,
                     255,
                     0,
                 ),
-            },
-            {
-                "index": 1,
-                "path": first_stl.name,
-                "name": "white",
-                "color": _color(
+                distance=2.5,
+            ),
+            _product(
+                index=1,
+                path=first_stl.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    250,
+                    250,
+                    250,
+                ),
+                printer_color_name="white",
+                printer_rgb=(
                     255,
                     255,
                     255,
                 ),
-            },
+                distance=1.25,
+            ),
         ],
     )
 
@@ -315,35 +374,35 @@ def test_package_resolves_dynamic_stls_relative_to_manifest(
     ]
 
 
-def test_package_preserves_semantic_color_metadata(
+def test_package_uses_printer_assignment_for_component_metadata(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Artwork packaging preserves semantic color identity and RGB metadata.
+    Packaging uses the physical printer assignment for 3MF component
+    identity and RGB.
 
-    The extrusion manifest is authoritative for Artwork component colors.
-    Packaging transfers that metadata into the shared 3MF component contract
-    rather than discarding it or re-resolving model color policy.
+    Artifact RGB remains distinct input information and must not replace
+    the printer RGB selected during rasterization.
     """
 
     extrude_directory = tmp_path / "extrude"
 
-    white_stl = extrude_directory / "color-1.stl"
-    red_stl = extrude_directory / "color-2.stl"
+    first_stl = extrude_directory / "color-1.stl"
+    second_stl = extrude_directory / "color-2.stl"
 
     extrude_directory.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    white_stl.write_text(
-        "white",
+    first_stl.write_text(
+        "first",
         encoding="utf-8",
     )
 
-    red_stl.write_text(
-        "red",
+    second_stl.write_text(
+        "second",
         encoding="utf-8",
     )
 
@@ -352,26 +411,40 @@ def test_package_preserves_semantic_color_metadata(
     _write_extrude_manifest(
         manifest,
         [
-            {
-                "index": 1,
-                "path": white_stl.name,
-                "name": "white",
-                "color": _color(
-                    255,
-                    255,
-                    255,
+            _product(
+                index=1,
+                path=first_stl.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    17,
+                    43,
+                    91,
                 ),
-            },
-            {
-                "index": 2,
-                "path": red_stl.name,
-                "name": "red",
-                "color": _color(
+                printer_color_name="physical-blue",
+                printer_rgb=(
+                    20,
+                    40,
+                    90,
+                ),
+                distance=1.25,
+            ),
+            _product(
+                index=2,
+                path=second_stl.name,
+                artifact_color_index=2,
+                artifact_rgb=(
+                    214,
+                    31,
+                    42,
+                ),
+                printer_color_name="physical-red",
+                printer_rgb=(
                     220,
                     38,
                     38,
                 ),
-            },
+                distance=2.75,
+            ),
         ],
     )
 
@@ -423,21 +496,21 @@ def test_package_preserves_semantic_color_metadata(
     assert captured_components is not None
 
     assert tuple(component.name for component in captured_components) == (
-        "portrait-white",
-        "portrait-red",
+        "portrait-physical-blue",
+        "portrait-physical-red",
     )
 
     assert tuple(component.color for component in captured_components) == (
         PaletteColor(
-            name="white",
+            name="physical-blue",
             rgb=(
-                255,
-                255,
-                255,
+                20,
+                40,
+                90,
             ),
         ),
         PaletteColor(
-            name="red",
+            name="physical-red",
             rgb=(
                 220,
                 38,
@@ -445,6 +518,116 @@ def test_package_preserves_semantic_color_metadata(
             ),
         ),
     )
+
+
+def test_package_does_not_use_artifact_rgb_as_physical_component_color(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Artifact RGB is not substituted for the assigned printer RGB when
+    constructing the physical 3MF component.
+    """
+
+    extrude_directory = tmp_path / "extrude"
+
+    stl = extrude_directory / "color-1.stl"
+
+    extrude_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    stl.write_text(
+        "component",
+        encoding="utf-8",
+    )
+
+    manifest = extrude_directory / "products.json"
+
+    artifact_rgb = (
+        17,
+        43,
+        91,
+    )
+
+    printer_rgb = (
+        20,
+        40,
+        90,
+    )
+
+    _write_extrude_manifest(
+        manifest,
+        [
+            _product(
+                index=1,
+                path=stl.name,
+                artifact_color_index=1,
+                artifact_rgb=artifact_rgb,
+                printer_color_name="physical-blue",
+                printer_rgb=printer_rgb,
+                distance=1.25,
+            ),
+        ],
+    )
+
+    artifact = tmp_path / "artifact.3mf"
+
+    context = StubContext(
+        artifact_id="portrait",
+        inputs={
+            "extrude.manifest": manifest,
+        },
+        outputs={
+            "artifact": artifact,
+        },
+    )
+
+    monkeypatch.setattr(
+        package,
+        "load_stl",
+        lambda path: _mesh(),
+        raising=False,
+    )
+
+    captured_components: tuple[Component, ...] | None = None
+
+    def fake_write(
+        components,
+        output: Path,
+    ) -> None:
+        nonlocal captured_components
+
+        captured_components = tuple(components)
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_bytes(b"3mf")
+
+    monkeypatch.setattr(
+        package,
+        "write",
+        fake_write,
+        raising=False,
+    )
+
+    package.execute(context)  # type: ignore[arg-type]
+
+    assert captured_components is not None
+    assert len(captured_components) == 1
+
+    component = captured_components[0]
+
+    assert component.color == PaletteColor(
+        name="physical-blue",
+        rgb=printer_rgb,
+    )
+
+    assert component.color.rgb != artifact_rgb
 
 
 def test_package_does_not_require_canonical_artifact_directories(
@@ -474,16 +657,23 @@ def test_package_does_not_require_canonical_artifact_directories(
     _write_extrude_manifest(
         manifest,
         [
-            {
-                "index": 1,
-                "path": stl.name,
-                "name": "gold",
-                "color": _color(
+            _product(
+                index=1,
+                path=stl.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    250,
+                    205,
+                    10,
+                ),
+                printer_color_name="gold",
+                printer_rgb=(
                     255,
                     215,
                     0,
                 ),
-            },
+                distance=3.5,
+            ),
         ],
     )
 
