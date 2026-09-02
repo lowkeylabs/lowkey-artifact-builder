@@ -837,3 +837,147 @@ def test_registered_artwork_manifest_is_sufficient_to_recover_artifact_colors(
             },
         },
     ]
+
+
+def test_vector_binary_trace_does_not_rediscover_color(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Vector tracing derives geometry only from the registered raster mask.
+
+    Artifact and printer color semantics come from the raster manifest rather
+    than being rediscovered or reinterpreted during binary mask tracing.
+    """
+
+    raster_directory = tmp_path / "raster"
+    raster = raster_directory / "layer.png"
+
+    _write_raster(
+        raster,
+        box=(5, 5, 15, 15),
+    )
+
+    raster_manifest = raster_directory / "products.json"
+
+    _write_raster_manifest(
+        raster_manifest,
+        [
+            {
+                "index": 1,
+                "path": raster.name,
+                "artifact_color": {
+                    "index": 7,
+                    "rgb": _color(
+                        17,
+                        43,
+                        91,
+                    ),
+                },
+                "printer_color": {
+                    "name": "physical-blue",
+                    "rgb": _color(
+                        20,
+                        40,
+                        90,
+                    ),
+                },
+                "distance": 1.25,
+            },
+        ],
+    )
+
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "raster.manifest": raster_manifest,
+            "prepare.envelope": prepared_envelope,
+        },
+        outputs={
+            "manifest": vector_manifest,
+        },
+        resolver=_resolver(),
+    )
+
+    traced: list[tuple[Path, vector.RasterCrop]] = []
+
+    def fake_trace_mask(
+        source: Path,
+        output: Path,
+        *,
+        crop: vector.RasterCrop,
+    ) -> None:
+        traced.append(
+            (
+                source,
+                crop,
+            )
+        )
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_text(
+            "<svg/>",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        vector,
+        "_trace_mask",
+        fake_trace_mask,
+    )
+
+    vector.execute(
+        context,  # type: ignore[arg-type]
+    )
+
+    assert traced == [
+        (
+            raster,
+            vector.RasterCrop(
+                x=5,
+                y=5,
+                size=10,
+            ),
+        ),
+    ]
+
+    data = json.loads(
+        vector_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert data["products"] == [
+        {
+            "index": 1,
+            "path": "color-1.svg",
+            "artifact_color": {
+                "index": 7,
+                "rgb": _color(
+                    17,
+                    43,
+                    91,
+                ),
+            },
+            "printer_color": {
+                "name": "physical-blue",
+                "rgb": _color(
+                    20,
+                    40,
+                    90,
+                ),
+            },
+            "distance": 1.25,
+        },
+    ]
