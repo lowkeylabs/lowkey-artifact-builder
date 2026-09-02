@@ -165,8 +165,8 @@ def execute(
 
     Parameters:
 
-        artwork_colors
-            Ordered semantic color names available to the artwork.
+        printer_colors
+            Ordered physical printer colors available for assignment.
 
         artwork_pixels
             Width and height of every registered raster layer.
@@ -181,8 +181,8 @@ def execute(
 
         manifest
             JSON manifest describing generated raster layers,
-            semantic color assignments, measured trace colors, and
-            perceptual assignment distances.
+            Artifact colors, printer assignments, and perceptual
+            assignment distances.
     """
 
     trace = context.input(
@@ -193,10 +193,11 @@ def execute(
         "manifest",
     )
 
-    artwork_colors = _color_names(
+    printer_colors = _color_names(
+        "printer_colors",
         context.resolver(
-            "artwork_colors",
-        )
+            "printer_colors",
+        ),
     )
 
     pixels = _positive_integer(
@@ -229,19 +230,13 @@ def execute(
 
     try:
         palette = resolve_palette(
-            artwork_colors,
+            printer_colors,
             context.resolver.colors,
         )
 
         tree = load(trace)
 
         objects = get_trace_objects(tree)
-
-        if len(objects) != len(palette):
-            raise RasterError(
-                "Unexpected number of traced color objects. "
-                f"Requested {len(palette)}, found {len(objects)}."
-            )
 
         trace_colors = tuple(
             get_fill_rgb(
@@ -293,6 +288,7 @@ def execute(
             manifest,
             layers,
             assignments,
+            assignment_distance=assignment_result.distance,
             pixels=pixels,
             bounds=bounds,
         )
@@ -312,26 +308,27 @@ def execute(
 
 
 def _color_names(
+    name: str,
     value: Any,
 ) -> tuple[str, ...]:
     """
-    Return a validated sequence of artwork color names.
+    Return a validated sequence of color names.
     """
 
     if isinstance(
         value,
         str | bytes,
     ):
-        raise RasterError("artwork_colors must be a sequence of color names.")
+        raise RasterError(f"{name} must be a sequence of color names.")
 
     try:
         colors = tuple(value)
 
     except TypeError as exc:
-        raise RasterError("artwork_colors must be a sequence of color names.") from exc
+        raise RasterError(f"{name} must be a sequence of color names.") from exc
 
     if not colors:
-        raise RasterError("artwork_colors must contain at least one color.")
+        raise RasterError(f"{name} must contain at least one color.")
 
     if not all(
         isinstance(
@@ -341,7 +338,7 @@ def _color_names(
         and bool(color.strip())
         for color in colors
     ):
-        raise RasterError("artwork_colors must contain only non-empty color names.")
+        raise RasterError(f"{name} must contain only non-empty color names.")
 
     return tuple(color.strip() for color in colors)
 
@@ -1121,6 +1118,7 @@ def _write_manifest(
         ...,
     ],
     *,
+    assignment_distance: float,
     pixels: int,
     bounds: RasterBounds,
 ) -> None:
@@ -1145,6 +1143,9 @@ def _write_manifest(
         distance
             Perceptual distance between the Artifact RGB and assigned
             printer RGB.
+
+    The complete printer assignment records its aggregate perceptual
+    distance independently from the individual product distances.
 
     Artifact color information and printer-color assignment remain
     explicitly distinct product information.
@@ -1187,6 +1188,9 @@ def _write_manifest(
 
     data = {
         "pixels": pixels,
+        "printer_assignment": {
+            "distance": assignment_distance,
+        },
         "registration": {
             "x": bounds.x,
             "y": bounds.y,
