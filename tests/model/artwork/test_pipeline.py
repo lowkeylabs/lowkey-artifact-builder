@@ -56,7 +56,7 @@ def _build_clean_bg_house_artwork(
     remains dimension-independent.
     """
 
-    fixture = Path(__file__).parent / "fixtures" / "clean_bg_house.png"
+    fixture = Path(__file__).parents[2] / "assets" / "clean_bg_house.png"
 
     assert fixture.is_file()
 
@@ -70,7 +70,7 @@ def _build_clean_bg_house_artwork(
     (project_root / "workspace.toml").write_text(
         """
 [parameters]
-artwork_colors = ["black", "brown", "gold", "silver", "white"]
+artwork_colors = ["black", "brown", "gold", "silver", "cold-white"]
 artwork_pixels = 973
 artwork_min_island_area = 1
 artwork_island_connectivity = 8
@@ -317,7 +317,8 @@ def _write_workspace(
     (project_root / "workspace.toml").write_text(
         """
 [parameters]
-artwork_colors = ["white", "black"]
+printer_colors = ["test-white", "test-red"]
+artifact_color_count = 2
 artwork_pixels = 64
 artwork_size = 20.0
 artwork_min_island_area = 1
@@ -758,8 +759,8 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
     # -----------------------------------------------------
 
     expected_names = {
-        "white",
-        "black",
+        "test-white",
+        "test-red",
     }
 
     assert {product["name"] for product in raster_products} == expected_names

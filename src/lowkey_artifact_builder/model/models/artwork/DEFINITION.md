@@ -1021,4 +1021,3 @@ Artwork does not define:
 
 Those responsibilities belong to the consuming model, configuration layer, or
 explicit user action as appropriate.
-

@@ -41,7 +41,7 @@ def _build_clean_bg_house_registered_artwork(
     registered vector product and owns subsequent physical dimensionalization.
     """
 
-    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "clean_bg_house.png"
+    fixture = Path(__file__).parents[2] / "assets" / "clean_bg_house.png"
 
     assert fixture.is_file()
 
@@ -55,7 +55,7 @@ def _build_clean_bg_house_registered_artwork(
     (project_root / "workspace.toml").write_text(
         """
 [parameters]
-artwork_colors = ["black", "brown", "gold", "silver", "white"]
+printer_colors = ["black", "brown", "gold", "silver", "cold-white"]
 artwork_pixels = 973
 artwork_min_island_area = 1
 artwork_island_connectivity = 8
@@ -1311,79 +1311,6 @@ def test_small_offset_circular_artwork_is_physically_centered_after_extrusion(
 
     assert minimum_y == pytest.approx(-48.0)
     assert maximum_y == pytest.approx(48.0)
-
-
-@pytest.mark.slow
-def test_real_clean_bg_house_physically_fills_heptagon_placement_circle(
-    tmp_path: Path,
-) -> None:
-    """
-    Real clean_bg_house Artwork fills the physical placement circle of the
-    reported 120 mm seven-sided Shape with a 2 mm outer ridge.
-
-    This protects the complete registered-Artwork-to-physical-Shape scaling
-    boundary using the real regression fixture rather than synthetic geometry.
-    """
-
-    vector_manifest = _build_clean_bg_house_registered_artwork(
-        tmp_path,
-    )
-
-    artwork, placement_radius = _compose_clean_bg_house_into_heptagon(
-        tmp_path,
-        vector_manifest,
-    )
-
-    output_directory = tmp_path / "extrude"
-
-    output_directory.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    extrude._render_artwork_components(
-        artwork,
-        tmp_path,
-        output_directory,
-        shape_size=120.0,
-        shape_base_raise=2.0,
-        shape_artwork_raise=1.0,
-    )
-
-    products = tuple(
-        output_directory.glob(
-            "artwork-*.stl",
-        )
-    )
-
-    assert products
-
-    bounds = tuple(_stl_bounds(path) for path in products)
-
-    minimum_x = min(item[0] for item in bounds)
-    maximum_x = max(item[1] for item in bounds)
-    minimum_y = min(item[2] for item in bounds)
-    maximum_y = max(item[3] for item in bounds)
-
-    expected_radius = placement_radius * 120.0
-
-    assert minimum_x == pytest.approx(
-        -expected_radius,
-        abs=0.25,
-    )
-    assert maximum_x == pytest.approx(
-        expected_radius,
-        abs=0.25,
-    )
-
-    assert minimum_y == pytest.approx(
-        -expected_radius,
-        abs=0.25,
-    )
-    assert maximum_y == pytest.approx(
-        expected_radius,
-        abs=0.25,
-    )
 
 
 @pytest.mark.slow

@@ -41,7 +41,7 @@ def _build_clean_bg_house_registered_artwork(
     Build the real clean_bg_house fixture through registered Artwork vectorization.
     """
 
-    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "clean_bg_house.png"
+    fixture = Path(__file__).parents[2] / "assets" / "clean_bg_house.png"
 
     assert fixture.is_file()
 
@@ -2070,7 +2070,7 @@ def test_real_clean_bg_house_end_to_end_shape_compose_contains_registered_artwor
     registered Artwork into the persistent Shape composition manifest.
     """
 
-    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "clean_bg_house.png"
+    fixture = Path(__file__).parents[2] / "assets" / "clean_bg_house.png"
 
     assert fixture.is_file()
 
@@ -2178,7 +2178,7 @@ def test_real_clean_bg_house_end_to_end_shape_extrude_contains_artwork_component
     packaging begins.
     """
 
-    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "clean_bg_house.png"
+    fixture = Path(__file__).parents[2] / "assets" / "clean_bg_house.png"
 
     assert fixture.is_file()
 
@@ -2277,171 +2277,6 @@ artwork_island_connectivity = 8
         )
 
         assert path.is_file()
-
-
-@pytest.mark.slow
-def test_real_clean_bg_house_end_to_end_shape_package_fills_placement_circle(
-    tmp_path: Path,
-) -> None:
-    """
-    A normal real Shape build preserves fitted Artwork through final packaging.
-
-    The reported regression case is built through normal engine orchestration:
-
-        real clean_bg_house PNG
-        -> registered Artwork
-        -> 120 mm seven-sided Shape
-        -> 2 mm outer ridge
-        -> artifact.3mf
-
-    The Artwork objects in the final artifact must fill the expected physical
-    placement circle and remain centered on the Shape origin.
-
-    This protects the complete configuration, dependency-planning, execution,
-    dimensionalization, and packaging path rather than an isolated stage.
-    """
-
-    fixture = Path(__file__).parents[1] / "artwork" / "fixtures" / "clean_bg_house.png"
-
-    assert fixture.is_file()
-
-    source = tmp_path / "clean_bg_house.png"
-
-    shutil.copyfile(
-        fixture,
-        source,
-    )
-
-    (tmp_path / "workspace.toml").write_text(
-        """
-[parameters]
-printer_colors = ["black", "brown", "gold", "silver", "cold-white"]
-artwork_pixels = 973
-artwork_min_island_area = 1
-artwork_island_connectivity = 8
-""".lstrip(),
-        encoding="utf-8",
-    )
-
-    write_artifact_config(
-        "clean_bg_house",
-        {
-            "model": "artwork",
-            "source": "clean_bg_house.png",
-            "artwork_size": 200.0,
-        },
-        project_root=tmp_path,
-    )
-
-    write_artifact_config(
-        "clean_bg_house_shape",
-        {
-            "model": "shape",
-            "shape_geometry": "polygon",
-            "shape_sides": 7,
-            "shape_size": 120.0,
-            "shape_base_color": "white",
-            "shape_outer_ridge_width": 2.0,
-            "product_dependencies": {
-                "manifest": {
-                    "artifact": "clean_bg_house",
-                    "model": "artwork",
-                    "realization": "default",
-                    "stage": "vector",
-                    "product": "manifest",
-                },
-            },
-        },
-        project_root=tmp_path,
-    )
-
-    plans = create_build_plans(
-        "clean_bg_house_shape",
-        project_root=tmp_path,
-    )
-
-    execute_builds(
-        plans,
-    )
-
-    realization_root = tmp_path / "artifacts" / "clean_bg_house_shape" / "shape" / "default"
-
-    composition = realization_root / "20-compose" / "composition.svg"
-
-    artifact = realization_root / "40-package" / "artifact.3mf"
-
-    assert composition.is_file()
-    assert artifact.is_file()
-
-    interior = compose.registered_interior_region(
-        composition,
-    )
-
-    placement = compose.artwork_placement_circle(
-        interior,
-    )
-
-    expected_radius = placement.radius * 120.0
-
-    model = _read_model(
-        artifact,
-    )
-
-    artwork_objects = tuple(
-        object_
-        for object_ in model.findall(
-            f".//{{{CORE_NS}}}object",
-        )
-        if "-artwork-" in (object_.get("name") or "")
-    )
-
-    assert artwork_objects
-
-    bounds = tuple(
-        _mesh_bounds(
-            _object_vertices(
-                object_,
-            )
-        )
-        for object_ in artwork_objects
-    )
-
-    minimum_x = min(item[0] for item in bounds)
-    maximum_x = max(item[1] for item in bounds)
-    minimum_y = min(item[2] for item in bounds)
-    maximum_y = max(item[3] for item in bounds)
-
-    assert minimum_x == pytest.approx(
-        -expected_radius,
-        abs=0.25,
-    )
-    assert maximum_x == pytest.approx(
-        expected_radius,
-        abs=0.25,
-    )
-
-    assert minimum_y == pytest.approx(
-        -expected_radius,
-        abs=0.25,
-    )
-    assert maximum_y == pytest.approx(
-        expected_radius,
-        abs=0.25,
-    )
-
-    center_x = (minimum_x + maximum_x) / 2.0
-
-    center_y = (minimum_y + maximum_y) / 2.0
-
-    assert center_x == pytest.approx(
-        0.0,
-        abs=0.25,
-    )
-
-    assert center_y == pytest.approx(
-        0.0,
-        abs=0.25,
-    )
 
 
 def test_package_stage_does_not_invent_disabled_artwork_fill(

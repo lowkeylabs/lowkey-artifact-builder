@@ -1,374 +1,754 @@
-# Change Plan — Artwork Color Availability and Matching
+# Change Plan — Artwork Color Model Realignment
 
-This change plan introduces explicit filament-library configuration and
-Artwork color-match analysis.
-
-The system already distinguishes the complete color catalog from
-`printer_colors`. This change adds a third availability scope:
+This change plan realigns the Artwork implementation and CLI with the
+permanent Artwork model specification:
 
 ```text
-color catalog
-    all known physical filament colors
+src/lowkey_artifact_builder/model/models/artwork/DEFINITION.md
+````
 
-library_colors
-    colors physically available for installation
+The permanent specification is authoritative.
 
-printer_colors
-    colors currently installed, intended, or otherwise available
-    to the printer for a build
-```
+The current implementation contains substantial functionality developed
+under the previous Artwork color model. That functionality should be
+preserved where it remains consistent with the permanent specification
+and replaced where its semantics conflict.
 
-Artwork color requirements can then be compared independently against:
+The target Artwork color pipeline is:
 
 ```text
-printer colors
-library colors
-catalog colors
+source raster
+    │
+    ├── derive Artwork envelope
+    │
+    ▼
+prepared full-color Artwork
+    │
+    ▼
+multicolor trace
+colors = artifact_color_count
+    │
+    ▼
+artifact_colors
+    │
+    ▼
+printer_assignments
+    │
+    ▼
+registered raster layers
+    │
+    ▼
+registered vector layers
+    │
+    ▼
+extrude
+    │
+    ▼
+package
 ```
 
-The resulting analysis should allow a user to determine:
+Alternative physical realizations are calculated independently as:
 
-* how closely the currently configured printer colors match prepared Artwork;
-* whether colors already present in the local filament library provide better
-  matches;
-* whether colors from the complete physical filament catalog provide better
-  matches;
-* which filament changes or purchases would improve reproduction of the
-  prepared Artwork.
+```text
+artifact_colors
+    ├── printer_assignments
+    ├── library_assignments
+    └── catalog_assignments
+```
 
-Color analysis is diagnostic. It does not implicitly modify configuration.
+Artwork interpretation and physical filament assignment are distinct
+responsibilities.
 
-The implementation should preserve existing architectural boundaries:
+The implementation must preserve existing architectural boundaries:
 
-* configuration owns configuration resolution and validation;
+* configuration owns configuration resolution;
+* model-owned validation owns Artwork configuration semantics;
 * generic color infrastructure owns model-independent color mathematics;
-* Artwork owns interpretation of prepared Artwork color requirements;
+* Artwork owns Artifact-color interpretation and physical-color assignment;
 * the CLI owns presentation;
-* the build engine does not acquire Artwork-specific color-selection policy.
+* the planner and build engine remain free of Artwork-specific color policy.
 
-# Phase 1 — Specify and Configure Filament Availability
+Development remains test-driven. Each implementation slice begins with tests
+that express the relevant permanent specification invariants.
 
-Update the permanent specifications to define the distinction between:
+# Phase 1 — Realign Artwork Configuration Semantics
 
-```text
-color catalog
-library_colors
-printer_colors
-```
+Replace the obsolete configured Artwork-palette model with the permanent
+`artifact_color_count` model.
 
-Add the system parameter:
+Remove Artwork configuration concepts that no longer exist:
 
 ```text
-library_colors
+artwork_colors
+artwork_fill_color
 ```
 
-`library_colors` identifies catalog colors physically owned and available for
-installation on a printer.
-
-Both:
+Introduce:
 
 ```text
-library_colors
-printer_colors
+artifact_color_count
 ```
 
-must contain color identities defined by the color catalog.
+`artifact_color_count` is an Artwork configuration parameter.
 
-Do not require:
+Unless explicitly configured, it is derived from:
 
 ```text
-printer_colors ⊆ library_colors
+len(printer_colors)
 ```
 
-The two parameters represent independent current-state facts.
+An explicit value may be smaller than the number of configured printer colors.
 
-Synthetic test colors remain available for automated tests but should not be
-treated as physical filament candidates when performing catalog-wide physical
-filament recommendations.
+For example:
+
+```text
+printer_colors = 5 colors
+artifact_color_count = 3
+```
+
+means that multicolor tracing discovers three Artifact colors and two printer
+colors may remain unused.
+
+`artifact_colors` are not configuration. They are derived product information
+created by multicolor tracing.
+
+Remove obsolete Artwork derivations for:
+
+```text
+artwork_colors
+artwork_fill_color
+```
+
+and replace them with the smallest derivation necessary for the default
+`artifact_color_count`.
+
+Remove validation rules whose only purpose was to enforce
+`artwork_fill_color` membership in `artwork_colors`.
+
+Add model-owned validation for `artifact_color_count` where execution requires
+it.
 
 Tests should establish that:
 
-* `library_colors` participates in ordinary configuration resolution;
-* system configuration may provide a default `library_colors`;
-* workspace configuration may override `library_colors`;
-* artifact configuration may override `library_colors`;
-* every resolved `library_colors` entry must reference a known catalog color
-  when execution requires library color analysis;
-* every resolved `printer_colors` entry must reference a known catalog color
-  when execution requires printer color analysis;
-* duplicate or otherwise invalid availability configuration is handled
-  consistently with the established configuration-validation contract;
+* `artifact_color_count` may be explicitly configured;
+* an explicit `artifact_color_count` participates in ordinary configuration
+  precedence;
+* the default `artifact_color_count` equals the number of configured
+  `printer_colors`;
+* resolving the default does not create `artifact_colors`;
+* `artifact_color_count` must be a positive integer when required by planned
+  execution;
+* `artifact_color_count` may be smaller than the number of printer colors;
+* obsolete `artwork_colors` derivation is no longer used;
+* obsolete `artwork_fill_color` derivation is no longer used;
+* Artwork validation no longer requires an Artwork fill color;
+* `printer_colors` and `library_colors` continue to validate as catalog
+  references when the corresponding execution requires them;
 * validation remains execution-scoped;
-* generic configuration infrastructure contains no Artwork-specific matching
+* generic configuration infrastructure contains no Artwork-specific color
   rules.
 
-Phase 1 is complete when filament availability is explicitly represented and
-validated without introducing Artwork-specific behavior into generic
-configuration infrastructure.
+Update Artwork stage declarations so parameters reflect the permanent model.
 
-# Phase 2 — Generic Color Matching
-
-Extend the existing generic color infrastructure with the smallest
-model-independent operation required to find the closest catalog color to a
-requested RGB color.
-
-The operation should accept:
+In particular:
 
 ```text
-requested color
-candidate colors
+prepare
+    artifact_color_count
+    artwork_envelope_mode as otherwise required by existing configuration
+
+raster
+    printer_colors
+    artwork_pixels
+    artwork_min_island_area
+    artwork_island_connectivity
+
+vector
+    no physical sizing parameters
+
+extrude
+    artwork_size
+    artwork_raise
 ```
 
-and return sufficient semantic information to identify:
+Parameter declarations should describe actual stage dependencies rather than
+retain obsolete `artwork_colors` or `artwork_fill_color` dependencies.
+
+Phase 1 is complete when configuration resolution, model validation, and
+Artwork stage declarations express the new permanent parameter model.
+
+# Phase 2 — Preserve Source Colors Through Prepare
+
+Realign Artwork Prepare with the permanent source-driven color-discovery
+semantics.
+
+Prepare must continue to derive and preserve the Artwork envelope.
+
+Existing envelope behavior, including:
 
 ```text
-requested color
-matched candidate color
-perceptual distance
+alpha
+shrink-wrap
 ```
 
-Matching should use the existing perceptual color-distance semantics rather
-than introduce a second independent color-distance implementation.
+and the established shrink-wrap classification and diagnostics remain part of
+the Artwork model and must not be discarded as part of the color refactor.
 
-The operation must support arbitrary candidate-set sizes. It must not require
-one-to-one assignment or equal-sized source and destination palettes.
+Prepare must stop reducing source Artwork to configured physical filament
+colors before multicolor tracing.
+
+Remove from the Prepare execution path the old behavior that:
+
+* resolves `artwork_colors`;
+* resolves `artwork_fill_color`;
+* fills the Artwork according to a configured physical color;
+* quantizes the normalized source to exact configured filament RGB values;
+* performs cleanup whose purpose is repairing artifacts created by that
+  physical-palette quantization;
+* determines Inkscape trace cardinality from the physical palette size.
+
+Prepare instead supplies source color information belonging to the Artwork to
+Inkscape and requests:
+
+```text
+colors = artifact_color_count
+```
+
+Pixels outside the derived envelope remain outside the Artwork.
+
+The traced regions collectively represent the Artwork within the envelope.
 
 Tests should establish that:
 
-* an exact RGB match selects the corresponding candidate;
-* the perceptually nearest candidate is selected when no exact match exists;
-* matching can operate against one candidate;
-* matching can operate against many candidates;
-* the returned result preserves the semantic identity of the selected catalog
-  color;
-* the returned result includes the perceptual distance;
-* candidate ordering provides deterministic behavior for equal-distance ties;
-* an empty candidate set is rejected explicitly;
-* generic matching contains no Artwork, printer, library, filament inventory,
-  CLI, or build-engine policy.
+* Prepare requests exactly `artifact_color_count` colors from multicolor
+  tracing;
+* explicit `artifact_color_count = 3` requests three colors even when five
+  printer colors are configured;
+* the default color count still follows printer capacity;
+* changing printer RGB values without changing `artifact_color_count` does not
+  quantize or otherwise rewrite source RGB values before tracing;
+* Prepare does not require `artwork_colors`;
+* Prepare does not require `artwork_fill_color`;
+* Prepare does not pre-quantize the source to `printer_colors`;
+* Prepare does not pre-quantize the source to `library_colors`;
+* Prepare does not pre-quantize the source to catalog colors;
+* source color distinctions survive normalization until Inkscape color
+  discovery;
+* existing alpha-envelope behavior remains valid;
+* existing shrink-wrap envelope behavior remains valid;
+* existing complex-background warning behavior remains valid;
+* existing concavity and transparent-crop envelope regressions remain valid;
+* trace output remains clipped to the derived Artwork envelope.
 
-Existing one-to-one color-assignment behavior should remain unchanged unless
-the new generic primitive provides a clean internal implementation for it.
+Tests that currently encode physical-palette quantization as required Prepare
+behavior should be replaced rather than preserved as compatibility behavior.
 
-Phase 2 is complete when any requested RGB color can be deterministically
-matched against an arbitrary catalog-derived candidate set.
+Phase 2 is complete when Prepare discovers source colors through Inkscape
+rather than imposing physical filament colors before tracing.
 
-# Phase 3 — Artwork Color Match Analysis
+# Phase 3 — Establish Artifact Colors as Persistent Product Information
 
-Define Artwork color-match analysis over prepared Artwork.
+Make the colors assigned by multicolor tracing explicit Artifact-color
+information.
 
-The analysis must use the semantic colors represented by prepared Artwork
-rather than independently reinterpreting the original source image.
+For each traced color region, preserve:
 
-For every prepared Artwork color, determine its closest match independently
-against:
+```text
+Artifact color-region identity
+Artifact RGB
+```
+
+The Artifact RGB is the RGB representation assigned by multicolor tracing.
+
+It is not a printer, library, or catalog RGB merely because a nearby physical
+color exists.
+
+Artifact-color identity must be stable enough for downstream manifests to
+associate one region with:
+
+```text
+Artifact color
+printer assignment
+geometry product
+```
+
+Determine the smallest manifest evolution that preserves this information
+through registered Artwork.
+
+Avoid introducing a new manufacturing stage solely for Artifact-color
+metadata when an existing persistent manifest provides the necessary
+persistence and dependency boundary.
+
+Tests should establish that:
+
+* the number of Artifact colors equals the traced color-region count;
+* traced RGB values become `artifact_colors`;
+* Artifact RGB values need not exist in the physical color catalog;
+* Artifact colors remain distinguishable from assigned printer colors;
+* Artifact color-region identity remains stable through Raster and Vector;
+* registered Artwork preserves Artifact RGB information;
+* registered Artwork preserves the printer assignment separately from
+  Artifact RGB information;
+* a persistent registered Artwork product contains enough information for
+  later library and catalog assignment without rereading or reinterpreting the
+  original source image.
+
+Phase 3 is complete when registered Artwork persistently distinguishes
+source-derived Artifact colors from physical printer assignments.
+
+# Phase 4 — Generic Optimal One-to-One Color Assignment
+
+Retain and, where necessary, adapt the existing generic color-assignment
+infrastructure to support the permanent Artwork assignment semantics.
+
+The generic operation accepts:
+
+```text
+measured colors
+candidate physical colors
+```
+
+and selects a one-to-one assignment minimizing aggregate perceptual distance.
+
+The operation must support:
+
+```text
+number of candidates >= number of measured colors
+```
+
+It must not require equal-sized source and candidate palettes.
+
+Each measured color receives one distinct candidate color.
+
+The result must preserve sufficient information for Artwork to record:
+
+```text
+measured color identity
+measured RGB
+selected physical color identity
+selected physical RGB
+individual perceptual distance
+```
+
+The complete assignment exposes:
+
+```text
+aggregate perceptual distance
+```
+
+The established generic perceptual color-distance implementation remains
+authoritative.
+
+Tests should establish that:
+
+* exact RGB assignments have zero distance;
+* a single measured color can be assigned from multiple candidates;
+* multiple measured colors receive distinct candidate identities;
+* a candidate set larger than the measured set selects only the globally best
+  subset;
+* the globally optimal one-to-one assignment is selected rather than
+  independent nearest-neighbor matches;
+* individual perceptual distances are retained;
+* aggregate distance is the sum of individual assignment distances;
+* assignment is deterministic;
+* ordered candidate input deterministically resolves equal-score alternatives;
+* insufficient distinct candidates are rejected explicitly;
+* generic assignment contains no Artwork, printer, library, catalog,
+  filament-inventory, CLI, or build-engine policy.
+
+Existing generic primitives that remain useful should be reused rather than
+duplicated.
+
+Obsolete generic functionality need not be removed merely because Artwork no
+longer uses it, provided it remains valid generic infrastructure and has
+independent tests.
+
+Phase 4 is complete when generic infrastructure can optimally assign N
+measured colors to N distinct colors selected from M candidates where M >= N.
+
+# Phase 5 — Establish Printer Assignments During Rasterization
+
+Realign Raster with the permanent manufacturing semantics.
+
+Raster consumes the Artifact colors measured from the Prepare trace.
+
+Raster calculates:
+
+```text
+printer_assignments
+```
+
+using the generic one-to-one assignment operation.
+
+Candidates come only from:
 
 ```text
 printer_colors
+```
+
+The number of assignments equals the number of Artifact colors.
+
+If more printer colors are available than Artifact colors, Raster selects the
+best subset and leaves the remaining printer colors unused.
+
+Raster must no longer require:
+
+```text
+number of traced colors == len(printer_colors)
+```
+
+or an equivalent equality through obsolete `artwork_colors`.
+
+Execution requiring Raster must reject a configuration that cannot provide
+enough distinct printer colors to assign every Artifact color.
+
+Raster output must preserve both sides of the distinction:
+
+```text
+Artifact identity + Artifact RGB
+printer identity + printer RGB
+individual distance
+```
+
+The complete printer assignment must also make aggregate assignment distance
+available to appropriate consumers.
+
+Raster geometry remains:
+
+* registered;
+* mutually exclusive;
+* complete over retained Artwork within the envelope;
+* independent of physical `artwork_size`.
+
+Island cleanup must not create unassigned retained Artwork merely by deleting
+a small color island. Tests should characterize the required reassignment or
+coverage behavior before production changes are made in this area.
+
+Tests should establish that:
+
+* three traced Artifact colors can be assigned using five printer candidates;
+* exactly three distinct printer colors are selected in that case;
+* the selected three minimize aggregate perceptual distance;
+* two Artifact colors cannot silently receive the same printer identity;
+* insufficient printer colors fail explicitly;
+* Artifact RGB and printer RGB remain separately represented;
+* individual assignment distances are persisted;
+* aggregate printer-assignment distance is available;
+* raster regions remain mutually exclusive;
+* retained Artwork is completely assigned;
+* Raster remains independent of `artwork_size`.
+
+Phase 5 is complete when Raster establishes the physical printer realization
+without changing the Artifact colors discovered by Prepare.
+
+# Phase 6 — Preserve Artifact and Printer Color Semantics Downstream
+
+Realign Vector, Extrude, Package, and registered Artwork consumers with the
+new manifest semantics.
+
+Vector must preserve:
+
+```text
+Artifact color-region identity
+Artifact RGB
+assigned printer identity
+assigned printer RGB
+```
+
+while converting registered raster geometry into registered vector geometry.
+
+Vector's binary-mask tracing remains a geometry operation. It must not
+rediscover or reinterpret Artifact colors.
+
+Extrude must preserve the printer semantic identity assigned to every
+registered Artwork region while introducing:
+
+```text
+artwork_size
+artwork_raise
+```
+
+Package must preserve those printer semantic identities and RGB
+representations in the multicomponent 3MF.
+
+Registered Artwork consumers such as Shape must continue to receive registered
+geometry without requiring standalone Artwork extrusion or packaging.
+
+Tests should establish that:
+
+* Vector preserves Artifact RGB separately from printer RGB;
+* Vector preserves Artifact color-region identity;
+* Vector preserves printer semantic assignment;
+* Vector's binary tracing does not perform color discovery;
+* Extrude preserves printer assignment;
+* Package preserves printer assignment into the 3MF;
+* registration remains unchanged;
+* `registered_extent` remains dimensionless;
+* another model can consume registered Artwork without Artwork extrusion or
+  packaging;
+* existing Shape incorporation behavior remains valid.
+
+Phase 6 is complete when Artifact colors and physical printer assignments
+remain semantically distinct and correctly preserved throughout downstream
+manufacturing.
+
+# Phase 7 — Three-Scope Artwork Assignment Analysis
+
+Replace the old independent color-match and fixed-palette recommendation
+semantics with the permanent three-scope assignment model.
+
+Artwork analysis calculates:
+
+```text
+printer_assignments
+library_assignments
+catalog_assignments
+```
+
+from persistent Artifact-color information.
+
+`printer_assignments` represent the current manufacturing realization.
+
+`library_assignments` select the best distinct physical colors from:
+
+```text
 library_colors
-physical color catalog
 ```
 
-Each match should retain at least:
+`catalog_assignments` select the best distinct physical colors from the
+complete physical catalog.
+
+Catalog-wide assignment excludes entries explicitly identified as synthetic
+test colors.
+
+Each scope produces:
 
 ```text
-Artwork semantic color identity
-Artwork RGB
-matched catalog color identity
-matched catalog RGB
-perceptual distance
+one assignment per Artifact color
+individual perceptual distances
+aggregate perceptual distance
 ```
 
-Catalog-wide matching must consider physical filament entries and exclude
-synthetic colors reserved for tests.
-
-Artwork analysis must not:
-
-* modify `artwork_colors`;
-* modify `printer_colors`;
-* modify `library_colors`;
-* install filament;
-* alter persistent products merely because analysis was requested.
-
-Tests should establish that:
-
-* prepared Artwork semantic colors are the source of analysis;
-* every Artwork color receives an independent printer match;
-* every Artwork color receives an independent library match;
-* every Artwork color receives an independent physical-catalog match;
-* printer matching considers only `printer_colors`;
-* library matching considers only `library_colors`;
-* catalog matching considers the physical filament catalog;
-* synthetic test colors can support isolated tests without becoming real
-  catalog recommendation candidates;
-* semantic color identities are preserved in analysis results;
-* perceptual distances are exposed;
-* analysis does not mutate resolved configuration;
-* analysis remains Artwork-owned rather than becoming build-engine policy.
-
-Prefer deriving analysis from an existing persistent prepared or registered
-Artwork product when that product already contains sufficient semantic color
-information. Do not introduce a new persistent stage or product unless an
-independent persistence, dependency, inspection, or resumption boundary is
-actually required.
-
-Phase 3 is complete when prepared Artwork can produce structured three-scope
-color-match analysis independently of CLI presentation.
-
-# Phase 4 — Standard CLI Color Report
-
-Expose Artwork color-match analysis through the standard CLI presentation.
-
-Once the required Artwork preparation products exist, the user should be able
-to inspect a report showing, for every Artwork color:
+The number of selected physical colors is:
 
 ```text
-Artwork
-Printer match
-Library match
-Catalog match
+len(artifact_colors)
 ```
 
-Each match should expose enough information to distinguish the selected color
-and assess match quality, including perceptual distance.
+not printer capacity and not a fixed value of five.
 
-Conceptually:
-
-```text
-Artwork Color Matches
-
-Artwork          Printer              Library              Catalog
----------------------------------------------------------------------------
-red              fire-engine-red      fire-engine-red      fire-engine-red
-green            brown                pine-green           pine-green
-orange           gold                 apricot              apricot
-blue             black                blue                 rgb-blue
-white            white                white                white
-```
-
-The exact presentation may evolve, but presentation must remain separate from
-the structured analysis semantics.
-
-The CLI must not reproduce color matching algorithms.
-
-Tests should establish that:
-
-* the CLI can request/report Artwork color analysis;
-* the report identifies all prepared Artwork colors;
-* printer, library, and catalog matches are distinguishable;
-* match distances can be displayed;
-* report ordering is deterministic;
-* CLI presentation consumes structured analysis rather than recomputing it;
-* requesting a report does not modify configuration;
-* requesting a report does not require standalone Artwork extrusion or
-  packaging when prepared/registered Artwork is already sufficient;
-* existing build behavior remains unchanged.
-
-Phase 4 is complete when color-match information is available as a normal,
-read-only CLI diagnostic for prepared Artwork.
-
-# Phase 5 — Five-Tool Printer Palette Recommendation
-
-Build palette recommendation on top of the color-analysis infrastructure.
-
-For the current five-tool printer use case, recommend:
+Remove Artwork-specific behavior based on:
 
 ```text
-white
-+
-four additional colors
-```
-
-where `white` is mandatory.
-
-Produce recommendations independently for:
-
-```text
-current printer colors
-library colors
-physical color catalog
-```
-
-The optimization must evaluate the palette as a whole rather than merely
-selecting the independently nearest filament for each Artwork color.
-
-A candidate palette should be scored according to how well the complete
-prepared Artwork can be represented by that palette using the established
-perceptual color-distance semantics.
-
-The result should provide sufficient structured information to compare:
-
-```text
-current printer capability
-best palette available from owned filament
-best palette available from the physical catalog
+independent nearest-color matches
+fixed-size five-tool recommendations
+mandatory white
+artwork_fill_color
 ```
 
 Tests should establish that:
 
-* the requested palette size is honored;
-* mandatory colors are always included;
-* `white` can be supplied as the mandatory color for the five-tool use case;
-* recommendations contain no duplicate color identities;
-* library recommendations select only from `library_colors`;
-* catalog recommendations select only from physical catalog entries;
-* synthetic test colors do not leak into physical recommendations;
-* the globally better palette is preferred over a palette produced solely by
-  independent nearest-color choices;
-* palette scoring is deterministic;
-* recommendation results expose their aggregate match score;
-* recommendation does not mutate `printer_colors`, `library_colors`, or
-  `artwork_colors`;
-* recommendation logic remains outside the CLI and build engine.
+* analysis uses persistent Artifact RGB values rather than assigned printer
+  RGB values as its measured colors;
+* printer analysis reproduces the optimal current printer assignment;
+* library assignment considers only `library_colors`;
+* catalog assignment considers only physical catalog colors;
+* all three scopes perform globally optimal one-to-one assignment;
+* all three scopes select exactly one distinct physical color per Artifact
+  color;
+* individual distances are exposed;
+* aggregate distances are exposed;
+* a three-color Artifact produces three-color library and catalog assignments
+  even on a five-tool printer;
+* synthetic catalog colors do not leak into physical catalog assignment;
+* analysis does not modify persistent Artwork products;
+* analysis does not modify `printer_colors` or `library_colors`;
+* analysis does not require standalone Artwork extrusion or packaging;
+* analysis remains Artwork-owned.
 
-The CLI report may then summarize, conceptually:
+Phase 7 is complete when Artwork can produce structured printer, library, and
+catalog assignments conforming to the permanent specification.
+
+# Phase 8 — Realign `artifact colors` CLI
+
+Replace the existing color-match plus five-tool recommendation presentation
+with presentation of the three assignment scopes.
+
+The CLI consumes structured Artwork analysis. It does not calculate color
+distances or assignments itself.
+
+The report should expose enough information to answer:
 
 ```text
-Current printer:
-    white
-    black
-    brown
-    gold
-    silver
-    score: ...
+Which configured printer colors best reproduce the Artifact colors?
 
-Recommended from library:
-    white
-    ...
-    score: ...
+Which colors already in the filament library would reproduce them better?
 
-Recommended from catalog:
-    white
-    ...
-    score: ...
+Which physical catalog colors would reproduce them best?
+
+Where are the largest individual reproduction errors?
+
+How much better is one complete assignment than another?
 ```
 
-This phase should not automatically rewrite configuration. Any future operation
-that applies a recommendation to `printer_colors` should be planned separately
-as an explicit configuration mutation.
+A conceptual report is:
 
-Phase 5 is complete when the system can recommend and compare complete
-five-color printer palettes while keeping recommendation distinct from
-configuration mutation.
+```text
+Artifact       Printer             Library             Catalog
+RGB            Color   Distance    Color   Distance     Color   Distance
+-----------------------------------------------------------------------
+#C90011        red       3.20       red       3.20       red       1.10
+#020202        black     0.80       black     0.80       black     0.40
+#FAFAF9        white     2.10       white     1.50       white     0.60
+
+Scope      Selected physical colors       Aggregate distance
+-------------------------------------------------------------
+Printer    red, black, white               6.10
+Library    red, black, white               5.50
+Catalog    red, black, white               2.10
+```
+
+Exact presentation may evolve independently of the structured analysis
+contract.
+
+Remove CLI dependencies on:
+
+```text
+artwork_fill_color
+five-tool recommendation
+mandatory white
+```
+
+Tests should establish that:
+
+* `artifact colors <artifact>` reports all Artifact colors;
+* Artifact RGB values shown by the CLI are source-derived traced RGB values;
+* printer, library, and catalog assignments are distinguishable;
+* individual distances are displayed;
+* aggregate distances are displayed;
+* selected physical color identities are displayed;
+* a three-color Artifact reports three assignments per scope;
+* CLI ordering is deterministic;
+* the CLI consumes structured Artwork analysis rather than recomputing it;
+* requesting color analysis does not modify configuration;
+* requesting color analysis does not require standalone Artwork extrusion or
+  packaging when registered Artwork already exists;
+* existing targeted-product planning semantics remain intact.
+
+Phase 8 is complete when `artifact colors` accurately presents the permanent
+Artwork assignment model.
+
+# Phase 9 — Remove Obsolete Artwork Color Model and Complete Conformance Audit
+
+After the replacement semantics are working, remove obsolete Artwork-specific
+implementation and tests whose only purpose was the superseded color model.
+
+Candidates include Artwork-specific concepts and paths involving:
+
+```text
+artwork_colors
+artwork_fill_color
+five-tool Artwork palette recommendation
+mandatory Artwork white
+Prepare physical-palette quantization
+Prepare cleanup required solely because of physical-palette quantization
+independent Artwork nearest-color analysis
+```
+
+Do not remove generic color operations merely because Artwork no longer uses
+them if they remain coherent model-independent functionality.
+
+Search the repository for stale Artwork references in:
+
+```text
+source
+tests
+fixtures
+CLI help
+docstrings
+configuration
+model stage declarations
+acceptance tests
+```
+
+Run conformance tests that exercise at least:
+
+```text
+limited-palette logo
+full printer-capacity Artwork
+alpha-envelope Artwork
+shrink-wrap Artwork
+registered Artwork consumed by Shape
+standalone Artwork 3MF
+artifact colors diagnostic
+```
+
+Tests should establish that:
+
+* no executable Artwork path requires `artwork_colors`;
+* no executable Artwork path requires `artwork_fill_color`;
+* no Artwork path assumes five Artifact colors;
+* no Artwork path assumes all configured printer colors must be used;
+* no Prepare path quantizes source colors to physical filament colors before
+  color discovery;
+* Artifact RGB values remain distinct from physical assignment RGB values;
+* printer assignments drive manufacturing identity;
+* library and catalog assignments remain diagnostic;
+* envelope semantics remain conformant;
+* registered Artwork reuse remains conformant;
+* standalone Artwork packaging remains conformant;
+* generic configuration, planner, and engine code contain no Artwork-specific
+  color policy;
+* all permanent Artwork invariants are represented by implementation and
+  focused tests.
+
+Run the normal repository quality gates after the focused tests:
+
+```text
+pytest
+pyright
+ruff
+```
+
+including the established slow/acceptance suite where appropriate.
+
+Phase 9 is complete when HEAD and Artwork `DEFINITION.md` agree and no obsolete
+Artwork color semantics remain in executable code.
 
 # Completion Criteria
 
 This change plan is complete when:
 
-* the system distinguishes catalog, library, and printer color availability;
-* `library_colors` and `printer_colors` resolve and validate as catalog
-  references;
-* generic color infrastructure can perform nearest-color matching;
-* prepared Artwork can be analyzed against printer, library, and catalog
-  colors;
-* the CLI provides a standard read-only Artwork color-match report;
-* five-tool palette recommendations can be produced with mandatory `white`;
-* recommendations can distinguish currently installed, locally available, and
-  purchasable filament options;
-* color analysis and recommendation do not implicitly mutate configuration;
-* generic configuration, planning, and build-engine infrastructure remain free
-  of Artwork-specific color policy;
-* permanent specifications and implementation agree.
+* `artifact_color_count` is the Artwork configuration input controlling
+  multicolor trace cardinality;
+* its default is derived from the number of configured `printer_colors`;
+* `artifact_colors` are source-derived RGB values measured from multicolor
+  tracing;
+* Artifact colors are not pre-quantized to physical filament colors;
+* Artwork has no `artwork_fill_color` concept;
+* Artwork has no configured `artwork_colors` semantic palette;
+* `printer_assignments` optimally assign distinct configured printer colors to
+  Artifact colors;
+* `library_assignments` optimally assign distinct owned filament colors to
+  Artifact colors;
+* `catalog_assignments` optimally assign distinct physical catalog colors to
+  Artifact colors;
+* all assignment scopes expose individual and aggregate perceptual distances;
+* assignment cardinality follows the number of Artifact colors rather than
+  printer capacity;
+* unused printer colors may remain unused;
+* registered Artwork persistently distinguishes Artifact RGB from assigned
+  printer RGB;
+* downstream manufacturing preserves printer semantic assignments;
+* the CLI reports the three assignment scopes without recomputing them;
+* envelope derivation and registered geometry behavior remain conformant;
+* another model can consume registered Artwork without standalone Artwork
+  extrusion or packaging;
+* color analysis and alternative assignment do not implicitly mutate
+  configuration;
+* generic configuration, planning, and build-engine infrastructure remain
+  free of Artwork-specific color policy;
+* permanent specifications, implementation, and tests agree.
 
-After these criteria are satisfied and the repository conforms to the updated
-permanent specifications, this CHANGEPLAN may be removed.
+After these criteria are satisfied and the repository conforms to the
+permanent specifications, this `CHANGEPLAN.md` may be removed.

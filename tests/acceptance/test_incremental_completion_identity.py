@@ -52,7 +52,7 @@ def _configure_artifact(
 
     repository_root = Path(__file__).resolve().parents[2]
 
-    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
 
     assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
 

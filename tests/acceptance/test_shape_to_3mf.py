@@ -224,7 +224,7 @@ def test_shape_builds_complete_3mf_without_artwork(
 
     base_object = objects[0]
 
-    assert base_object.get("name") == "testshape-base"
+    assert base_object.get("name") == "testshape-base-white"
 
     assert len(materials) == 1
 
@@ -278,10 +278,6 @@ def test_shape_ridge_preserves_distinct_component_colors(
 
     runner = CliRunner()
 
-    # -----------------------------------------------------
-    # Configure Shape through the public CLI
-    # -----------------------------------------------------
-
     config_result = runner.invoke(
         cli,
         [
@@ -294,10 +290,6 @@ def test_shape_ridge_preserves_distinct_component_colors(
     assert config_result.exit_code == 0, (
         f"Shape configuration failed:\n{config_result.output}\n{config_result.exception!r}"
     )
-
-    # -----------------------------------------------------
-    # Configure physical ridge and semantic colors
-    # -----------------------------------------------------
 
     update_artifact_config(
         "colored-shape",
@@ -313,10 +305,6 @@ def test_shape_ridge_preserves_distinct_component_colors(
         project_root=project_root,
     )
 
-    # -----------------------------------------------------
-    # Build through the public CLI
-    # -----------------------------------------------------
-
     build_result = runner.invoke(
         cli,
         [
@@ -328,10 +316,6 @@ def test_shape_ridge_preserves_distinct_component_colors(
     assert build_result.exit_code == 0, (
         f"Shape build failed:\n{build_result.output}\n{build_result.exception!r}"
     )
-
-    # -----------------------------------------------------
-    # Locate final artifact through the build plan
-    # -----------------------------------------------------
 
     plans = create_build_plans(
         "colored-shape",
@@ -351,11 +335,9 @@ def test_shape_ridge_preserves_distinct_component_colors(
     output = artifact_product.path
 
     assert output.is_file()
-    assert zipfile.is_zipfile(output)
-
-    # -----------------------------------------------------
-    # Read packaged 3MF model
-    # -----------------------------------------------------
+    assert zipfile.is_zipfile(
+        output,
+    )
 
     with zipfile.ZipFile(
         output,
@@ -367,12 +349,10 @@ def test_shape_ridge_preserves_distinct_component_colors(
         )
 
         model = ET.fromstring(
-            archive.read(model_name),
+            archive.read(
+                model_name,
+            ),
         )
-
-    # -----------------------------------------------------
-    # Verify component identities
-    # -----------------------------------------------------
 
     objects = model.findall(
         f".//{{{CORE_NS}}}object",
@@ -385,19 +365,15 @@ def test_shape_ridge_preserves_distinct_component_colors(
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
 
     assert set(objects_by_name) == {
-        "colored-shape-base",
-        "colored-shape-ridge",
+        "colored-shape-base-test-white",
+        "colored-shape-ridge-test-red",
     }
 
     assert len(materials) == 2
 
     materials_by_id = {material.get("id"): material for material in materials}
 
-    # -----------------------------------------------------
-    # Verify base semantic color
-    # -----------------------------------------------------
-
-    base_object = objects_by_name["colored-shape-base"]
+    base_object = objects_by_name["colored-shape-base-test-white"]
 
     base_material = materials_by_id[base_object.get("pid")]
 
@@ -406,17 +382,11 @@ def test_shape_ridge_preserves_distinct_component_colors(
     )
 
     assert base_color is not None
-
     assert base_color.get("name") == "test-white"
     assert base_color.get("displaycolor") == "#FFFFFF"
-
     assert base_object.get("pindex") == "0"
 
-    # -----------------------------------------------------
-    # Verify ridge semantic color
-    # -----------------------------------------------------
-
-    ridge_object = objects_by_name["colored-shape-ridge"]
+    ridge_object = objects_by_name["colored-shape-ridge-test-red"]
 
     ridge_material = materials_by_id[ridge_object.get("pid")]
 
@@ -425,10 +395,8 @@ def test_shape_ridge_preserves_distinct_component_colors(
     )
 
     assert ridge_color is not None
-
     assert ridge_color.get("name") == "test-red"
     assert ridge_color.get("displaycolor") == "#FF0000"
-
     assert ridge_object.get("pindex") == "0"
 
 
@@ -451,10 +419,6 @@ def test_shape_component_colors_do_not_change_geometry(
     )
 
     runner = CliRunner()
-
-    # -----------------------------------------------------
-    # Configure equivalent Shapes
-    # -----------------------------------------------------
 
     for artifact_id in (
         "white-red-shape",
@@ -505,10 +469,6 @@ def test_shape_component_colors_do_not_change_geometry(
         project_root=project_root,
     )
 
-    # -----------------------------------------------------
-    # Build both Shapes
-    # -----------------------------------------------------
-
     for artifact_id in (
         "white-red-shape",
         "red-white-shape",
@@ -526,10 +486,6 @@ def test_shape_component_colors_do_not_change_geometry(
             f"{build_result.output}\n"
             f"{build_result.exception!r}"
         )
-
-    # -----------------------------------------------------
-    # Read packaged mesh geometry
-    # -----------------------------------------------------
 
     def packaged_meshes(
         artifact_id: str,
@@ -557,7 +513,9 @@ def test_shape_component_colors_do_not_change_geometry(
             )
 
             model = ET.fromstring(
-                archive.read(model_name),
+                archive.read(
+                    model_name,
+                ),
             )
 
         result: dict[str, bytes] = {}
@@ -569,9 +527,19 @@ def test_shape_component_colors_do_not_change_geometry(
 
             assert name is not None
 
-            role = name.removeprefix(
+            component_identity = name.removeprefix(
                 f"{artifact_id}-",
             )
+
+            role = component_identity.split(
+                "-",
+                maxsplit=1,
+            )[0]
+
+            assert role in {
+                "base",
+                "ridge",
+            }
 
             mesh = object_.find(
                 f"{{{CORE_NS}}}mesh",
@@ -592,10 +560,6 @@ def test_shape_component_colors_do_not_change_geometry(
     red_white_meshes = packaged_meshes(
         "red-white-shape",
     )
-
-    # -----------------------------------------------------
-    # Colors change semantics, not geometry
-    # -----------------------------------------------------
 
     assert white_red_meshes.keys() == {
         "base",
@@ -638,7 +602,7 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
 
     repository_root = Path(__file__).resolve().parents[2]
 
-    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
 
     assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
 
@@ -821,7 +785,7 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
     # Verify structural and incorporated component identity
     # -----------------------------------------------------
 
-    assert "artwork-shape-base" in objects_by_name
+    assert "artwork-shape-base-test-white" in objects_by_name
 
     artwork_objects = {
         name: object_
@@ -833,15 +797,11 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
     }
 
     expected_artwork_object_names = {
-        f"artwork-shape-artwork-{product['index']}" for product in artwork_products
+        (f"artwork-shape-artwork-{product['index']}-{product['name']}")
+        for product in artwork_products
     }
 
-    assert (
-        set(
-            artwork_objects,
-        )
-        == expected_artwork_object_names
-    )
+    assert set(artwork_objects) == expected_artwork_object_names
 
     # -----------------------------------------------------
     # Verify semantic colors survived complete pipeline
@@ -849,7 +809,7 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
 
     materials_by_id = {material.get("id"): material for material in materials}
 
-    base_object = objects_by_name["artwork-shape-base"]
+    base_object = objects_by_name["artwork-shape-base-test-white"]
 
     base_material = materials_by_id[base_object.get("pid")]
 
@@ -864,16 +824,14 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
 
     for product in artwork_products:
         index = product["index"]
-
         expected_name = product["name"]
-
         expected_color = product["color"]
 
         expected_display_color = (
             f"#{expected_color['red']:02X}{expected_color['green']:02X}{expected_color['blue']:02X}"
         )
 
-        artwork_object = artwork_objects[f"artwork-shape-artwork-{index}"]
+        artwork_object = artwork_objects[f"artwork-shape-artwork-{index}-{expected_name}"]
 
         artwork_material = materials_by_id[artwork_object.get("pid")]
 
@@ -912,7 +870,7 @@ def test_shape_physical_change_reuses_registered_artwork(
 
     repository_root = Path(__file__).resolve().parents[2]
 
-    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
 
     assert fixture_source.is_file()
 
@@ -1081,7 +1039,7 @@ def test_registered_artwork_is_reused_across_different_shapes(
 
     repository_root = Path(__file__).resolve().parents[2]
 
-    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
 
     assert fixture_source.is_file()
 
@@ -1267,7 +1225,7 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
 
     repository_root = Path(__file__).resolve().parents[2]
 
-    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
 
     assert fixture_source.is_file()
 
@@ -1439,7 +1397,7 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
 
     repository_root = Path(__file__).resolve().parents[2]
 
-    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
 
     assert fixture_source.is_file()
 
@@ -1847,7 +1805,7 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
 
     repository_root = Path(__file__).resolve().parents[2]
 
-    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
 
     assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
 
@@ -1988,8 +1946,23 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
         )
     }
 
-    assert "shape-no-fill-base" in packaged_names
-    assert "shape-no-fill-artwork-fill" not in packaged_names
+    assert "shape-no-fill-base-test-white" in packaged_names
+
+    assert not any(
+        name is not None
+        and name.startswith(
+            "shape-no-fill-artwork-fill-",
+        )
+        for name in packaged_names
+    )
+
+    assert any(
+        name is not None
+        and name.startswith(
+            "shape-no-fill-artwork-",
+        )
+        for name in packaged_names
+    )
 
     assert any(
         name is not None
@@ -2038,7 +2011,7 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
 
     repository_root = Path(__file__).resolve().parents[2]
 
-    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
 
     assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
 
@@ -2205,8 +2178,8 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
 
     materials_by_id = {material.get("id"): material for material in materials}
 
-    assert "shape-with-fill-base" in objects_by_name
-    assert "shape-with-fill-artwork-fill" in objects_by_name
+    assert "shape-with-fill-base-test-white" in objects_by_name
+    assert "shape-with-fill-artwork-fill-test-blue" in objects_by_name
 
     artwork_object_names = {
         name
@@ -2215,7 +2188,7 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
         and name.startswith(
             "shape-with-fill-artwork-",
         )
-        and name != "shape-with-fill-artwork-fill"
+        and name != "shape-with-fill-artwork-fill-test-blue"
     }
 
     assert artwork_object_names
@@ -2224,7 +2197,7 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
     # Fill preserves semantic color identity
     # -----------------------------------------------------
 
-    fill_object = objects_by_name["shape-with-fill-artwork-fill"]
+    fill_object = objects_by_name["shape-with-fill-artwork-fill-test-blue"]
 
     fill_material_id = fill_object.get(
         "pid",
@@ -2247,7 +2220,7 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
     # Fill remains semantically independent
     # -----------------------------------------------------
 
-    base_object = objects_by_name["shape-with-fill-base"]
+    base_object = objects_by_name["shape-with-fill-base-test-white"]
 
     assert fill_object.get("id") != base_object.get("id")
 
@@ -2292,7 +2265,7 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
 
     repository_root = Path(__file__).resolve().parents[2]
 
-    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
 
     assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
 
@@ -2435,9 +2408,9 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
 
     materials_by_id = {material.get("id"): material for material in materials}
 
-    base_object = objects_by_name["shared-color-fill-shape-base"]
+    base_object = objects_by_name["shared-color-fill-shape-base-test-blue"]
 
-    fill_object = objects_by_name["shared-color-fill-shape-artwork-fill"]
+    fill_object = objects_by_name["shared-color-fill-shape-artwork-fill-test-blue"]
 
     assert base_object.get("id") != fill_object.get("id")
 
@@ -2477,7 +2450,7 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
         and name.startswith(
             "shared-color-fill-shape-artwork-",
         )
-        and name != "shared-color-fill-shape-artwork-fill"
+        and name != "shared-color-fill-shape-artwork-fill-test-blue"
     }
 
     assert artwork_object_names
@@ -2528,7 +2501,7 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
 
     repository_root = Path(__file__).resolve().parents[2]
 
-    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
 
     assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
 
@@ -2724,9 +2697,13 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
         )
     }
 
-    assert f"{artifact_id}-base" in objects_by_name
-    assert f"{artifact_id}-ridge" in objects_by_name
-    assert f"{artifact_id}-artwork-fill" in objects_by_name
+    base_name = f"{artifact_id}-base-test-white"
+    ridge_name = f"{artifact_id}-ridge-test-red"
+    fill_name = f"{artifact_id}-artwork-fill-test-blue"
+
+    assert base_name in objects_by_name
+    assert ridge_name in objects_by_name
+    assert fill_name in objects_by_name
 
     artwork_object_names = {
         name
@@ -2735,16 +2712,16 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
         and name.startswith(
             f"{artifact_id}-artwork-",
         )
-        and name != f"{artifact_id}-artwork-fill"
+        and name != fill_name
     }
 
     assert artwork_object_names
 
-    base_object = objects_by_name[f"{artifact_id}-base"]
+    base_object = objects_by_name[base_name]
 
-    ridge_object = objects_by_name[f"{artifact_id}-ridge"]
+    ridge_object = objects_by_name[ridge_name]
 
-    fill_object = objects_by_name[f"{artifact_id}-artwork-fill"]
+    fill_object = objects_by_name[fill_name]
 
     assert (
         len(

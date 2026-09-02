@@ -47,7 +47,7 @@ def test_png_builds_complete_3mf(
 
     repository_root = Path(__file__).resolve().parents[2]
 
-    fixture_source = repository_root / "projects" / "nydeli-clean.png"
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
 
     assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
 
@@ -122,7 +122,7 @@ def test_png_builds_complete_3mf(
     # Verify backward-compatible envelope configuration
     # -----------------------------------------------------
 
-    assert plan.resolver("artwork_envelope_mode") == "alpha"
+    assert plan.resolver("artwork_envelope_mode") == "shrink-wrap"
 
     assert (
         plan.resolver.source(

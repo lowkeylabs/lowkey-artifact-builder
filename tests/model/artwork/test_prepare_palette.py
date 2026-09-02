@@ -23,7 +23,7 @@ from lowkey_artifact_builder.model.models.artwork.stages import prepare
 # =========================================================
 
 
-FIXTURES = Path(__file__).parent / "fixtures"
+ASSETS = Path(__file__).parents[2] / "assets"
 
 
 def _load_fixture(
@@ -33,7 +33,7 @@ def _load_fixture(
     Load one representative Artwork fixture as RGBA.
     """
 
-    source = FIXTURES / name
+    source = ASSETS / name
 
     assert source.is_file()
 
