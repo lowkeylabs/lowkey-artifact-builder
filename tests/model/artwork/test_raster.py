@@ -8,7 +8,7 @@ The raster stage must consume only the paths supplied through
 StageContext. Dynamic PNG products are stage-local products whose
 locations are determined by the declared raster manifest.
 """
-# File: tests/model/test_raster.py
+# File: tests/model/artwork/test_raster.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 

@@ -8,7 +8,7 @@ The extrusion stage must consume only the paths supplied through
 StageContext. Dynamic STL products are stage-local products whose
 locations are determined by the declared extrusion manifest.
 """
-# File: tests/model/test_extrude.py
+# File: tests/model/artwork/test_extrude.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 

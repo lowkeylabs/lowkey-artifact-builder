@@ -12,7 +12,7 @@ declared trace and envelope output paths.
 Otherwise-unassigned pixels inside the Artwork envelope use the
 configured artwork_fill_color before color separation.
 """
-# File: tests/model/test_prepare.py
+# File: tests/model/artwork/test_prepare.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 
@@ -1215,13 +1215,32 @@ def test_prepare_does_not_require_white_when_fill_color_is_configured(
 
 
 @pytest.mark.slow
-def test_shrink_wrap_real_opaque_artwork_does_not_use_source_rectangle() -> None:
+@pytest.mark.parametrize(
+    "fixture_name",
+    [
+        "busy_bg_person.png",
+        "clean_bg_cat.png",
+        "clean_bg_dog.png",
+        "clean_bg_house.png",
+        "clean_bg_person.png",
+    ],
+)
+def test_shrink_wrap_real_artwork_does_not_use_source_rectangle(
+    fixture_name: str,
+) -> None:
     """
-    Shrink-wrap derives a meaningful envelope for representative opaque
+    Shrink-wrap derives a meaningful envelope for representative real
     artwork instead of treating the complete source rectangle as Artwork.
+
+    The fixture corpus exercises different source backgrounds, alpha
+    characteristics, edge characteristics, and subject complexity.
     """
 
-    source = Path(__file__).parent / "fixtures" / "clean_bg_cat.png"
+    source = (
+        Path(__file__).parent
+        / "fixtures"
+        / fixture_name
+    )
 
     assert source.is_file()
 
@@ -1230,35 +1249,46 @@ def test_shrink_wrap_real_opaque_artwork_does_not_use_source_rectangle() -> None
             "RGBA",
         )
 
-    envelope = prepare._derive_envelope(
-        rgba,
-        mode="shrink-wrap",
-    )
+    try:
+        envelope = prepare._derive_envelope(
+            rgba,
+            mode="shrink-wrap",
+        )
 
-    assert np.any(envelope)
+        assert np.any(
+            envelope,
+        )
 
-    height, width = envelope.shape
+        height, width = envelope.shape
 
-    # Representative opaque-background artwork must not collapse to the
-    # historical alpha-mode failure of treating the complete raster as
-    # Artwork.
-    assert not np.all(envelope)
+        #
+        # Representative artwork must not collapse to treating the complete
+        # source raster as Artwork.
+        #
+        assert not np.all(
+            envelope,
+        )
 
-    # The shrink-wrapped subject should have exterior background on every
-    # side rather than coinciding with the source-image rectangle.
-    assert not np.any(envelope[0, :])
-    assert not np.any(envelope[height - 1, :])
-    assert not np.any(envelope[:, 0])
-    assert not np.any(envelope[:, width - 1])
+        #
+        # The derived subject envelope must be separated from the source
+        # rectangle on every side.
+        #
+        assert not np.any(envelope[0, :])
+        assert not np.any(envelope[height - 1, :])
+        assert not np.any(envelope[:, 0])
+        assert not np.any(envelope[:, width - 1])
 
-    occupied_y, occupied_x = np.nonzero(
-        envelope,
-    )
+        occupied_y, occupied_x = np.nonzero(
+            envelope,
+        )
 
-    assert occupied_x.min() > 0
-    assert occupied_y.min() > 0
-    assert occupied_x.max() < width - 1
-    assert occupied_y.max() < height - 1
+        assert occupied_x.min() > 0
+        assert occupied_y.min() > 0
+        assert occupied_x.max() < width - 1
+        assert occupied_y.max() < height - 1
+
+    finally:
+        rgba.close()
 
 
 def test_shrink_wrap_treats_near_background_colors_as_exterior() -> None:
@@ -1314,3 +1344,187 @@ def test_shrink_wrap_treats_near_background_colors_as_exterior() -> None:
 
     # The subject must remain Artwork.
     assert envelope[30, 30]
+
+
+def test_shrink_wrap_excludes_transparent_exterior_background() -> None:
+    """
+    Shrink-wrap excludes transparent background connected to the exterior.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (
+            80,
+            80,
+        ),
+        (
+            255,
+            255,
+            255,
+            0,
+        ),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        for y in range(
+            20,
+            60,
+        ):
+            for x in range(
+                20,
+                60,
+            ):
+                pixels[x, y] = (
+                    0,
+                    0,
+                    0,
+                    255,
+                )
+
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        assert not envelope[0, 0]
+        assert not envelope[0, 79]
+        assert not envelope[79, 0]
+        assert not envelope[79, 79]
+
+        assert envelope[40, 40]
+
+    finally:
+        image.close()
+
+
+def test_shrink_wrap_excludes_translucent_exterior_background() -> None:
+    """
+    Shrink-wrap excludes translucent background connected to the exterior.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (
+            80,
+            80,
+        ),
+        (
+            255,
+            255,
+            255,
+            96,
+        ),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        for y in range(
+            20,
+            60,
+        ):
+            for x in range(
+                20,
+                60,
+            ):
+                pixels[x, y] = (
+                    0,
+                    0,
+                    0,
+                    255,
+                )
+
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        assert not envelope[0, 0]
+        assert not envelope[0, 79]
+        assert not envelope[79, 0]
+        assert not envelope[79, 79]
+
+        assert envelope[40, 40]
+
+    finally:
+        image.close()
+
+
+def test_shrink_wrap_preserves_enclosed_transparent_region() -> None:
+    """
+    Shrink-wrap preserves an enclosed transparent region within the
+    Artwork envelope.
+
+    Exterior connectivity, rather than transparency alone, determines
+    whether transparent source pixels lie outside the Artwork.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (
+            80,
+            80,
+        ),
+        (
+            255,
+            255,
+            255,
+            0,
+        ),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        for y in range(
+            15,
+            65,
+        ):
+            for x in range(
+                15,
+                65,
+            ):
+                pixels[x, y] = (
+                    0,
+                    0,
+                    0,
+                    255,
+                )
+
+        for y in range(
+            30,
+            50,
+        ):
+            for x in range(
+                30,
+                50,
+            ):
+                pixels[x, y] = (
+                    255,
+                    255,
+                    255,
+                    0,
+                )
+
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        assert not envelope[0, 0]
+        assert envelope[20, 20]
+        assert envelope[40, 40]
+
+    finally:
+        image.close()
+
+
+

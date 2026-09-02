@@ -1,5 +1,5 @@
 """Tests for the artwork model."""
-# File: tests/model/test_artwork.py
+# File: tests/model/artwork/test_artwork.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 

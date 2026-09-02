@@ -4,7 +4,7 @@ Tests for execution event sink behavior.
 Event sinks are optional observers of engine execution. Observer failure
 must not alter the engine operation being observed.
 """
-# File: tests/engine/test_event_sink.py
+# File: tests/engine/test_events_sink.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 

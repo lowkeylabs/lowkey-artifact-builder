@@ -8,7 +8,7 @@ The purpose is to verify that the migrated artwork pipeline operates
 through the canonical product hierarchy while preserving the complete
 prepare -> raster -> vector -> extrude -> package transformation.
 """
-# File: tests/model/test_artwork_pipeline.py
+# File: tests/model/artwork/test_pipeline.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 
