@@ -1,21 +1,20 @@
 """
 Artwork prepare stage.
 
-The prepare stage analyzes and normalizes materialized raster artwork
-before converting it into a multicolor SVG trace.
+The prepare stage analyzes materialized raster artwork before converting
+it into a multicolor SVG trace.
 
-Preparation establishes the physical artwork envelope. Pixels outside
-that envelope are transparent. Pixels inside the envelope are made
-opaque: existing artwork is preserved while transparent or
-insufficiently opaque pixels are filled using the configured Artwork color.
+Preparation establishes the physical artwork envelope and preserves
+source color information for tracing. Pixels outside the physical
+envelope are excluded from the prepared raster.
 
 The stage produces:
 
     trace.svg
-        Multicolor SVG trace of the normalized artwork.
+        Multicolor SVG trace of the prepared source Artwork.
 
     envelope.svg
-        SVG containing only the closed outer boundary of the artwork.
+        SVG containing only the closed outer boundary of the Artwork.
 
 Filesystem layout and configuration resolution are responsibilities of
 the build engine. This implementation consumes only the inputs,
@@ -29,7 +28,6 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, cast
@@ -112,17 +110,6 @@ DEFAULT_SHRINK_WRAP_BACKGROUND_DISTANCE = 12.0
 #
 DEFAULT_SHRINK_WRAP_WHITE_MINIMUM = 240
 
-#
-# Maximum local half-width of a palette region that may be treated as
-# a thin quantization artifact.
-#
-# A value of 2 targets approximately 1-2 pixel-wide features while
-# preserving broader artwork geometry.
-#
-
-DEFAULT_THIN_FEATURE_PIXELS = 2
-
-
 # =========================================================
 # Helpers
 # =========================================================
@@ -191,24 +178,24 @@ def execute(
     context: StageContext,
 ) -> None:
     """
-    Execute the artwork prepare stage.
+    Execute the Artwork prepare stage.
 
-    Preparation establishes the physical artwork envelope and produces
-    a normalized, palette-quantized multicolor SVG trace.
+    Preparation establishes the physical Artwork envelope and produces
+    a multicolor SVG trace from source color information.
 
     Processing:
 
         1. Load the source PNG.
-        2. Resolve the configured artwork palette.
-        3. Identify meaningful visible source artwork.
-        4. Construct the physical artwork envelope.
+        2. Resolve the requested Artifact color count.
+        3. Identify meaningful visible source Artwork.
+        4. Construct the physical Artwork envelope.
         5. Write envelope.svg.
-        6. Fill otherwise-unassigned regions inside the envelope with the
-        configured Artwork fill color.
-        7. Quantize all pixels inside the envelope to exact configured
-           artwork colors.
-        8. Trace the quantized raster with Inkscape.
-        9. Clip the resulting trace to the physical envelope.
+        6. Preserve source colors within the physical envelope.
+        7. Trace the prepared raster using artifact_color_count colors.
+        8. Clip the resulting trace to the physical envelope.
+
+    Physical printer-color selection and assignment are not Prepare
+    responsibilities.
 
     Pixels outside the envelope remain transparent.
     """
@@ -225,25 +212,8 @@ def execute(
         "envelope",
     )
 
-    #
-    # Resolve the configured artwork palette.
-    #
-    colors = _require_colors(
-        context.resolver(
-            "artwork_colors",
-        )
-    )
-
-    palette = _resolve_palette(
-        context,
-        colors,
-    )
-
-    fill_color = _resolve_fill_color(
-        context.resolver(
-            "artwork_fill_color",
-        ),
-        palette,
+    artifact_color_count = context.resolver(
+        "artifact_color_count",
     )
 
     #
@@ -287,7 +257,7 @@ def execute(
 
     #
     # Determine the configured envelope strategy and construct the
-    # physical artwork envelope.
+    # physical Artwork envelope.
     #
     try:
         envelope_mode = context.resolver(
@@ -314,63 +284,16 @@ def execute(
     )
 
     #
-    # Normalize the source relative to the envelope.
+    # Preserve source color information within the physical envelope.
+    # Pixels outside the envelope remain transparent.
     #
-    # Outside:
-    #     transparent
-    #
-    # Inside:
-    #     opaque, with transparent source regions filled using the
-    #     configured configured artwork color
-    #
-    normalized = _normalize_image(
+    prepared = _prepare_source_image(
         image,
         envelope,
-        fill_color=fill_color,
     )
 
     #
-    # Collapse the normalized raster onto the exact configured
-    # filament palette before tracing.
-    #
-    # This removes antialiased intermediate colors before Inkscape
-    # attempts to discover vector geometry.
-    #
-    quantized = _quantize_image(
-        normalized,
-        envelope,
-        palette=palette,
-    )
-
-    #
-    # Remove weakly supported palette assignments introduced when
-    # antialiased source pixels were collapsed onto the exact artwork
-    # palette.
-    #
-
-    quantized = _cleanup_quantized_image(
-        quantized,
-        envelope,
-        palette=palette,
-        radius=1,
-        minimum_support=3,
-    )
-
-    #
-    # Remove long, geometrically thin palette regions that survive
-    # neighbor-support cleanup because they have substantial support along
-    # their length.
-    #
-    quantized = _cleanup_thin_features(
-        quantized,
-        envelope,
-        palette=palette,
-        maximum_radius=DEFAULT_THIN_FEATURE_PIXELS,
-        replacement_radius=2,
-    )
-
-    #
-    # The quantized raster is an implementation detail rather than a
+    # The prepared raster is an implementation detail rather than a
     # persistent stage product.
     #
     temporary_path: Path | None = None
@@ -386,18 +309,19 @@ def execute(
                 temporary.name,
             )
 
-        quantized.save(
+        prepared.save(
             temporary_path,
             format="PNG",
         )
 
         #
-        # Trace only exact configured artwork colors.
+        # Discover the requested number of intrinsic Artifact colors
+        # directly from the prepared source raster.
         #
         _trace_multicolor(
             temporary_path,
             trace_output,
-            colors=len(palette),
+            colors=artifact_color_count,
         )
 
         #
@@ -429,959 +353,6 @@ def execute(
 
             except OSError:
                 pass
-
-
-# =========================================================
-# Configuration
-# =========================================================
-
-
-def _require_colors(
-    value: Any,
-) -> tuple[str, ...]:
-    """
-    Return a validated sequence of artwork color names.
-    """
-
-    if isinstance(
-        value,
-        str | bytes,
-    ) or not isinstance(
-        value,
-        Sequence,
-    ):
-        raise PrepareError("artwork_colors must be a sequence of color names.")
-
-    colors: list[str] = []
-
-    for color in value:
-        if (
-            not isinstance(
-                color,
-                str,
-            )
-            or not color.strip()
-        ):
-            raise PrepareError("artwork_colors must contain non-empty color names.")
-
-        colors.append(color.strip())
-
-    if len(colors) < 2:
-        raise PrepareError("artwork_colors must contain at least two colors.")
-
-    if len(set(colors)) != len(colors):
-        raise PrepareError("artwork_colors must contain unique color names.")
-
-    return tuple(colors)
-
-
-def _resolve_palette(
-    context: StageContext,
-    colors: tuple[str, ...],
-) -> tuple[tuple[str, tuple[int, int, int]], ...]:
-    """
-    Resolve configured artwork colors to exact catalog RGB values.
-
-    The returned palette preserves artwork_colors ordering.
-    """
-
-    palette: list[
-        tuple[
-            str,
-            tuple[int, int, int],
-        ]
-    ] = []
-
-    for name in colors:
-        value = context.resolver.color(
-            name,
-        )
-
-        if not isinstance(
-            value,
-            Mapping,
-        ):
-            raise PrepareError(
-                f"Configured artwork color {name!r} has no valid catalog definition."
-            )
-
-        rgb = value.get(
-            "rgb",
-        )
-
-        if (
-            isinstance(
-                rgb,
-                str | bytes,
-            )
-            or not isinstance(
-                rgb,
-                Sequence,
-            )
-            or len(rgb) != 3
-        ):
-            raise PrepareError(
-                f"Configured artwork color {name!r} must define a three-component RGB value."
-            )
-
-        components: list[int] = []
-
-        for component in rgb:
-            if (
-                isinstance(
-                    component,
-                    bool,
-                )
-                or not isinstance(
-                    component,
-                    int,
-                )
-                or component < 0
-                or component > 255
-            ):
-                raise PrepareError(
-                    f"Configured artwork color {name!r} contains an invalid RGB component."
-                )
-
-            components.append(component)
-
-        palette.append(
-            (
-                name,
-                (
-                    components[0],
-                    components[1],
-                    components[2],
-                ),
-            )
-        )
-
-    return tuple(palette)
-
-
-def _quantize_image(
-    image: Image.Image,
-    envelope: np.ndarray,
-    *,
-    palette: tuple[
-        tuple[
-            str,
-            tuple[int, int, int],
-        ],
-        ...,
-    ],
-) -> Image.Image:
-    """
-    Quantize artwork inside the envelope to exact configured colors.
-
-    Quantization is performed in two passes.
-
-    First, every pixel inside the artwork envelope is assigned to its
-    nearest configured palette color.
-
-    Second, suspicious boundary assignments are reconsidered using
-    palette colors established in the surrounding neighborhood. This
-    prevents antialiased transitions between two colors from producing
-    thin regions of an unrelated third palette color.
-
-    Pixels outside the envelope remain fully transparent.
-    """
-
-    rgba = np.asarray(
-        image,
-        dtype=np.uint8,
-    )
-
-    if envelope.shape != rgba.shape[:2]:
-        raise PrepareError("Artwork envelope dimensions do not match the normalized image.")
-
-    if not palette:
-        raise PrepareError("Artwork palette cannot be empty.")
-
-    palette_rgb = np.asarray(
-        [rgb for _name, rgb in palette],
-        dtype=np.int32,
-    )
-
-    source_rgb = rgba[
-        :,
-        :,
-        :3,
-    ].astype(
-        np.int32,
-    )
-
-    pixels = source_rgb[envelope]
-
-    if pixels.size == 0:
-        raise PrepareError("Artwork envelope contains no pixels.")
-
-    #
-    # First pass:
-    #
-    # Assign every artwork pixel to its nearest configured palette
-    # color.
-    #
-    differences = (
-        pixels[
-            :,
-            None,
-            :,
-        ]
-        - palette_rgb[
-            None,
-            :,
-            :,
-        ]
-    )
-
-    distances = np.sum(
-        differences * differences,
-        axis=2,
-    )
-
-    nearest = np.argmin(
-        distances,
-        axis=1,
-    )
-
-    #
-    # Store palette indexes separately from the final image.
-    #
-    # -1 identifies pixels outside the artwork envelope.
-    #
-    labels = np.full(
-        envelope.shape,
-        -1,
-        dtype=np.intp,
-    )
-
-    labels[envelope] = nearest.astype(
-        np.intp,
-    )
-
-    #
-    # Repair palette assignments that appear to be artifacts of an
-    # antialiased boundary between other established colors.
-    #
-    labels = _repair_quantized_boundaries(
-        source_rgb,
-        labels,
-        envelope,
-        palette_rgb,
-        radius=2,
-        minimum_support=4,
-    )
-
-    #
-    # Construct the exact-palette RGBA image.
-    #
-    result = np.zeros_like(
-        rgba,
-        dtype=np.uint8,
-    )
-
-    result[
-        envelope,
-        :3,
-    ] = palette_rgb[labels[envelope]].astype(
-        np.uint8,
-    )
-
-    result[
-        envelope,
-        3,
-    ] = 255
-
-    return Image.fromarray(
-        result,
-        mode="RGBA",
-    )
-
-
-def _repair_quantized_boundaries(
-    source_rgb: np.ndarray,
-    labels: np.ndarray,
-    envelope: np.ndarray,
-    palette_rgb: np.ndarray,
-    *,
-    radius: int = 2,
-    minimum_support: int = 4,
-) -> np.ndarray:
-    """
-    Repair unsupported palette assignments along color boundaries.
-
-    Antialiased source pixels between two established artwork colors
-    can sometimes be closer to an unrelated third palette color.
-
-    For each palette color, measure its support in the surrounding
-    neighborhood. Pixels whose assigned color has weak local support
-    are reconsidered using only palette colors with meaningful local
-    support.
-
-    Among those supported colors, the source pixel is assigned to the
-    nearest RGB value.
-
-    The center pixel does not count as support for itself.
-    """
-
-    if radius < 1:
-        raise PrepareError("Boundary repair radius must be positive.")
-
-    if minimum_support < 1:
-        raise PrepareError("Boundary repair minimum support must be positive.")
-
-    if labels.shape != envelope.shape:
-        raise PrepareError("Quantized label dimensions do not match the artwork envelope.")
-
-    if source_rgb.shape[:2] != envelope.shape:
-        raise PrepareError("Source RGB dimensions do not match the artwork envelope.")
-
-    palette_count = int(palette_rgb.shape[0])
-
-    size = 2 * radius + 1
-
-    kernel = np.ones(
-        (
-            size,
-            size,
-        ),
-        dtype=np.int16,
-    )
-
-    #
-    # Do not let the current pixel provide evidence for itself.
-    #
-    kernel[
-        radius,
-        radius,
-    ] = 0
-
-    support = np.zeros(
-        (
-            palette_count,
-            *envelope.shape,
-        ),
-        dtype=np.int16,
-    )
-
-    for index in range(palette_count):
-        support[index] = ndimage.convolve(
-            (labels == index).astype(
-                np.int16,
-            ),
-            kernel,
-            mode="constant",
-            cval=0,
-        )
-
-    current_support = np.zeros(
-        envelope.shape,
-        dtype=np.int16,
-    )
-
-    for index in range(palette_count):
-        current = labels == index
-
-        current_support[current] = support[index][current]
-
-    #
-    # Only reconsider assignments that lack meaningful local support.
-    #
-    weak = envelope & (current_support < minimum_support)
-
-    if not np.any(weak):
-        return labels.copy()
-
-    repaired = labels.copy()
-
-    #
-    # Determine RGB distance to every palette color.
-    #
-    differences = (
-        source_rgb[
-            :,
-            :,
-            None,
-            :,
-        ]
-        - palette_rgb[
-            None,
-            None,
-            :,
-            :,
-        ]
-    )
-
-    distances = np.sum(
-        differences * differences,
-        axis=3,
-    )
-
-    #
-    # Colors without sufficient neighborhood support are not valid
-    # replacement candidates.
-    #
-    supported = np.moveaxis(
-        support >= minimum_support,
-        0,
-        2,
-    )
-
-    distances = np.where(
-        supported,
-        distances,
-        np.iinfo(
-            np.int64,
-        ).max,
-    )
-
-    replacement = np.argmin(
-        distances,
-        axis=2,
-    )
-
-    has_replacement = np.any(
-        supported,
-        axis=2,
-    )
-
-    replace = weak & has_replacement
-
-    repaired[replace] = replacement[replace]
-
-    return repaired
-
-
-def _cleanup_quantized_image(
-    image: Image.Image,
-    envelope: np.ndarray,
-    *,
-    palette: tuple[
-        tuple[
-            str,
-            tuple[int, int, int],
-        ],
-        ...,
-    ],
-    radius: int = 1,
-    minimum_support: int = 2,
-) -> Image.Image:
-    """
-    Remove weakly supported palette assignments from quantized artwork.
-
-    Quantization can convert antialiased boundary pixels into narrow
-    bands of an otherwise unrelated palette color. Because the input
-    image has already been quantized, every opaque pixel inside the
-    envelope belongs to exactly one configured palette color.
-
-    For each pixel, inspect the surrounding neighborhood. If the
-    pixel's current color has insufficient local support, replace it
-    with the most common neighboring palette color.
-
-    A radius of 1 examines a 3x3 neighborhood. The center pixel is not
-    counted as support for itself.
-
-    This operation is intentionally conservative. It removes isolated
-    or very weakly supported color assignments without applying
-    erosion or dilation to legitimate narrow artwork geometry.
-
-    Pixels outside the envelope remain transparent.
-    """
-
-    if radius < 1:
-        raise PrepareError("Palette cleanup radius must be positive.")
-
-    if minimum_support < 0:
-        raise PrepareError("Palette cleanup minimum support cannot be negative.")
-
-    rgba = np.asarray(
-        image,
-        dtype=np.uint8,
-    )
-
-    if envelope.shape != rgba.shape[:2]:
-        raise PrepareError("Artwork envelope dimensions do not match the quantized image.")
-
-    if not palette:
-        raise PrepareError("Artwork palette cannot be empty.")
-
-    palette_rgb = np.asarray(
-        [rgb for _name, rgb in palette],
-        dtype=np.uint8,
-    )
-
-    height, width = envelope.shape
-
-    #
-    # Convert the exact RGB raster into palette indexes.
-    #
-    labels = np.full(
-        (
-            height,
-            width,
-        ),
-        -1,
-        dtype=np.intp,
-    )
-
-    for index, rgb in enumerate(palette_rgb):
-        matches = envelope & np.all(
-            rgba[
-                :,
-                :,
-                :3,
-            ]
-            == rgb,
-            axis=2,
-        )
-
-        labels[matches] = index
-
-    if np.any(envelope & (labels < 0)):
-        raise PrepareError("Quantized artwork contains a color outside the configured palette.")
-
-    #
-    # Count neighboring pixels belonging to each palette color.
-    #
-    size = 2 * radius + 1
-
-    kernel = np.ones(
-        (
-            size,
-            size,
-        ),
-        dtype=np.int16,
-    )
-
-    #
-    # Do not allow the center pixel to count as evidence supporting
-    # its own current color.
-    #
-    kernel[
-        radius,
-        radius,
-    ] = 0
-
-    support = np.zeros(
-        (
-            len(palette),
-            height,
-            width,
-        ),
-        dtype=np.int16,
-    )
-
-    for index in range(len(palette)):
-        layer = labels == index
-
-        support[index] = ndimage.convolve(
-            layer.astype(
-                np.int16,
-            ),
-            kernel,
-            mode="constant",
-            cval=0,
-        )
-
-    #
-    # Obtain support for each pixel's currently assigned color.
-    #
-    current_support = np.zeros(
-        (
-            height,
-            width,
-        ),
-        dtype=np.int16,
-    )
-
-    for index in range(len(palette)):
-        current = labels == index
-
-        current_support[current] = support[index,][current]
-
-    weak = envelope & (current_support < minimum_support)
-
-    if not np.any(weak):
-        return image.copy()
-
-    #
-    # Determine the locally dominant palette color.
-    #
-    replacement = np.argmax(
-        support,
-        axis=0,
-    )
-
-    replacement_support = np.max(
-        support,
-        axis=0,
-    )
-
-    #
-    # A weak pixel is changed only when there is actual neighboring
-    # evidence for another palette color.
-    #
-    replace = weak & (replacement_support > current_support)
-
-    cleaned_labels = labels.copy()
-
-    cleaned_labels[replace] = replacement[replace]
-
-    #
-    # Reconstruct an exact-palette RGBA image.
-    #
-    result = np.zeros_like(
-        rgba,
-        dtype=np.uint8,
-    )
-
-    for index, rgb in enumerate(palette_rgb):
-        matches = envelope & (cleaned_labels == index)
-
-        result[
-            matches,
-            :3,
-        ] = rgb
-
-        result[
-            matches,
-            3,
-        ] = 255
-
-    return Image.fromarray(
-        result,
-        mode="RGBA",
-    )
-
-
-def _thin_feature_mask(
-    mask: np.ndarray,
-    *,
-    maximum_radius: int,
-) -> np.ndarray:
-    """
-    Return pixels belonging to geometrically thin regions.
-
-    The Euclidean distance transform measures each foreground pixel's
-    distance from the nearest background pixel. Pixels whose distance
-    does not exceed maximum_radius are therefore near a boundary.
-
-    A candidate thin feature must be unable to contain an interior
-    region farther than maximum_radius from its boundary.
-
-    This helper operates on one palette-color mask at a time.
-    """
-
-    if mask.ndim != 2:
-        raise PrepareError("Thin-feature mask must be two-dimensional.")
-
-    if maximum_radius < 1:
-        raise PrepareError("Thin-feature maximum radius must be positive.")
-
-    if not np.any(mask):
-        return np.zeros_like(
-            mask,
-            dtype=bool,
-        )
-
-    distance = np.asarray(
-        ndimage.distance_transform_edt(
-            mask,
-        ),
-        dtype=np.float64,
-    )
-
-    #
-    # Pixels within this distance of the region boundary are potential
-    # members of thin geometry.
-    #
-    boundary_band = mask & (distance <= float(maximum_radius))
-
-    #
-    # Determine connected components of the palette region. A whole
-    # component is considered thin only when it contains no pixel with
-    # a distance greater than maximum_radius.
-    #
-    structure = np.ones(
-        (
-            3,
-            3,
-        ),
-        dtype=bool,
-    )
-
-    label_result = cast(
-        tuple[Any, int],
-        ndimage.label(
-            mask,
-            structure=structure,
-        ),
-    )
-
-    labels = np.asarray(
-        label_result[0],
-        dtype=np.intp,
-    )
-
-    count = label_result[1]
-
-    result = np.zeros_like(
-        mask,
-        dtype=bool,
-    )
-
-    for label in range(
-        1,
-        count + 1,
-    ):
-        component = labels == label
-
-        if not np.any(component):
-            continue
-
-        maximum_distance = float(
-            np.max(
-                distance[component],
-            )
-        )
-
-        if maximum_distance <= float(maximum_radius):
-            result |= component & boundary_band
-
-    return result
-
-
-def _cleanup_thin_features(
-    image: Image.Image,
-    envelope: np.ndarray,
-    *,
-    palette: tuple[
-        tuple[
-            str,
-            tuple[int, int, int],
-        ],
-        ...,
-    ],
-    maximum_radius: int = DEFAULT_THIN_FEATURE_PIXELS,
-    replacement_radius: int = 2,
-) -> Image.Image:
-    """
-    Replace geometrically thin palette regions with neighboring colors.
-
-    This pass targets long, narrow palette regions that survive the
-    local-support cleanup because they have substantial support along
-    their length.
-
-    Each configured palette color is examined independently. Connected
-    components that never become thicker than maximum_radius are
-    considered thin-feature candidates.
-
-    Candidate pixels are reassigned to the most strongly represented
-    *different* palette color in the surrounding neighborhood.
-
-    Pixels outside the artwork envelope remain transparent.
-    """
-
-    if maximum_radius < 1:
-        raise PrepareError("Thin-feature maximum radius must be positive.")
-
-    if replacement_radius < 1:
-        raise PrepareError("Thin-feature replacement radius must be positive.")
-
-    rgba = np.asarray(
-        image,
-        dtype=np.uint8,
-    )
-
-    if envelope.shape != rgba.shape[:2]:
-        raise PrepareError("Artwork envelope dimensions do not match the quantized image.")
-
-    if not palette:
-        raise PrepareError("Artwork palette cannot be empty.")
-
-    palette_rgb = np.asarray(
-        [rgb for _name, rgb in palette],
-        dtype=np.uint8,
-    )
-
-    height, width = envelope.shape
-
-    #
-    # Convert exact RGB values to palette indexes.
-    #
-    labels = np.full(
-        (
-            height,
-            width,
-        ),
-        -1,
-        dtype=np.intp,
-    )
-
-    for index, rgb in enumerate(palette_rgb):
-        matches = envelope & np.all(
-            rgba[
-                :,
-                :,
-                :3,
-            ]
-            == rgb,
-            axis=2,
-        )
-
-        labels[matches] = index
-
-    if np.any(envelope & (labels < 0)):
-        raise PrepareError("Quantized artwork contains a color outside the configured palette.")
-
-    #
-    # Find geometrically thin components for every palette color.
-    #
-    thin = np.zeros(
-        (
-            len(palette),
-            height,
-            width,
-        ),
-        dtype=bool,
-    )
-
-    for index in range(len(palette)):
-        thin[index] = _thin_feature_mask(
-            labels == index,
-            maximum_radius=maximum_radius,
-        )
-
-    #
-    # Count nearby support for every palette color.
-    #
-    size = 2 * replacement_radius + 1
-
-    kernel = np.ones(
-        (
-            size,
-            size,
-        ),
-        dtype=np.int16,
-    )
-
-    kernel[
-        replacement_radius,
-        replacement_radius,
-    ] = 0
-
-    support = np.zeros(
-        (
-            len(palette),
-            height,
-            width,
-        ),
-        dtype=np.int16,
-    )
-
-    for index in range(len(palette)):
-        support[index] = ndimage.convolve(
-            (labels == index).astype(
-                np.int16,
-            ),
-            kernel,
-            mode="constant",
-            cval=0,
-        )
-
-    cleaned_labels = labels.copy()
-
-    #
-    # Replace thin pixels with the strongest neighboring *other*
-    # palette color.
-    #
-    for index in range(len(palette)):
-        candidates = thin[index] & envelope
-
-        if not np.any(candidates):
-            continue
-
-        alternative_support = support.copy()
-
-        #
-        # The current color cannot replace itself.
-        #
-        alternative_support[index] = -1
-
-        replacement = np.argmax(
-            alternative_support,
-            axis=0,
-        )
-
-        replacement_support = np.max(
-            alternative_support,
-            axis=0,
-        )
-
-        replace = candidates & (replacement_support > 0)
-
-        cleaned_labels[replace] = replacement[replace]
-
-    #
-    # Reconstruct an exact-palette RGBA raster.
-    #
-    result = np.zeros_like(
-        rgba,
-        dtype=np.uint8,
-    )
-
-    for index, rgb in enumerate(palette_rgb):
-        matches = envelope & (cleaned_labels == index)
-
-        result[
-            matches,
-            :3,
-        ] = rgb
-
-        result[
-            matches,
-            3,
-        ] = 255
-
-    return Image.fromarray(
-        result,
-        mode="RGBA",
-    )
-
-
-def _resolve_fill_color(
-    value: Any,
-    palette: tuple[
-        tuple[
-            str,
-            tuple[int, int, int],
-        ],
-        ...,
-    ],
-) -> tuple[int, int, int]:
-    """
-    Resolve the configured semantic Artwork fill color from the palette.
-    """
-
-    if (
-        not isinstance(
-            value,
-            str,
-        )
-        or not value.strip()
-    ):
-        raise PrepareError("artwork_fill_color must be a non-empty color name.")
-
-    fill_color = value.strip()
-
-    for name, rgb in palette:
-        if name == fill_color:
-            return rgb
-
-    raise PrepareError(
-        f"Configured artwork_fill_color {fill_color!r} is not present in artwork_colors."
-    )
 
 
 # =========================================================
@@ -2175,26 +1146,18 @@ def _disk_structure(
 # =========================================================
 
 
-def _normalize_image(
+def _prepare_source_image(
     image: Image.Image,
     envelope: np.ndarray,
-    *,
-    fill_color: tuple[int, int, int],
 ) -> Image.Image:
     """
-    Normalize source artwork against its physical envelope.
+    Prepare source Artwork for multicolor tracing.
 
-    Outside the envelope:
-        Pixels are fully transparent.
+    Source RGBA values are preserved within the physical Artwork
+    envelope. Pixels outside the envelope are fully transparent.
 
-    Inside the envelope:
-        Meaningful source pixels retain their source RGB value and
-        become fully opaque.
-
-        Pixels below the meaningful-alpha threshold become the
-        configured fill color and are fully opaque.
-
-    Palette quantization is performed separately after normalization.
+    Prepare does not assign physical printer colors or synthesize a
+    configured Artwork fill color.
     """
 
     rgba = np.asarray(
@@ -2205,53 +1168,12 @@ def _normalize_image(
     if envelope.shape != rgba.shape[:2]:
         raise PrepareError("Artwork envelope dimensions do not match the source image.")
 
-    alpha = rgba[
-        :,
-        :,
-        3,
-    ]
-
-    meaningful = envelope & (alpha >= DEFAULT_ALPHA_THRESHOLD)
-
     result = np.zeros_like(
         rgba,
         dtype=np.uint8,
     )
 
-    #
-    # Everything inside the envelope initially becomes the configured
-    # fill color.
-    #
-    result[
-        envelope,
-        0,
-    ] = fill_color[0]
-
-    result[
-        envelope,
-        1,
-    ] = fill_color[1]
-
-    result[
-        envelope,
-        2,
-    ] = fill_color[2]
-
-    result[
-        envelope,
-        3,
-    ] = 255
-
-    #
-    # Preserve source RGB for meaningful artwork pixels.
-    #
-    result[
-        meaningful,
-        :3,
-    ] = rgba[
-        meaningful,
-        :3,
-    ]
+    result[envelope,] = rgba[envelope,]
 
     return Image.fromarray(
         result,

@@ -1,8 +1,8 @@
 """
 Focused tests for Artwork prepare-stage multicolor tracing.
 
-These tests establish that substantial semantic color regions surviving
-raster preparation are also represented by geometry after Inkscape
+These tests establish that source color information preserved during
+Artwork preparation is represented by geometry after Inkscape
 multicolor tracing.
 """
 # File: tests/model/artwork/test_prepare_trace.py
@@ -27,40 +27,7 @@ from lowkey_artifact_builder.model.models.artwork.stages import prepare
 
 ASSETS = Path(__file__).parents[2] / "assets"
 
-PALETTE = (
-    (
-        "red",
-        (
-            221,
-            55,
-            52,
-        ),
-    ),
-    (
-        "green",
-        (
-            87,
-            121,
-            79,
-        ),
-    ),
-    (
-        "gold",
-        (
-            214,
-            164,
-            76,
-        ),
-    ),
-    (
-        "white",
-        (
-            255,
-            255,
-            255,
-        ),
-    ),
-)
+ARTIFACT_COLOR_COUNT = 4
 
 
 def _load_fixture(
@@ -84,8 +51,12 @@ def _prepare_raster(
     image: Image.Image,
 ) -> tuple[Image.Image, np.ndarray]:
     """
-    Prepare one source image through the complete raster pipeline used
+    Prepare one source image through the raster processing used
     immediately before multicolor tracing.
+
+    Preparation derives the physical Artwork envelope and preserves
+    source RGBA information inside that envelope. Physical printer-color
+    selection and assignment are not Prepare responsibilities.
     """
 
     envelope = prepare._derive_envelope(
@@ -93,36 +64,9 @@ def _prepare_raster(
         mode="shrink-wrap",
     )
 
-    normalized = prepare._normalize_image(
+    prepared = prepare._prepare_source_image(
         image,
         envelope,
-        fill_color=(
-            255,
-            255,
-            255,
-        ),
-    )
-
-    quantized = prepare._quantize_image(
-        normalized,
-        envelope,
-        palette=PALETTE,
-    )
-
-    quantized = prepare._cleanup_quantized_image(
-        quantized,
-        envelope,
-        palette=PALETTE,
-        radius=1,
-        minimum_support=3,
-    )
-
-    prepared = prepare._cleanup_thin_features(
-        quantized,
-        envelope,
-        palette=PALETTE,
-        maximum_radius=prepare.DEFAULT_THIN_FEATURE_PIXELS,
-        replacement_radius=2,
     )
 
     return (
@@ -181,17 +125,17 @@ def _svg_fill_colors(
 
 
 @pytest.mark.slow
-def test_multicolor_trace_preserves_prepared_house_palette(
+def test_multicolor_trace_produces_requested_house_color_layers(
     tmp_path: Path,
 ) -> None:
     """
-    Inkscape multicolor tracing preserves the semantic color layers
-    represented by prepared clean-background house Artwork.
+    Inkscape multicolor tracing produces the requested number of color
+    layers from prepared clean-background house Artwork.
 
-    Inkscape may choose representative SVG fill values that differ from
-    the exact raster palette RGB values. The required invariant at this
-    boundary is that every substantial prepared palette layer survives
-    as a distinct vector color layer.
+    Prepare preserves source color information rather than first
+    quantizing the source to a configured physical printer palette.
+    Inkscape therefore determines representative Artifact colors from
+    the prepared source raster.
     """
 
     image = _load_fixture(
@@ -206,7 +150,6 @@ def test_multicolor_trace_preserves_prepared_house_palette(
         )
 
         raster = tmp_path / "prepared.png"
-
         trace = tmp_path / "trace.svg"
 
         prepared.save(
@@ -215,42 +158,14 @@ def test_multicolor_trace_preserves_prepared_house_palette(
         )
 
         #
-        # Establish the precondition independently of Inkscape: every
-        # configured palette color is substantially represented in the
-        # raster supplied to the tracer.
-        #
-        rgba = np.asarray(
-            prepared,
-            dtype=np.uint8,
-        )
-
-        for color_name, rgb in PALETTE:
-            matches = np.all(
-                rgba[:, :, :3]
-                == np.asarray(
-                    rgb,
-                    dtype=np.uint8,
-                ),
-                axis=2,
-            ) & (rgba[:, :, 3] == 255)
-
-            count = int(
-                np.count_nonzero(
-                    matches,
-                )
-            )
-
-            assert count > 100, (
-                f"Expected substantial {color_name} Artwork before tracing, found {count} pixels."
-            )
-
-        #
-        # Exercise the real prepare-stage Inkscape operation.
+        # Exercise the real prepare-stage Inkscape operation. The
+        # requested count describes Artifact colors, not a physical
+        # printer palette.
         #
         prepare._trace_multicolor(
             raster,
             trace,
-            colors=len(PALETTE),
+            colors=ARTIFACT_COLOR_COUNT,
         )
 
         assert trace.is_file()
@@ -260,21 +175,17 @@ def test_multicolor_trace_preserves_prepared_house_palette(
         )
 
         #
-        # Inkscape's multicolor tracer may choose representative SVG
-        # fill values that differ slightly from the exact raster palette.
+        # Inkscape chooses the representative RGB value for each traced
+        # Artifact color layer. At this boundary the required invariant
+        # is that the requested number of distinct color layers survives
+        # into vector geometry.
         #
-        # At this boundary the required invariant is that every
-        # substantial prepared palette layer survives as a distinct
-        # vector color layer.
-        #
-        assert len(
-            fills,
-        ) == len(
-            PALETTE,
-        ), (
-            "Expected one traced vector color layer for every "
-            f"prepared palette color; found {sorted(fills)}."
-        )
+        assert (
+            len(
+                fills,
+            )
+            == ARTIFACT_COLOR_COUNT
+        ), f"Expected the requested number of traced Artifact color layers; found {sorted(fills)}."
 
     finally:
         if prepared is not None:
@@ -284,7 +195,7 @@ def test_multicolor_trace_preserves_prepared_house_palette(
 
 
 @pytest.mark.slow
-def test_envelope_clipping_preserves_traced_house_palette_layers(
+def test_envelope_clipping_preserves_traced_house_color_layers(
     tmp_path: Path,
 ) -> None:
     """
@@ -292,8 +203,8 @@ def test_envelope_clipping_preserves_traced_house_palette_layers(
     every vector color layer produced by multicolor tracing.
 
     The Artwork envelope constrains vector geometry spatially. It must
-    not eliminate a semantic color layer that survived preparation and
-    tracing.
+    not eliminate an Artifact color layer that survived source
+    preparation and tracing.
     """
 
     image = _load_fixture(
@@ -316,12 +227,13 @@ def test_envelope_clipping_preserves_traced_house_palette_layers(
         )
 
         #
-        # Produce the real multicolor trace.
+        # Produce the real multicolor trace from preserved source color
+        # information.
         #
         prepare._trace_multicolor(
             raster,
             trace,
-            colors=len(PALETTE),
+            colors=ARTIFACT_COLOR_COUNT,
         )
 
         assert trace.is_file()
@@ -335,13 +247,14 @@ def test_envelope_clipping_preserves_traced_house_palette_layers(
         # this behavior independently; repeating it here makes any
         # clipping failure unambiguous.
         #
-        assert len(
-            fills_before,
-        ) == len(
-            PALETTE,
+        assert (
+            len(
+                fills_before,
+            )
+            == ARTIFACT_COLOR_COUNT
         ), (
-            "Expected one traced vector color layer for every "
-            f"prepared palette color; found {sorted(fills_before)}."
+            "Expected the requested number of traced Artifact color "
+            f"layers; found {sorted(fills_before)}."
         )
 
         #
@@ -357,11 +270,11 @@ def test_envelope_clipping_preserves_traced_house_palette_layers(
         )
 
         #
-        # Clipping changes spatial visibility, not semantic color
+        # Clipping changes spatial visibility, not Artifact color
         # identity. Every traced color layer must remain represented.
         #
         assert fills_after == fills_before, (
-            "Envelope clipping changed the traced palette layers; "
+            "Envelope clipping changed the traced Artifact color layers; "
             f"before={sorted(fills_before)}, "
             f"after={sorted(fills_after)}."
         )

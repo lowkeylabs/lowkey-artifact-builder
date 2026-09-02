@@ -1,16 +1,17 @@
 """
-Tests for the artwork prepare stage.
+Tests for the Artwork prepare stage.
 
 These tests characterize the storage boundary between the build engine
-and the prepare-stage implementation and the application of configured
-Artwork fill semantics.
+and the prepare-stage implementation and the derivation of the physical
+Artwork envelope.
 
 The prepare stage must consume only the paths supplied through
 StageContext. Its persistent products must be written exactly to the
 declared trace and envelope output paths.
 
-Otherwise-unassigned pixels inside the Artwork envelope use the
-configured artwork_fill_color before color separation.
+Prepare preserves source color information for multicolor tracing.
+Physical printer-color selection and assignment are not Prepare
+responsibilities.
 """
 # File: tests/model/artwork/test_prepare.py
 # Copyright 2026 LowKeyLabs LLC
@@ -43,41 +44,11 @@ class StubResolver:
     ) -> None:
         self._values = values
 
-        self._colors = {
-            "white": {
-                "rgb": [
-                    255,
-                    255,
-                    255,
-                ],
-            },
-            "black": {
-                "rgb": [
-                    0,
-                    0,
-                    0,
-                ],
-            },
-            "red": {
-                "rgb": [
-                    255,
-                    0,
-                    0,
-                ],
-            },
-        }
-
     def __call__(
         self,
         name: str,
     ) -> Any:
         return self._values[name]
-
-    def color(
-        self,
-        name: str,
-    ) -> Any:
-        return self._colors[name]
 
 
 class StubContext:
@@ -111,8 +82,7 @@ class StubContext:
 
 def _resolver(
     *,
-    colors: list[str] | None = None,
-    fill_color: str = "white",
+    artifact_color_count: int = 2,
     envelope_mode: str | None = None,
 ) -> StubResolver:
     """
@@ -120,15 +90,7 @@ def _resolver(
     """
 
     values: dict[str, Any] = {
-        "artwork_colors": (
-            colors
-            if colors is not None
-            else [
-                "white",
-                "black",
-            ]
-        ),
-        "artwork_fill_color": fill_color,
+        "artifact_color_count": artifact_color_count,
     }
 
     if envelope_mode is not None:
@@ -178,61 +140,6 @@ def _write_source(
                     0,
                     0,
                     255,
-                )
-
-        image.save(
-            path,
-            format="PNG",
-        )
-
-    finally:
-        image.close()
-
-
-def _write_source_with_unassigned_interior(
-    path: Path,
-) -> None:
-    """
-    Write source artwork containing transparent pixels inside its envelope.
-    """
-
-    path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    image = Image.new(
-        "RGBA",
-        (40, 40),
-        (
-            0,
-            0,
-            0,
-            0,
-        ),
-    )
-
-    try:
-        pixels = image.load()
-
-        assert pixels is not None
-
-        for y in range(8, 32):
-            for x in range(8, 32):
-                pixels[x, y] = (
-                    0,
-                    0,
-                    0,
-                    255,
-                )
-
-        for y in range(16, 24):
-            for x in range(16, 24):
-                pixels[x, y] = (
-                    0,
-                    0,
-                    0,
-                    0,
                 )
 
         image.save(
@@ -901,7 +808,7 @@ def test_unsupported_artwork_envelope_mode_is_rejected() -> None:
 
 
 # =========================================================
-# Artwork fill semantics
+# Persistent envelope configuration
 # =========================================================
 
 
@@ -1015,200 +922,3 @@ def test_prepare_configured_shrink_wrap_changes_persistent_envelope(
     ) != shrink_wrap_envelope.read_text(
         encoding="utf-8",
     )
-
-
-def test_prepare_normalization_supports_non_white_fill_color() -> None:
-    """
-    Image normalization can assign a non-white fill color to
-    transparent pixels inside the Artwork envelope.
-    """
-
-    image = Image.new(
-        "RGBA",
-        (
-            3,
-            3,
-        ),
-        (
-            0,
-            0,
-            0,
-            0,
-        ),
-    )
-
-    try:
-        pixels = image.load()
-
-        assert pixels is not None
-
-        pixels[1, 1] = (
-            0,
-            0,
-            0,
-            255,
-        )
-
-        envelope = np.ones(
-            (
-                3,
-                3,
-            ),
-            dtype=bool,
-        )
-
-        normalized = prepare._normalize_image(
-            image,
-            envelope,
-            fill_color=(
-                255,
-                0,
-                0,
-            ),
-        )
-
-        try:
-            normalized_pixels = normalized.load()
-
-            assert normalized_pixels is not None
-
-            assert normalized_pixels[0, 0] == (
-                255,
-                0,
-                0,
-                255,
-            )
-
-            assert normalized_pixels[1, 1] == (
-                0,
-                0,
-                0,
-                255,
-            )
-
-        finally:
-            normalized.close()
-
-    finally:
-        image.close()
-
-
-def test_prepare_applies_configured_non_white_fill_color(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Prepare assigns otherwise-unassigned envelope pixels the configured
-    non-white Artwork fill color.
-    """
-
-    source = tmp_path / "source.png"
-
-    _write_source_with_unassigned_interior(
-        source,
-    )
-
-    context = StubContext(
-        inputs={
-            "source": source,
-        },
-        outputs={
-            "trace": tmp_path / "trace.svg",
-            "envelope": tmp_path / "envelope.svg",
-        },
-        resolver=_resolver(
-            colors=[
-                "red",
-                "black",
-            ],
-            fill_color="red",
-        ),
-    )
-
-    captured: list[Image.Image] = []
-
-    monkeypatch.setattr(
-        prepare,
-        "_trace_multicolor",
-        _capture_traced_image(
-            captured,
-        ),
-    )
-
-    monkeypatch.setattr(
-        prepare,
-        "_clip_trace_to_envelope",
-        lambda trace_path, artwork_envelope: None,
-    )
-
-    prepare.execute(context)  # type: ignore[arg-type]
-
-    assert len(captured) == 1
-
-    try:
-        pixels = captured[0].load()
-
-        assert pixels is not None
-
-        assert pixels[20, 20] == (
-            255,
-            0,
-            0,
-            255,
-        )
-
-    finally:
-        captured[0].close()
-
-
-def test_prepare_does_not_require_white_when_fill_color_is_configured(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Prepare succeeds with a palette containing no white when the
-    configured fill color belongs to that palette.
-    """
-
-    source = tmp_path / "source.png"
-
-    _write_source_with_unassigned_interior(
-        source,
-    )
-
-    trace = tmp_path / "trace.svg"
-    envelope = tmp_path / "envelope.svg"
-
-    context = StubContext(
-        inputs={
-            "source": source,
-        },
-        outputs={
-            "trace": trace,
-            "envelope": envelope,
-        },
-        resolver=_resolver(
-            colors=[
-                "red",
-                "black",
-            ],
-            fill_color="red",
-        ),
-    )
-
-    monkeypatch.setattr(
-        prepare,
-        "_trace_multicolor",
-        _fake_trace_multicolor,
-    )
-
-    monkeypatch.setattr(
-        prepare,
-        "_clip_trace_to_envelope",
-        lambda trace_path, artwork_envelope: None,
-    )
-
-    prepare.execute(context)  # type: ignore[arg-type]
-
-    assert trace.is_file()
-    assert envelope.is_file()
