@@ -11,6 +11,7 @@ stages.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -1037,6 +1038,157 @@ def test_shrink_wrap_preserves_narrow_shallow_exterior_concavity() -> None:
             100,
             150,
         ]
+
+    finally:
+        image.close()
+
+
+def test_shrink_wrap_warns_for_complex_opaque_exterior(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    Shrink-wrap warns when an opaque exterior is too complex for reliable
+    background inference.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (120, 120),
+        (255, 255, 255, 255),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        checker_size = 10
+
+        for y in range(120):
+            for x in range(120):
+                if ((x // checker_size) + (y // checker_size)) % 2 == 0:
+                    pixels[x, y] = (
+                        255,
+                        255,
+                        255,
+                        255,
+                    )
+                else:
+                    pixels[x, y] = (
+                        225,
+                        225,
+                        225,
+                        255,
+                    )
+
+        for y in range(30, 90):
+            for x in range(30, 90):
+                pixels[x, y] = (
+                    0,
+                    0,
+                    0,
+                    255,
+                )
+
+        with caplog.at_level(
+            logging.WARNING,
+            logger=prepare.__name__,
+        ):
+            prepare._derive_envelope(
+                image,
+                mode="shrink-wrap",
+            )
+
+        assert (
+            "Artwork has a complex exterior background. "
+            "Shrink-wrap may produce an inaccurate envelope. "
+            "Consider removing the background or replacing it with "
+            "transparency or a uniform color." in caplog.messages
+        )
+
+    finally:
+        image.close()
+
+
+def test_shrink_wrap_does_not_warn_for_uniform_opaque_exterior(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    Shrink-wrap does not warn for a simple uniform opaque exterior.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (120, 120),
+        (255, 255, 255, 255),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        for y in range(30, 90):
+            for x in range(30, 90):
+                pixels[x, y] = (
+                    0,
+                    0,
+                    0,
+                    255,
+                )
+
+        with caplog.at_level(
+            logging.WARNING,
+            logger=prepare.__name__,
+        ):
+            prepare._derive_envelope(
+                image,
+                mode="shrink-wrap",
+            )
+
+        assert not caplog.records
+
+    finally:
+        image.close()
+
+
+def test_shrink_wrap_does_not_warn_for_transparent_exterior(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    Shrink-wrap does not warn when transparency identifies the exterior.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (120, 120),
+        (0, 0, 0, 0),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        for y in range(30, 90):
+            for x in range(30, 90):
+                pixels[x, y] = (
+                    0,
+                    0,
+                    0,
+                    255,
+                )
+
+        with caplog.at_level(
+            logging.WARNING,
+            logger=prepare.__name__,
+        ):
+            prepare._derive_envelope(
+                image,
+                mode="shrink-wrap",
+            )
+
+        assert not caplog.records
 
     finally:
         image.close()

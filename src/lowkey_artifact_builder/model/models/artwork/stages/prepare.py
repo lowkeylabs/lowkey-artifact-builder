@@ -41,6 +41,7 @@ from scipy import ndimage
 from lowkey_artifact_builder.engine import (
     StageContext,
 )
+from lowkey_artifact_builder.logging_config import get_logger
 from lowkey_artifact_builder.tools.inkscape import (
     InkscapeError,
     run,
@@ -50,12 +51,21 @@ from lowkey_artifact_builder.tools.inkscape import (
 # Errors
 # =========================================================
 
+logger = get_logger(__name__)
+
 
 class PrepareError(RuntimeError):
     """
     Raised when artwork preparation cannot be completed.
     """
 
+
+COMPLEX_EXTERIOR_WARNING = (
+    "Artwork has a complex exterior background. "
+    "Shrink-wrap may produce an inaccurate envelope. "
+    "Consider removing the background or replacing it with "
+    "transparency or a uniform color."
+)
 
 # =========================================================
 # Defaults
@@ -111,6 +121,65 @@ DEFAULT_SHRINK_WRAP_WHITE_MINIMUM = 240
 #
 
 DEFAULT_THIN_FEATURE_PIXELS = 2
+
+
+# =========================================================
+# Helpers
+# =========================================================
+
+
+def _has_complex_opaque_exterior(
+    rgba: np.ndarray,
+    meaningful: np.ndarray,
+) -> bool:
+    """
+    Return whether an opaque source boundary is too diverse for reliable
+    single-color exterior-background inference.
+    """
+
+    boundary = np.zeros(
+        meaningful.shape,
+        dtype=bool,
+    )
+
+    boundary[0, :] = True
+    boundary[-1, :] = True
+    boundary[:, 0] = True
+    boundary[:, -1] = True
+
+    boundary_meaningful = boundary & meaningful
+
+    #
+    # Transparency provides an explicit exterior-background signal.
+    # Complexity detection is needed only when the complete source
+    # boundary is meaningful.
+    #
+    if not np.all(
+        meaningful[boundary],
+    ):
+        return False
+
+    boundary_rgb = rgba[
+        boundary_meaningful,
+        :3,
+    ].astype(
+        np.float64,
+    )
+
+    if boundary_rgb.size == 0:
+        return False
+
+    representative_rgb = np.median(
+        boundary_rgb,
+        axis=0,
+    )
+
+    distances = np.linalg.norm(
+        boundary_rgb - representative_rgb,
+        axis=1,
+    )
+
+    return bool(np.any(distances > DEFAULT_SHRINK_WRAP_BACKGROUND_DISTANCE))
 
 
 # =========================================================
@@ -1454,6 +1523,14 @@ def _shrink_wrap_foreground_mask(
     ]
 
     meaningful = alpha >= DEFAULT_ALPHA_THRESHOLD
+
+    if _has_complex_opaque_exterior(
+        rgba,
+        meaningful,
+    ):
+        logger.warning(
+            COMPLEX_EXTERIOR_WARNING,
+        )
 
     transparent = ~meaningful
 
