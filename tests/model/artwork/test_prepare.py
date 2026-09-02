@@ -1221,7 +1221,7 @@ def test_shrink_wrap_real_opaque_artwork_does_not_use_source_rectangle() -> None
     artwork instead of treating the complete source rectangle as Artwork.
     """
 
-    source = Path(__file__).parent / "fixtures" / "opaque_background_cat.png"
+    source = Path(__file__).parent / "fixtures" / "clean_bg_cat.png"
 
     assert source.is_file()
 
