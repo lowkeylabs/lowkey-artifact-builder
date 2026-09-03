@@ -12,205 +12,52 @@ Completed work should be removed from this plan once it is implemented, committe
 
 ---
 
-# Phase 2 — Artifact Lifecycle CLI
+# Phase 4 — Features and Self-Documenting Configuration
 
-Clarify the user-facing artifact lifecycle while retaining the verb-first CLI grammar:
-
-```text
-artifact <operation> [artifact_id] [operation-options]
-```
-
-The CLI should evolve toward a coherent vocabulary including:
-
-```text
-artifact create <artifact_id>
-artifact config <artifact_id>
-artifact show <artifact_id>
-artifact build <artifact_id>
-artifact colors <artifact_id>
-artifact clean <artifact_id>
-artifact list
-```
-
-A future destructive `delete` operation may be added separately when its semantics are required.
-
-Do not convert artifact operations into flags such as:
-
-```text
-artifact <artifact_id> --build
-```
-
-Creation and configuration should become conceptually distinct:
-
-* `create` establishes a new persistent artifact definition;
-* `config` inspects or modifies an existing artifact definition;
-* `show` provides non-mutating inspection;
-* `build` realizes requested products;
-* `colors` performs color analysis;
-* `clean` removes derived products while preserving persistent artifact configuration;
-* `list` discovers available artifacts.
-
-Tests should establish the intended lifecycle semantics before changing existing command behavior.
-
-Preserve compatibility where practical during migration, but do not retain ambiguous behavior solely for compatibility if it conflicts with the clarified lifecycle.
-
----
-
-# Phase 3 — Artifact Cleaning
-
-Add a simple artifact-cleaning operation:
-
-```text
-artifact clean <artifact_id>
-```
-
-The initial implementation may remove complete generated model directories beneath the artifact silo rather than attempting stage-level cleaning.
-
-For an artifact such as:
-
-```text
-artifacts/dog/
-    artifact.toml
-    artwork/
-    shape/
-```
-
-cleaning may remove:
-
-```text
-artwork/
-shape/
-```
-
-while preserving:
-
-```text
-artifact.toml
-```
-
-Tests should establish that:
-
-* cleaning preserves `artifact.toml`;
-* generated Artwork products are removed;
-* generated Shape products are removed;
-* cleaning an artifact with no generated products is safe;
-* cleaning one artifact does not affect another artifact;
-* subsequently rebuilding a cleaned artifact works through normal planning and execution;
-* published root-level realization products introduced by a later phase are considered derived products and are also removed by clean;
-* clean does not become an alternate configuration-deletion mechanism.
-
-The governing invariant is:
-
-> Cleaning removes rebuildable derived products while preserving the persistent artifact definition.
-
----
-
-# Phase 4 — Realizations, Feature Bundles, and Self-Documenting Configuration
-
-Review and clarify the existing realization, variant, and feature-bundle mechanisms before implementing changes.
-
-The intended public manufacturable identity is:
+The intended public manufacturable identity remains:
 
 ```text
 (artifact_id, realization)
 ```
 
-Do not introduce a more granular public product-identity dimension for size, variant, feature bundle, or similar configuration.
+Do not introduce a more granular public product-identity dimension for size, variant, feature selection, or similar configuration.
 
-Distinct catalog products are distinct realizations.
+Variants remain the model-owned mechanism for reusable named parameter presets described by `ARCHITECTURE.md`.
 
-Examples include:
+A realization may select a model variant and may override parameters provided by that variant. Variant selection is configuration reuse and does not form an additional public artifact identity dimension.
 
-```text
-default
-ornament
-ornament_small
-ornament_large
-coaster
-coaster_large
-drink_lid
-keychain
-```
-
-A realization represents a named buildable configuration corresponding to a distinct manufacturable product.
-
-For example:
-
-```text
-dog.default
-dog.ornament
-dog.ornament_large
-dog.coaster
-dog.keychain
-```
-
-Parameters such as physical size remain configuration within a realization. They do not introduce identities such as:
-
-```text
-dog.ornament.90mm
-dog.ornament.100mm
-```
-
-unless a future permanent specification deliberately introduces such a concept.
-
-## 4.1 `default` Is an Ordinary Realization
-
-Every generated artifact configuration should provide a `default` realization.
-
-`default` is an ordinary buildable realization. Its special role is only that it is selected when no explicit realization is requested.
-
-Conceptually:
-
-```text
-artifact build dog
-```
-
-and:
-
-```text
-artifact build dog --realization default
-```
-
-select the same realization.
-
-The implementation should avoid a separate pipeline or special manufacturing path for `default`.
-
-A `[default]` configuration block should be suitable for copying, renaming, and editing to create another realization.
-
-## 4.2 Feature Bundles Are Configuration Reuse, Not Product Identity
-
-Review the existing feature-bundle mechanism and preserve it where it provides useful reusable configuration.
-
-Feature bundles must not become another public product-identity dimension.
-
-A realization may use a feature bundle and override parameters as appropriate, but the maker-facing product remains identified by artifact and realization.
-
-For example, `ornament` and `ornament_large` may share the same feature bundle while differing in dimensions or other parameters.
+Parameters such as physical size remain configuration within a realization. Distinct manufacturable products may be represented by distinct realizations when appropriate.
 
 ## 4.3 Explicit Feature Selection
+
+Review the existing model feature mechanism and determine whether explicit feature-selection vocabulary is required for clear, stable, human-editable realization configuration.
 
 Evaluate support for explicit positive and negative feature vocabulary such as:
 
 ```text
 hanger
 no_hanger
+
 handle
 no_handle
+
 lettering
 no_lettering
 ```
 
-The purpose is human-readable configuration, particularly when `artifact.toml` is edited directly.
+The purpose is to make realization intent explicit, particularly when `artifact.toml` is edited directly.
 
 If this representation is adopted:
 
 * positive and negative forms represent explicit intent;
 * contradictory selections such as `hanger` and `no_hanger` must be rejected rather than resolved through precedence;
 * feature semantics remain model-owned;
-* generic configuration infrastructure must not contain Shape-specific feature rules;
+* generic configuration infrastructure must not contain Shape-specific or other model-specific feature rules;
 * adding a new model feature must not silently change the semantics of an existing realization.
 
-The exact representation should follow from the HEAD audit rather than being imposed if the existing feature mechanism provides a cleaner equivalent.
+The exact representation should follow from comparison of HEAD with `ARCHITECTURE.md` and the relevant model `DEFINITION.md` rather than being imposed if the existing feature mechanism provides a cleaner equivalent.
+
+Do not introduce a second reusable-preset abstraction for feature combinations. Reusable parameter presets remain variants.
 
 ## 4.4 Self-Documenting `artifact.toml`
 
@@ -244,7 +91,7 @@ The goal is not to duplicate full developer documentation. The goal is that a ma
 
 ## 4.5 Configuration Freshening
 
-Provide a safe mechanism to refresh generated/self-documenting portions of an existing `artifact.toml` when model capabilities evolve.
+Provide a safe mechanism to refresh generated or self-documenting portions of an existing `artifact.toml` when model capabilities evolve.
 
 The exact CLI spelling should be selected after reviewing the existing configuration command. A form such as:
 
@@ -263,8 +110,8 @@ Tests should establish that:
 * newly supported features can become discoverable in an existing artifact configuration;
 * existing realizations are not automatically given new positive or negative feature selections;
 * parameter values belonging to existing realizations remain unchanged;
-* freshening the informational configuration cannot change the products produced by an existing realization;
-* repeated freshening is stable/idempotent where appropriate.
+* freshening informational configuration cannot change the products produced by an existing realization;
+* repeated freshening is stable and idempotent where appropriate.
 
 The governing invariant is:
 
@@ -390,7 +237,7 @@ Tests should establish that:
 * `artifact clean` removes published copies because they are derived products;
 * publication remains a convenience/output operation rather than a second source of product truth.
 
-Do not encode feature bundle, physical size, stage identity, or another configuration dimension into the published filename beyond the realization name.
+Do not encode variant, physical size, feature selection, stage identity, or another configuration dimension into the published filename beyond the realization name.
 
 ---
 
@@ -487,7 +334,7 @@ Tests should establish that:
 * Shape setup can select Artwork from the current artifact;
 * Shape setup can select Artwork from another artifact;
 * Shape setup can explicitly select no Artwork where model semantics permit it;
-* Shape setup can invoke/reuse normal Artwork creation;
+* Shape setup can invoke or reuse normal Artwork creation;
 * created dependencies are ordinary product references;
 * subsequent planning follows those dependencies normally;
 * no duplicate Shape-specific Artwork configuration implementation is introduced;
@@ -509,8 +356,10 @@ Before declaring completion:
 * verify that generic engine/configuration/planning code contains no model-specific semantic rules introduced by this work;
 * verify that artifact configuration remains understandable and editable without requiring knowledge of internal stage paths;
 * verify that `(artifact_id, realization)` is sufficient to identify a maker-facing manufacturable product;
+* verify that variants remain reusable model-owned parameter presets rather than becoming an additional artifact identity dimension;
 * verify that both local and cross-artifact dependencies use the same logical product-reference mechanisms;
 * verify that cleaning followed by rebuilding reproduces derived products from persistent configuration and required source inputs;
 * verify that any permanent invariants discovered during implementation have been incorporated into `ARCHITECTURE.md` or the appropriate model `DEFINITION.md`.
 
 Once permanent specifications and HEAD are aligned, remove the completed `CHANGEPLAN.md` content rather than treating this temporary plan as an additional permanent specification.
+
