@@ -70,7 +70,8 @@ def _build_clean_bg_house_artwork(
     (project_root / "workspace.toml").write_text(
         """
 [parameters]
-artwork_colors = ["black", "brown", "gold", "silver", "cold-white"]
+printer_colors = ["black", "brown", "gold", "silver", "cold-white"]
+artifact_color_count = 5
 artwork_pixels = 973
 artwork_min_island_area = 1
 artwork_island_connectivity = 8
@@ -663,23 +664,28 @@ def test_artwork_pipeline_preserves_dynamic_product_identity(
     tmp_path: Path,
 ) -> None:
     """
-    Dynamic artwork products preserve their semantic identity through
+    Dynamic Artwork products preserve Artifact and printer identity through
     rasterization, vectorization, and extrusion.
 
-    Each downstream manifest must describe the same ordered collection
-    of color products rather than rediscovering products from the
-    filesystem.
+    Downstream stages consume persistent semantic identity rather than
+    rediscovering color identity from their geometry.
     """
 
     realization = _build_artwork(
         tmp_path,
     )
 
-    raster = _read_manifest(realization / "20-raster" / "products.json")
+    raster = _read_manifest(
+        realization / "20-raster" / "products.json",
+    )
 
-    vector = _read_manifest(realization / "30-vector" / "products.json")
+    vector = _read_manifest(
+        realization / "30-vector" / "products.json",
+    )
 
-    extrude = _read_manifest(realization / "40-extrude" / "products.json")
+    extrude = _read_manifest(
+        realization / "40-extrude" / "products.json",
+    )
 
     raster_products = _manifest_products(
         raster,
@@ -703,15 +709,15 @@ def test_artwork_pipeline_preserves_dynamic_product_identity(
     )
 
     assert (
-        [product["name"] for product in raster_products]
-        == [product["name"] for product in vector_products]
-        == [product["name"] for product in extrude_products]
+        [product["artifact_color"] for product in raster_products]
+        == [product["artifact_color"] for product in vector_products]
+        == [product["artifact_color"] for product in extrude_products]
     )
 
     assert (
-        [product["color"] for product in raster_products]
-        == [product["color"] for product in vector_products]
-        == [product["color"] for product in extrude_products]
+        [product["printer_color"] for product in raster_products]
+        == [product["printer_color"] for product in vector_products]
+        == [product["printer_color"] for product in extrude_products]
     )
 
 
@@ -719,12 +725,8 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
     tmp_path: Path,
 ) -> None:
     """
-    The complete artwork pipeline preserves meaningful geometry through
-    raster, vector, STL, and 3MF representations.
-
-    This test deliberately verifies semantic properties rather than
-    exact serialized bytes so that harmless differences between external
-    tool versions do not make the regression test brittle.
+    The complete Artwork pipeline preserves color semantics and meaningful
+    geometry through raster, vector, STL, and 3MF representations.
     """
 
     realization = _build_artwork(
@@ -736,11 +738,17 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
     extrude_directory = realization / "40-extrude"
     package_directory = realization / "50-package"
 
-    raster_manifest = _read_manifest(raster_directory / "products.json")
+    raster_manifest = _read_manifest(
+        raster_directory / "products.json",
+    )
 
-    vector_manifest = _read_manifest(vector_directory / "products.json")
+    vector_manifest = _read_manifest(
+        vector_directory / "products.json",
+    )
 
-    extrude_manifest = _read_manifest(extrude_directory / "products.json")
+    extrude_manifest = _read_manifest(
+        extrude_directory / "products.json",
+    )
 
     raster_products = _manifest_products(
         raster_manifest,
@@ -758,16 +766,28 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
     # Expected semantic products
     # -----------------------------------------------------
 
-    expected_names = {
+    expected_printer_colors = {
         "test-white",
         "test-red",
     }
 
-    assert {product["name"] for product in raster_products} == expected_names
+    assert {
+        product["printer_color"]["name"] for product in raster_products
+    } == expected_printer_colors
 
-    assert {product["name"] for product in vector_products} == expected_names
+    assert {
+        product["printer_color"]["name"] for product in vector_products
+    } == expected_printer_colors
 
-    assert {product["name"] for product in extrude_products} == expected_names
+    assert {
+        product["printer_color"]["name"] for product in extrude_products
+    } == expected_printer_colors
+
+    assert (
+        [product["artifact_color"] for product in raster_products]
+        == [product["artifact_color"] for product in vector_products]
+        == [product["artifact_color"] for product in extrude_products]
+    )
 
     # -----------------------------------------------------
     # Raster geometry
@@ -800,15 +820,12 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
     meshes = tuple(load_stl(path) for path in extrude_paths)
 
     assert all(mesh.vertices for mesh in meshes)
-
     assert all(mesh.triangles for mesh in meshes)
 
-    # Extrusion must produce actual three-dimensional geometry.
     for mesh in meshes:
         z_values = {vertex[2] for vertex in mesh.vertices}
 
         assert len(z_values) > 1
-
         assert max(z_values) > min(z_values)
 
     # -----------------------------------------------------
@@ -838,7 +855,7 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
     assert len(objects) == len(extrude_products)
     assert len(build_items) == len(extrude_products)
 
-    expected_component_names = {f"example-{name}" for name in expected_names}
+    expected_component_names = {f"example-{name}" for name in expected_printer_colors}
 
     assert {object_element.get("name") for object_element in objects} == expected_component_names
 
@@ -968,8 +985,12 @@ def test_artwork_pipeline_executes_named_realizations_independently(
     assert ornament_raster_products
     assert coaster_raster_products
 
-    assert [product["name"] for product in ornament_raster_products] == [
-        product["name"] for product in coaster_raster_products
+    assert [product["artifact_color"] for product in ornament_raster_products] == [
+        product["artifact_color"] for product in coaster_raster_products
+    ]
+
+    assert [product["printer_color"] for product in ornament_raster_products] == [
+        product["printer_color"] for product in coaster_raster_products
     ]
 
     ornament_raster_paths = {
