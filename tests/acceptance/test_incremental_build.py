@@ -15,6 +15,9 @@ import pytest
 from click.testing import CliRunner
 
 from lowkey_artifact_builder.cli._main import cli
+from lowkey_artifact_builder.config import (
+    clean_artifact,
+)
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     create_build_plans,
@@ -32,10 +35,10 @@ def _configure_artifact(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Configure the acceptance artifact through the public CLI.
+    Create the acceptance artifact through the public CLI.
 
     The repository's known-good nydeli artwork is copied into the
-    isolated project before interactive configuration.
+    isolated project before interactive creation.
     """
 
     repository_root = Path(__file__).resolve().parents[2]
@@ -57,17 +60,17 @@ def _configure_artifact(
 
     runner = CliRunner()
 
-    config_result = runner.invoke(
+    create_result = runner.invoke(
         cli,
         [
-            "config",
+            "create",
             "nydeli",
         ],
         input=("1\n1\n70\n"),
     )
 
-    assert config_result.exit_code == 0, (
-        f"Artifact configuration failed:\n{config_result.output}\n{config_result.exception!r}"
+    assert create_result.exit_code == 0, (
+        f"Artifact creation failed:\n{create_result.output}\n{create_result.exception!r}"
     )
 
 
@@ -246,3 +249,82 @@ def test_second_incremental_build_preserves_product_mtimes(
     after = {product.path: product.path.stat().st_mtime_ns for product in products}
 
     assert after == before
+
+
+# =========================================================
+# Clean and rebuild
+# =========================================================
+
+
+@pytest.mark.slow
+def test_cleaned_artifact_can_be_rebuilt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Cleaning removes derived products without preventing a subsequent
+    build from reproducing the artifact.
+    """
+
+    project_root = tmp_path
+
+    _configure_artifact(
+        project_root=project_root,
+        monkeypatch=monkeypatch,
+    )
+
+    plan = _create_plan(
+        project_root,
+    )
+
+    first = execute_incremental_artifact_build(
+        plan,
+    )
+
+    assert first.required_stages
+
+    output = _artifact_output(
+        plan,
+    )
+
+    assert output.is_file()
+
+    artifact_dir = project_root / "artifacts" / "nydeli"
+
+    config_path = artifact_dir / "artifact.toml"
+    source_path = artifact_dir / "artifact.png"
+    model_dir = artifact_dir / "artwork"
+
+    assert config_path.is_file()
+    assert source_path.is_file()
+    assert model_dir.is_dir()
+
+    clean_artifact(
+        "nydeli",
+        project_root=project_root,
+    )
+
+    assert config_path.is_file()
+    assert source_path.is_file()
+    assert not model_dir.exists()
+    assert not output.exists()
+
+    rebuilt_plan = _create_plan(
+        project_root,
+    )
+
+    second = execute_incremental_artifact_build(
+        rebuilt_plan,
+    )
+
+    assert second.required_stages
+
+    rebuilt_output = _artifact_output(
+        rebuilt_plan,
+    )
+
+    assert rebuilt_output.is_file()
+    assert rebuilt_output.stat().st_size > 0
+    assert zipfile.is_zipfile(
+        rebuilt_output,
+    )
