@@ -280,13 +280,17 @@ def test_create_passes_supplied_parameters_to_setup(
     ]
 
 
-def test_create_complete_parameters_require_no_additional_configuration(
+def test_create_complete_parameters_configure_explicit_default_realization(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    Complete command-line configuration can pass through setup without
-    requiring additional values.
+    Complete creation configuration is persisted through an explicit
+    ordinary realization named default.
+
+    Command-line values remain initial setup configuration, while the
+    completed setup result is translated into persistent realization
+    structure before artifact configuration.
     """
 
     source = tmp_path / "skippy.png"
@@ -383,8 +387,14 @@ def test_create_complete_parameters_require_no_additional_configuration(
     assert configured == [
         (
             {
-                "artwork_size": 70,
-                "model": "artwork",
+                "realizations": {
+                    "default": {
+                        "model": "artwork",
+                        "parameters": {
+                            "artwork_size": 70,
+                        },
+                    },
+                },
             },
             {
                 "artwork": source,

@@ -367,3 +367,135 @@ def test_configure_artifact_preserves_existing_values(
     assert config["artwork_size"] == 90.0
     assert config["model"] == "artwork"
     assert "source" in config
+
+
+def test_configure_artifact_persists_explicit_default_realization(
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit default realization configuration remains realization-scoped.
+
+    Newly generated artifact configuration may represent default as an
+    ordinary named realization rather than relying on the legacy
+    implicit-default representation.
+    """
+
+    configure_artifact(
+        "skippy",
+        values={
+            "realizations": {
+                "default": {
+                    "model": "artwork",
+                    "parameters": {
+                        "artwork_size": 75.0,
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert config == {
+        "realizations": {
+            "default": {
+                "model": "artwork",
+                "parameters": {
+                    "artwork_size": 75.0,
+                },
+            },
+        },
+    }
+
+
+def test_configure_artifact_preserves_explicit_default_when_materializing_artwork(
+    tmp_path: Path,
+) -> None:
+    """
+    Materializing artifact-owned Artwork does not flatten an explicit
+    default realization into legacy artifact-level model configuration.
+    """
+
+    source = tmp_path / "skippy.png"
+
+    _write_artwork(source)
+
+    configure_artifact(
+        "skippy",
+        values={
+            "realizations": {
+                "default": {
+                    "model": "artwork",
+                    "parameters": {
+                        "artwork_size": 75.0,
+                    },
+                },
+            },
+        },
+        input_files={
+            "artwork": source,
+        },
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert config["realizations"] == {
+        "default": {
+            "model": "artwork",
+            "parameters": {
+                "artwork_size": 75.0,
+            },
+        },
+    }
+
+    assert "model" not in config
+    assert "artwork_size" not in config
+
+
+def test_explicit_default_realization_is_selected_implicitly_and_explicitly(
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit default is the ordinary realization selected when no
+    realization is requested.
+    """
+
+    configure_artifact(
+        "skippy",
+        values={
+            "realizations": {
+                "default": {
+                    "model": "artwork",
+                    "parameters": {
+                        "artwork_size": 75.0,
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    implicit = get_resolver(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    explicit = get_resolver(
+        "skippy",
+        realization="default",
+        project_root=tmp_path,
+    )
+
+    assert implicit("realization") == "default"
+    assert explicit("realization") == "default"
+
+    assert implicit("model") == explicit("model") == "artwork"
+    assert implicit("artwork_size") == explicit("artwork_size") == 75.0

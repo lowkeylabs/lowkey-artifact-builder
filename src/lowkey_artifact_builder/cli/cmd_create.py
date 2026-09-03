@@ -109,14 +109,17 @@ def cli(
         project_root=project_root,
     )
 
-    values = dict(setup.values)
+    setup_values = dict(setup.values)
 
     input_files = _extract_input_files(
-        values,
+        setup_values,
         project_root=project_root,
     )
 
-    values["model"] = setup.model
+    values = _default_realization_values(
+        setup.model,
+        setup_values,
+    )
 
     # =====================================================
     # Persistence
@@ -180,6 +183,41 @@ def _extract_input_files(
         input_files["artwork"] = project_root / source
 
     return input_files
+
+
+def _default_realization_values(
+    model: str,
+    values: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Translate completed setup values into persistent realization structure.
+
+    Newly created artifacts explicitly define an ordinary realization
+    named default. Model identity belongs to that realization, and
+    completed model configuration is persisted as its parameters.
+
+    The setup model value is structural identity rather than a model
+    parameter and is therefore not duplicated beneath parameters.
+    """
+
+    parameters = dict(values)
+    parameters.pop(
+        "model",
+        None,
+    )
+
+    default: dict[str, Any] = {
+        "model": model,
+    }
+
+    if parameters:
+        default["parameters"] = parameters
+
+    return {
+        "realizations": {
+            "default": default,
+        },
+    }
 
 
 # =========================================================
