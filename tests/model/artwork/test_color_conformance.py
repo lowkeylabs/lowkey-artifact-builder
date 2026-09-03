@@ -132,3 +132,24 @@ def test_configuration_display_does_not_reference_obsolete_artwork_colors() -> N
 
     assert "artwork_colors" not in source
     assert "_display_artwork_colors" not in source
+
+
+def test_generic_infrastructure_does_not_reference_obsolete_artwork_colors() -> None:
+    """
+    Generic infrastructure and its generic tests do not encode the obsolete
+    Artwork-specific color configuration parameter.
+    """
+
+    paths = (
+        Path("src/lowkey_artifact_builder/engine/specs.py"),
+        Path("tests/model/test_specs.py"),
+        Path("tests/cli/test_bindings.py"),
+        Path("tests/engine/test_fingerprint_generation.py"),
+    )
+
+    for path in paths:
+        source = path.read_text(
+            encoding="utf-8",
+        )
+
+        assert "artwork_colors" not in source, path

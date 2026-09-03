@@ -37,10 +37,10 @@ def _fingerprint(
     return create_product_fingerprint(
         parameters=parameters
         or {
-            "artwork_size": 100.0,
-            "artwork_colors": [
-                "white",
-                "black",
+            "size": 100.0,
+            "materials": [
+                "primary",
+                "secondary",
             ],
         },
         inputs=inputs
@@ -237,18 +237,18 @@ def test_parameter_sequence_order_changes_fingerprint() -> None:
 
     left = _fingerprint(
         parameters={
-            "artwork_colors": [
-                "white",
-                "black",
+            "materials": [
+                "primary",
+                "secondary",
             ],
         },
     )
 
     right = _fingerprint(
         parameters={
-            "artwork_colors": [
-                "black",
-                "white",
+            "materials": [
+                "secondary",
+                "primary",
             ],
         },
     )

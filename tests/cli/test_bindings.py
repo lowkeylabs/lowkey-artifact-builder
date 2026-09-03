@@ -192,14 +192,14 @@ def test_parse_parameter_bindings_parses_integer() -> None:
     Integer parameter values become Python integers.
     """
 
-    result = parse_parameter_bindings(("artwork_colors=5",))
+    result = parse_parameter_bindings(("quality=5",))
 
     assert result == {
-        "artwork_colors": 5,
+        "quality": 5,
     }
 
     assert isinstance(
-        result["artwork_colors"],
+        result["quality"],
         int,
     )
 

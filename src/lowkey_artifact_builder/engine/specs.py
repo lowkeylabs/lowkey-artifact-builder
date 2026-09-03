@@ -435,9 +435,9 @@ class StageContext:
 
     For example:
 
-        context.resolver("artwork_colors")
-        context.resolver("printer_colors")
-        context.resolver.source("artwork_colors")
+        context.resolver("quality")
+        context.resolver("resolution")
+        context.resolver.source("quality")
         context.resolver.colors
 
     Explicit stage inputs use their declarative names, for example:

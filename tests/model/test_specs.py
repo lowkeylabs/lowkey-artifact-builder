@@ -279,11 +279,11 @@ def test_stage_spec_inputs() -> None:
         id=10,
         name="prepare",
         inputs=(input_spec,),
-        parameters=("artwork_colors",),
+        parameters=("quality",),
     )
 
     assert stage.inputs == (input_spec,)
-    assert stage.parameters == ("artwork_colors",)
+    assert stage.parameters == ("quality",)
 
 
 def test_stage_spec_parameters() -> None:
@@ -612,7 +612,7 @@ def test_model_parameters_include_input_parameters() -> None:
         id=10,
         name="prepare",
         inputs=(input_spec,),
-        parameters=("artwork_colors",),
+        parameters=("quality",),
     )
 
     model = ModelSpec(
@@ -623,7 +623,7 @@ def test_model_parameters_include_input_parameters() -> None:
 
     assert model.parameters == (
         "source",
-        "artwork_colors",
+        "quality",
     )
 
 
@@ -644,7 +644,7 @@ def test_model_parameters_preserve_first_occurrence() -> None:
             ),
         ),
         parameters=(
-            "artwork_colors",
+            "quality",
             "shared",
         ),
     )
@@ -661,7 +661,7 @@ def test_model_parameters_preserve_first_occurrence() -> None:
         ),
         parameters=(
             "shared",
-            "artwork_size",
+            "size",
             "source",
         ),
     )
@@ -677,10 +677,10 @@ def test_model_parameters_preserve_first_occurrence() -> None:
 
     assert model.parameters == (
         "source",
-        "artwork_colors",
+        "quality",
         "shared",
         "reference",
-        "artwork_size",
+        "size",
     )
 
 
