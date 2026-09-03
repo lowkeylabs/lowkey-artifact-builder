@@ -116,3 +116,19 @@ def test_artwork_execution_references_distinct_artifact_and_printer_colors() -> 
 
     assert "artifact_color" in source
     assert "printer_color" in source
+
+
+def test_configuration_display_does_not_reference_obsolete_artwork_colors() -> None:
+    """
+    Generic configuration presentation does not interpret obsolete
+    Artwork-specific color configuration.
+    """
+
+    from lowkey_artifact_builder.cli.display import config
+
+    source = Path(config.__file__).read_text(
+        encoding="utf-8",
+    )
+
+    assert "artwork_colors" not in source
+    assert "_display_artwork_colors" not in source
