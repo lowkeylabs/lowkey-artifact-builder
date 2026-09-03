@@ -39,13 +39,18 @@ from .plan import (
 def execute_artifact_build(
     artifact_id: str,
     *,
+    realization: str | None = None,
     project_root: Path | None = None,
     event_sink: EventSink | None = None,
 ) -> tuple[ExecutionPlan, ...]:
     """
-    Build every realized workflow for one configured artifact.
+    Build one or more realized workflows for one configured artifact.
 
-    The artifact identity is the public input to this orchestration boundary.
+    The artifact identity and optional realization are the public inputs to
+    this orchestration boundary. When realization is omitted, every configured
+    realization is built. When realization is supplied, only that realization
+    is built.
+
     Build-plan creation and execution strategy remain engine responsibilities.
 
     Each realized BuildPlan is executed through dependency-aware orchestration.
@@ -55,13 +60,19 @@ def execute_artifact_build(
     Structured execution events are forwarded unchanged to the supplied
     presentation-independent event sink.
 
-    Return the execution plan produced for each realized artifact workflow in
-    build-plan order.
+    Return the execution plan produced for each selected artifact realization
+    in build-plan order.
     """
+
+    planning_options = {}
+
+    if realization is not None:
+        planning_options["realization"] = realization
 
     plans = create_build_plans(
         artifact_id,
         project_root=project_root,
+        **planning_options,
     )
 
     return tuple(

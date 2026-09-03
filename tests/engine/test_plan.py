@@ -2624,3 +2624,51 @@ def test_create_build_plan_targets_shape_structure_independently(
     assert plan.product_dependencies == ()
     assert plan.product_dependency_bindings == ()
     assert plan.planned_product_dependencies == ()
+
+
+def test_create_build_plans_selects_one_complete_realization(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-level planning may select one complete realization.
+
+    Realization selection is distinct from product targeting. The selected
+    realization receives its normal complete-artifact build plan.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "realizations": {
+                "ornament": {
+                    "model": "shape",
+                },
+                "coaster": {
+                    "model": "shape",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plans = create_build_plans(
+        "example",
+        realization="coaster",
+        project_root=tmp_path,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    assert plan.artifact_id == "example"
+    assert plan.model_name == "shape"
+    assert plan.realization_name == "coaster"
+    assert plan.targets is None
+
+    assert tuple(stage.name for stage in plan.stages) == (
+        "structure",
+        "compose",
+        "extrude",
+        "package",
+    )

@@ -190,3 +190,63 @@ def test_artifact_build_satisfies_cross_artifact_dependencies(
     assert zipfile.is_zipfile(
         output,
     )
+
+
+def test_artifact_build_selects_requested_realization(
+    tmp_path: Path,
+) -> None:
+    """
+    The public artifact-build boundary may build one selected realization.
+
+    Other configured realizations are not built merely because they belong
+    to the same artifact.
+    """
+
+    write_artifact_config(
+        "shape-artifact",
+        {
+            "realizations": {
+                "default": {
+                    "model": "shape",
+                },
+                "alternate": {
+                    "model": "shape",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    execute_artifact_build(
+        "shape-artifact",
+        realization="default",
+        project_root=tmp_path,
+    )
+
+    default_output = (
+        tmp_path
+        / "artifacts"
+        / "shape-artifact"
+        / "shape"
+        / "default"
+        / "40-package"
+        / "artifact.3mf"
+    )
+
+    alternate_output = (
+        tmp_path
+        / "artifacts"
+        / "shape-artifact"
+        / "shape"
+        / "alternate"
+        / "40-package"
+        / "artifact.3mf"
+    )
+
+    assert default_output.is_file()
+    assert default_output.stat().st_size > 0
+    assert zipfile.is_zipfile(
+        default_output,
+    )
+
+    assert not alternate_output.exists()

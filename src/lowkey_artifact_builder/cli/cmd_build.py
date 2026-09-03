@@ -56,7 +56,7 @@ from lowkey_artifact_builder.engine import (
     "--realization",
     type=str,
     default=None,
-    help="Select the realization for independent stage execution.",
+    help="Select one artifact realization.",
 )
 @click.option(
     "--input",
@@ -99,7 +99,9 @@ def cli(
     Positional arguments are artifact IDs.
 
     Without --stage, the complete configured artifact workflow is
-    planned and executed incrementally.
+    planned and executed incrementally. An optional --realization selects
+    one configured realization; otherwise every configured realization
+    is built.
 
     With --stage, exactly one declared stage is executed independently.
     Explicit input, parameter, and output bindings apply only to this
@@ -121,9 +123,6 @@ def cli(
         )
         return
 
-    if realization is not None:
-        raise click.UsageError("--realization requires --stage.")
-
     if input_bindings:
         raise click.UsageError("--input requires --stage.")
 
@@ -135,6 +134,7 @@ def cli(
 
     _execute_build(
         artifact_ids,
+        realization=realization,
         dry_run=dry_run,
     )
 
@@ -191,14 +191,18 @@ def _display_execution_event(
 def _execute_build(
     artifact_ids: tuple[str, ...],
     *,
+    realization: str | None,
     dry_run: bool,
 ) -> None:
     """
     Execute normal graph-driven artifact builds.
 
     Normal execution delegates artifact orchestration to the engine.
+    An explicitly selected realization is forwarded to that orchestration
+    boundary. When no realization is selected, existing all-realization
+    behavior is preserved.
 
-    Dry-run creates each configured BuildPlan, prepares its
+    Dry-run creates each selected BuildPlan, prepares its
     persistent-state-aware ExecutionPlan, and validates the configuration
     required by that execution scope before displaying the BuildPlan.
     No stages are executed during dry-run.
@@ -208,10 +212,16 @@ def _execute_build(
 
     for artifact_id in artifact_ids:
         try:
+            realization_options = {}
+
+            if realization is not None:
+                realization_options["realization"] = realization
+
             if dry_run:
                 plans = create_build_plans(
                     artifact_id,
                     project_root=project_root,
+                    **realization_options,
                 )
 
                 for plan in plans:
@@ -229,6 +239,7 @@ def _execute_build(
                 artifact_id,
                 project_root=project_root,
                 event_sink=_display_execution_event,
+                **realization_options,
             )
 
         except (

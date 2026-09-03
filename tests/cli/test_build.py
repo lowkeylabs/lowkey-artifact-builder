@@ -585,3 +585,48 @@ def test_build_execution_error_is_reported(
 
     assert result.exit_code != 0
     assert "cannot execute build" in result.output
+
+
+def test_build_passes_selected_realization_to_engine(
+    monkeypatch,
+) -> None:
+    """
+    Normal artifact builds may select one public realization.
+    """
+
+    executed: list[tuple[str, str | None]] = []
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        executed.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--realization",
+        "default",
+    )
+
+    assert result.exit_code == 0
+
+    assert executed == [
+        (
+            "skippy",
+            "default",
+        ),
+    ]

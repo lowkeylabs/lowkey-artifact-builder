@@ -237,11 +237,12 @@ def create_product_dependency_build_plan(
 def create_build_plans(
     artifact_id: str,
     *,
+    realization: str | None = None,
     targets: tuple[ProductRef, ...] | None = None,
     project_root: Path | None = None,
 ) -> tuple[BuildPlan, ...]:
     """
-    Construct build plans for every realization of one artifact.
+    Construct build plans for one or more realizations of one artifact.
 
     Explicitly configured realizations are planned in artifact.toml
     declaration order.
@@ -249,8 +250,11 @@ def create_build_plans(
     Legacy single-realization artifact configuration produces exactly
     one plan for the implicit realization named "default".
 
-    When targets are omitted, every realization receives its normal
-    complete-artifact build plan.
+    When realization and targets are omitted, every realization receives
+    its normal complete-artifact build plan.
+
+    When realization is supplied without targets, only that realization
+    receives its normal complete-artifact build plan.
 
     When targets are supplied, each target is routed to the realization
     identified by its ProductRef. A realization with no requested
@@ -268,13 +272,15 @@ def create_build_plans(
     )
 
     if targets is None:
+        selected_realizations = (realization,) if realization is not None else realization_names
+
         return tuple(
             create_build_plan(
                 artifact_id,
                 realization=realization_name,
                 project_root=root,
             )
-            for realization_name in realization_names
+            for realization_name in selected_realizations
         )
 
     _validate_target_artifact(
