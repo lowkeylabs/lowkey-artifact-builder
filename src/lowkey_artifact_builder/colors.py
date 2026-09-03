@@ -1,5 +1,5 @@
 """
-Color resolution and matching utilities.
+Color resolution and assignment utilities.
 
 This module owns general color semantics used by artifact models.
 
@@ -69,7 +69,7 @@ Lab = tuple[
 
 class ColorError(RuntimeError):
     """
-    Raised for invalid color configuration or color matching.
+    Raised for invalid color configuration or color assignment.
     """
 
 
@@ -90,7 +90,7 @@ class PaletteColor:
         Configuration name used to reference the color.
 
     rgb:
-        RGB representation used for color matching.
+        RGB representation used for color assignment.
     """
 
     name: str
@@ -158,49 +158,6 @@ class ColorAssignmentResult:
     ]
 
     distance: float
-
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class ColorMatch:
-    """
-    Match of one requested color to one candidate color.
-
-    distance:
-        Perceptual distance between the requested and matched colors.
-    """
-
-    requested: PaletteColor
-
-    color: PaletteColor
-
-    distance: float
-
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class PaletteRecommendation:
-    """
-    Recommendation of a fixed-size palette for requested colors.
-
-    colors:
-        Candidate colors selected for the recommended palette.
-
-    score:
-        Aggregate perceptual distance required to represent every
-        requested color by its nearest color in the palette.
-    """
-
-    colors: tuple[
-        PaletteColor,
-        ...,
-    ]
-
-    score: float
 
 
 # =========================================================
@@ -562,179 +519,6 @@ def color_distance(
 
 
 # =========================================================
-# Nearest color matching
-# =========================================================
-
-
-def match_color(
-    requested: PaletteColor,
-    candidates: Sequence[PaletteColor],
-) -> ColorMatch:
-    """
-    Match one requested color to its nearest candidate.
-
-    Matching minimizes perceptual color distance. Candidate order
-    determines the selected result when multiple candidates have the
-    same distance.
-    """
-
-    if not candidates:
-        raise ColorError("Candidate colors cannot be empty.")
-
-    candidate_colors = tuple(candidates)
-
-    _validate_palette_colors(
-        (requested,),
-    )
-
-    _validate_palette_colors(
-        candidate_colors,
-    )
-
-    best_color = candidate_colors[0]
-    best_distance = color_distance(
-        requested.rgb,
-        best_color.rgb,
-    )
-
-    for candidate in candidate_colors[1:]:
-        distance = color_distance(
-            requested.rgb,
-            candidate.rgb,
-        )
-
-        if distance < best_distance:
-            best_color = candidate
-            best_distance = distance
-
-    return ColorMatch(
-        requested=requested,
-        color=best_color,
-        distance=best_distance,
-    )
-
-
-# =========================================================
-# Palette recommendation
-# =========================================================
-
-
-def recommend_palette(
-    requested: Sequence[PaletteColor],
-    candidates: Sequence[PaletteColor],
-    *,
-    palette_size: int,
-    mandatory: Sequence[PaletteColor] = (),
-) -> PaletteRecommendation:
-    """
-    Recommend the best fixed-size palette for requested colors.
-
-    Each candidate palette is scored by matching every requested color
-    independently to its nearest palette color and summing the resulting
-    perceptual distances.
-
-    Mandatory colors are included in every candidate palette.
-
-    Candidate order determines the selected result when multiple palettes
-    have the same aggregate score.
-    """
-
-    requested_colors = tuple(requested)
-    candidate_colors = tuple(candidates)
-    mandatory_colors = tuple(mandatory)
-
-    if not requested_colors:
-        raise ColorError("Requested colors cannot be empty.")
-
-    if not candidate_colors:
-        raise ColorError("Candidate colors cannot be empty.")
-
-    if (
-        isinstance(
-            palette_size,
-            bool,
-        )
-        or not isinstance(
-            palette_size,
-            int,
-        )
-        or palette_size < 1
-    ):
-        raise ColorError("Palette size must be a positive integer.")
-
-    if palette_size > len(candidate_colors):
-        raise ColorError("Palette size cannot exceed candidate color count.")
-
-    if len(mandatory_colors) > palette_size:
-        raise ColorError("Mandatory color count cannot exceed palette size.")
-
-    _validate_palette_colors(
-        requested_colors,
-    )
-
-    _validate_palette_colors(
-        candidate_colors,
-    )
-
-    _validate_palette_colors(
-        mandatory_colors,
-    )
-
-    candidate_names = {color.name for color in candidate_colors}
-
-    for color in mandatory_colors:
-        if color.name not in candidate_names:
-            raise ColorError(f"Mandatory color is not a candidate: {color.name}")
-
-    mandatory_names = {color.name for color in mandatory_colors}
-
-    optional_colors = tuple(
-        color for color in candidate_colors if color.name not in mandatory_names
-    )
-
-    optional_count = palette_size - len(mandatory_colors)
-
-    best_palette: (
-        tuple[
-            PaletteColor,
-            ...,
-        ]
-        | None
-    ) = None
-
-    best_score: float | None = None
-
-    for optional in itertools.combinations(
-        optional_colors,
-        optional_count,
-    ):
-        palette = mandatory_colors + optional
-
-        score = sum(
-            min(
-                color_distance(
-                    requested_color.rgb,
-                    palette_color.rgb,
-                )
-                for palette_color in palette
-            )
-            for requested_color in requested_colors
-        )
-
-        if best_score is None or score < best_score:
-            best_palette = palette
-            best_score = score
-
-    if best_palette is None or best_score is None:
-        raise ColorError("Could not determine a palette recommendation.")
-
-    return PaletteRecommendation(
-        colors=best_palette,
-        score=best_score,
-    )
-
-
-# =========================================================
 # Color assignment
 # =========================================================
 
@@ -911,18 +695,15 @@ def _validate_palette_colors(
 
 __all__ = [
     "ColorAssignment",
+    "ColorAssignmentResult",
     "ColorError",
-    "ColorMatch",
     "Lab",
     "MeasuredColor",
     "PaletteColor",
-    "PaletteRecommendation",
     "RGB",
     "assign_colors",
     "color_distance",
     "css_rgb",
-    "match_color",
-    "recommend_palette",
     "resolve_palette",
     "resolve_palette_color",
     "rgb_to_lab",
