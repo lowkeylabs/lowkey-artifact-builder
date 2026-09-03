@@ -7,15 +7,12 @@ Artwork color-analysis presentation.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
 from lowkey_artifact_builder.colors import (
-    ColorMatch,
-    PaletteRecommendation,
+    ColorAssignment,
+    ColorAssignmentResult,
 )
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
-    ArtworkColorMatch,
-    ArtworkPaletteRecommendations,
+    ArtworkColorAnalysis,
 )
 
 from .common import (
@@ -28,84 +25,100 @@ from .common import (
 # =========================================================
 
 
-def display_color_matches(
-    matches: Sequence[ArtworkColorMatch],
+def display_color_analysis(
+    analysis: ArtworkColorAnalysis,
 ) -> None:
     """
-    Display structured Artwork color-match analysis.
+    Display Artwork physical color-assignment analysis.
     """
 
     table = create_table()
 
-    table.add_column("Artwork")
+    table.add_column("Artifact")
     table.add_column("Printer")
     table.add_column("Library")
     table.add_column("Catalog")
 
-    for match in matches:
+    printer = _assignments_by_index(
+        analysis.printer,
+    )
+    library = _assignments_by_index(
+        analysis.library,
+    )
+    catalog = _assignments_by_index(
+        analysis.catalog,
+    )
+
+    for assignment in analysis.printer.assignments:
+        index = assignment.measured.index
+
         table.add_row(
-            match.artwork.name,
-            _format_match(match.printer),
-            _format_match(match.library),
-            _format_match(match.catalog),
+            _format_artifact_color(
+                assignment.measured.index,
+                assignment.measured.rgb,
+            ),
+            _format_assignment(
+                printer[index],
+            ),
+            _format_assignment(
+                library[index],
+            ),
+            _format_assignment(
+                catalog[index],
+            ),
         )
 
     console.print(table)
 
+    totals = create_table()
 
-def _format_match(
-    match: ColorMatch,
-) -> str:
-    """
-    Format one color match for presentation.
-    """
+    totals.add_column("Scope")
+    totals.add_column("Aggregate Distance")
 
-    return f"{match.color.name} {match.distance:.2f}"
-
-
-# =========================================================
-# Palette recommendation
-# =========================================================
-
-
-def display_palette_recommendations(
-    recommendations: ArtworkPaletteRecommendations,
-) -> None:
-    """
-    Display structured Artwork palette recommendations.
-    """
-
-    table = create_table()
-
-    table.add_column("Scope")
-    table.add_column("Palette")
-    table.add_column("Score")
-
-    for scope, recommendation in (
-        ("Printer", recommendations.printer),
-        ("Library", recommendations.library),
-        ("Catalog", recommendations.catalog),
+    for scope, result in (
+        ("Printer", analysis.printer),
+        ("Library", analysis.library),
+        ("Catalog", analysis.catalog),
     ):
-        table.add_row(
+        totals.add_row(
             scope,
-            _format_palette(recommendation),
-            f"{recommendation.score:.2f}",
+            f"{result.distance:.2f}",
         )
 
-    console.print(table)
+    console.print(totals)
 
 
-def _format_palette(
-    recommendation: PaletteRecommendation,
+def _assignments_by_index(
+    result: ColorAssignmentResult,
+) -> dict[int, ColorAssignment]:
+    """
+    Index color assignments by persistent Artifact color identity.
+    """
+
+    return {assignment.measured.index: assignment for assignment in result.assignments}
+
+
+def _format_artifact_color(
+    index: int,
+    rgb: tuple[int, int, int],
 ) -> str:
     """
-    Format one recommended palette for presentation.
+    Format one persistent Artifact color.
     """
 
-    return ", ".join(color.name for color in recommendation.colors)
+    return f"{index} ({rgb[0]}, {rgb[1]}, {rgb[2]})"
+
+
+def _format_assignment(
+    assignment: ColorAssignment,
+) -> str:
+    """
+    Format one physical color assignment.
+    """
+
+    return f"{assignment.color.name} {assignment.distance:.2f}"
 
 
 __all__ = [
-    "display_color_matches",
-    "display_palette_recommendations",
+    "display_color_analysis",
 ]

@@ -17,8 +17,7 @@ from lowkey_artifact_builder.cli.display.build import (
     display_build_plan,
 )
 from lowkey_artifact_builder.cli.display.colors import (
-    display_color_matches,
-    display_palette_recommendations,
+    display_color_analysis,
 )
 from lowkey_artifact_builder.cli.display.common import (
     console,
@@ -40,11 +39,10 @@ __all__ = [
     "create_table",
     "display_artifact_config",
     "display_build_plan",
-    "display_color_matches",
+    "display_color_analysis",
     "display_model",
     "display_model_workplan",
     "display_model_workplans",
     "display_models",
-    "display_palette_recommendations",
     "format_value",
 ]

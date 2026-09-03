@@ -1,5 +1,5 @@
 """
-Artwork color-match analysis.
+Artwork color-assignment analysis.
 """
 # File: src/lowkey_artifact_builder/model/models/artwork/color_analysis.py
 # Copyright 2026 LowKeyLabs LLC
@@ -8,11 +8,7 @@ Artwork color-match analysis.
 from __future__ import annotations
 
 import json
-from collections.abc import (
-    Collection,
-    Mapping,
-    Sequence,
-)
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import (
@@ -21,12 +17,10 @@ from typing import (
 )
 
 from lowkey_artifact_builder.colors import (
-    ColorError,
-    ColorMatch,
+    ColorAssignmentResult,
+    MeasuredColor,
     PaletteColor,
-    PaletteRecommendation,
-    match_color,
-    recommend_palette,
+    assign_colors,
 )
 
 # =========================================================
@@ -59,34 +53,28 @@ class ColorAnalysisResolver(Protocol):
     frozen=True,
     slots=True,
 )
-class ArtworkColorMatch:
+class ArtworkColorAnalysis:
     """
-    Color-match analysis for one prepared Artwork semantic color.
-    """
+    Color-assignment analysis for registered Artwork.
 
-    artwork: PaletteColor
+    printer:
+        Optimal one-to-one assignment from persistent Artifact colors
+        to the colors configured for the printer.
 
-    printer: ColorMatch
+    library:
+        Optimal one-to-one assignment from persistent Artifact colors
+        to the colors configured for the user's filament library.
 
-    library: ColorMatch
-
-    catalog: ColorMatch
-
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class ArtworkPaletteRecommendations:
-    """
-    Palette recommendations for Artwork color-availability scopes.
+    catalog:
+        Optimal one-to-one assignment from persistent Artifact colors
+        to all physical colors in the color catalog.
     """
 
-    printer: PaletteRecommendation
+    printer: ColorAssignmentResult
 
-    library: PaletteRecommendation
+    library: ColorAssignmentResult
 
-    catalog: PaletteRecommendation
+    catalog: ColorAssignmentResult
 
 
 # =========================================================
@@ -96,9 +84,14 @@ class ArtworkPaletteRecommendations:
 
 def load_registered_artwork_colors(
     manifest: Path,
-) -> tuple[PaletteColor, ...]:
+) -> tuple[MeasuredColor, ...]:
     """
-    Load semantic colors from a registered Artwork vector manifest.
+    Load persistent Artifact colors from a registered Artwork manifest.
+
+    Artifact color identity and RGB are persistent Artwork semantics.
+    Persisted printer assignments describe one physical realization and
+    do not redefine the Artifact colors used for alternative assignment
+    analysis.
     """
 
     data = json.loads(
@@ -115,7 +108,7 @@ def load_registered_artwork_colors(
     ):
         raise ValueError("Registered Artwork manifest does not contain a products list.")
 
-    colors: list[PaletteColor] = []
+    colors: list[MeasuredColor] = []
 
     for product in products:
         if not isinstance(
@@ -124,36 +117,61 @@ def load_registered_artwork_colors(
         ):
             raise ValueError("Registered Artwork manifest contains an invalid product.")
 
-        name = product.get("name")
-        color = product.get("color")
-
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError("Registered Artwork product has no valid color name.")
+        artifact_color = product.get(
+            "artifact_color",
+        )
 
         if not isinstance(
-            color,
+            artifact_color,
             dict,
         ):
-            raise ValueError(f"Registered Artwork color {name!r} has no valid RGB value.")
+            raise ValueError("Registered Artwork product has no valid Artifact color.")
+
+        index = artifact_color.get(
+            "index",
+        )
+
+        if (
+            isinstance(
+                index,
+                bool,
+            )
+            or not isinstance(
+                index,
+                int,
+            )
+            or index < 1
+        ):
+            raise ValueError("Registered Artwork product has no valid Artifact color index.")
+
+        rgb = artifact_color.get(
+            "rgb",
+        )
+
+        if not isinstance(
+            rgb,
+            dict,
+        ):
+            raise ValueError(f"Registered Artwork Artifact color {index!r} has no valid RGB value.")
 
         colors.append(
-            PaletteColor(
-                name=name.strip(),
+            MeasuredColor(
+                index=index,
                 rgb=(
                     _rgb_component(
-                        color,
+                        rgb,
                         "red",
-                        name,
+                        index,
                     ),
                     _rgb_component(
-                        color,
+                        rgb,
                         "green",
-                        name,
+                        index,
                     ),
                     _rgb_component(
-                        color,
+                        rgb,
                         "blue",
-                        name,
+                        index,
                     ),
                 ),
             )
@@ -165,16 +183,31 @@ def load_registered_artwork_colors(
 def _rgb_component(
     color: dict[str, Any],
     component: str,
-    name: str,
+    index: int,
 ) -> int:
     """
-    Return one validated registered-Artwork RGB component.
+    Return one validated persistent Artifact RGB component.
     """
 
-    value = color.get(component)
+    value = color.get(
+        component,
+    )
 
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > 255:
-        raise ValueError(f"Registered Artwork color {name!r} has invalid {component} component.")
+    if (
+        isinstance(
+            value,
+            bool,
+        )
+        or not isinstance(
+            value,
+            int,
+        )
+        or value < 0
+        or value > 255
+    ):
+        raise ValueError(
+            f"Registered Artwork Artifact color {index!r} has invalid {component} component."
+        )
 
     return value
 
@@ -188,73 +221,23 @@ def analyze_registered_artwork_colors(
     *,
     manifest: Path,
     resolver: ColorAnalysisResolver,
-) -> tuple[ArtworkColorMatch, ...]:
+) -> ArtworkColorAnalysis:
     """
-    Analyze registered Artwork against resolved color availability.
+    Analyze registered Artwork against three color-availability scopes.
 
-    Artwork semantic colors are read from the persistent registered
-    Artwork manifest.
+    Persistent Artifact colors are the measured colors for every scope.
 
-    Printer and library candidates are selected by their resolved
-    configuration values.
+    Printer candidates are selected by resolved printer configuration.
 
-    Catalog-wide candidates are physical filament entries from the
-    complete color catalog. Synthetic test entries remain available
-    when explicitly selected by printer or library configuration but
-    are excluded from physical catalog-wide matching.
-    """
+    Library candidates are selected by resolved filament-library
+    configuration.
 
-    artwork_colors = load_registered_artwork_colors(
-        manifest,
-    )
+    Catalog candidates include all physical catalog entries. Synthetic
+    test entries remain available when explicitly selected by printer or
+    library configuration but are excluded from catalog-wide analysis.
 
-    printer_colors = _resolve_catalog_colors(
-        resolver,
-        "printer_colors",
-    )
-
-    library_colors = _resolve_catalog_colors(
-        resolver,
-        "library_colors",
-    )
-
-    catalog_colors = tuple(
-        _palette_color(
-            name,
-            entry,
-        )
-        for name, entry in resolver.colors.items()
-        if _is_physical_catalog_color(entry)
-    )
-
-    return analyze_color_matches(
-        artwork_colors=artwork_colors,
-        printer_colors=printer_colors,
-        library_colors=library_colors,
-        catalog_colors=catalog_colors,
-    )
-
-
-def recommend_registered_artwork_palettes(
-    *,
-    manifest: Path,
-    resolver: ColorAnalysisResolver,
-    palette_size: int,
-    mandatory: Sequence[str] = (),
-) -> ArtworkPaletteRecommendations:
-    """
-    Recommend palettes for registered Artwork using resolved availability.
-
-    Artwork semantic colors are read from the persistent registered
-    Artwork manifest.
-
-    Printer and library candidates are selected by their resolved
-    configuration values.
-
-    Catalog-wide candidates are physical filament entries from the
-    complete color catalog. Synthetic test entries remain available
-    when explicitly selected by printer or library configuration but
-    are excluded from physical catalog-wide recommendation.
+    Each scope is assigned independently using the generic globally
+    optimal one-to-one color-assignment operation.
     """
 
     artwork_colors = load_registered_artwork_colors(
@@ -277,36 +260,24 @@ def recommend_registered_artwork_palettes(
             entry,
         )
         for name, entry in resolver.colors.items()
-        if _is_physical_catalog_color(entry)
+        if _is_physical_catalog_color(
+            entry,
+        )
     )
 
-    return recommend_artwork_palettes(
-        artwork_colors=artwork_colors,
-        printer_colors=printer_colors,
-        library_colors=library_colors,
-        catalog_colors=catalog_colors,
-        palette_size=palette_size,
-        mandatory=mandatory,
-    )
-
-
-def recommend_five_tool_artwork_palettes(
-    *,
-    manifest: Path,
-    resolver: ColorAnalysisResolver,
-    white: str,
-) -> ArtworkPaletteRecommendations:
-    """
-    Recommend five-tool palettes for registered Artwork.
-
-    The five-tool Artwork use case requires the supplied white
-    filament identity plus four additional colors.
-    """
-    return recommend_registered_artwork_palettes(
-        manifest=manifest,
-        resolver=resolver,
-        palette_size=5,
-        mandatory=(white,),
+    return ArtworkColorAnalysis(
+        printer=assign_colors(
+            artwork_colors,
+            printer_colors,
+        ),
+        library=assign_colors(
+            artwork_colors,
+            library_colors,
+        ),
+        catalog=assign_colors(
+            artwork_colors,
+            catalog_colors,
+        ),
     )
 
 
@@ -318,7 +289,9 @@ def _resolve_catalog_colors(
     Resolve catalog colors selected by an availability parameter.
     """
 
-    names = resolver(parameter)
+    names = resolver(
+        parameter,
+    )
 
     if not isinstance(
         names,
@@ -370,9 +343,17 @@ def _palette_color(
     ):
         raise ValueError(f"Color catalog entry {name!r} is invalid.")
 
-    rgb = entry.get("rgb")
+    rgb = entry.get(
+        "rgb",
+    )
 
-    if not isinstance(rgb, list | tuple) or len(rgb) != 3:
+    if (
+        not isinstance(
+            rgb,
+            list | tuple,
+        )
+        or len(rgb) != 3
+    ):
         raise ValueError(f"Color catalog entry {name!r} has invalid RGB.")
 
     return PaletteColor(
@@ -402,7 +383,18 @@ def _catalog_rgb_component(
     Return one validated catalog RGB component.
     """
 
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > 255:
+    if (
+        isinstance(
+            value,
+            bool,
+        )
+        or not isinstance(
+            value,
+            int,
+        )
+        or value < 0
+        or value > 255
+    ):
         raise ValueError(f"Color catalog entry {name!r} has invalid RGB.")
 
     return value
@@ -415,145 +407,18 @@ def _is_physical_catalog_color(
     Return whether a catalog entry represents physical filament.
     """
 
-    return isinstance(entry, Mapping) and entry.get("manufacturer") != "test"
-
-
-# =========================================================
-# Color matching
-# =========================================================
-
-
-def analyze_color_matches(
-    *,
-    artwork_colors: Sequence[PaletteColor],
-    printer_colors: Sequence[PaletteColor],
-    library_colors: Sequence[PaletteColor],
-    catalog_colors: Sequence[PaletteColor],
-    synthetic_catalog_colors: Collection[str] = (),
-) -> tuple[ArtworkColorMatch, ...]:
-    """
-    Analyze prepared Artwork colors against available color scopes.
-
-    Each prepared Artwork semantic color is independently matched
-    against printer, library, and physical-catalog candidates.
-
-    synthetic_catalog_colors is retained temporarily for callers that
-    supply generic candidate sets directly. Resolver-backed registered
-    Artwork analysis derives physical catalog membership from catalog
-    metadata instead.
-    """
-
-    physical_catalog_colors = tuple(
-        color for color in catalog_colors if color.name not in synthetic_catalog_colors
-    )
-
-    return tuple(
-        ArtworkColorMatch(
-            artwork=artwork,
-            printer=match_color(
-                artwork,
-                printer_colors,
-            ),
-            library=match_color(
-                artwork,
-                library_colors,
-            ),
-            catalog=match_color(
-                artwork,
-                physical_catalog_colors,
-            ),
+    return (
+        isinstance(
+            entry,
+            Mapping,
         )
-        for artwork in artwork_colors
+        and entry.get("manufacturer") != "test"
     )
-
-
-# =========================================================
-# Palette recommendation
-# =========================================================
-
-
-def recommend_artwork_palettes(
-    *,
-    artwork_colors: Sequence[PaletteColor],
-    printer_colors: Sequence[PaletteColor],
-    library_colors: Sequence[PaletteColor],
-    catalog_colors: Sequence[PaletteColor],
-    palette_size: int,
-    mandatory: Sequence[str] = (),
-) -> ArtworkPaletteRecommendations:
-    """
-    Recommend palettes for Artwork color-availability scopes.
-
-    Printer, library, and catalog candidates are optimized independently
-    against the complete prepared Artwork palette.
-
-    Mandatory colors identify semantic color identities that must be
-    included when available in each candidate scope.
-    """
-
-    return ArtworkPaletteRecommendations(
-        printer=recommend_palette(
-            artwork_colors,
-            printer_colors,
-            palette_size=palette_size,
-            mandatory=_mandatory_colors(
-                printer_colors,
-                mandatory,
-            ),
-        ),
-        library=recommend_palette(
-            artwork_colors,
-            library_colors,
-            palette_size=palette_size,
-            mandatory=_mandatory_colors(
-                library_colors,
-                mandatory,
-            ),
-        ),
-        catalog=recommend_palette(
-            artwork_colors,
-            catalog_colors,
-            palette_size=palette_size,
-            mandatory=_mandatory_colors(
-                catalog_colors,
-                mandatory,
-            ),
-        ),
-    )
-
-
-def _mandatory_colors(
-    candidates: Sequence[PaletteColor],
-    mandatory: Sequence[str],
-) -> tuple[PaletteColor, ...]:
-    """
-    Resolve mandatory semantic color identities from candidate colors.
-    """
-
-    candidates_by_name = {color.name: color for color in candidates}
-
-    colors: list[PaletteColor] = []
-
-    for name in mandatory:
-        try:
-            color = candidates_by_name[name]
-
-        except KeyError as exc:
-            raise ColorError(f"Mandatory color is not a candidate: {name}") from exc
-
-        colors.append(color)
-
-    return tuple(colors)
 
 
 __all__ = [
-    "ArtworkColorMatch",
-    "ArtworkPaletteRecommendations",
+    "ArtworkColorAnalysis",
     "ColorAnalysisResolver",
-    "analyze_color_matches",
     "analyze_registered_artwork_colors",
     "load_registered_artwork_colors",
-    "recommend_artwork_palettes",
-    "recommend_five_tool_artwork_palettes",
-    "recommend_registered_artwork_palettes",
 ]

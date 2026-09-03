@@ -1,5 +1,5 @@
 """
-Tests for Artwork color-match analysis.
+Tests for Artwork color-assignment analysis.
 """
 # File: tests/model/artwork/test_color_analysis.py
 # Copyright 2026 LowKeyLabs LLC
@@ -8,24 +8,18 @@ Tests for Artwork color-match analysis.
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
 
 from lowkey_artifact_builder.colors import (
     ColorError,
-    PaletteColor,
-    PaletteRecommendation,
+    MeasuredColor,
 )
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
-    ArtworkPaletteRecommendations,
-    analyze_color_matches,
     analyze_registered_artwork_colors,
     load_registered_artwork_colors,
-    recommend_artwork_palettes,
-    recommend_five_tool_artwork_palettes,
-    recommend_registered_artwork_palettes,
 )
 
 # =========================================================
@@ -41,8 +35,8 @@ class StubColorResolver:
     def __init__(
         self,
         *,
-        values: dict[str, object],
-        colors: dict[str, object],
+        values: Mapping[str, object],
+        colors: Mapping[str, object],
     ) -> None:
         self._values = values
         self._colors = colors
@@ -56,7 +50,7 @@ class StubColorResolver:
     @property
     def colors(
         self,
-    ) -> dict[str, object]:
+    ) -> Mapping[str, object]:
         return self._colors
 
 
@@ -76,231 +70,96 @@ def _catalog_color(
     }
 
 
-def test_artwork_color_analysis_matches_each_prepared_color_independently() -> None:
+def _registered_artwork_product(
+    *,
+    index: int,
+    artifact_rgb: tuple[int, int, int],
+    printer_name: str,
+    printer_rgb: tuple[int, int, int],
+    distance: float,
+) -> dict[str, object]:
     """
-    Every prepared Artwork semantic color receives its own color matches.
-    """
-
-    artwork_colors = (
-        PaletteColor(
-            name="artwork-red",
-            rgb=(240, 20, 20),
-        ),
-        PaletteColor(
-            name="artwork-green",
-            rgb=(20, 180, 40),
-        ),
-    )
-
-    printer_colors = (
-        PaletteColor(
-            name="printer-red",
-            rgb=(255, 0, 0),
-        ),
-        PaletteColor(
-            name="printer-green",
-            rgb=(0, 150, 0),
-        ),
-    )
-
-    library_colors = (
-        PaletteColor(
-            name="library-red",
-            rgb=(245, 10, 10),
-        ),
-        PaletteColor(
-            name="library-green",
-            rgb=(10, 190, 30),
-        ),
-    )
-
-    catalog_colors = (
-        PaletteColor(
-            name="catalog-red",
-            rgb=(241, 19, 19),
-        ),
-        PaletteColor(
-            name="catalog-green",
-            rgb=(19, 181, 39),
-        ),
-    )
-
-    analysis = analyze_color_matches(
-        artwork_colors=artwork_colors,
-        printer_colors=printer_colors,
-        library_colors=library_colors,
-        catalog_colors=catalog_colors,
-    )
-
-    assert tuple(result.artwork for result in analysis) == artwork_colors
-
-    assert tuple(result.printer.color.name for result in analysis) == (
-        "printer-red",
-        "printer-green",
-    )
-
-    assert tuple(result.library.color.name for result in analysis) == (
-        "library-red",
-        "library-green",
-    )
-
-    assert tuple(result.catalog.color.name for result in analysis) == (
-        "catalog-red",
-        "catalog-green",
-    )
-
-
-def test_artwork_color_analysis_preserves_semantic_color_information() -> None:
-    """
-    Analysis preserves Artwork and matched filament identities and RGB values.
+    Return one registered Artwork product using the persistent color schema.
     """
 
-    artwork = PaletteColor(
-        name="artwork-red",
-        rgb=(240, 20, 20),
-    )
-
-    printer = PaletteColor(
-        name="fire-engine-red",
-        rgb=(255, 0, 0),
-    )
-
-    result = analyze_color_matches(
-        artwork_colors=(artwork,),
-        printer_colors=(printer,),
-        library_colors=(printer,),
-        catalog_colors=(printer,),
-    )[0]
-
-    assert result.artwork is artwork
-
-    assert result.artwork.name == "artwork-red"
-    assert result.artwork.rgb == (240, 20, 20)
-
-    assert result.printer.color is printer
-    assert result.printer.color.name == "fire-engine-red"
-    assert result.printer.color.rgb == (255, 0, 0)
-
-    assert result.printer.distance > 0.0
+    return {
+        "index": index,
+        "path": f"color-{index}.svg",
+        "artifact_color": {
+            "index": index,
+            "rgb": {
+                "red": artifact_rgb[0],
+                "green": artifact_rgb[1],
+                "blue": artifact_rgb[2],
+            },
+        },
+        "printer_color": {
+            "name": printer_name,
+            "rgb": {
+                "red": printer_rgb[0],
+                "green": printer_rgb[1],
+                "blue": printer_rgb[2],
+            },
+        },
+        "distance": distance,
+    }
 
 
-def test_artwork_color_analysis_keeps_availability_scopes_independent() -> None:
+def _write_registered_artwork_manifest(
+    path: Path,
+    *,
+    products: list[dict[str, object]],
+) -> None:
     """
-    Printer, library, and catalog matching use their own candidate sets.
+    Write a registered Artwork vector manifest.
     """
 
-    artwork = PaletteColor(
-        name="artwork",
-        rgb=(250, 10, 10),
-    )
-
-    printer = PaletteColor(
-        name="printer-only",
-        rgb=(0, 0, 0),
-    )
-
-    library = PaletteColor(
-        name="library-only",
-        rgb=(200, 0, 0),
-    )
-
-    catalog = PaletteColor(
-        name="catalog-only",
-        rgb=(250, 0, 0),
-    )
-
-    result = analyze_color_matches(
-        artwork_colors=(artwork,),
-        printer_colors=(printer,),
-        library_colors=(library,),
-        catalog_colors=(catalog,),
-    )[0]
-
-    assert result.printer.color is printer
-    assert result.library.color is library
-    assert result.catalog.color is catalog
-
-    assert result.catalog.distance < result.library.distance
-    assert result.library.distance < result.printer.distance
-
-
-def test_artwork_color_analysis_matches_supplied_catalog_candidates_without_policy() -> None:
-    """
-    Direct color matching applies no physical-catalog selection policy.
-    """
-
-    artwork = PaletteColor(
-        name="artwork-red",
-        rgb=(255, 0, 0),
-    )
-
-    synthetic = PaletteColor(
-        name="test-red",
-        rgb=(255, 0, 0),
-    )
-
-    physical = PaletteColor(
-        name="physical-red",
-        rgb=(240, 0, 0),
-    )
-
-    result = analyze_color_matches(
-        artwork_colors=(artwork,),
-        printer_colors=(physical,),
-        library_colors=(physical,),
-        catalog_colors=(
-            synthetic,
-            physical,
+    path.write_text(
+        json.dumps(
+            {
+                "registered_extent": 100,
+                "products": products,
+            }
         ),
-    )[0]
-
-    assert result.catalog.color is synthetic
-    assert result.catalog.distance == 0.0
+        encoding="utf-8",
+    )
 
 
 # =========================================================
-# Registered Artwork colors
+# Persistent Artifact colors
 # =========================================================
 
 
-def test_registered_artwork_colors_are_loaded_from_vector_manifest(
+def test_registered_artwork_colors_are_loaded_from_artifact_color_metadata(
     tmp_path: Path,
 ) -> None:
     """
-    Prepared Artwork semantic colors come from registered Artwork.
+    Color analysis loads persistent Artifact identities and RGB values.
+
+    Printer assignments describe physical realization and do not redefine
+    the Artifact colors measured from the Artwork.
     """
 
     manifest = tmp_path / "products.json"
 
-    manifest.write_text(
-        json.dumps(
-            {
-                "registered_extent": 100,
-                "products": [
-                    {
-                        "index": 1,
-                        "path": "color-1.svg",
-                        "name": "prepared-red",
-                        "color": {
-                            "red": 241,
-                            "green": 17,
-                            "blue": 23,
-                        },
-                    },
-                    {
-                        "index": 2,
-                        "path": "color-2.svg",
-                        "name": "prepared-blue",
-                        "color": {
-                            "red": 19,
-                            "green": 31,
-                            "blue": 227,
-                        },
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
+    _write_registered_artwork_manifest(
+        manifest,
+        products=[
+            _registered_artwork_product(
+                index=1,
+                artifact_rgb=(241, 17, 23),
+                printer_name="physical-red",
+                printer_rgb=(220, 0, 0),
+                distance=2.5,
+            ),
+            _registered_artwork_product(
+                index=2,
+                artifact_rgb=(19, 31, 227),
+                printer_name="physical-blue",
+                printer_rgb=(0, 0, 200),
+                distance=3.5,
+            ),
+        ],
     )
 
     colors = load_registered_artwork_colors(
@@ -308,12 +167,12 @@ def test_registered_artwork_colors_are_loaded_from_vector_manifest(
     )
 
     assert colors == (
-        PaletteColor(
-            name="prepared-red",
+        MeasuredColor(
+            index=1,
             rgb=(241, 17, 23),
         ),
-        PaletteColor(
-            name="prepared-blue",
+        MeasuredColor(
+            index=2,
             rgb=(19, 31, 227),
         ),
     )
@@ -323,161 +182,85 @@ def test_registered_artwork_colors_preserve_manifest_order(
     tmp_path: Path,
 ) -> None:
     """
-    Registered Artwork color order follows the persistent manifest.
+    Persistent Artifact-color order follows registered Artwork product order.
     """
 
     manifest = tmp_path / "products.json"
 
-    manifest.write_text(
-        json.dumps(
-            {
-                "registered_extent": 100,
-                "products": [
-                    {
-                        "index": 2,
-                        "path": "second.svg",
-                        "name": "second",
-                        "color": {
-                            "red": 20,
-                            "green": 30,
-                            "blue": 40,
-                        },
-                    },
-                    {
-                        "index": 1,
-                        "path": "first.svg",
-                        "name": "first",
-                        "color": {
-                            "red": 50,
-                            "green": 60,
-                            "blue": 70,
-                        },
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
+    _write_registered_artwork_manifest(
+        manifest,
+        products=[
+            _registered_artwork_product(
+                index=2,
+                artifact_rgb=(20, 30, 40),
+                printer_name="printer-second",
+                printer_rgb=(21, 31, 41),
+                distance=1.0,
+            ),
+            _registered_artwork_product(
+                index=1,
+                artifact_rgb=(50, 60, 70),
+                printer_name="printer-first",
+                printer_rgb=(51, 61, 71),
+                distance=1.0,
+            ),
+        ],
     )
 
     colors = load_registered_artwork_colors(
         manifest,
     )
 
-    assert tuple(color.name for color in colors) == (
-        "second",
-        "first",
+    assert colors == (
+        MeasuredColor(
+            index=2,
+            rgb=(20, 30, 40),
+        ),
+        MeasuredColor(
+            index=1,
+            rgb=(50, 60, 70),
+        ),
     )
 
 
-def test_registered_artwork_colors_drive_color_analysis(
+def test_registered_artwork_analysis_uses_artifact_rgb_not_printer_rgb(
     tmp_path: Path,
 ) -> None:
     """
-    Color analysis can consume semantic colors persisted by registered Artwork.
+    Alternative physical assignments are measured from Artifact RGB.
+
+    Persisted printer RGB describes the current manufacturing realization
+    and must not replace Artifact RGB as the measured analysis color.
     """
 
     manifest = tmp_path / "products.json"
 
-    manifest.write_text(
-        json.dumps(
-            {
-                "registered_extent": 100,
-                "products": [
-                    {
-                        "index": 1,
-                        "path": "color-1.svg",
-                        "name": "prepared-red",
-                        "color": {
-                            "red": 250,
-                            "green": 10,
-                            "blue": 10,
-                        },
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    artwork_colors = load_registered_artwork_colors(
+    _write_registered_artwork_manifest(
         manifest,
-    )
-
-    analysis = analyze_color_matches(
-        artwork_colors=artwork_colors,
-        printer_colors=(
-            PaletteColor(
-                name="printer-red",
-                rgb=(240, 0, 0),
+        products=[
+            _registered_artwork_product(
+                index=1,
+                artifact_rgb=(250, 0, 0),
+                printer_name="current-black",
+                printer_rgb=(0, 0, 0),
+                distance=50.0,
             ),
-        ),
-        library_colors=(
-            PaletteColor(
-                name="library-red",
-                rgb=(245, 5, 5),
-            ),
-        ),
-        catalog_colors=(
-            PaletteColor(
-                name="catalog-red",
-                rgb=(249, 9, 9),
-            ),
-        ),
-    )
-
-    assert analysis[0].artwork == PaletteColor(
-        name="prepared-red",
-        rgb=(250, 10, 10),
-    )
-
-
-def test_registered_artwork_analysis_uses_resolved_availability(
-    tmp_path: Path,
-) -> None:
-    """
-    Registered Artwork analysis uses resolved printer and library colors.
-    """
-
-    manifest = tmp_path / "products.json"
-
-    manifest.write_text(
-        json.dumps(
-            {
-                "registered_extent": 100,
-                "products": [
-                    {
-                        "index": 1,
-                        "path": "color-1.svg",
-                        "name": "artwork-red",
-                        "color": {
-                            "red": 250,
-                            "green": 10,
-                            "blue": 10,
-                        },
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
+        ],
     )
 
     resolver = StubColorResolver(
         values={
-            "printer_colors": ["printer-red"],
-            "library_colors": ["library-red"],
+            "printer_colors": ["candidate-red"],
+            "library_colors": ["candidate-red"],
         },
         colors={
-            "printer-red": _catalog_color(
+            "candidate-red": _catalog_color(
                 manufacturer="eSUN",
-                rgb=(220, 0, 0),
+                rgb=(250, 0, 0),
             ),
-            "library-red": _catalog_color(
+            "candidate-black": _catalog_color(
                 manufacturer="eSUN",
-                rgb=(240, 5, 5),
-            ),
-            "catalog-red": _catalog_color(
-                manufacturer="eSUN",
-                rgb=(249, 9, 9),
+                rgb=(0, 0, 0),
             ),
         },
     )
@@ -487,40 +270,429 @@ def test_registered_artwork_analysis_uses_resolved_availability(
         resolver=resolver,
     )
 
-    assert analysis[0].artwork.name == "artwork-red"
-    assert analysis[0].printer.color.name == "printer-red"
-    assert analysis[0].library.color.name == "library-red"
-    assert analysis[0].catalog.color.name == "catalog-red"
+    assert analysis.printer.assignments[0].measured == MeasuredColor(
+        index=1,
+        rgb=(250, 0, 0),
+    )
+    assert analysis.printer.assignments[0].color.name == "candidate-red"
+    assert analysis.printer.assignments[0].distance == pytest.approx(
+        0.0,
+    )
+
+    assert analysis.library.assignments[0].measured == MeasuredColor(
+        index=1,
+        rgb=(250, 0, 0),
+    )
+    assert analysis.library.assignments[0].color.name == "candidate-red"
+    assert analysis.library.assignments[0].distance == pytest.approx(
+        0.0,
+    )
+
+    assert analysis.catalog.assignments[0].measured == MeasuredColor(
+        index=1,
+        rgb=(250, 0, 0),
+    )
+    assert analysis.catalog.assignments[0].color.name == "candidate-red"
+    assert analysis.catalog.assignments[0].distance == pytest.approx(
+        0.0,
+    )
 
 
-def test_registered_artwork_analysis_excludes_synthetic_catalog_entries(
+# =========================================================
+# Three-scope assignment
+# =========================================================
+
+
+def test_registered_artwork_analysis_produces_three_independent_assignment_scopes(
     tmp_path: Path,
 ) -> None:
     """
-    Catalog matching derives physical candidates from catalog metadata.
+    Printer, library, and catalog assignments use independent candidate sets.
     """
 
     manifest = tmp_path / "products.json"
 
-    manifest.write_text(
-        json.dumps(
-            {
-                "registered_extent": 100,
-                "products": [
-                    {
-                        "index": 1,
-                        "path": "color-1.svg",
-                        "name": "artwork-red",
-                        "color": {
-                            "red": 255,
-                            "green": 0,
-                            "blue": 0,
-                        },
-                    },
-                ],
-            }
+    _write_registered_artwork_manifest(
+        manifest,
+        products=[
+            _registered_artwork_product(
+                index=1,
+                artifact_rgb=(250, 10, 10),
+                printer_name="old-printer-red",
+                printer_rgb=(180, 0, 0),
+                distance=10.0,
+            ),
+            _registered_artwork_product(
+                index=2,
+                artifact_rgb=(10, 10, 250),
+                printer_name="old-printer-blue",
+                printer_rgb=(0, 0, 180),
+                distance=10.0,
+            ),
+        ],
+    )
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": [
+                "printer-red",
+                "printer-blue",
+            ],
+            "library_colors": [
+                "library-red",
+                "library-blue",
+            ],
+        },
+        colors={
+            "printer-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(200, 0, 0),
+            ),
+            "printer-blue": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(0, 0, 200),
+            ),
+            "library-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(230, 5, 5),
+            ),
+            "library-blue": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(5, 5, 230),
+            ),
+            "catalog-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(250, 10, 10),
+            ),
+            "catalog-blue": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(10, 10, 250),
+            ),
+        },
+    )
+
+    analysis = analyze_registered_artwork_colors(
+        manifest=manifest,
+        resolver=resolver,
+    )
+
+    assert tuple(assignment.color.name for assignment in analysis.printer.assignments) == (
+        "printer-red",
+        "printer-blue",
+    )
+
+    assert tuple(assignment.color.name for assignment in analysis.library.assignments) == (
+        "library-red",
+        "library-blue",
+    )
+
+    assert tuple(assignment.color.name for assignment in analysis.catalog.assignments) == (
+        "catalog-red",
+        "catalog-blue",
+    )
+
+
+def test_registered_artwork_analysis_uses_global_one_to_one_assignment(
+    tmp_path: Path,
+) -> None:
+    """
+    Every scope assigns distinct physical colors jointly.
+
+    Independent nearest-neighbor matching would assign both Artifact colors
+    to the same closest candidate in this fixture. The complete assignment
+    must instead select a globally optimal one-to-one mapping.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    _write_registered_artwork_manifest(
+        manifest,
+        products=[
+            _registered_artwork_product(
+                index=1,
+                artifact_rgb=(100, 100, 100),
+                printer_name="old-a",
+                printer_rgb=(0, 0, 0),
+                distance=10.0,
+            ),
+            _registered_artwork_product(
+                index=2,
+                artifact_rgb=(110, 110, 110),
+                printer_name="old-b",
+                printer_rgb=(255, 255, 255),
+                distance=10.0,
+            ),
+        ],
+    )
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": [
+                "candidate-near",
+                "candidate-other",
+            ],
+            "library_colors": [
+                "candidate-near",
+                "candidate-other",
+            ],
+        },
+        colors={
+            "candidate-near": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(105, 105, 105),
+            ),
+            "candidate-other": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(80, 80, 80),
+            ),
+        },
+    )
+
+    analysis = analyze_registered_artwork_colors(
+        manifest=manifest,
+        resolver=resolver,
+    )
+
+    for scope in (
+        analysis.printer,
+        analysis.library,
+        analysis.catalog,
+    ):
+        selected = tuple(assignment.color.name for assignment in scope.assignments)
+
+        assert len(selected) == 2
+        assert len(set(selected)) == 2
+        assert set(selected) == {
+            "candidate-near",
+            "candidate-other",
+        }
+
+
+def test_three_color_artwork_selects_three_colors_from_five_candidates(
+    tmp_path: Path,
+) -> None:
+    """
+    Assignment cardinality follows Artifact colors, not printer capacity.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    _write_registered_artwork_manifest(
+        manifest,
+        products=[
+            _registered_artwork_product(
+                index=1,
+                artifact_rgb=(250, 0, 0),
+                printer_name="old-red",
+                printer_rgb=(200, 0, 0),
+                distance=5.0,
+            ),
+            _registered_artwork_product(
+                index=2,
+                artifact_rgb=(0, 250, 0),
+                printer_name="old-green",
+                printer_rgb=(0, 200, 0),
+                distance=5.0,
+            ),
+            _registered_artwork_product(
+                index=3,
+                artifact_rgb=(0, 0, 250),
+                printer_name="old-blue",
+                printer_rgb=(0, 0, 200),
+                distance=5.0,
+            ),
+        ],
+    )
+
+    colors = {
+        "red": _catalog_color(
+            manufacturer="eSUN",
+            rgb=(250, 0, 0),
         ),
-        encoding="utf-8",
+        "green": _catalog_color(
+            manufacturer="eSUN",
+            rgb=(0, 250, 0),
+        ),
+        "blue": _catalog_color(
+            manufacturer="eSUN",
+            rgb=(0, 0, 250),
+        ),
+        "white": _catalog_color(
+            manufacturer="eSUN",
+            rgb=(255, 255, 255),
+        ),
+        "black": _catalog_color(
+            manufacturer="eSUN",
+            rgb=(0, 0, 0),
+        ),
+    }
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": [
+                "white",
+                "red",
+                "green",
+                "blue",
+                "black",
+            ],
+            "library_colors": [
+                "white",
+                "red",
+                "green",
+                "blue",
+                "black",
+            ],
+        },
+        colors=colors,
+    )
+
+    analysis = analyze_registered_artwork_colors(
+        manifest=manifest,
+        resolver=resolver,
+    )
+
+    assert len(analysis.printer.assignments) == 3
+    assert len(analysis.library.assignments) == 3
+    assert len(analysis.catalog.assignments) == 3
+
+    assert {assignment.color.name for assignment in analysis.printer.assignments} == {
+        "red",
+        "green",
+        "blue",
+    }
+
+    assert {assignment.color.name for assignment in analysis.library.assignments} == {
+        "red",
+        "green",
+        "blue",
+    }
+
+    assert {assignment.color.name for assignment in analysis.catalog.assignments} == {
+        "red",
+        "green",
+        "blue",
+    }
+
+
+# =========================================================
+# Assignment distances
+# =========================================================
+
+
+def test_registered_artwork_analysis_exposes_individual_and_aggregate_distances(
+    tmp_path: Path,
+) -> None:
+    """
+    Each scope exposes individual distances and their aggregate distance.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    _write_registered_artwork_manifest(
+        manifest,
+        products=[
+            _registered_artwork_product(
+                index=1,
+                artifact_rgb=(240, 20, 20),
+                printer_name="old-red",
+                printer_rgb=(200, 0, 0),
+                distance=5.0,
+            ),
+            _registered_artwork_product(
+                index=2,
+                artifact_rgb=(20, 20, 240),
+                printer_name="old-blue",
+                printer_rgb=(0, 0, 200),
+                distance=5.0,
+            ),
+        ],
+    )
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": [
+                "printer-red",
+                "printer-blue",
+            ],
+            "library_colors": [
+                "library-red",
+                "library-blue",
+            ],
+        },
+        colors={
+            "printer-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(220, 0, 0),
+            ),
+            "printer-blue": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(0, 0, 220),
+            ),
+            "library-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(230, 10, 10),
+            ),
+            "library-blue": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(10, 10, 230),
+            ),
+            "catalog-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(239, 19, 19),
+            ),
+            "catalog-blue": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(19, 19, 239),
+            ),
+        },
+    )
+
+    analysis = analyze_registered_artwork_colors(
+        manifest=manifest,
+        resolver=resolver,
+    )
+
+    for scope in (
+        analysis.printer,
+        analysis.library,
+        analysis.catalog,
+    ):
+        assert all(assignment.distance >= 0.0 for assignment in scope.assignments)
+
+        assert scope.distance == pytest.approx(
+            sum(assignment.distance for assignment in scope.assignments)
+        )
+
+
+# =========================================================
+# Catalog scope
+# =========================================================
+
+
+def test_catalog_assignment_excludes_synthetic_test_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Catalog-wide assignment excludes synthetic test catalog entries.
+
+    Synthetic entries remain valid when explicitly selected by printer or
+    library configuration.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    _write_registered_artwork_manifest(
+        manifest,
+        products=[
+            _registered_artwork_product(
+                index=1,
+                artifact_rgb=(255, 0, 0),
+                printer_name="old-red",
+                printer_rgb=(200, 0, 0),
+                distance=5.0,
+            ),
+        ],
     )
 
     resolver = StubColorResolver(
@@ -545,212 +717,161 @@ def test_registered_artwork_analysis_excludes_synthetic_catalog_entries(
         resolver=resolver,
     )
 
-    assert analysis[0].printer.color.name == "test-red"
-    assert analysis[0].library.color.name == "test-red"
-    assert analysis[0].catalog.color.name == "physical-red"
+    assert analysis.printer.assignments[0].color.name == "test-red"
+    assert analysis.library.assignments[0].color.name == "test-red"
+    assert analysis.catalog.assignments[0].color.name == "physical-red"
 
 
-def test_registered_artwork_analysis_does_not_mutate_configuration(
+# =========================================================
+# Availability requirements
+# =========================================================
+
+
+@pytest.mark.parametrize(
+    (
+        "parameter",
+        "values",
+    ),
+    [
+        (
+            "printer_colors",
+            ["red", "green"],
+        ),
+        (
+            "library_colors",
+            ["red", "green"],
+        ),
+    ],
+)
+def test_registered_artwork_analysis_rejects_insufficient_configured_candidates(
     tmp_path: Path,
+    parameter: str,
+    values: list[str],
 ) -> None:
     """
-    Artwork color analysis does not mutate resolved color configuration.
+    Every analyzed availability scope requires enough distinct candidates.
     """
 
     manifest = tmp_path / "products.json"
 
-    manifest.write_text(
-        json.dumps(
-            {
-                "registered_extent": 100,
-                "products": [
-                    {
-                        "index": 1,
-                        "path": "color-1.svg",
-                        "name": "artwork-red",
-                        "color": {
-                            "red": 250,
-                            "green": 10,
-                            "blue": 10,
-                        },
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
+    _write_registered_artwork_manifest(
+        manifest,
+        products=[
+            _registered_artwork_product(
+                index=1,
+                artifact_rgb=(255, 0, 0),
+                printer_name="old-red",
+                printer_rgb=(200, 0, 0),
+                distance=5.0,
+            ),
+            _registered_artwork_product(
+                index=2,
+                artifact_rgb=(0, 255, 0),
+                printer_name="old-green",
+                printer_rgb=(0, 200, 0),
+                distance=5.0,
+            ),
+            _registered_artwork_product(
+                index=3,
+                artifact_rgb=(0, 0, 255),
+                printer_name="old-blue",
+                printer_rgb=(0, 0, 200),
+                distance=5.0,
+            ),
+        ],
     )
 
-    printer_colors = ["printer-red"]
-    library_colors = ["library-red"]
+    resolved = {
+        "printer_colors": [
+            "red",
+            "green",
+            "blue",
+        ],
+        "library_colors": [
+            "red",
+            "green",
+            "blue",
+        ],
+    }
+
+    resolved[parameter] = values
 
     resolver = StubColorResolver(
-        values={
-            "printer_colors": printer_colors,
-            "library_colors": library_colors,
-        },
+        values=resolved,
         colors={
-            "printer-red": _catalog_color(
+            "red": _catalog_color(
                 manufacturer="eSUN",
-                rgb=(220, 0, 0),
+                rgb=(255, 0, 0),
             ),
-            "library-red": _catalog_color(
+            "green": _catalog_color(
                 manufacturer="eSUN",
-                rgb=(240, 5, 5),
+                rgb=(0, 255, 0),
             ),
-            "catalog-red": _catalog_color(
+            "blue": _catalog_color(
                 manufacturer="eSUN",
-                rgb=(249, 9, 9),
+                rgb=(0, 0, 255),
             ),
         },
     )
 
-    analyze_registered_artwork_colors(
-        manifest=manifest,
-        resolver=resolver,
-    )
-
-    assert printer_colors == ["printer-red"]
-    assert library_colors == ["library-red"]
-
-
-# =========================================================
-# Registered Artwork palette recommendation
-# =========================================================
+    with pytest.raises(
+        ColorError,
+        match="Palette color count cannot be smaller",
+    ):
+        analyze_registered_artwork_colors(
+            manifest=manifest,
+            resolver=resolver,
+        )
 
 
-def test_registered_artwork_palette_recommendation_uses_resolved_availability(
+def test_registered_artwork_analysis_rejects_insufficient_catalog_candidates(
     tmp_path: Path,
 ) -> None:
     """
-    Registered Artwork recommendations use resolved printer and library colors.
+    Catalog analysis requires enough physical catalog candidates.
     """
 
     manifest = tmp_path / "products.json"
 
-    manifest.write_text(
-        json.dumps(
-            {
-                "registered_extent": 100,
-                "products": [
-                    {
-                        "index": 1,
-                        "path": "color-1.svg",
-                        "name": "artwork-red",
-                        "color": {
-                            "red": 250,
-                            "green": 10,
-                            "blue": 10,
-                        },
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
+    _write_registered_artwork_manifest(
+        manifest,
+        products=[
+            _registered_artwork_product(
+                index=1,
+                artifact_rgb=(255, 0, 0),
+                printer_name="old-red",
+                printer_rgb=(200, 0, 0),
+                distance=5.0,
+            ),
+            _registered_artwork_product(
+                index=2,
+                artifact_rgb=(0, 255, 0),
+                printer_name="old-green",
+                printer_rgb=(0, 200, 0),
+                distance=5.0,
+            ),
+        ],
     )
 
     resolver = StubColorResolver(
         values={
             "printer_colors": [
-                "white",
-                "printer-red",
+                "test-red",
+                "test-green",
             ],
             "library_colors": [
-                "white",
-                "library-red",
+                "test-red",
+                "test-green",
             ],
         },
         colors={
-            "white": _catalog_color(
-                manufacturer="eSUN",
-                rgb=(255, 255, 255),
-            ),
-            "printer-red": _catalog_color(
-                manufacturer="eSUN",
-                rgb=(220, 0, 0),
-            ),
-            "library-red": _catalog_color(
-                manufacturer="eSUN",
-                rgb=(240, 5, 5),
-            ),
-            "catalog-red": _catalog_color(
-                manufacturer="eSUN",
-                rgb=(249, 9, 9),
-            ),
-        },
-    )
-
-    recommendations = recommend_registered_artwork_palettes(
-        manifest=manifest,
-        resolver=resolver,
-        palette_size=2,
-        mandatory=("white",),
-    )
-
-    assert tuple(color.name for color in recommendations.printer.colors) == (
-        "white",
-        "printer-red",
-    )
-
-    assert tuple(color.name for color in recommendations.library.colors) == (
-        "white",
-        "library-red",
-    )
-
-    assert tuple(color.name for color in recommendations.catalog.colors) == (
-        "white",
-        "catalog-red",
-    )
-
-
-def test_registered_artwork_palette_recommendation_excludes_synthetic_catalog_colors(
-    tmp_path: Path,
-) -> None:
-    """
-    Physical-catalog recommendations exclude synthetic test colors.
-    """
-
-    manifest = tmp_path / "products.json"
-
-    manifest.write_text(
-        json.dumps(
-            {
-                "registered_extent": 100,
-                "products": [
-                    {
-                        "index": 1,
-                        "path": "color-1.svg",
-                        "name": "artwork-red",
-                        "color": {
-                            "red": 255,
-                            "green": 0,
-                            "blue": 0,
-                        },
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    resolver = StubColorResolver(
-        values={
-            "printer_colors": [
-                "white",
-                "test-red",
-            ],
-            "library_colors": [
-                "white",
-                "test-red",
-            ],
-        },
-        colors={
-            "white": _catalog_color(
-                manufacturer="eSUN",
-                rgb=(255, 255, 255),
-            ),
             "test-red": _catalog_color(
                 manufacturer="test",
                 rgb=(255, 0, 0),
+            ),
+            "test-green": _catalog_color(
+                manufacturer="test",
+                rgb=(0, 255, 0),
             ),
             "physical-red": _catalog_color(
                 manufacturer="eSUN",
@@ -759,729 +880,80 @@ def test_registered_artwork_palette_recommendation_excludes_synthetic_catalog_co
         },
     )
 
-    recommendations = recommend_registered_artwork_palettes(
-        manifest=manifest,
-        resolver=resolver,
-        palette_size=2,
-        mandatory=("white",),
-    )
-
-    assert tuple(color.name for color in recommendations.printer.colors) == (
-        "white",
-        "test-red",
-    )
-
-    assert tuple(color.name for color in recommendations.library.colors) == (
-        "white",
-        "test-red",
-    )
-
-    assert tuple(color.name for color in recommendations.catalog.colors) == (
-        "white",
-        "physical-red",
-    )
+    with pytest.raises(
+        ColorError,
+        match="Palette color count cannot be smaller",
+    ):
+        analyze_registered_artwork_colors(
+            manifest=manifest,
+            resolver=resolver,
+        )
 
 
-def test_registered_artwork_palette_recommendation_does_not_mutate_configuration(
+# =========================================================
+# Analysis purity
+# =========================================================
+
+
+def test_registered_artwork_analysis_does_not_mutate_inputs(
     tmp_path: Path,
 ) -> None:
     """
-    Registered Artwork recommendation does not mutate color configuration.
+    Artwork analysis does not modify persistent products or color availability.
     """
 
     manifest = tmp_path / "products.json"
 
-    manifest.write_text(
-        json.dumps(
-            {
-                "registered_extent": 100,
-                "products": [
-                    {
-                        "index": 1,
-                        "path": "color-1.svg",
-                        "name": "artwork-red",
-                        "color": {
-                            "red": 250,
-                            "green": 10,
-                            "blue": 10,
-                        },
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
+    _write_registered_artwork_manifest(
+        manifest,
+        products=[
+            _registered_artwork_product(
+                index=1,
+                artifact_rgb=(250, 10, 10),
+                printer_name="current-red",
+                printer_rgb=(220, 0, 0),
+                distance=3.0,
+            ),
+        ],
     )
 
-    printer_colors = [
-        "white",
-        "printer-red",
-    ]
+    printer_colors = ["printer-red"]
+    library_colors = ["library-red"]
 
-    library_colors = [
-        "white",
-        "library-red",
-    ]
+    colors: dict[str, object] = {
+        "printer-red": _catalog_color(
+            manufacturer="eSUN",
+            rgb=(220, 0, 0),
+        ),
+        "library-red": _catalog_color(
+            manufacturer="eSUN",
+            rgb=(240, 5, 5),
+        ),
+        "catalog-red": _catalog_color(
+            manufacturer="eSUN",
+            rgb=(249, 9, 9),
+        ),
+    }
 
     resolver = StubColorResolver(
         values={
             "printer_colors": printer_colors,
             "library_colors": library_colors,
         },
-        colors={
-            "white": _catalog_color(
-                manufacturer="eSUN",
-                rgb=(255, 255, 255),
-            ),
-            "printer-red": _catalog_color(
-                manufacturer="eSUN",
-                rgb=(220, 0, 0),
-            ),
-            "library-red": _catalog_color(
-                manufacturer="eSUN",
-                rgb=(240, 5, 5),
-            ),
-            "catalog-red": _catalog_color(
-                manufacturer="eSUN",
-                rgb=(249, 9, 9),
-            ),
-        },
-    )
-
-    recommend_registered_artwork_palettes(
-        manifest=manifest,
-        resolver=resolver,
-        palette_size=2,
-        mandatory=("white",),
-    )
-
-    assert printer_colors == [
-        "white",
-        "printer-red",
-    ]
-
-    assert library_colors == [
-        "white",
-        "library-red",
-    ]
-
-
-def test_artwork_palette_recommendation_rejects_missing_mandatory_color() -> None:
-    """
-    Every recommendation scope must contain each mandatory color.
-    """
-
-    artwork_colors = (
-        PaletteColor(
-            name="artwork-red",
-            rgb=(255, 0, 0),
-        ),
-    )
-
-    white = PaletteColor(
-        name="white",
-        rgb=(255, 255, 255),
-    )
-
-    red = PaletteColor(
-        name="red",
-        rgb=(255, 0, 0),
-    )
-
-    with pytest.raises(
-        ColorError,
-        match="Mandatory color is not a candidate: white",
-    ):
-        recommend_artwork_palettes(
-            artwork_colors=artwork_colors,
-            printer_colors=(red,),
-            library_colors=(white, red),
-            catalog_colors=(white, red),
-            palette_size=1,
-            mandatory=("white",),
-        )
-
-
-def test_artwork_palette_recommendation_requires_mandatory_color_in_each_scope() -> None:
-    """
-    Mandatory color requirements apply independently to every scope.
-    """
-
-    artwork_colors = (
-        PaletteColor(
-            name="artwork-red",
-            rgb=(255, 0, 0),
-        ),
-    )
-
-    white = PaletteColor(
-        name="white",
-        rgb=(255, 255, 255),
-    )
-
-    red = PaletteColor(
-        name="red",
-        rgb=(255, 0, 0),
-    )
-
-    with pytest.raises(
-        ColorError,
-        match="Mandatory color is not a candidate: white",
-    ):
-        recommend_artwork_palettes(
-            artwork_colors=artwork_colors,
-            printer_colors=(white, red),
-            library_colors=(red,),
-            catalog_colors=(white, red),
-            palette_size=1,
-            mandatory=("white",),
-        )
-
-    with pytest.raises(
-        ColorError,
-        match="Mandatory color is not a candidate: white",
-    ):
-        recommend_artwork_palettes(
-            artwork_colors=artwork_colors,
-            printer_colors=(white, red),
-            library_colors=(white, red),
-            catalog_colors=(red,),
-            palette_size=1,
-            mandatory=("white",),
-        )
-
-
-# =========================================================
-# Five-tool palette recommendation
-# =========================================================
-
-
-def test_five_tool_artwork_palette_recommendation_requires_white(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """
-    Five-tool Artwork recommendation requires white in a five-color palette.
-    """
-
-    manifest = tmp_path / "products.json"
-
-    manifest.write_text(
-        json.dumps(
-            {
-                "products": [
-                    {
-                        "name": "artwork-red",
-                        "color": {
-                            "red": 255,
-                            "green": 0,
-                            "blue": 0,
-                        },
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    resolver = StubColorResolver(
-        values={
-            "printer_colors": [],
-            "library_colors": [],
-        },
-        colors={},
-    )
-
-    calls: list[
-        tuple[
-            int,
-            tuple[str, ...],
-        ]
-    ] = []
-
-    def fake_recommend_registered_artwork_palettes(
-        *,
-        manifest: Path,
-        resolver: object,
-        palette_size: int,
-        mandatory: Sequence[str] = (),
-    ) -> ArtworkPaletteRecommendations:
-        del manifest
-        del resolver
-
-        calls.append(
-            (
-                palette_size,
-                tuple(mandatory),
-            )
-        )
-
-        empty = PaletteRecommendation(
-            colors=(),
-            score=0.0,
-        )
-
-        return ArtworkPaletteRecommendations(
-            printer=empty,
-            library=empty,
-            catalog=empty,
-        )
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.model.models.artwork.color_analysis."
-        "recommend_registered_artwork_palettes",
-        fake_recommend_registered_artwork_palettes,
-    )
-
-    recommend_five_tool_artwork_palettes(
-        manifest=manifest,
-        resolver=resolver,
-        white="white",
-    )
-
-    assert calls == [
-        (
-            5,
-            ("white",),
-        ),
-    ]
-
-
-def test_five_tool_artwork_palette_recommendation_returns_complete_palettes(
-    tmp_path: Path,
-) -> None:
-    """
-    Five-tool Artwork recommendation produces complete five-color palettes.
-    """
-
-    manifest = tmp_path / "products.json"
-
-    manifest.write_text(
-        json.dumps(
-            {
-                "products": [
-                    {
-                        "name": "artwork-red",
-                        "color": {
-                            "red": 255,
-                            "green": 0,
-                            "blue": 0,
-                        },
-                    },
-                    {
-                        "name": "artwork-green",
-                        "color": {
-                            "red": 0,
-                            "green": 255,
-                            "blue": 0,
-                        },
-                    },
-                    {
-                        "name": "artwork-blue",
-                        "color": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 255,
-                        },
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    colors: dict[str, object] = {
-        "white": _catalog_color(
-            manufacturer="eSUN",
-            rgb=(255, 255, 255),
-        ),
-        "red": _catalog_color(
-            manufacturer="eSUN",
-            rgb=(255, 0, 0),
-        ),
-        "green": _catalog_color(
-            manufacturer="eSUN",
-            rgb=(0, 255, 0),
-        ),
-        "blue": _catalog_color(
-            manufacturer="eSUN",
-            rgb=(0, 0, 255),
-        ),
-        "black": _catalog_color(
-            manufacturer="eSUN",
-            rgb=(0, 0, 0),
-        ),
-        "yellow": _catalog_color(
-            manufacturer="eSUN",
-            rgb=(255, 255, 0),
-        ),
-    }
-
-    resolver = StubColorResolver(
-        values={
-            "printer_colors": [
-                "white",
-                "red",
-                "green",
-                "blue",
-                "black",
-            ],
-            "library_colors": [
-                "white",
-                "red",
-                "green",
-                "blue",
-                "black",
-                "yellow",
-            ],
-        },
         colors=colors,
     )
 
-    recommendations = recommend_five_tool_artwork_palettes(
+    manifest_before = manifest.read_bytes()
+    printer_before = list(printer_colors)
+    library_before = list(library_colors)
+    catalog_before = json.loads(json.dumps(colors))
+
+    analyze_registered_artwork_colors(
         manifest=manifest,
         resolver=resolver,
-        white="white",
-    )
-    assert len(recommendations.printer.colors) == 5
-    assert len(recommendations.library.colors) == 5
-    assert len(recommendations.catalog.colors) == 5
-
-    assert "white" in {color.name for color in recommendations.printer.colors}
-
-    assert "white" in {color.name for color in recommendations.library.colors}
-
-    assert "white" in {color.name for color in recommendations.catalog.colors}
-
-
-def test_five_tool_artwork_palette_recommendation_accepts_white_identity(
-    tmp_path: Path,
-) -> None:
-    """
-    Five-tool Artwork recommendation accepts the semantic identity used
-    for the required white filament.
-    """
-    manifest = tmp_path / "products.json"
-
-    manifest.write_text(
-        json.dumps(
-            {
-                "products": [
-                    {
-                        "name": "artwork-red",
-                        "color": {
-                            "red": 255,
-                            "green": 0,
-                            "blue": 0,
-                        },
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
     )
 
-    colors: dict[str, object] = {
-        "test-white": {
-            "rgb": [255, 255, 255],
-            "manufacturer": "Test Filament",
-        },
-        "test-red": {
-            "rgb": [255, 0, 0],
-            "manufacturer": "Test Filament",
-        },
-        "test-green": {
-            "rgb": [0, 255, 0],
-            "manufacturer": "Test Filament",
-        },
-        "test-blue": {
-            "rgb": [0, 0, 255],
-            "manufacturer": "Test Filament",
-        },
-        "test-black": {
-            "rgb": [0, 0, 0],
-            "manufacturer": "Test Filament",
-        },
-    }
-
-    resolver = StubColorResolver(
-        values={
-            "printer_colors": [
-                "test-white",
-                "test-red",
-                "test-green",
-                "test-blue",
-                "test-black",
-            ],
-            "library_colors": [
-                "test-white",
-                "test-red",
-                "test-green",
-                "test-blue",
-                "test-black",
-            ],
-        },
-        colors=colors,
-    )
-
-    recommendations = recommend_five_tool_artwork_palettes(
-        manifest=manifest,
-        resolver=resolver,
-        white="test-white",
-    )
-
-    assert tuple(color.name for color in recommendations.printer.colors) == (
-        "test-white",
-        "test-red",
-        "test-green",
-        "test-blue",
-        "test-black",
-    )
-
-    assert tuple(color.name for color in recommendations.library.colors) == (
-        "test-white",
-        "test-red",
-        "test-green",
-        "test-blue",
-        "test-black",
-    )
-
-
-def test_five_tool_artwork_palette_recommendation_requires_supplied_white_identity(
-    tmp_path: Path,
-) -> None:
-    """
-    The supplied white filament identity is mandatory in every
-    five-tool recommendation scope.
-    """
-    manifest = tmp_path / "products.json"
-
-    manifest.write_text(
-        json.dumps(
-            {
-                "products": [
-                    {
-                        "name": "artwork-red",
-                        "color": {
-                            "red": 255,
-                            "green": 0,
-                            "blue": 0,
-                        },
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    colors: dict[str, object] = {
-        "test-white": {
-            "rgb": [255, 255, 255],
-            "manufacturer": "test",
-        },
-        "test-red": {
-            "rgb": [255, 0, 0],
-            "manufacturer": "test",
-        },
-        "test-green": {
-            "rgb": [0, 255, 0],
-            "manufacturer": "test",
-        },
-        "test-blue": {
-            "rgb": [0, 0, 255],
-            "manufacturer": "test",
-        },
-        "test-black": {
-            "rgb": [0, 0, 0],
-            "manufacturer": "test",
-        },
-    }
-
-    resolver = StubColorResolver(
-        values={
-            "printer_colors": [
-                "test-red",
-                "test-green",
-                "test-blue",
-                "test-black",
-            ],
-            "library_colors": [
-                "test-white",
-                "test-red",
-                "test-green",
-                "test-blue",
-                "test-black",
-            ],
-        },
-        colors=colors,
-    )
-
-    with pytest.raises(
-        ColorError,
-        match="Mandatory color is not a candidate: test-white",
-    ):
-        recommend_five_tool_artwork_palettes(
-            manifest=manifest,
-            resolver=resolver,
-            white="test-white",
-        )
-
-
-def test_five_tool_artwork_palette_recommendations_compare_all_availability_scopes(
-    tmp_path: Path,
-) -> None:
-    """
-    Five-tool recommendations independently compare printer, library,
-    and physical-catalog palette capability.
-    """
-
-    manifest = tmp_path / "products.json"
-
-    manifest.write_text(
-        json.dumps(
-            {
-                "products": [
-                    {
-                        "name": "artwork-red",
-                        "color": {
-                            "red": 255,
-                            "green": 0,
-                            "blue": 0,
-                        },
-                    },
-                    {
-                        "name": "artwork-green",
-                        "color": {
-                            "red": 0,
-                            "green": 255,
-                            "blue": 0,
-                        },
-                    },
-                    {
-                        "name": "artwork-blue",
-                        "color": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 255,
-                        },
-                    },
-                    {
-                        "name": "artwork-yellow",
-                        "color": {
-                            "red": 255,
-                            "green": 255,
-                            "blue": 0,
-                        },
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    colors: dict[str, object] = {
-        "test-white": _catalog_color(
-            manufacturer="Test Filament",
-            rgb=(255, 255, 255),
-        ),
-        "printer-red": _catalog_color(
-            manufacturer="Test Filament",
-            rgb=(160, 0, 0),
-        ),
-        "printer-green": _catalog_color(
-            manufacturer="Test Filament",
-            rgb=(0, 160, 0),
-        ),
-        "printer-blue": _catalog_color(
-            manufacturer="Test Filament",
-            rgb=(0, 0, 160),
-        ),
-        "printer-yellow": _catalog_color(
-            manufacturer="Test Filament",
-            rgb=(160, 160, 0),
-        ),
-        "library-red": _catalog_color(
-            manufacturer="Test Filament",
-            rgb=(220, 0, 0),
-        ),
-        "library-green": _catalog_color(
-            manufacturer="Test Filament",
-            rgb=(0, 220, 0),
-        ),
-        "library-blue": _catalog_color(
-            manufacturer="Test Filament",
-            rgb=(0, 0, 220),
-        ),
-        "library-yellow": _catalog_color(
-            manufacturer="Test Filament",
-            rgb=(220, 220, 0),
-        ),
-        "catalog-red": _catalog_color(
-            manufacturer="Test Filament",
-            rgb=(255, 0, 0),
-        ),
-        "catalog-green": _catalog_color(
-            manufacturer="Test Filament",
-            rgb=(0, 255, 0),
-        ),
-        "catalog-blue": _catalog_color(
-            manufacturer="Test Filament",
-            rgb=(0, 0, 255),
-        ),
-        "catalog-yellow": _catalog_color(
-            manufacturer="Test Filament",
-            rgb=(255, 255, 0),
-        ),
-    }
-
-    resolver = StubColorResolver(
-        values={
-            "printer_colors": [
-                "test-white",
-                "printer-red",
-                "printer-green",
-                "printer-blue",
-                "printer-yellow",
-            ],
-            "library_colors": [
-                "test-white",
-                "library-red",
-                "library-green",
-                "library-blue",
-                "library-yellow",
-            ],
-        },
-        colors=colors,
-    )
-
-    recommendations = recommend_five_tool_artwork_palettes(
-        manifest=manifest,
-        resolver=resolver,
-        white="test-white",
-    )
-
-    assert tuple(color.name for color in recommendations.printer.colors) == (
-        "test-white",
-        "printer-red",
-        "printer-green",
-        "printer-blue",
-        "printer-yellow",
-    )
-
-    assert tuple(color.name for color in recommendations.library.colors) == (
-        "test-white",
-        "library-red",
-        "library-green",
-        "library-blue",
-        "library-yellow",
-    )
-
-    assert tuple(color.name for color in recommendations.catalog.colors) == (
-        "test-white",
-        "catalog-red",
-        "catalog-green",
-        "catalog-blue",
-        "catalog-yellow",
-    )
-
-    assert recommendations.printer.score > recommendations.library.score
-    assert recommendations.library.score > recommendations.catalog.score
+    assert manifest.read_bytes() == manifest_before
+    assert printer_colors == printer_before
+    assert library_colors == library_before
+    assert colors == catalog_before

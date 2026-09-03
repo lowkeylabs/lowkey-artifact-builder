@@ -8,243 +8,185 @@ Tests for Artwork color analysis presentation.
 from __future__ import annotations
 
 from lowkey_artifact_builder.cli.display import (
-    display_color_matches,
+    display_color_analysis,
 )
 from lowkey_artifact_builder.colors import (
-    ColorMatch,
+    ColorAssignment,
+    ColorAssignmentResult,
+    MeasuredColor,
     PaletteColor,
 )
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
-    ArtworkColorMatch,
+    ArtworkColorAnalysis,
 )
 
 
-def test_color_report_displays_structured_artwork_matches(
-    capsys,
-) -> None:
+def _assignment_result(
+    *,
+    names: tuple[str, ...],
+    distances: tuple[float, ...],
+) -> ColorAssignmentResult:
     """
-    The color report presents structured Artwork color analysis.
-    """
-
-    artwork = PaletteColor(
-        name="artwork-red",
-        rgb=(250, 10, 10),
-    )
-
-    matches = (
-        ArtworkColorMatch(
-            artwork=artwork,
-            printer=ColorMatch(
-                requested=artwork,
-                color=PaletteColor(
-                    name="fire-engine-red",
-                    rgb=(220, 20, 30),
-                ),
-                distance=4.25,
-            ),
-            library=ColorMatch(
-                requested=artwork,
-                color=PaletteColor(
-                    name="brick-red",
-                    rgb=(190, 50, 40),
-                ),
-                distance=7.5,
-            ),
-            catalog=ColorMatch(
-                requested=artwork,
-                color=PaletteColor(
-                    name="red",
-                    rgb=(240, 0, 0),
-                ),
-                distance=2.75,
-            ),
-        ),
-    )
-
-    display_color_matches(matches)
-
-    output = capsys.readouterr().out
-
-    assert "Artwork" in output
-    assert "Printer" in output
-    assert "Library" in output
-    assert "Catalog" in output
-
-    assert "artwork-red" in output
-    assert "fire-engine-red" in output
-    assert "brick-red" in output
-    assert "red" in output
-
-
-def test_color_report_displays_match_distances(
-    capsys,
-) -> None:
-    """
-    The color report exposes perceptual match distances.
+    Return assignments for three persistent Artifact colors.
     """
 
-    artwork = PaletteColor(
-        name="artwork-red",
-        rgb=(250, 10, 10),
-    )
-
-    matches = (
-        ArtworkColorMatch(
-            artwork=artwork,
-            printer=ColorMatch(
-                requested=artwork,
-                color=PaletteColor(
-                    name="printer-red",
-                    rgb=(220, 20, 30),
-                ),
-                distance=4.25,
-            ),
-            library=ColorMatch(
-                requested=artwork,
-                color=PaletteColor(
-                    name="library-red",
-                    rgb=(190, 50, 40),
-                ),
-                distance=7.5,
-            ),
-            catalog=ColorMatch(
-                requested=artwork,
-                color=PaletteColor(
-                    name="catalog-red",
-                    rgb=(240, 0, 0),
-                ),
-                distance=2.75,
-            ),
-        ),
-    )
-
-    display_color_matches(matches)
-
-    output = capsys.readouterr().out
-
-    assert "4.25" in output
-    assert "7.50" in output
-    assert "2.75" in output
-
-
-def test_color_report_displays_every_artwork_color(
-    capsys,
-) -> None:
-    """
-    The color report includes every structured Artwork color match.
-    """
-
-    artwork_colors = (
-        PaletteColor(
-            name="artwork-red",
+    measured = (
+        MeasuredColor(
+            index=1,
             rgb=(250, 10, 10),
         ),
-        PaletteColor(
-            name="artwork-green",
+        MeasuredColor(
+            index=2,
             rgb=(10, 250, 10),
         ),
-        PaletteColor(
-            name="artwork-blue",
+        MeasuredColor(
+            index=3,
             rgb=(10, 10, 250),
         ),
     )
 
-    matches = tuple(
-        ArtworkColorMatch(
-            artwork=artwork,
-            printer=ColorMatch(
-                requested=artwork,
-                color=PaletteColor(
-                    name=f"printer-{artwork.name}",
-                    rgb=artwork.rgb,
-                ),
-                distance=1.0,
+    assignments = tuple(
+        ColorAssignment(
+            measured=color,
+            color=PaletteColor(
+                name=name,
+                rgb=color.rgb,
             ),
-            library=ColorMatch(
-                requested=artwork,
-                color=PaletteColor(
-                    name=f"library-{artwork.name}",
-                    rgb=artwork.rgb,
-                ),
-                distance=2.0,
-            ),
-            catalog=ColorMatch(
-                requested=artwork,
-                color=PaletteColor(
-                    name=f"catalog-{artwork.name}",
-                    rgb=artwork.rgb,
-                ),
-                distance=3.0,
-            ),
+            distance=distance,
         )
-        for artwork in artwork_colors
+        for color, name, distance in zip(
+            measured,
+            names,
+            distances,
+            strict=True,
+        )
     )
 
-    display_color_matches(matches)
-
-    output = capsys.readouterr().out
-
-    assert "artwork-red" in output
-    assert "artwork-green" in output
-    assert "artwork-blue" in output
+    return ColorAssignmentResult(
+        assignments=assignments,
+        distance=sum(distances),
+    )
 
 
-def test_color_report_preserves_structured_analysis_order(
+def _analysis() -> ArtworkColorAnalysis:
+    """
+    Return representative three-scope Artwork analysis.
+    """
+
+    return ArtworkColorAnalysis(
+        printer=_assignment_result(
+            names=(
+                "printer-red",
+                "printer-green",
+                "printer-blue",
+            ),
+            distances=(
+                1.0,
+                2.0,
+                3.0,
+            ),
+        ),
+        library=_assignment_result(
+            names=(
+                "library-red",
+                "library-green",
+                "library-blue",
+            ),
+            distances=(
+                4.0,
+                5.0,
+                6.0,
+            ),
+        ),
+        catalog=_assignment_result(
+            names=(
+                "catalog-red",
+                "catalog-green",
+                "catalog-blue",
+            ),
+            distances=(
+                7.0,
+                8.0,
+                9.0,
+            ),
+        ),
+    )
+
+
+def test_color_report_displays_three_assignment_scopes(
     capsys,
 ) -> None:
     """
-    Color report ordering follows the structured Artwork analysis order.
+    The color report presents printer, library, and catalog assignments.
     """
 
-    artwork_colors = (
-        PaletteColor(
-            name="first",
-            rgb=(10, 20, 30),
-        ),
-        PaletteColor(
-            name="second",
-            rgb=(40, 50, 60),
-        ),
-        PaletteColor(
-            name="third",
-            rgb=(70, 80, 90),
-        ),
+    display_color_analysis(
+        _analysis(),
     )
-
-    matches = tuple(
-        ArtworkColorMatch(
-            artwork=artwork,
-            printer=ColorMatch(
-                requested=artwork,
-                color=PaletteColor(
-                    name=f"p-{artwork.name}",
-                    rgb=artwork.rgb,
-                ),
-                distance=1.0,
-            ),
-            library=ColorMatch(
-                requested=artwork,
-                color=PaletteColor(
-                    name=f"l-{artwork.name}",
-                    rgb=artwork.rgb,
-                ),
-                distance=2.0,
-            ),
-            catalog=ColorMatch(
-                requested=artwork,
-                color=PaletteColor(
-                    name=f"c-{artwork.name}",
-                    rgb=artwork.rgb,
-                ),
-                distance=3.0,
-            ),
-        )
-        for artwork in artwork_colors
-    )
-
-    display_color_matches(matches)
 
     output = capsys.readouterr().out
 
-    assert output.index("first") < output.index("second")
-    assert output.index("second") < output.index("third")
+    assert "Artifact" in output
+    assert "Printer" in output
+    assert "Library" in output
+    assert "Catalog" in output
+
+    assert "printer-red" in output
+    assert "library-red" in output
+    assert "catalog-red" in output
+
+
+def test_color_report_displays_every_artifact_color(
+    capsys,
+) -> None:
+    """
+    The color report includes every persistent Artifact color.
+    """
+
+    display_color_analysis(
+        _analysis(),
+    )
+
+    output = capsys.readouterr().out
+
+    assert "(250, 10, 10)" in output
+    assert "(10, 250, 10)" in output
+    assert "(10, 10, 250)" in output
+
+
+def test_color_report_displays_individual_assignment_distances(
+    capsys,
+) -> None:
+    """
+    The color report exposes individual perceptual assignment distances.
+    """
+
+    display_color_analysis(
+        _analysis(),
+    )
+
+    output = capsys.readouterr().out
+
+    assert "1.00" in output
+    assert "5.00" in output
+    assert "9.00" in output
+
+
+def test_color_report_displays_aggregate_assignment_distances(
+    capsys,
+) -> None:
+    """
+    The color report exposes aggregate distance for every assignment scope.
+    """
+
+    display_color_analysis(
+        _analysis(),
+    )
+
+    output = capsys.readouterr().out
+
+    assert "Aggregate Distance" in output
+
+    assert "6.00" in output
+    assert "15.00" in output
+    assert "24.00" in output
