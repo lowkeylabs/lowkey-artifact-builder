@@ -1,20 +1,21 @@
 # Architecture
 
-This document defines the architectural model, terminology, relationships,
-contracts, and invariants of `lowkey-artifact-builder`.
+This document defines the architectural model, terminology,
+relationships, contracts, and invariants of `lowkey-artifact-builder`.
 
-It is intended to be a durable reference for maintainers, contributors, and
-automated development tools, including future LLM-assisted development.
+It is intended to be a durable reference for maintainers, contributors,
+and automated development tools, including future LLM-assisted
+development.
 
 The README describes how to install and use the project. This document
 describes what the system means and how its major pieces are intended to
 interact.
 
-When implementation details conflict with this document, do not assume the
-implementation defines the architecture. Determine whether the implementation
-is incomplete or whether an architectural decision has intentionally changed.
-If the architecture changes, update this document as part of that change.
-
+When implementation details conflict with this document, do not assume
+the implementation defines the architecture. Determine whether the
+implementation is incomplete or whether an architectural decision has
+intentionally changed. If the architecture changes, update this document
+as part of that change.
 
 ## Normative specifications
 
@@ -23,70 +24,72 @@ relationships, contracts, and invariants of `lowkey-artifact-builder`.
 
 Each:
 
-```text
+``` text
 model/models/<model>/DEFINITION.md
 ```
 
-defines the normative semantics, requirements, and invariants specific to that
-model.
+defines the normative semantics, requirements, and invariants specific
+to that model.
 
 The repository implementation and tests must conform to both the system
 architecture and the applicable model definitions.
 
-A CHANGEPLAN.md, when present, is a temporary implementation plan derived by
-comparing the current repository against these permanent specifications. It
-describes testable changes needed to bring the implementation into alignment.
-It is not itself a normative specification and may be removed once alignment
-is complete.
+A `CHANGEPLAN.md`, when present, is a temporary implementation plan
+derived by comparing the current repository against these permanent
+specifications. It describes testable changes needed to bring the
+implementation into alignment. It is not itself a normative
+specification and may be removed once alignment is complete.
 
-Tests provide executable evidence of conformance. They do not replace the
-permanent specifications.
+Tests provide executable evidence of conformance. They do not replace
+the permanent specifications.
 
-When evaluating architectural completeness, compare the current repository
-against ARCHITECTURE.md and the applicable model DEFINITION.md files.
-When differences exist, a change plan may be created to resolve those
-differences in independently testable slices.
+When evaluating architectural completeness, compare the current
+repository against `ARCHITECTURE.md` and the applicable model
+`DEFINITION.md` files. When differences exist, a change plan may be
+created to resolve those differences in independently testable slices.
 
----
+------------------------------------------------------------------------
 
 # 1. Purpose
 
-`lowkey-artifact-builder` is a dependency-driven build system for producing
-2.5D manufacturing geometry from source artwork with minimal manual
-intervention.
+`lowkey-artifact-builder` is a dependency-driven build system for
+producing 2.5D manufacturing geometry from source material with minimal
+manual intervention.
 
-The common use case begins with a single PNG:
+A common use case begins with a customer image:
 
-```text
+``` text
                          source PNG
                              │
                              ▼
-                           artwork
+                      artwork model
                              │
                     registered geometry
                              │
-          ┌──────────────────┼──────────────────┐
-          │                  │                  │
-          ▼                  ▼                  ▼
-      standalone          coaster           ornament
-       artwork               │                  │
-                             │                  │
-                             └────────┐         │
-                                      │         │
-                                      ▼         ▼
-                                  manufacturing
-                                    geometry
-
+                             ▼
+                        shape model
                              │
-                             └──────────────> keychain
+             ┌───────────────┼───────────────┐
+             │               │               │
+             ▼               ▼               ▼
+         ornament         coaster         keychain
+          variant          variant          variant
+             │               │               │
+             └───────────────┼───────────────┘
+                             │
+                             ▼
+                       realizations
+                             │
+                             ▼
+                    manufacturing geometry
 ```
 
 The same interpreted artwork should be reusable across many manufactured
-objects.
+objects and many variants of those objects.
 
 More advanced compositions are also supported:
 
-```text
+``` text
 artwork A ──┐
 artwork B ──┼──> registered composition ──> manufactured object
 artwork C ──┘
@@ -95,54 +98,92 @@ artwork C ──┘
 The architecture should optimize the user experience for the common case
 without restricting the dependency system to the common case.
 
-The long-term objective is for new manufactured products to increasingly be
-defined through configuration and composition of reusable operations rather
-than new special-purpose Python pipelines.
+The long-term objective is for new manufactured products to increasingly
+be defined through model features, variants, configuration, and
+composition of reusable operations rather than new special-purpose
+Python pipelines.
 
----
+------------------------------------------------------------------------
 
 # 2. Fundamental Principle
 
-The fundamental persistent relationship is:
+The fundamental relationship between reusable definitions and concrete
+manufacturing work is:
 
-```text
-Artifact
+``` text
+Model
     │
-    └── Model
+    ├── Feature
+    │
+    └── Variant
           │
-          └── Realization
-                │
-                └── Stage
-                      │
-                      └── Product
+          │ applied to
+          ▼
+Artifact ───────> Realization
+                     │
+                     └── Stage
+                           │
+                           └── Product
 ```
 
-Models may also define named variants that provide reusable parameter presets.
+A Model defines reusable manufacturing capabilities.
 
-A product may be consumed by:
+A Feature is a Model-owned optional capability or behavior.
 
-* a later stage of the same realization;
-* another realization of the same model;
-* another model;
-* another artifact;
-* another build executed in the future.
+A Variant is a complete, named, Model-scoped product configuration. It
+selects Features and supplies parameter defaults sufficient, together
+with Model defaults and required Artifact inputs, to define a
+constructible catalog offering.
 
-The build system is therefore fundamentally a graph of products and the
+A Variant's complete identity includes its Model. Selecting a Variant
+therefore selects its Model; Model and Variant are not independent
+dimensions of a Realization.
+
+A Realization is the application of a Variant to an Artifact, with or
+without Artifact-specific customizations.
+
+Conceptually:
+
+``` text
+Variant
+    = Model + named product configuration
+    = selected Features + parameter defaults
+
+Realization
+    = Artifact + Variant + optional Artifact-specific customizations
+```
+
+A Realization is not a second mechanism for defining reusable product
+configurations. Reusable catalog configurations belong to Variants.
+
+A Product may be consumed by:
+
+-   a later Stage of the same Realization;
+-   another Realization;
+-   another Model;
+-   another Artifact;
+-   another build executed in the future.
+
+The build system is therefore fundamentally a graph of Products and the
 operations that produce them.
 
-A 3MF is merely one possible product in this graph.
+A 3MF is merely one possible Product in this graph.
 
----
+The use of the word "product" when discussing a Variant as a catalog
+offering does not change the architectural meaning of `Product`. A
+Product is a persistent output produced by a Stage.
+
+------------------------------------------------------------------------
 
 # 3. Core Principles
 
 ## 3.1 Products are first-class
 
-Every persistent output produced by a stage is a product.
+Every persistent output produced by a Stage is a Product.
 
 Examples include:
 
-```text
+``` text
 envelope.svg
 trace.svg
 color-1.png
@@ -152,21 +193,19 @@ products.json
 artifact.3mf
 ```
 
-The build engine does not architecturally distinguish between "intermediate"
-and "final" products.
+The build engine does not architecturally distinguish between
+"intermediate" and "final" Products.
 
-A product is important because something requests or depends upon it, not
-because it appears at the end of a pipeline.
-
----
+A Product is important because something requests or depends upon it,
+not because it appears at the end of a pipeline.
 
 ## 3.2 There is no privileged final product
 
-A model is not defined by its final 3MF.
+A Model is not defined by its final 3MF.
 
-For example, an artwork model might contain:
+For example, an artwork Model might contain:
 
-```text
+``` text
 prepare
    ↓
 raster
@@ -178,322 +217,172 @@ extrude
 package
 ```
 
-A consumer may require only:
+A consumer may require only `prepare:envelope`, `raster:colors`, or
+`vector:colors`.
 
-```text
-prepare:envelope
-```
-
-or:
-
-```text
-raster:colors
-```
-
-or:
-
-```text
-vector:colors
-```
-
-If nothing requires the extruded or packaged artwork, those stages do not
+If nothing requires extruded or packaged artwork, those Stages do not
 need to execute.
-
-The fact that `package` produces a 3MF does not make that product
-architecturally privileged.
-
----
 
 ## 3.3 Products are reusable manufacturing assets
 
-Successfully generated products are persistent manufacturing assets.
+Successfully generated Products are persistent manufacturing assets.
 
-For example, vectorizing source artwork may require substantial interpretation
-and computation. Once generated, the registered vector geometry can be reused
-to produce:
+Once registered artwork geometry has been generated, it may be reused
+for standalone artwork, ornaments, coasters, keychains, magnets,
+plaques, compositions, or future products.
 
-* standalone printed artwork;
-* an ornament;
-* a coaster;
-* a keychain;
-* a magnet;
-* a plaque;
-* a larger composition containing multiple pieces of artwork;
-* future products not yet defined.
-
-Reusable upstream work should not be repeated merely because a downstream
-physical product has different dimensions or manufacturing parameters.
-
----
+Reusable upstream work should not be repeated merely because a
+downstream Variant has different Features, dimensions, or manufacturing
+parameters.
 
 ## 3.4 Dependencies determine execution
 
-Stages and products form a dependency graph.
+Stages and Products form a dependency graph.
 
-Numeric stage identifiers, declaration order, filesystem order, and the
-concept of a "pipeline" do not determine execution order.
+Numeric Stage identifiers, declaration order, filesystem order, and the
+concept of a pipeline do not determine execution order.
 
 Dependencies determine execution.
 
 The filesystem materializes the graph. It does not define the graph.
 
----
-
 ## 3.5 Logical identity is independent of filesystem location
 
-Consumers refer to products by logical identity.
+Consumers refer to Products by logical identity, not generated
+filesystem paths.
 
-They do not refer to products using generated filesystem paths.
+For example:
 
-For example, a logical product reference might identify:
-
-```text
+``` text
 nydeli:artwork:default:vector:colors
 ```
 
-Its physical files might currently exist beneath:
+may identify a Product belonging to the Realization produced by applying
+the `artwork.default` Variant to Artifact `nydeli`.
 
-```text
+Its files might currently exist beneath:
+
+``` text
 artifacts/nydeli/artwork/default/30-vector/
 ```
 
-The logical reference is part of the architecture.
-
-The physical path is an implementation detail determined by the resolver.
-
-Changing filesystem organization must not require changing logical dependency
-definitions.
-
----
+The logical reference is architectural. The physical path is resolver
+policy.
 
 ## 3.6 Build only what is required
 
-A requested product defines a build target.
+A requested Product defines a build target.
 
-The build planner computes the transitive dependency closure necessary to make
-the requested products current.
-
-For example, requesting a vector product may require:
-
-```text
-prepare
-   ↓
-raster
-   ↓
-vector
-```
-
-but should not require:
-
-```text
-extrude
-package
-```
-
-unless another requested product depends upon them.
-
----
+The planner computes the transitive dependency closure necessary to make
+the requested Products current. Requesting a vector Product should not
+require extrusion or packaging unless another requested Product depends
+upon them.
 
 ## 3.7 Complete definitions should be validated
 
-During the initial implementation, the build system should construct and
-validate the complete defined dependency graph for an artifact before
-selecting what needs to be realized.
+The complete set of registered Model, Feature, Variant, Stage, Product,
+and dependency definitions must be validatable independently of which
+subset is realized for a particular Artifact.
 
-This intentionally favors:
-
-* visibility;
-* correctness;
-* debugging;
-* early detection of invalid references;
-* early detection of dependency cycles;
-* understanding of available manufacturing capabilities.
-
-The implementation may later construct portions of the graph lazily if eager
-construction becomes unwieldy.
-
-The architectural requirement is that the complete set of definitions be
-validatable, not that every possible graph node must forever be instantiated
-eagerly.
-
----
+This favors visibility, correctness, debugging, early detection of
+invalid references, and early detection of dependency cycles.
 
 ## 3.8 Execution is independent of orchestration
 
 Stage implementations are reusable execution units.
 
-A stage implementation must be executable from a complete resolved stage
-context without requiring the caller to execute or traverse the surrounding
-model.
+A Stage implementation must be executable from a complete resolved Stage
+context without requiring the caller to traverse the surrounding Model.
 
-Model planning, graph execution, and explicit command-line execution are
-different ways of constructing and supplying that context. They must converge
-on the same stage execution contract rather than implement separate execution
-APIs.
-
-Orchestration determines what should execute.
-
-The stage implementation determines how one stage executes.
+Orchestration determines what should execute. The Stage implementation
+determines how one Stage executes.
 
 ## 3.9 Execution is observable but presentation-independent
 
-Execution must be observable without coupling engine semantics to a
-particular user interface, logging configuration, or execution model.
+Execution may emit structured semantic events describing build, Stage,
+Product, state, skip, completion, and failure transitions.
 
-The engine may emit structured execution events describing significant
-execution facts and decisions. Examples include build, stage, and product
-lifecycle transitions; product-state evaluations; skipped work; completed
-work; and execution failures.
+Engine behavior must not depend on CLI verbosity, logging policy,
+terminal availability, progress rendering, or observer presence.
 
-Execution events are semantic data. They are not formatted log messages
-or terminal output.
+Observers must not alter dependency, Product-state, resumability, or
+execution decisions.
 
-Consumers may use the same event stream for different purposes, including:
+The execution engine remains synchronous unless concurrency is
+introduced by a separate architectural decision.
 
-- command-line progress and tracing;
-- interactive progress displays;
-- graphical user interfaces;
-- tests and diagnostics;
-- API or MCP integrations; and
-- persistent execution records.
-
-The following principles apply:
-
-- Engine behavior must not depend on CLI verbosity or presentation policy.
-- Engine code must not require a terminal, Click, a progress-widget
-  implementation, or another presentation framework.
-- Execution events must use stable semantic identities for artifacts,
-  models, realizations, stages, products, and other declared objects when
-  those identities are relevant to the event.
-- Event payloads must describe execution facts rather than preformatted
-  presentation strings.
-- Observing execution must be optional. Execution without an observer must
-  retain the same semantic behavior.
-- An observer must not determine whether required work executes or alter
-  dependency, product-state, or resumability decisions.
-- Diagnostic logging and structured execution events are separate
-  mechanisms. Logging may record implementation diagnostics that do not
-  belong in the semantic execution-event contract.
-- The execution engine remains synchronous unless concurrency is introduced
-  explicitly by another architectural decision.
-- A caller may execute the synchronous engine in a worker thread or process
-  and transport events to another thread or process for presentation.
-  Supporting such consumers does not require the engine itself to become
-  concurrent.
-- The observation mechanism must not imply parallel stage execution or
-  change the ordering guarantees of the build plan.
-
-Presentation layers decide how much of the available execution information
-to expose. For example, a CLI may provide progressively more detailed views
-for normal, verbose, debug, or trace operation without those presentation
-levels becoming part of the engine contract.
-
-This separation permits a single execution to support both simple output
-and richer progress views. A progress consumer may know the complete build
-plan before execution begins, represent its required stages and products,
-and update that representation as execution events report state transitions
-and completed work.
-
-Product-state and resumability logic should participate in this observation
-model. When the engine determines that a product is absent, incomplete,
-invalid, stale, or current, or decides that a stage should execute or be
-skipped, those decisions may be exposed as structured execution events
-without changing the underlying decision semantics.
-
-
----
+------------------------------------------------------------------------
 
 # 4. Terminology
 
 ## 4.1 Workspace
 
-A workspace is a configured project containing source material, artifacts,
-models, and generated products.
+A Workspace is a configured project containing source material,
+Artifacts, Models, and generated Products.
 
-Workspace-wide configuration is stored in:
-
-```text
-workspace.toml
-```
-
-The workspace provides the root context for configuration resolution and
-product generation.
-
----
+Workspace-wide configuration is stored in `workspace.toml`.
 
 ## 4.2 Artifact
 
-An artifact is a named source and configuration context.
+An Artifact is a named source and configuration context identified by an
+`artifact_id`.
 
-It is identified by an:
+Examples:
 
-```text
-artifact_id
-```
-
-Examples include:
-
-```text
+``` text
 john
 skylar
 nydeli
 family-2026
+mydog
 ```
 
-An artifact may participate in multiple models.
+An Artifact is not a Model, manufactured object, Variant, Realization,
+or final Product.
 
-Therefore:
+An Artifact may provide source material used by multiple Models and
+Variants, and may consume Products associated with other Artifacts.
 
-```text
-artifact != model
-artifact != manufactured object
-artifact != final product
-```
-
-A single source artifact may feed artwork, coaster, ornament, and keychain
-models.
-
-An artifact may also consume products associated with other artifacts.
-
----
+Artifact configuration may customize the application of a Variant. Such
+customizations affect the resulting Realization. They do not define a
+new Variant and do not change the Realization's originating Variant.
 
 ## 4.3 Model
 
-A model defines a reusable manufacturing recipe.
+A Model defines a reusable manufacturing recipe and owns a namespace of
+Features and Variants.
 
-Examples may include:
+Examples include:
 
-```text
+``` text
 artwork
-coaster
-ornament
-keychain
+shape
 ```
 
-A model declares:
+A Model declares:
 
-* inputs;
-* parameters;
-* variants;
-* stages;
-* products;
-* dependencies.
+-   inputs;
+-   parameters;
+-   Features;
+-   Variants;
+-   Stages;
+-   Products;
+-   dependencies.
 
-Models should increasingly be compositions of generic operations rather than
-large special-purpose implementations.
+Models should increasingly be compositions of generic operations rather
+than large special-purpose implementations.
 
-The generic build engine must not contain geometry-specific knowledge about
-individual models.
-
----
+The generic build engine must not contain geometry-specific knowledge
+about individual Models.
 
 ## 4.4 Operation
 
-An operation is a reusable transformation with defined inputs and outputs.
+An Operation is a reusable transformation with defined inputs and
+outputs.
 
-Conceptual operations may include:
+Conceptual Operations may include:
 
-```text
+``` text
 analyze
 normalize
 trace
@@ -515,330 +404,240 @@ extrude
 package
 ```
 
-Stages and operations serve different architectural purposes.
+A Stage is an execution and persistence boundary. An Operation is
+reusable transformation logic that may be invoked by one or more Stages.
 
-A stage is an execution and persistence boundary. An operation is reusable
-transformation logic that may be invoked by one or more stages.
+Model-specific Stages own Model policy. Reusable Operations own
+Model-independent mechanics.
 
-A stage may implement or compose more than one conceptual operation. Not every
-operation requires its own stage. A separate stage is appropriate when an
-independent execution, persistence, dependency, inspection, or resumption
-boundary provides meaningful value.
+## 4.5 Feature
 
-When multiple models require the same mechanical transformation with different
-model-specific policy or parameters, the common behavior should preferentially
-be implemented as a reusable operation rather than duplicated between
-model-specific stage implementations.
+A Feature is an optional composable capability or behavior supported by
+a Model.
 
-Model-specific stages own model policy. They resolve model semantics,
-configuration, and products into the inputs required by reusable operations.
+Features are Model-scoped.
 
-Reusable operations own model-independent mechanics. They should not depend on
-model-specific configuration namespaces or require knowledge of the model that
-invoked them.
+Examples for a Shape Model may include:
 
-Conceptually:
-
-```text
-artwork stage ──┐
-                │
-                ▼
-         reusable operation
-                ▲
-                │
-shape stage ────┘
+``` text
+artwork
+outer-ridge
+inner-ridge
+lettering
+hanger
 ```
 
-Models therefore compose reusable operations rather than obtain shared behavior
-by invoking another model's stage implementation or inheriting another model's
-pipeline.
+A Feature may:
 
-For example, artwork and shape models may make different decisions about
-physical size, placement, component identity, or extrusion height while using
-the same reusable extrusion mechanics.
+-   alter geometry;
+-   affect behavior of an always-present Stage;
+-   enable or disable Stage participation;
+-   affect Product generation;
+-   introduce or remove configuration requirements;
+-   affect dependencies.
 
-The distinction between stage policy and reusable operations should remain
-clear even when an initial implementation performs several operations inside a
-single stage. This permits common mechanics to be extracted and reused as new
-models demonstrate shared requirements without changing model or product
-semantics.
+Features describe Model capabilities. They are not independently
+constructible catalog offerings and do not identify Realizations.
 
----
+Variants select and configure Features.
 
-## 4.5 Variant
+Generic configuration, graph, planning, and execution infrastructure
+must not contain Model-specific Feature semantics.
 
-A variant is a named parameter preset defined by a model.
+## 4.6 Variant
 
-Variants are model-scoped.
+A Variant is a complete, named, Model-scoped product configuration.
+
+A Variant defines:
+
+-   the Features selected for the configuration;
+-   parameter defaults required to configure those Features and the
+    Model;
+-   enough configuration, together with Model defaults and required
+    Artifact inputs, to construct the offering without requiring
+    Artifact-specific customization.
+
+Variants are reusable across Artifacts and constitute the Model's
+catalog of constructible configurations.
+
+Examples:
+
+``` text
+artwork.default
+
+shape.default
+shape.ornament
+shape.ornament-large
+shape.coaster
+shape.keychain
+```
+
+The local Variant name is Model-scoped. Therefore:
+
+``` text
+shape.default
+artwork.default
+```
+
+are distinct Variants.
+
+A Variant's complete identity consists of its Model and local Variant
+name:
+
+``` text
+Variant identity = Model + Variant name
+```
+
+Selecting a Variant therefore necessarily selects its Model.
+
+A `default` Variant should normally exist or be implicitly available so
+that a Model with no specialized catalog configurations remains directly
+usable.
+
+A Variant is not merely a parameter preset. It is the reusable
+definition of a constructible product configuration.
+
+## 4.7 Variant configuration and customization
+
+Parameters may contribute to Model defaults, Variant defaults, or
+Artifact-specific customization.
+
+A Model author may intentionally define two Variants whose Feature
+selections are identical and whose principal difference is one or more
+parameter values when those Variants represent distinct catalog
+offerings.
 
 For example:
 
-```text
-artwork.variants.default
+``` text
+shape.ornament
+    size = 100
 
-coaster.variants.default
-coaster.variants.ridged
-coaster.variants.lettered
-
-ornament.variants.default
-ornament.variants.small
-
-keychain.variants.default
+shape.ornament-large
+    size = 125
 ```
 
-Variants do not need to correspond across models.
+are valid distinct Variants even if size is their only material
+difference.
 
-A variant named `default` in the coaster model has no necessary relationship
-to `default` in the ornament model.
+By contrast:
 
-Likewise, the existence of a `90mm` variant in one model does not imply that
-another model should have a `90mm` variant.
-
-Variants are defined in model configuration such as `parameters.toml`.
-
-A `default` variant should normally exist or be implicitly available.
-
----
-
-## 4.6 Variant versus parameter
-
-Variants represent useful named presets or behaviors.
-
-Ordinary dimensions should not automatically become variants.
-
-For example, these may be sensible coaster variants:
-
-```text
-default
-ridged
-lettered
-ridged-lettered
+``` text
+Artifact = mydog
+Variant = shape.ornament
+customization:
+    size = 110
 ```
 
-while:
+does not create another Variant. It produces a customized Realization
+whose originating Variant remains `shape.ornament`.
 
-```text
-diameter = 90.0
+Whether a configuration difference deserves a distinct Variant is
+therefore a Model/catalog decision, not a mechanical consequence of
+changing a parameter.
+
+## 4.8 Realization
+
+A Realization is the application of a Variant to an Artifact, with or
+without Artifact-specific customizations.
+
+A Realization has:
+
+-   one Artifact;
+-   one originating Variant;
+-   the Model identified by that Variant;
+-   effective Feature selections;
+-   effective parameter values;
+-   resolved inputs.
+
+A Realization is concrete and Artifact-specific. A Variant is reusable
+and Model-owned.
+
+A Realization does not independently select a Model and a Variant. Its
+Model is determined by its originating Variant.
+
+A Realization is not an independently named reusable product
+configuration. Reusable product configurations belong to Variants.
+
+Conceptually:
+
+``` text
+mydog + shape.ornament
+            │
+            ▼
+        Realization
 ```
 
-may simply be a parameter.
+and:
 
-The distinction is:
-
-```text
-Variant
-    reusable named behavior/preset
-
-Parameter
-    value applied to a particular realization
+``` text
+mydog + shape.ornament
+        + size = 110
+            │
+            ▼
+   customized Realization
 ```
 
-A model may define dimensional variants when they are genuinely useful, but
-physical dimensions should not proliferate upstream variants unnecessarily.
+both originate from `shape.ornament`.
 
----
+### Variant and Realization invariants
 
-## 4.7 Realization
+-   Every Variant belongs to exactly one Model.
+-   A Variant's complete identity includes its Model.
+-   A Variant defines a complete constructible catalog configuration
+    through Feature selections and parameter defaults.
+-   Every Realization originates from exactly one Variant.
+-   A Realization is produced by applying that Variant to an Artifact.
+-   Artifact-specific customizations may modify effective configuration
+    without changing the originating Variant.
+-   Model and Variant are not independent selections within a
+    Realization.
+-   Realization is not a second reusable configuration or
+    catalog-definition mechanism.
+-   Distinct reusable catalog offerings are represented by distinct
+    Variants.
+-   Two Variants may legitimately differ only by parameter values such
+    as size.
 
-A realization is a particular configured invocation of a model.
+## 4.9 Stage
 
-It identifies:
+A Stage is an executable node in a Realization.
 
-* a model;
-* a variant;
-* a parameter set;
-* resolved inputs.
-
-For example, two products may both use the `ridged` coaster variant:
-
-```text
-coaster-small
-    model = coaster
-    variant = ridged
-    diameter = 90
-
-coaster-large
-    model = coaster
-    variant = ridged
-    diameter = 100
-```
-
-These are separate realizations even though they use the same model and
-variant.
-
-The distinction between variant and realization prevents model presets from
-being confused with individual manufactured configurations.
-
----
-
-## 4.8 Stage
-
-A stage is an executable node in a model realization.
-
-A stage:
-
-* consumes source inputs, configuration, and/or products;
-* performs one or more defined transformations;
-* produces one or more products.
-
-Examples from the artwork model include:
-
-```text
-prepare
-raster
-vector
-extrude
-package
-```
+A Stage consumes source inputs, configuration, and/or Products; performs
+one or more transformations; and produces one or more Products.
 
 Stages participate in a dependency graph.
 
----
+## 4.10 Independent stage execution
 
-## 4.9 Independent stage execution
+A Stage is independently executable when supplied with a complete
+resolved execution context.
 
-A stage is independently executable when supplied with a complete resolved
-execution context.
+Normal execution remains responsible for dependency traversal, selecting
+required Stages, configuration resolution, Product-state evaluation,
+resumability, dependency validation, and canonical Product locations.
 
-Normal model execution determines stage inputs, parameters, products, and
-dependencies through planning and graph resolution. The resulting stage
-execution must not, however, depend upon being invoked through that particular
-planning path.
+Explicit Stage execution executes only the requested Stage and does not
+implicitly execute dependencies.
 
-Conceptually:
+## 4.11 Stage ID
 
-```text
-model / graph planning ──┐
-                         │
-                         ▼
-                  resolved stage context
-                         │
-                         ▼
-                  stage implementation
-                         ▲
-                         │
-manual execution ────────┘
-```
+A numeric Stage ID is a presentation ordinal used for deterministic
+human-readable ordering and filesystem organization.
 
-The same stage implementation must be usable by both normal model execution
-and explicit single-stage execution.
+Stage IDs do not define Stage semantics, operation type, compatibility,
+dependencies, execution order, or relationships between Stages in
+different Models.
 
-Independent stage execution may supply explicitly:
+The semantic identity is the Stage name, not its numeric presentation.
 
-* source inputs;
-* dependency products;
-* resolved parameter values;
-* product destinations;
-* other execution context required by the stage contract.
+## 4.12 Product
 
-The stage implementation must not require implicit traversal of its model's
-dependency graph.
+A Product is a named persistent output produced by a Stage.
 
-Normal model execution remains responsible for:
+Examples:
 
-* dependency traversal;
-* selecting required stages;
-* configuration resolution;
-* product-state evaluation;
-* resumability;
-* dependency validation;
-* determining canonical product locations.
-
-Explicit stage execution executes only the requested stage. It does not
-implicitly execute dependencies. Required dependency products must already
-exist or be supplied explicitly.
-
-Stage specifications remain authoritative. Explicit execution may choose
-physical input and output locations, but it does not redefine the stage's
-declared inputs, parameters, products, or semantic identity.
-
-This capability supports:
-
-* development and debugging;
-* testing individual transformations;
-* experimentation;
-* reproducibility of individual processing steps;
-* use of registered stages as composable command-line tools.
-
-Repeated or persistent orchestration of multiple stages should normally be
-represented as a model or other declarative graph definition rather than
-creating a second independent pipeline abstraction.
-
-
----
-
-## 4.10 Stage ID
-
-A numeric stage ID is a presentation ordinal used for human-readable ordering
-and filesystem organization.
-
-For example:
-
-```text
-artwork
-    10-prepare
-    20-raster
-    30-vector
-    40-extrude
-    50-package
-
-shape
-    10-prepare
-    20-extrude
-    30-package
-```
-
-Stage IDs do not define:
-
-stage semantics;
-operation type;
-compatibility between stages;
-dependencies;
-execution order; or
-relationships between stages in different models.
-
-Two stages that perform similar operations do not need to share the same
-numeric ID. Conversely, matching numeric IDs in different models imply no
-architectural relationship.
-
-Dependencies determine required execution ordering. The numeric stage ID
-reflects a deterministic presentation ordering; it does not create that
-ordering.
-
-Stage IDs should normally be assigned sequentially according to the
-deterministic ordering of the stages within a model or realization. Gaps do
-not need to be reserved for possible future stages.
-
-Adding, removing, or reordering stages may therefore cause numeric stage IDs
-and generated filesystem locations to change. Such renumbering does not change
-the semantic identity of an existing stage.
-
-The semantic identity is the stage name:
-
-```text
-prepare
-```
-
-not its presentation:
-
-```text
-10-prepare
-```
-
-Logical product references therefore do not depend on the numeric stage ID.
-
-The filesystem materializes the resolved stage ordering for human inspection.
-It must not be used to infer model semantics or dependency relationships.
-
----
-
-## 4.11 Product
-
-A product is a named persistent output produced by a stage.
-
-Examples include:
-
-```text
+``` text
 envelope
 trace
 colors
@@ -847,129 +646,53 @@ components
 artifact
 ```
 
-A product may materialize as:
+A Product may materialize as one file, multiple files, or a manifest
+describing a collection of files.
 
-* one file;
-* multiple files;
-* a manifest describing a collection of files.
+All Products are first-class and reusable.
 
-All products are first-class and reusable.
+A Product is not the same concept as a Variant catalog offering.
 
----
+## 4.13 Product collection
 
-## 4.12 Product collection
+Variable physical files representing one logical Product should be
+described by an explicit manifest such as `products.json`.
 
-Some logical products consist of a variable number of physical files.
+Consumers should consume the logical collection rather than infer
+membership by globbing directory contents.
 
-For example:
-
-```text
-color-1.svg
-color-2.svg
-color-3.svg
-color-4.svg
-color-5.svg
-```
-
-may collectively represent:
-
-```text
-colors
-```
-
-A manifest such as:
-
-```text
-products.json
-```
-
-describes the members of the collection and their metadata.
-
-Consumers should consume the logical collection rather than infer membership
-by globbing directory contents.
-
----
+------------------------------------------------------------------------
 
 # 5. Dimensional Semantics
 
-One of the most important architectural distinctions is between relative
-geometry and physical manufacturing geometry.
-
 ## 5.1 Raster dimensions are not physical dimensions
 
-A raster product may have dimensions such as:
+Raster dimensions define raster coordinate space. They do not imply
+millimeters or manufacturing size.
 
-```text
-1024 × 1024 pixels
-```
-
-Those dimensions define a raster coordinate space.
-
-They do not imply millimeters or any other manufacturing size.
-
-DPI metadata must not accidentally determine manufacturing dimensions unless
-an operation explicitly requests that behavior.
-
----
+DPI metadata must not accidentally determine manufacturing dimensions
+unless an Operation explicitly requests that behavior.
 
 ## 5.2 Vector dimensions are normally relative
 
-Vector products produced by artwork preprocessing should preserve:
-
-* aspect ratio;
-* relative dimensions;
-* relative positions;
-* registration between components;
-* relationship to the envelope.
-
-They should normally remain independent of physical manufacturing size.
-
-For example:
-
-```text
-nydeli artwork
-    ↓
-prepare
-    ↓
-raster
-    ↓
-vector
-```
-
-should normally happen once regardless of whether the resulting artwork is
-later used in a 45 mm keychain or a 100 mm coaster.
-
----
+Artwork preprocessing should preserve aspect ratio, relative dimensions,
+relative positions, registration, and relationship to the envelope while
+remaining independent of physical manufacturing size.
 
 ## 5.3 Physical X/Y dimensions are introduced late
 
-Physical dimensions belong to the downstream operation or model that
-introduces the corresponding physical constraint.
+Physical dimensions belong to the downstream Operation or Model that
+introduces the physical constraint.
 
-For example, a coaster may define:
-
-```text
-outside diameter = 100 mm
-ridge width = 3 mm
-lettering region = 12 mm
-clearance = 2 mm
-```
-
-The coaster then determines the remaining region available for artwork.
-
-The consumed artwork is fitted into that region.
-
-The artwork itself does not need to know the coaster diameter.
-
----
+A Shape Variant may provide default dimensions for its catalog offering,
+while the Shape Model owns the semantics of how those dimensions
+constrain geometry.
 
 ## 5.4 Extrusion introduces physical Z
 
-Extrusion converts dimensioned 2D geometry into physical 3D geometry.
-
 Conceptually:
 
-```text
+``` text
 Relative2DGeometry
         │
         │ fit / transform
@@ -981,341 +704,130 @@ Dimensioned2DGeometry
 Physical3DGeometry
 ```
 
-An existing implementation may combine fitting and extrusion in one stage,
-but they remain conceptually separate operations.
-
----
-
 ## 5.5 Dimensional responsibility
 
-A useful rule is:
+Physical dimensions belong to the Operation or Model that introduces the
+corresponding physical constraint.
 
-> Physical dimensions belong to the operation or model that introduces the
-> corresponding physical constraint.
+Variant parameter defaults configure those semantics; they do not
+transfer dimensional responsibility to the Variant abstraction itself.
 
-Therefore:
-
-```text
-artwork raster
-    does not know coaster diameter
-
-artwork vector
-    does not know coaster diameter
-
-composed artwork
-    need not know coaster diameter
-
-coaster
-    knows coaster outside dimensions
-
-ridge
-    knows ridge dimensions
-
-lettering region
-    knows lettering constraints
-
-fit
-    determines available artwork dimensions
-
-extrude
-    establishes physical Z dimensions
-```
-
----
+------------------------------------------------------------------------
 
 # 6. Registered Geometry
 
-Reusable geometry must preserve registration.
-
 ## 6.1 Registered 2D geometry
 
-A registered 2D product consists of one or more geometric components sharing
-a coordinate system whose relative geometry must be preserved.
+A registered 2D Product consists of one or more geometric components
+sharing a coordinate system whose relative geometry must be preserved.
 
-Conceptually:
-
-```text
-Registered2DGeometry
-
-coordinate space
-    origin
-    bounds
-    aspect ratio
-
-envelope
-    logical outer boundary
-
-components
-    one or more registered regions
-
-metadata
-    component identifiers
-    colors/material roles
-```
-
-The physical representation may be a collection of SVG files plus a manifest.
-
----
+It may describe coordinate space, envelope, components, component
+identifiers, colors/material roles, bounds, and other metadata.
 
 ## 6.2 Registration is invariant
 
-Once components have been registered, downstream consumers must preserve:
-
-* relative position;
-* relative dimensions;
-* aspect ratio;
-* alignment;
-* component registration.
-
-A downstream consumer may apply one common transformation:
-
-```text
-T(A)
-T(B)
-T(C)
-```
-
-where the same transformation `T` is applied to every component.
-
-It must not independently transform components:
-
-```text
-T1(A)
-T2(B)
-T3(C)
-```
-
-unless modifying their internal relationship is explicitly the responsibility
-of that operation.
-
----
+Downstream consumers must preserve relative position, dimensions, aspect
+ratio, alignment, and component registration unless modifying those
+relationships is explicitly the responsibility of the Operation.
 
 ## 6.3 Consumers should treat payloads as opaque
 
-A coaster consuming registered NYDELI artwork should not need to know that the
-artwork contains:
+Consumers depend upon Product contracts rather than knowledge of artwork
+semantics.
 
-* text;
-* a blimp;
-* a gear;
-* particular colors;
-* particular paths.
+A Shape Model consuming registered artwork should not need special cases
+for portraits, houses, logos, text, or other source-specific content.
 
-It needs to know the product contract:
-
-```text
-registered geometry
-known envelope
-known coordinate system
-preserve registration
-```
-
-This allows the same downstream model to consume portraits, houses, logos,
-NYDELI artwork, or future artwork types without special cases.
-
----
+------------------------------------------------------------------------
 
 # 7. Fitting
 
-Fitting maps reusable relative geometry into a physical or relative target
-region.
+Fitting maps reusable relative geometry into a physical or relative
+target region.
 
-Conceptually:
+A consuming Model owns the region into which upstream geometry must fit.
 
-```text
-fit(
-    geometry,
-    region,
-    mode="contain",
-    preserve_aspect_ratio=True,
-)
-```
+The fit Operation computes one transformation for a registered component
+and applies it consistently to all members.
 
-A consuming model owns the region into which the upstream geometry must fit.
+Changing a Variant's physical dimensions should not require
+re-rasterizing or re-vectorizing upstream artwork.
 
-For example:
-
-```text
-100 mm coaster
-      │
-      ├── ridge
-      ├── lettering
-      ├── clearance
-      │
-      ▼
-available artwork region
-      │
-      ▼
-fit registered artwork
-```
-
-The fit operation computes one transformation for the registered component and
-applies it consistently to all of its members.
-
-Changing the coaster diameter should not require re-rasterizing or
-re-vectorizing the artwork.
-
----
+------------------------------------------------------------------------
 
 # 8. Composition
 
 Composition is recursive.
 
-## 8.1 Single-artwork composition
+Registered geometry may be embedded into generated geometry, multiple
+independent Products may be combined into a new coordinate space, and
+the resulting registered composition may itself be consumed as an opaque
+reusable component.
 
-An irregular piece of artwork may be embedded inside a regular container.
+Composition must preserve each child component's internal registration
+unless the composition Operation explicitly owns changing it.
 
-For example:
-
-```text
-registered NYDELI artwork
-          +
-        circle
-          │
-          ▼
-        embed
-          │
-          ├── artwork regions
-          ├── background region
-          └── circular envelope
-          │
-          ▼
-Registered2DGeometry
-```
-
-The resulting circular composition remains reusable.
-
-It does not inherently need to be physically dimensioned.
-
----
-
-## 8.2 Multiple-artwork composition
-
-Multiple independent products may be combined:
-
-```text
-artwork A ──┐
-artwork B ──┼──> compose
-artwork C ──┘
-                  │
-                  ▼
-         Registered2DGeometry
-```
-
-The composition establishes a new coordinate space while preserving the
-internal registration of each child component.
-
-The resulting composition can itself be consumed as an opaque registered
-component.
-
----
-
-## 8.3 Nested composition
-
-Composition may be recursive:
-
-```text
-Artwork A ─┐
-Artwork B ─┼──> Composition X
-Artwork C ─┘          │
-                      │
-Artwork D ────────────┼──> Composition Y
-                      │
-Logo E ───────────────┘
-                             │
-                             ▼
-                       manufactured object
-```
-
-A downstream consumer of `Composition X` does not need to know that it
-contains A, B, and C.
-
----
+------------------------------------------------------------------------
 
 # 9. Models as Recipes
 
 Models should increasingly be understood as recipes connecting reusable
-operations and products.
+Operations and Products.
 
-For example, a coaster should not require a monolithic
-`CircularCoasterBuilder` that understands artwork internals.
+A Model should not require a monolithic builder that understands
+upstream artwork internals.
 
-Conceptually:
+Variants configure the recipe by selecting Features and supplying
+parameter defaults. They do not replace Stages, Operations, Products, or
+dependency definitions.
 
-```text
-input Registered2DGeometry
-          │
-          ▼
-create outer boundary
-          │
-          ▼
-calculate ridge/lettering regions
-          │
-          ▼
-calculate available artwork region
-          │
-          ▼
-fit input geometry
-          │
-          ▼
-add optional geometry
-          │
-          ▼
-extrude components
-          │
-          ▼
-package
-```
-
-The same model can therefore consume many kinds of registered artwork.
-
----
+------------------------------------------------------------------------
 
 # 10. Logical Product References
 
 Products must be addressable without filesystem paths.
 
-The resolver should operate on structured logical references.
+A complete logical reference must identify enough context to resolve a
+unique persistent Product.
 
-A complete reference must identify enough context to uniquely resolve a
-particular persistent product.
+Conceptually, the context includes:
 
-The exact serialized syntax should remain centralized and testable.
-
-At minimum, the logical identity includes:
-
-```text
-artifact
-model / realization context
-stage
-product
+``` text
+Artifact
+Variant
+    └── Model is inherent in Variant identity
+Realization context
+Stage
+Product
 ```
 
-Model variant and realization information must be represented such that two
-independent realizations of the same model and variant cannot collide.
+A serialized reference may continue to include explicit Artifact, Model,
+Realization/Variant, Stage, and Product fields when that is useful to
+the implementation.
 
-During the initial refactor, existing canonical syntax may use:
+For example:
 
-```text
-artifact:model:variant:stage:product
+``` text
+nydeli:artwork:default:vector:colors
 ```
 
-where the variant uniquely identifies the realization.
+may represent the `vector:colors` Product of the Realization obtained by
+applying `artwork.default` to `nydeli`.
 
-As named realizations are introduced, the resolver may evolve to reference the
-realization directly.
+The architecture does not require a particular number of colon-separated
+fields. It requires that:
 
-The important invariant is not the number of colon-separated fields.
+1.  references are logical;
+2.  references are globally unambiguous within a Workspace;
+3.  references do not contain generated filesystem paths;
+4.  parsing and formatting are centralized;
+5.  filesystem organization may change without changing Product
+    semantics.
 
-The important invariants are:
+The existence of an engine-level Realization coordinate does not create
+an independently named reusable configuration dimension.
 
-1. references are logical;
-2. references are globally unambiguous within a workspace;
-3. references do not contain generated filesystem paths;
-4. reference parsing and formatting are centralized;
-5. filesystem organization may change without changing product semantics.
-
----
+------------------------------------------------------------------------
 
 # 11. Product Resolver
 
@@ -1324,8 +836,8 @@ locations.
 
 Conceptually:
 
-```text
-logical product reference
+``` text
+logical Product reference
           │
           ▼
       ProductRef
@@ -1335,13 +847,15 @@ logical product reference
           │
     ┌─────┴──────────────┐
     ▼                    ▼
-artifact context     ModelRegistry
+Artifact context     ModelRegistry
                           │
                           ▼
                        ModelSpec
                           │
                           ▼
-                      Variant /
+                       Variant
+                          │
+                          ▼
                      Realization
                           │
                           ▼
@@ -1357,243 +871,142 @@ artifact context     ModelRegistry
                   filesystem path
 ```
 
-The resolver answers questions such as:
+The resolver may answer which Artifact owns a Product, which Variant and
+Model define the Realization, which Stage produces it, what its
+ProductSpec is, and where it is materialized.
 
-* which artifact owns this product?
-* which model defines it?
-* which realization produces it?
-* which stage produces it?
-* what is its ProductSpec?
-* where is it materialized?
+The resolver does not determine which Stages should execute.
 
-The resolver does not determine which stages should execute.
-
-That is the planner's responsibility.
-
----
+------------------------------------------------------------------------
 
 # 12. Filesystem Layout
 
-Generated products should mirror their logical ownership.
+Generated Products should mirror logical ownership.
 
-The intended hierarchy is conceptually:
+Conceptually:
 
-```text
+``` text
 artifacts/
 └── <artifact_id>/
     ├── artifact.png
     ├── artifact.toml
     │
     └── <model>/
-        └── <realization-or-variant>/
+        └── <realization>/
             └── <stage-id>-<stage-name>/
                 └── products...
 ```
 
+Because a Realization originates from a Variant, an implementation may
+use the Variant's local name as the canonical Realization namespace when
+one Realization of that Variant exists for the Artifact.
+
 For example:
 
-```text
+``` text
 artifacts/
 └── nydeli/
-    ├── artifact.png
-    ├── artifact.toml
-    │
     └── artwork/
         └── default/
             ├── 10-prepare/
-            │   ├── envelope.svg
-            │   └── trace.svg
-            │
             ├── 20-raster/
-            │   ├── color-1.png
-            │   ├── color-2.png
-            │   └── products.json
-            │
             ├── 30-vector/
-            │   ├── color-1.svg
-            │   ├── color-2.svg
-            │   └── products.json
-            │
             ├── 40-extrude/
-            │   ├── color-1.stl
-            │   ├── color-2.stl
-            │   └── products.json
-            │
             └── 50-package/
-                └── artifact.3mf
 ```
 
-There is no special filesystem location for a final product.
+The filesystem materializes logical ownership; it does not define the
+domain model.
 
----
+------------------------------------------------------------------------
 
 # 13. Filesystem Invariants
 
 ## 13.1 One natural home
 
-Every generated product has exactly one canonical materialized location.
+Every generated Product has exactly one canonical materialized location.
 
-Do not duplicate a 3MF or any other product merely to create a convenient
-"final output" location.
-
-Publication or export mechanisms may separately collect products for user
-convenience.
-
----
+Publication or export mechanisms may separately expose convenient copies
+or links without changing canonical ownership.
 
 ## 13.2 Stage ownership
 
-Every generated product belongs to the stage that produced it.
+Every generated Product belongs to the Stage that produced it.
 
-Generated products therefore live beneath their producing stage.
+## 13.3 Realization isolation
 
----
-
-## 13.3 Model and realization isolation
-
-Products generated by separate models or realizations occupy separate
-namespaces.
-
-Two models may both have stages named:
-
-```text
-prepare
-extrude
-package
-```
-
-without filesystem ambiguity.
-
----
+Products generated by separate Realizations occupy separate namespaces.
 
 ## 13.4 Artifact-level inputs remain artifact-level
 
-Inputs and configuration belonging to the artifact as a whole remain at the
-artifact level:
-
-```text
-artifacts/nydeli/artifact.png
-artifacts/nydeli/artifact.toml
-```
-
-They should not be unnecessarily copied into every model realization.
-
----
+Inputs and configuration belonging to the Artifact as a whole remain at
+the Artifact level and should not be unnecessarily copied into every
+Realization.
 
 ## 13.5 Path construction is centralized
 
-Model and stage implementation code must not construct global artifact paths
-directly.
-
-Avoid assumptions such as:
-
-```python
-root / artifact_id / "artwork" / "default" / "30-vector"
-```
-
-inside model implementations.
+Model and Stage implementation code must not construct global Artifact
+paths directly.
 
 Filesystem policy belongs to the resolver.
 
----
+------------------------------------------------------------------------
 
 # 14. ProductSpec Paths
 
-A `ProductSpec` path should be local to its producing stage.
+A `ProductSpec` path is local to its producing Stage.
 
 For example:
 
-```python
-StageSpec(
-    id=10,
-    name="prepare",
-    products=(
-        ProductSpec(
-            name="trace",
-            path="trace.svg",
-        ),
-        ProductSpec(
-            name="envelope",
-            path="envelope.svg",
-        ),
-    ),
-)
-```
-
-Avoid repeating stage ownership:
-
-```python
+``` python
 ProductSpec(
     name="envelope",
-    path="prepare/envelope.svg",
+    path="envelope.svg",
 )
 ```
 
-The resolver already knows the artifact, model, realization, and stage.
+rather than repeating global Artifact, Model, Realization, or Stage
+ownership in the path.
 
----
+------------------------------------------------------------------------
 
 # 15. Defined Graph
 
-The Defined Graph represents everything the system knows how to produce for an
-artifact.
+The Defined Graph represents everything the system knows how to produce.
 
 It is derived from:
 
-```text
-registered models
+``` text
+registered Models
 +
-model-scoped variants
+Model-scoped Features
 +
-stages
+Model-scoped Variants
 +
-products
+Stages
++
+Products
 +
 declared dependencies
 ```
 
-The Defined Graph exists independently of what `artifact.toml` requests.
+The Defined Graph exists independently of Artifact-specific
+customization.
 
-Initially, the system should construct and validate this complete graph.
+It must support validation of unknown Models, Features, Variants,
+Stages, Products, missing producers, duplicate identities, invalid
+dependencies, and cycles.
 
-This permits early detection of:
-
-* unknown models;
-* unknown variants;
-* unknown stages;
-* unknown products;
-* duplicate identities;
-* missing producers;
-* invalid dependencies;
-* dependency cycles;
-* invalid cross-artifact references.
-
----
+------------------------------------------------------------------------
 
 # 16. Product Catalog
 
-The Product Catalog is the catalog view of the Defined Graph.
+The Product Catalog is the technical catalog view of the Defined Graph.
 
-It describes everything the system knows how to produce.
+It describes persistent Products the system knows how to produce and may
+track their states:
 
-For example:
-
-```text
-nydeli artwork envelope
-nydeli artwork raster colors
-nydeli artwork vector colors
-nydeli artwork extruded components
-nydeli artwork 3MF
-nydeli coaster
-nydeli ornament
-nydeli keychain
-```
-
-Catalog membership does not mean that the product currently exists.
-
-A catalog product may be:
-
-```text
+``` text
 DEFINED
 ABSENT
 INCOMPLETE
@@ -1602,154 +1015,118 @@ STALE
 CURRENT
 ```
 
-The Product Catalog is both:
+This technical Product Catalog is distinct from the catalog of Variant
+offerings exposed by a Model.
 
-* a manufacturing capability catalog;
-* an inventory of reusable manufacturing assets.
+A Variant catalog answers:
 
----
+> Which complete configurations may be applied to an Artifact?
+
+The Product Catalog answers:
+
+> Which persistent Stage Products can the build graph produce or reuse?
+
+These concepts must not be conflated.
+
+------------------------------------------------------------------------
 
 # 17. Offering Catalog
 
-Commercial or external presentation is separate from technical product
+Commercial or external presentation is separate from technical Product
 identity.
 
-Any ProductSpec may optionally carry catalog metadata indicating that it is
-intended for:
+A Model's Variants provide natural constructible catalog configurations
+such as:
 
-* customer sale;
-* download;
-* publication;
-* another external use.
-
-For example, the following may all be technical products:
-
-```text
-envelope
-vector colors
-extruded components
-3MF
+``` text
+shape.ornament
+shape.ornament-large
+shape.coaster
+shape.keychain
 ```
 
-while only the 3MF is currently offered for customer sale.
+External presentation may attach additional metadata such as title,
+description, price, availability, publication status, or customer-facing
+imagery without changing Variant, Realization, Stage, or Product
+identity.
 
-Alternatively, vector artwork could later be sold as a digital product without
-changing the build architecture.
+Likewise, individual technical Products may be published or sold without
+becoming architecturally privileged.
 
-Therefore:
-
-```text
-Product Catalog
-      │
-      │ offering metadata
-      ▼
-Offering Catalog
-```
-
-The fact that a product is customer-facing does not make it architecturally
-privileged.
-
----
+------------------------------------------------------------------------
 
 # 18. Requested Graph
 
-`artifact.toml` primarily describes which model realizations or products should
-be produced for a particular artifact and any artifact-specific parameter
-overrides.
+Artifact configuration describes source material, optional Variant
+customizations, explicit advanced dependency bindings, and any requested
+build scope.
 
-Routine configuration should remain simple.
+Routine Artifact configuration must not need to redundantly redefine the
+Model's Variant catalog.
 
-For example, the common case should eventually be expressible with
-configuration conceptually similar to:
-
-```toml
-[build]
-artwork = true
-coaster = true
-ornament = true
-keychain = true
-```
-
-More detailed configurations may define named realizations:
-
-```toml
-[products.coaster-small]
-model = "coaster"
-variant = "ridged"
-diameter = 90.0
-
-[products.coaster-large]
-model = "coaster"
-variant = "ridged"
-diameter = 100.0
-```
-
-The user should not need to manually wire ordinary model dependencies.
-
-Models know their normal product requirements.
-
-Explicit ProductRefs remain available for advanced overrides and composition.
-
----
-
-# 19. Realization Graph
-
-The Realization Graph consists of:
-
-```text
-requested products
-+
-their transitive dependencies
-```
-
-It represents everything that must be available to satisfy the artifact's
-requested outputs.
-
-Products in the Defined Graph that are not requested and are not dependencies
-remain unrealized.
-
-For example, the artwork model may define:
-
-```text
-prepare
-raster
-vector
-extrude
-package
-```
-
-but a coaster may require only the artwork's vector geometry.
-
-In that case:
-
-```text
-prepare    realized
-raster     realized
-vector     realized
-extrude    not realized
-package    not realized
-```
-
-unless another requested product requires them.
-
----
-
-# 20. Execution Plan
-
-The Realization Graph describes what must be available.
-
-The Execution Plan describes what must actually execute now.
+Given required Artifact inputs, the system must be able to discover the
+Model-owned Variants that are available for application to that
+Artifact.
 
 Conceptually:
 
-```text
+``` text
+Artifact: mydog
+source: mydog.png
+
+Shape Variants:
+    ornament
+    ornament-large
+    coaster
+    keychain
+```
+
+may produce four Realizations without requiring four independently named
+Realization definitions in `artifact.toml`.
+
+Artifact configuration may customize a Variant application. The exact
+configuration syntax is an implementation concern, but its semantics
+must remain:
+
+``` text
+Artifact + Variant + optional customization -> Realization
+```
+
+Explicit ProductRefs remain available for advanced composition and
+producer selection.
+
+------------------------------------------------------------------------
+
+# 19. Realization Graph
+
+A Realization Graph describes the Product dependency closure required
+for one concrete Realization.
+
+A Realization has already been established by applying one Variant to
+one Artifact, including any Artifact-specific customization.
+
+The Realization Graph therefore does not define the Variant or create a
+second configuration identity. It determines which Products and Stages
+are required to satisfy the requested outputs of that concrete
+Realization.
+
+Products in the Defined Graph that are not requested and are not
+dependencies remain unrealized.
+
+------------------------------------------------------------------------
+
+# 20. Execution Plan
+
+Conceptually:
+
+``` text
 Defined Graph
       │
-      │ artifact configuration
+      │ apply Variant to Artifact
       ▼
-Requested Graph
+Realization
       │
-      │ dependency closure
+      │ requested Products + dependency closure
       ▼
 Realization Graph
       │
@@ -1758,28 +1135,29 @@ Realization Graph
 Execution Plan
 ```
 
-If required products are already current, their producing stages do not need
-to execute again.
+The Execution Plan describes what must actually execute now.
 
-Configuration validation follows the Execution Plan.
+If required Products are already current, their producing Stages do not
+need to execute again.
 
-Resolved configuration required by stages that will execute must be valid for those stages. Configuration used only to produce an already-current product does not need to remain valid merely because that product is consumed by the current build.
+Configuration validation follows required execution. Configuration
+required by Stages that execute must be valid for those Stages.
+Historical configuration used only to produce an already-current
+reusable Product need not remain valid merely because that Product is
+consumed.
 
-A current persistent product is consumed according to its product contract. Reusing that product does not require revalidating the historical configuration, source inputs, or upstream stages that originally produced it.
+The planner determines validation scope. Model-specific validation rules
+remain Model-owned.
 
-The planner determines which stages must execute and therefore which resolved configuration participates in execution validation. Model-specific configuration rules remain owned by the applicable model rather than by the generic planner.
-
-
----
+------------------------------------------------------------------------
 
 # 21. Product State and Resumability
 
-Build state exists at the product/stage level rather than only at the artifact
-level.
+Build state exists at the Product/Stage level.
 
 Useful states include:
 
-```text
+``` text
 ABSENT
 INCOMPLETE
 INVALID
@@ -1787,387 +1165,209 @@ STALE
 CURRENT
 ```
 
-## ABSENT
+A subsequent build should reuse current Products.
 
-The product has not been generated.
+Variant or Artifact customization changes that affect a Product's
+effective inputs must participate in freshness evaluation for the
+Products they affect.
 
-## INCOMPLETE
-
-A previous execution began but did not successfully complete.
-
-## INVALID
-
-Completion metadata exists, but one or more declared products are missing or
-invalid.
-
-## STALE
-
-The product was successfully generated but relevant inputs, dependencies,
-configuration, or operation versions have changed.
-
-## CURRENT
-
-The product exists and corresponds to the current dependency and
-configuration state.
-
-A subsequent build should reuse current products.
-
----
+------------------------------------------------------------------------
 
 # 22. Stage Completion
 
 Directory existence does not imply successful completion.
 
-For example:
+Completion metadata or manifests should be written only after declared
+Products have been successfully generated and validated.
 
-```text
-40-extrude/
-```
-
-may exist because an earlier build was interrupted.
-
-Likewise, the presence of some expected files does not prove the stage
-completed.
-
-For stages producing dynamic collections, a manifest such as:
-
-```text
-products.json
-```
-
-may act as the authoritative completion record.
-
-Where practical, completion metadata should be written only after all stage
-products have been successfully generated and validated.
-
----
+------------------------------------------------------------------------
 
 # 23. Manifests
 
-Stages producing variable product collections should explicitly describe their
-outputs.
+Stages producing variable Product collections should explicitly describe
+their outputs.
 
-For example:
+Consumers should not infer Product membership by globbing.
 
-```text
-30-vector/
-├── color-1.svg
-├── color-2.svg
-├── color-3.svg
-├── color-4.svg
-├── color-5.svg
-└── products.json
-```
+Manifests may include logical identifiers, paths, component roles,
+colors, coordinate information, bounds, dimensions, hashes, relevant
+configuration, Operation versions, and generation metadata.
 
-Consumers should not infer products by globbing:
-
-```text
-*.svg
-```
-
-A manifest may eventually contain:
-
-* logical product identifiers;
-* paths;
-* component roles;
-* colors/material roles;
-* coordinate-system information;
-* bounds;
-* dimensions;
-* hashes;
-* source dependency hashes;
-* relevant parameter values;
-* operation/tool versions;
-* generation metadata.
-
-Manifests should support determining both product membership and freshness.
-
----
+------------------------------------------------------------------------
 
 # 24. Source Analysis
 
-Source images may have different preprocessing requirements.
+Source analysis may identify properties useful for preprocessing, such
+as alpha, background transparency, silhouette, aspect ratio, edge
+contact, or approximate color count.
 
-Examples include:
+Automatic analysis must not silently control the entire build graph.
 
-```text
-transparent irregular artwork
-opaque photograph
-portrait requiring background removal
-already-regular artwork
-logo or line art
-```
+Configuration and Model policy must be able to override analysis.
 
-Source analysis may eventually identify properties such as:
+------------------------------------------------------------------------
 
-```text
-alpha present
-background transparent
-silhouette irregular
-aspect ratio
-edge contact
-approximate color count
-```
+# 25. Reference Scenario: Artwork
 
-Analysis may help choose or parameterize preprocessing operations.
+A source image may be interpreted once:
 
-Automatic classification should not silently control the entire pipeline.
-
-Configuration must be able to override analysis when necessary.
-
----
-
-# 25. Reference Scenario: NYDELI Artwork
-
-The NYDELI source image has a transparent background and an irregular
-silhouette.
-
-The artwork model may produce:
-
-```text
-nydeli.png
+``` text
+mydog.png
+    │
+    ▼
+artwork.default
     │
     ▼
 prepare
-    ├── envelope
-    └── trace
-         │
-         ▼
-       raster
-         │
-         ▼
-       vector
-         │
-         ▼
+    │
+    ▼
+raster
+    │
+    ▼
+vector
+    │
+    ▼
 registered relative geometry
 ```
 
-The vector geometry is dimension-independent.
+The resulting geometry is dimension-independent and reusable by
+downstream Realizations.
 
-It preserves the relationships between the color regions and envelope.
+The artwork Model may also define extrusion and package Products, but
+those Products need not be realized when a downstream consumer requires
+only vector geometry.
 
-It may subsequently be used to create:
-
-* standalone artwork;
-* circular artwork;
-* a coaster;
-* an ornament;
-* a keychain;
-* other products.
-
-The artwork model may also define extrusion and package products.
-
-Those products need not be realized when downstream consumers require only
-the vector geometry.
-
----
+------------------------------------------------------------------------
 
 # 26. Reference Scenario: Circular Embedded Artwork
 
-NYDELI artwork may be embedded within a larger circle:
+Registered artwork may be embedded within generated geometry such as a
+circle.
 
-```text
-registered NYDELI geometry
-           +
-         circle
-           │
-           ▼
-         embed
-           │
-           ├── artwork
-           ├── background
-           └── circular envelope
-           │
-           ▼
-  registered circular geometry
+The resulting registered composition remains reusable and need not yet
+have a physical manufacturing diameter.
+
+A downstream Shape Variant determines the physical constraints it
+requires.
+
+------------------------------------------------------------------------
+
+# 27. Reference Scenario: Shape Variants
+
+A Shape Model may define reusable Features:
+
+``` text
+artwork
+outer-ridge
+inner-ridge
+lettering
+hanger
 ```
 
-The resulting disc is still reusable geometry.
+and complete Variants:
 
-It need not yet have a physical manufacturing diameter.
+``` text
+shape.ornament
+    features = artwork, outer-ridge, inner-ridge, lettering, hanger
+    size = 100
 
-A downstream coaster determines how large that disc becomes.
+shape.ornament-large
+    features = artwork, outer-ridge, inner-ridge, lettering, hanger
+    size = 125
 
----
+shape.coaster
+    features = artwork, outer-ridge
+    size = 100
 
-# 27. Reference Scenario: Coaster
-
-A coaster consumes registered geometry.
-
-It does not need to understand the artwork payload.
-
-Conceptually:
-
-```text
-Registered2DGeometry
-          │
-          ▼
-  coaster outer boundary
-          │
-          ├── optional ridge
-          ├── optional lettering
-          ├── clearances
-          │
-          ▼
-  available artwork region
-          │
-          ▼
-   fit registered input
-          │
-          ▼
-   dimensioned geometry
-          │
-          ▼
-       extrude
-          │
-          ▼
-       package
+shape.keychain
+    features = artwork, outer-ridge, hanger
+    size = 45
 ```
 
-For a 100 mm coaster, the consumed artwork may become:
+These examples are conceptual; exact Feature names and parameter
+semantics belong to the Shape Model's `DEFINITION.md`.
 
-```text
-96 mm
-90 mm
-72 mm
+Applying these Variants to Artifact `mydog` yields distinct
+Realizations:
+
+``` text
+mydog + shape.ornament
+mydog + shape.ornament-large
+mydog + shape.coaster
+mydog + shape.keychain
 ```
 
-depending on whether the coaster contains ridges, lettering, or other
-features.
+No Artifact-specific size selection is required merely to make these
+Variants buildable.
 
-The input artwork does not change.
+------------------------------------------------------------------------
 
-Only the downstream fitting and manufacturing geometry change.
+# 28. Reference Scenario: Customized Variant
 
----
+Suppose `shape.ornament` defaults to 100 mm.
 
-# 28. Reference Scenario: Ornament and Keychain
+Artifact `mydog` may customize its application:
 
-The same irregular or registered artwork can feed both ornament and keychain
-models.
-
-For example:
-
-```text
-                    registered artwork
-                           │
-               ┌───────────┴───────────┐
-               ▼                       ▼
-           ornament                 keychain
-               │                       │
-        determine bounds        determine bounds
-        add hanger              add hanger
-        fit artwork             fit artwork
-        extrude                 extrude
-               │                       │
-               ▼                       ▼
-              3MF                     3MF
+``` text
+shape.ornament
+    size = 110
+    lettering = disabled
 ```
 
-The upstream raster and vector work is shared.
+The resulting Realization remains an application of `shape.ornament`.
 
-The models introduce their own physical dimensions.
+Customization does not create a new Variant.
 
----
+If the Model author intentionally wants a reusable 110 mm catalog
+offering, that offering may instead be defined as another Variant.
+
+------------------------------------------------------------------------
 
 # 29. Reference Scenario: Multiple Artwork Components
 
-A larger object may contain several independent pieces of artwork.
+A larger object may contain several independent pieces of artwork from
+the same or different Artifacts.
 
-For example:
+Only the upstream Products actually required by the composition are
+realized. Already-current Products are reused.
 
-```text
-john artwork ────┐
-                 │
-nydeli artwork ──┼──> composition
-                 │
-skylar artwork ──┘
-                         │
-                         ▼
-                registered composite
-                         │
-                         ▼
-                    large coaster
-```
-
-This may cross artifact boundaries.
-
-Building the composite may require:
-
-```text
-john artwork through vector
-nydeli artwork through vector
-skylar artwork through vector
-```
-
-It should not require any of their standalone artwork extrusion or package
-stages unless those products are separately requested.
-
-If the vector products are already current, composition begins from those
-existing manufacturing assets.
-
----
+------------------------------------------------------------------------
 
 # 30. Cross-Model Dependencies
 
-Models may consume products generated by other models.
+Models may consume Products generated by other Models.
 
-A consumer depends upon the required product, not completion of the producer's
-entire model.
+A consumer depends upon the required Product, not completion of the
+producer's entire Model or Realization.
 
-Conceptually:
-
-```text
-artwork
-   │
-   ▼
-registered geometry
-   │
-   ├──────────> coaster
-   ├──────────> ornament
-   └──────────> keychain
-```
-
----
+------------------------------------------------------------------------
 
 # 31. Cross-Artifact Dependencies
 
-Dependencies may cross artifact boundaries.
+Dependencies may cross Artifact boundaries.
 
-For example:
-
-```text
-john:artwork ──────┐
-                   │
-nydeli:artwork ────┼──> family-2026 composition
-                   │
-skylar:artwork ────┘
-```
-
-`artifact_id` is therefore one coordinate in a workspace-wide dependency
+`artifact_id` is therefore one coordinate in a Workspace-wide dependency
 graph.
 
----
-
+------------------------------------------------------------------------
 
 # 32. Configuration Versus Dependency Wiring
 
-Model specifications declare the product dependencies that stages know how to
-consume.
+Model specifications declare Product dependencies that Stages know how
+to consume.
 
-A declared product dependency identifies the producer model, stage, and product
-contract independently of any particular producer artifact or realization.
+A declared Product dependency identifies a producer contract
+independently of a particular producer Artifact or Realization.
 
-A product dependency binding associates that declared dependency with a
-concrete producer artifact and realization for a particular configured
-artifact.
+A Product dependency binding associates that dependency with a concrete
+producer Artifact and Realization.
 
 Conceptually:
 
-```text
+``` text
 ProductDependencySpec
         │
-        │ configured for an artifact realization
+        │ bound for a consuming Realization
         ▼
 ProductDependencyBinding
         │
@@ -2175,52 +1375,22 @@ ProductDependencyBinding
 ProductRef
 ```
 
-A declared product dependency does not by itself require that every realization
-of the consuming model use that dependency.
+A declared dependency does not require every Variant or Realization of
+the consumer Model to use it.
 
-An unbound product dependency does not participate in that realization's
-dependency closure.
+Feature and Variant semantics may determine whether a dependency
+participates, but generic dependency infrastructure must not contain
+Model-specific rules.
 
-A bound product dependency participates normally in dependency resolution and
-causes the required producer product and its transitive prerequisites to become
-part of the Realization Graph.
+Normal users should not need to manually wire routine internal
+dependencies.
 
-This distinction allows a model to describe its complete potential dependency
-relationships while individual artifact realizations use only the relationships
-required by their configured composition.
+Explicit logical Product references remain available for advanced
+composition and producer selection.
 
-Configuration describes what should be produced and how model behavior should
-be parameterized.
+Generated filesystem paths must not be used as dependency identity.
 
-Normal users should not need to manually specify routine internal dependencies.
-
-Prefer:
-
-```toml
-[products.coaster]
-model = "coaster"
-variant = "ridged"
-diameter = 100.0
-```
-
-where ordinary configuration can establish the expected registered-artwork
-binding without requiring the user to understand the internal dependency graph.
-
-Explicit logical product references remain available for advanced composition
-and producer selection:
-
-```toml
-source = "another-artifact:artwork:default:vector:colors"
-```
-
-Avoid generated filesystem paths:
-
-```toml
-source = "artifacts/another-artifact/artwork/default/30-vector/color-1.svg"
-```
-
-
----
+------------------------------------------------------------------------
 
 # 33. Separation of Responsibilities
 
@@ -2228,507 +1398,465 @@ source = "artifacts/another-artifact/artwork/default/30-vector/color-1.svg"
 
 Responsible for:
 
-* loading configuration;
-* validating values;
-* applying defaults;
-* resolving variants;
-* resolving overrides;
-* tracking provenance.
+-   loading configuration;
+-   applying defaults;
+-   resolving Variant defaults;
+-   applying Artifact-specific customizations;
+-   validating resolved values;
+-   tracking provenance.
 
-It does not execute geometry transformations.
-
----
-
-## Printer colors and color catalog
-
-`printer_colors` is an ordered printer configuration. Each position corresponds
-to the printer head at the same ordinal position. The first entry identifies
-the color loaded on printer head 1, the second entry identifies the color
-loaded on printer head 2, and so on.
-
-Duplicate color names are permitted because multiple printer heads may contain
-the same color.
-
-`library_colors` identifies colors physically owned and available for
-installation on a printer.
-
-Color definitions are maintained separately as catalog data. A color name may
-identify metadata such as manufacturer, filament name, and RGB representation.
-
-The color catalog is reference data rather than an ordinary resolved parameter.
-`printer_colors` and `library_colors` are resolved configuration parameters
-whose color names reference entries in the color catalog. Neither parameter is
-required to be a subset of the other.
-
-Models may reference colors by semantic color name and resolve those names
-through the shared color catalog. Model-specific rules governing color
-selection, assignment, inheritance, matching, and use belong in the model's
-`DEFINITION.md`.
-
-Color analysis or recommendation does not implicitly modify resolved
-configuration.
-
-
----
+It does not define Model-specific Feature semantics or execute geometry.
 
 ## Model registry
 
 Responsible for:
 
-* discovering models;
-* registering ModelSpec definitions;
-* exposing model metadata;
-* exposing available variants.
-
-It does not contain model-specific geometry algorithms.
-
----
+-   discovering Models;
+-   registering ModelSpec definitions;
+-   exposing Model metadata;
+-   exposing Features;
+-   exposing Variants.
 
 ## Model specification
 
 Responsible for declaring:
 
-* inputs;
-* parameters;
-* variants;
-* stages;
-* dependencies;
-* products;
-* product contracts.
+-   inputs;
+-   parameters;
+-   Features;
+-   Variants;
+-   Stages;
+-   dependencies;
+-   Products;
+-   Product contracts.
 
-It describes what a model knows how to produce.
-
----
+A Variant definition is part of the Model specification.
 
 ## Product resolver
 
 Responsible for:
 
-* parsing logical references;
-* resolving artifacts;
-* resolving models;
-* resolving realizations;
-* resolving stages;
-* resolving products;
-* constructing canonical filesystem locations.
+-   parsing logical references;
+-   resolving Artifacts;
+-   resolving Realizations and their originating Variants/Models;
+-   resolving Stages;
+-   resolving Products;
+-   constructing canonical filesystem locations.
 
 It does not decide what must execute.
 
----
-
 ## Build graph builder
 
-Responsible for constructing the Defined Graph.
-
-Initially, it should construct the complete available graph for an artifact so
-that definitions can be inspected and validated.
-
----
+Responsible for constructing and validating the Defined Graph.
 
 ## Build planner
 
 Responsible for:
 
-* selecting requested products;
-* computing dependency closure;
-* constructing the Realization Graph;
-* evaluating product state;
-* constructing the Execution Plan.
-
-It does not perform model-specific geometry transformations.
-
----
+-   selecting requested Products;
+-   computing dependency closure;
+-   constructing Realization Graphs;
+-   evaluating Product state;
+-   constructing Execution Plans.
 
 ## Stage runner
 
-Responsible for:
-
-* executing planned stages;
-* invoking stage implementations;
-* validating execution results;
-* recording products;
-* recording completion state.
-* reporting structured execution events.
-
----
+Responsible for executing planned Stages, validating execution results,
+recording Products and completion state, and reporting structured
+execution events.
 
 ## Stage implementation
 
-Responsible for:
-
-* performing model-specific transformations;
-* consuming resolved inputs;
-* generating declared products.
+Responsible for performing Model-specific transformations, consuming
+resolved inputs, and generating declared Products.
 
 Stage implementations must not encode global filesystem policy.
 
----
+## Printer colors and color catalog
+
+Printer and library color configuration, color reference data, and
+Model-specific color semantics remain separate from the
+Variant/Realization distinction.
+
+Models may reference shared color catalog data. Model-specific color
+selection, assignment, inheritance, matching, and use belong to the
+applicable Model definition.
+
+------------------------------------------------------------------------
 
 # 34. Architectural Invariants
 
-The following are core invariants.
+## Invariant 1 --- First-class Products
 
-## Invariant 1 — First-class products
+Every persistent generated output is a Product.
 
-Every persistent generated output is a product.
+## Invariant 2 --- No privileged final Product
 
-A 3MF is not inherently more important than an SVG, raster mask, envelope,
-mesh, or manifest.
+A 3MF is not architecturally privileged.
 
----
+## Invariant 3 --- One canonical home
 
-## Invariant 2 — No privileged final product
+Every generated Product has exactly one canonical materialized location.
 
-The build engine does not require models to have a distinguished final
-product.
+## Invariant 4 --- Stage ownership
 
----
+Every generated Product belongs to the Stage that generated it.
 
-## Invariant 3 — One canonical home
+## Invariant 5 --- Logical references
 
-Every generated product has exactly one canonical materialized location.
+Products are referenced logically rather than through generated
+filesystem paths.
 
----
+## Invariant 6 --- Central resolution
 
-## Invariant 4 — Stage ownership
-
-Every generated product belongs to the stage that generated it.
-
----
-
-## Invariant 5 — Logical references
-
-Products are referenced logically rather than through generated filesystem
-paths.
-
----
-
-## Invariant 6 — Central resolution
-
-The resolver is the authority for mapping logical identity to physical
+The resolver is authoritative for mapping logical identity to physical
 location.
 
----
+## Invariant 7 --- Dependency-driven execution
 
-## Invariant 7 — Dependency-driven execution
+Dependencies determine execution order. Stage IDs and filesystem
+ordering do not.
 
-Dependencies determine execution order.
+## Invariant 8 --- Complete definitions are validatable
 
-Stage IDs and filesystem ordering do not.
-
----
-
-## Invariant 8 — Complete definitions are validatable
-
-The complete set of available model, variant, stage, product, and dependency
-definitions must be validatable even when only a subset is requested.
-
----
-
-## Invariant 9 — Minimal realization
-
-Only the dependency closure necessary for requested products needs to be
+The complete set of Model, Feature, Variant, Stage, Product, and
+dependency definitions must be validatable even when only a subset is
 realized.
 
----
+## Invariant 9 --- Minimal realization
 
-## Invariant 10 — Current products are reusable
+Only the dependency closure necessary for requested Products needs to be
+realized.
 
-Current products may satisfy dependencies without rerunning their producers.
+## Invariant 10 --- Current Products are reusable
 
----
+Current Products may satisfy dependencies without rerunning their
+producers.
 
-## Invariant 11 — Cross-model reuse
+## Invariant 11 --- Cross-Model reuse
 
-Products may be consumed by other models.
+Products may be consumed by other Models.
 
----
+## Invariant 12 --- Cross-Artifact reuse
 
-## Invariant 12 — Cross-artifact reuse
+Products may be consumed by other Artifacts.
 
-Products may be consumed by other artifacts.
+## Invariant 13 --- Dimension independence
 
----
+Reusable preprocessing geometry should remain independent of physical
+manufacturing dimensions wherever practical.
 
-## Invariant 13 — Dimension independence
+## Invariant 14 --- Late dimensionalization
 
-Preprocessing, rasterization, and vectorization products should remain
-independent of physical manufacturing dimensions wherever practical.
+Physical dimensions are introduced by the downstream Model or Operation
+that owns the corresponding constraint.
 
-Pixel dimensions and SVG coordinate dimensions do not imply manufacturing
-size.
+## Invariant 15 --- Registration preservation
 
----
+Registered geometry remains registered unless an Operation explicitly
+owns changing those relationships.
 
-## Invariant 14 — Late dimensionalization
+## Invariant 16 --- Opaque consumption
 
-Physical X/Y dimensions are introduced by the downstream operation or model
-that requires them.
+Consumers depend on Product contracts rather than source-specific
+payload semantics.
 
-Physical Z dimensions are introduced by extrusion or another explicitly 3D
-operation.
+## Invariant 17 --- Recursive composition
 
----
+Compatible registered geometry may be recursively composed and reused.
 
-## Invariant 15 — Registration preservation
+## Invariant 18 --- Model-scoped Features
 
-Downstream consumers must preserve the relative dimensions, positions, aspect
-ratio, and registration of registered geometry unless explicitly responsible
-for modifying those relationships.
+Features belong to Models and express optional composable capabilities.
 
----
+## Invariant 19 --- Model-scoped Variant identity
 
-## Invariant 16 — Opaque consumption
+Every Variant belongs to exactly one Model. Its complete identity
+includes that Model.
 
-A consumer should depend upon a product contract rather than knowledge of the
-artwork's internal semantic payload.
+Selecting a Variant therefore selects its Model.
 
----
+## Invariant 20 --- Variant completeness
 
-## Invariant 17 — Recursive composition
+A Variant is a complete constructible product configuration consisting
+of Feature selections and parameter defaults, together with applicable
+Model defaults.
 
-Compatible registered geometry may be composed into new registered geometry,
-which can itself be reused as an opaque component.
+Artifact-specific customization must not be required merely to make a
+Variant buildable when its required Artifact inputs are present.
 
----
+## Invariant 21 --- Realization is application
 
-## Invariant 18 — Model-scoped variants
+A Realization is the application of one Variant to one Artifact, with or
+without Artifact-specific customizations.
 
-Variants belong to models.
+## Invariant 22 --- Variant is not Realization
 
-Variants are not globally shared merely because they have the same name.
+A Variant is reusable and Model-owned.
 
----
+A Realization is concrete and Artifact-specific.
 
-## Invariant 19 — Variant is not realization
+Realization must not become a second reusable configuration or catalog
+definition mechanism.
 
-A variant is a reusable model preset.
+## Invariant 23 --- Customization preserves originating Variant
 
-A realization is a particular configured invocation of that model and variant.
+Artifact-specific customization may alter effective Feature selections
+or parameter values without changing the originating Variant.
 
----
+## Invariant 24 --- Catalog differences may be dimensional
 
-## Invariant 20 — Manifests define collections
+Distinct Variants may legitimately differ only by parameter values such
+as physical size when they represent intentionally distinct catalog
+offerings.
 
-Variable product collections are explicitly described by manifests rather
-than inferred from directory contents.
+## Invariant 25 --- Manifests define collections
 
----
+Variable Product collections are explicitly described rather than
+inferred from directory contents.
 
-## Invariant 21 — Directory existence is not completion
+## Invariant 26 --- Directory existence is not completion
 
-A stage directory existing does not imply that the stage completed
-successfully.
+A Stage directory existing does not imply successful completion.
 
----
-
-## Invariant 22 — No model-specific engine behavior
+## Invariant 27 --- No Model-specific engine behavior
 
 The generic engine must not special-case the geometry or semantics of a
-particular model.
+particular Model.
 
----
+## Invariant 28 --- No global path construction in Models
 
-## Invariant 23 — No global path construction in models
+Model implementations do not construct global Artifact filesystem paths.
 
-Model implementations do not construct global artifact filesystem paths.
+## Invariant 29 --- Common workflows remain simple
 
----
+Architectural flexibility must not require users to manually configure
+routine dependency wiring or redundantly enumerate the Model's Variant
+catalog.
 
-## Invariant 24 — Common workflows remain simple
+## Invariant 30 --- Observable, presentation-independent execution
 
-Architectural flexibility must not require users to manually configure the
-dependency graph for routine workflows.
+Execution semantics must not depend upon presentation or observer
+policy.
 
----
+## Invariant 31 --- Validation follows required execution
 
-## Invariant 25 — Observable, presentation-independent execution
+Configuration validation applies to Stages required by the Execution
+Plan.
 
-Engine operations may emit structured semantic execution events.
+Historical configuration and source inputs used only to produce an
+already-current persistent Product do not need to remain valid for that
+Product to be reused.
 
-Execution semantics must not depend upon logging configuration, CLI
-verbosity, progress rendering, threading, or user-interface policy.
-
-## Invariant 26 — Validation follows required execution
-
-Configuration validation applies to the stages required by the Execution Plan.
-
-Configuration and source inputs used only to produce an already-current persistent product do not need to remain valid in order for that product to be reused.
-
-The planner determines the scope of required execution; model-specific validation rules remain model-owned.
-
----
+------------------------------------------------------------------------
 
 # 35. Architectural Acceptance Tests
 
-A proposed architecture or refactor should be able to represent the following
-without special cases.
+A proposed architecture or refactor should be able to represent the
+following without special cases.
 
-### Case A — Standalone artwork
+### Case A --- Standalone artwork
 
-One PNG is converted through prepare, raster, vector, extrusion, and packaging
-and printed as artwork.
+One PNG is converted through artwork preparation, rasterization,
+vectorization, and, when requested, extrusion and packaging.
 
-### Case B — Irregular ornament
+### Case B --- Shape ornament Variant
 
-The same artwork's relative geometry is fitted to ornament constraints, a
-hanger is added, and the result is extruded and packaged.
+The same registered artwork is applied to `shape.ornament`, whose
+Feature selection and defaults define a complete ornament offering.
 
 The standalone artwork 3MF is not required.
 
-### Case C — Keychain
+### Case C --- Shape keychain Variant
 
-The same registered artwork is reused at a smaller physical size with
-keychain-specific geometry.
+The same registered artwork is reused through `shape.keychain` at a
+smaller physical size with keychain Features.
 
-Rasterization and vectorization are not repeated merely because the physical
-size changes.
+Rasterization and vectorization are not repeated merely because the
+physical size changes.
 
-### Case D — Circular coaster
+### Case D --- Shape coaster Variant
 
-Irregular artwork is embedded in a circular composition with a generated
-background.
+The same registered artwork is used through `shape.coaster`, which
+determines its physical dimensions and selected Features.
 
-The coaster determines its outside diameter and fits the registered
-composition into the remaining usable region.
+### Case E --- Multiple catalog Variants
 
-### Case E — Decorated coaster
+Given Artifact `mydog` and the required source input, the system can
+discover and realize:
 
-The same circular composition is used in a coaster with optional base, ridge,
-lettering region, and other manufacturing geometry.
+``` text
+shape.ornament
+shape.ornament-large
+shape.coaster
+shape.keychain
+```
 
-The artwork remains opaque to the coaster.
+without requiring `artifact.toml` to redefine each Variant's sizes or
+Features.
 
-### Case F — Multiple-artwork composition
+### Case F --- Customized Variant application
 
-Registered artwork from multiple artifacts is composed into a larger
-registered design and subsequently used in a manufactured object.
+Artifact `mydog` may customize `shape.ornament` without creating or
+renaming the originating Variant.
 
-Only the upstream products actually required by the composition are realized.
+### Case G --- Multiple-artwork composition
 
-If a proposed resolver, filesystem layout, model definition, ProductRef, or
-planner cannot cleanly represent all of these cases, the design should be
-reconsidered before implementation.
+Registered artwork from multiple Artifacts is composed into a larger
+design and used by another Realization.
 
----
+Only required upstream Products are realized.
+
+If a proposed resolver, filesystem layout, Model definition, Variant
+definition, ProductRef, or planner cannot cleanly represent all of these
+cases, the design should be reconsidered before implementation.
+
+------------------------------------------------------------------------
 
 # 36. Implementation Alignment
 
-The repository should evolve incrementally toward the architecture defined by
-this document and the normative definitions of its models.
+The repository should evolve incrementally toward the architecture
+defined by this document and the normative definitions of its Models.
 
-Implementation work should begin by comparing the current repository against:
+Implementation work should begin by comparing the current repository
+against:
 
-```text
+``` text
 ARCHITECTURE.md
 model/models/<model>/DEFINITION.md
 ```
 
-Differences between the permanent specifications and the implementation should
-be captured in a temporary CHANGEPLAN.md as small, independently testable
-changes or refactors.
+Differences between permanent specifications and implementation should
+be captured in a temporary `CHANGEPLAN.md` as small, independently
+testable changes.
 
-Implementation should proceed incrementally, with tests providing executable
-evidence that each change moves the repository toward conformance while
-preserving behavior that remains architecturally valid.
+Existing implementation terminology does not override this architecture.
+In particular, an implementation that permits independently named
+Realizations to act as reusable product configurations must be
+reconciled with the normative Variant/Realization semantics defined
+here.
 
-When the repository conforms to ARCHITECTURE.md and the applicable model
-definitions, the temporary change plan is no longer required.
+When the repository conforms to the permanent specifications, the
+temporary change plan is no longer required.
 
----
+------------------------------------------------------------------------
 
 # 37. Guidance for Future Changes
 
 When proposing a feature or refactor, ask:
 
-1. What products does this operation consume?
-2. What products does it produce?
-3. Which stage owns each product?
-4. Are dependencies expressed logically rather than through filesystem paths?
-5. Can the resolver uniquely locate every product?
-6. Is this geometry relative or physically dimensioned?
-7. Which operation actually owns the physical dimension?
-8. Does the transformation preserve registered geometry?
-9. Does the consumer unnecessarily understand its input's payload?
-10. Could this operation consume another compatible registered product?
-11. Can its output itself become a reusable component?
-12. Can the planner build only the dependency closure actually required?
-13. Can current upstream products be reused?
-14. Can another model consume this product?
-15. Can another artifact consume this product?
-16. Does the change introduce a special case for 3MF or another file type?
-17. Does it introduce model-specific behavior into the generic engine?
-18. Does filesystem organization remain an implementation detail?
-19. Can interrupted execution be safely detected and resumed?
+1.  What Products does this Operation consume?
+2.  What Products does it produce?
+3.  Which Stage owns each Product?
+4.  Are dependencies expressed logically?
+5.  Can the resolver uniquely locate every Product?
+6.  Is this geometry relative or physically dimensioned?
+7.  Which Model or Operation owns the physical dimension?
+8.  Does the transformation preserve registered geometry?
+9.  Does the consumer unnecessarily understand its input payload?
+10. Can current upstream Products be reused?
+11. Can another Model or Artifact consume this Product?
+12. Does the change introduce Model-specific behavior into the generic
+    engine?
+13. Does filesystem organization remain an implementation detail?
+14. Is the behavior a Model Feature?
+15. If it is a reusable catalog configuration, is it represented as a
+    Variant?
+16. Does the Variant completely define its offering through Features and
+    parameter defaults?
+17. Is a proposed Realization truly an application of a Variant to an
+    Artifact, rather than another reusable configuration definition?
+18. Does Artifact customization preserve the originating Variant?
+19. Can the Model's Variant catalog be discovered without redundant
+    Artifact configuration?
 20. Does the common user workflow remain simple?
 
 Warning signs include designs that:
 
-* require the complete producer model to execute before consuming an upstream
-  product;
-* treat a 3MF as the definition of model completion;
-* rerasterize or revectorize artwork merely because physical output size
-  changed;
-* embed generated filesystem paths in configuration;
-* independently scale registered color components;
-* require a coaster to understand the semantic contents of artwork;
-* duplicate products merely to create a convenient final-output directory;
-* create new special-purpose models where generic composition operations would
-  suffice.
+-   treat Variant as merely a parameter preset;
+-   allow Model and Variant to become independent Realization
+    selections;
+-   create independently named Realizations as reusable catalog
+    definitions;
+-   require Artifact configuration to repeat Variant Features or
+    defaults merely to make a Variant buildable;
+-   automatically create a new Variant identity for every parameter
+    override;
+-   prohibit useful dimensional Variants merely because their primary
+    difference is size;
+-   confuse Variant catalog offerings with persistent Stage Products;
+-   require a complete producer Model to execute before consuming an
+    upstream Product;
+-   treat a 3MF as the definition of Model completion;
+-   rerasterize or revectorize artwork merely because physical output
+    size changed;
+-   embed generated filesystem paths in configuration;
+-   independently scale registered components;
+-   duplicate Products merely to create a convenient output directory.
 
----
+------------------------------------------------------------------------
 
 # 38. Summary
 
-`lowkey-artifact-builder` should be understood as a dependency-driven 2.5D
-manufacturing system.
+`lowkey-artifact-builder` is a dependency-driven 2.5D manufacturing
+system.
 
-The common workflow is intentionally simple:
+Its core product-definition relationship is:
 
-```text
-one PNG
-   │
-   ▼
-artwork
-   │
-   ├──> standalone artwork
-   ├──> coaster
-   ├──> ornament
-   └──> keychain
+``` text
+Model
+  ├── Features
+  └── Variants
+
+Variant
+  = Model-scoped complete product configuration
+  = selected Features + parameter defaults
+
+Realization
+  = application of Variant to Artifact
+    + optional Artifact-specific customizations
 ```
 
-Underneath that simple workflow is a more general product graph.
+A Model's Variants form a reusable catalog of constructible
+configurations.
 
-Source interpretation produces reusable relative and registered geometry.
+For example:
 
-Downstream consumers introduce the physical constraints they own.
+``` text
+shape.ornament
+shape.ornament-large
+shape.coaster
+shape.keychain
+```
 
-Registered components preserve their internal geometry.
+may all be applied to the same Artifact and source image without
+requiring the Artifact to redefine their sizes, Features, or other
+defaults.
 
-Composition can recursively combine products from the same artifact or from
-different artifacts.
+A customized application remains a Realization of its originating
+Variant.
 
-Every persistent product is first-class.
+Underneath this catalog model is a general Product dependency graph.
 
-A resolver maps logical product identities to physical storage.
+Source interpretation produces reusable relative and registered
+geometry. Downstream Models introduce the physical constraints they own.
+Registered components preserve their internal geometry. Composition may
+combine Products from the same Artifact or different Artifacts.
 
-The complete Defined Graph describes what the system knows how to produce.
+Every persistent Stage output is a first-class Product.
 
-The Product Catalog exposes those capabilities and reusable manufacturing
-assets.
+The Defined Graph describes what the system knows how to produce. A
+Realization Graph describes the dependency closure required for one
+application of a Variant to an Artifact. The Execution Plan determines
+what work must actually run.
 
-Artifact configuration identifies what should be produced.
+Current Products are reused.
 
-The Realization Graph determines what products are required.
-
-The Execution Plan determines what work must actually run.
-
-Current products are reused.
-
-A 3MF is simply one possible product.
+A 3MF is simply one possible Product.
 
 The long-term manufacturing objective is:
 
-> interpret source material once, preserve reusable manufacturing assets, and
-> create increasingly sophisticated physical products by composing generic,
-> well-defined operations with minimal manual intervention.
+> interpret source material once, preserve reusable manufacturing
+> assets, and create increasingly sophisticated physical products by
+> applying complete Model-owned Variants to Artifacts and composing
+> generic, well-defined operations with minimal manual intervention.
