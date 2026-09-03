@@ -240,7 +240,7 @@ def test_png_builds_complete_3mf(
 
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
 
-    expected_names = {f"nydeli-{product['name']}" for product in products}
+    expected_names = {f"nydeli-{product['printer_color']['name']}" for product in products}
 
     assert (
         set(
@@ -258,8 +258,10 @@ def test_png_builds_complete_3mf(
     # -----------------------------------------------------
 
     for product in products:
-        semantic_name = product["name"]
-        rgb = product["color"]
+        printer_color = product["printer_color"]
+
+        semantic_name = printer_color["name"]
+        rgb = printer_color["rgb"]
 
         object_ = objects_by_name[f"nydeli-{semantic_name}"]
 

@@ -797,7 +797,7 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
     }
 
     expected_artwork_object_names = {
-        (f"artwork-shape-artwork-{product['index']}-{product['name']}")
+        (f"artwork-shape-artwork-{product['index']}-{product['printer_color']['name']}")
         for product in artwork_products
     }
 
@@ -824,8 +824,11 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
 
     for product in artwork_products:
         index = product["index"]
-        expected_name = product["name"]
-        expected_color = product["color"]
+
+        printer_color = product["printer_color"]
+
+        expected_name = printer_color["name"]
+        expected_color = printer_color["rgb"]
 
         expected_display_color = (
             f"#{expected_color['red']:02X}{expected_color['green']:02X}{expected_color['blue']:02X}"

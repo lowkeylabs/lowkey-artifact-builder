@@ -153,3 +153,68 @@ def test_generic_infrastructure_does_not_reference_obsolete_artwork_colors() -> 
         )
 
         assert "artwork_colors" not in source, path
+
+
+def test_artwork_model_declares_no_obsolete_stage_color_configuration() -> None:
+    """
+    Artwork manufacturing stages declare the permanent color parameters
+    they consume and no obsolete Artwork color configuration.
+    """
+
+    from lowkey_artifact_builder.model.models import artwork
+
+    parameters = set(artwork.MODEL.parameters)
+
+    assert "artwork_colors" not in parameters
+    assert "artwork_fill_color" not in parameters
+
+    assert "artifact_color_count" in parameters
+    assert "printer_colors" in parameters
+
+
+def test_generic_color_infrastructure_contains_no_artwork_policy() -> None:
+    """
+    Generic color mathematics remains independent of Artwork policy.
+    """
+
+    from lowkey_artifact_builder import colors
+
+    source = Path(colors.__file__).read_text(
+        encoding="utf-8",
+    )
+
+    for term in (
+        "artifact_color_count",
+        "artifact_colors",
+        "printer_assignments",
+        "library_assignments",
+        "catalog_assignments",
+        "artwork_fill_color",
+    ):
+        assert term not in source
+
+
+def test_generic_engine_contains_no_artwork_color_policy() -> None:
+    """
+    Generic planning and execution infrastructure contains no Artwork
+    color-model policy.
+    """
+
+    engine_root = Path("src/lowkey_artifact_builder/engine")
+
+    source = "\n".join(
+        path.read_text(
+            encoding="utf-8",
+        )
+        for path in engine_root.rglob("*.py")
+    )
+
+    for term in (
+        "artifact_color_count",
+        "artwork_colors",
+        "artwork_fill_color",
+        "printer_assignments",
+        "library_assignments",
+        "catalog_assignments",
+    ):
+        assert term not in source
