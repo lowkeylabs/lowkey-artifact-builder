@@ -57,24 +57,24 @@ class ArtworkColorAnalysis:
     """
     Color-assignment analysis for registered Artwork.
 
-    printer:
+    printer_assignments:
         Optimal one-to-one assignment from persistent Artifact colors
         to the colors configured for the printer.
 
-    library:
+    library_assignments:
         Optimal one-to-one assignment from persistent Artifact colors
         to the colors configured for the user's filament library.
 
-    catalog:
+    catalog_assignments:
         Optimal one-to-one assignment from persistent Artifact colors
         to all physical colors in the color catalog.
     """
 
-    printer: ColorAssignmentResult
+    printer_assignments: ColorAssignmentResult
 
-    library: ColorAssignmentResult
+    library_assignments: ColorAssignmentResult
 
-    catalog: ColorAssignmentResult
+    catalog_assignments: ColorAssignmentResult
 
 
 # =========================================================
@@ -266,15 +266,15 @@ def analyze_registered_artwork_colors(
     )
 
     return ArtworkColorAnalysis(
-        printer=assign_colors(
+        printer_assignments=assign_colors(
             artwork_colors,
             printer_colors,
         ),
-        library=assign_colors(
+        library_assignments=assign_colors(
             artwork_colors,
             library_colors,
         ),
-        catalog=assign_colors(
+        catalog_assignments=assign_colors(
             artwork_colors,
             catalog_colors,
         ),

@@ -7,6 +7,7 @@ Tests for Artwork color-assignment analysis.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from collections.abc import Mapping
 from pathlib import Path
@@ -18,6 +19,7 @@ from lowkey_artifact_builder.colors import (
     MeasuredColor,
 )
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
+    ArtworkColorAnalysis,
     analyze_registered_artwork_colors,
     load_registered_artwork_colors,
 )
@@ -270,31 +272,51 @@ def test_registered_artwork_analysis_uses_artifact_rgb_not_printer_rgb(
         resolver=resolver,
     )
 
-    assert analysis.printer.assignments[0].measured == MeasuredColor(
+    assert analysis.printer_assignments.assignments[0].measured == MeasuredColor(
         index=1,
         rgb=(250, 0, 0),
     )
-    assert analysis.printer.assignments[0].color.name == "candidate-red"
-    assert analysis.printer.assignments[0].distance == pytest.approx(
+    assert analysis.printer_assignments.assignments[0].color.name == "candidate-red"
+    assert analysis.printer_assignments.assignments[0].distance == pytest.approx(
         0.0,
     )
 
-    assert analysis.library.assignments[0].measured == MeasuredColor(
+    assert analysis.library_assignments.assignments[0].measured == MeasuredColor(
         index=1,
         rgb=(250, 0, 0),
     )
-    assert analysis.library.assignments[0].color.name == "candidate-red"
-    assert analysis.library.assignments[0].distance == pytest.approx(
+    assert analysis.library_assignments.assignments[0].color.name == "candidate-red"
+    assert analysis.library_assignments.assignments[0].distance == pytest.approx(
         0.0,
     )
 
-    assert analysis.catalog.assignments[0].measured == MeasuredColor(
+    assert analysis.catalog_assignments.assignments[0].measured == MeasuredColor(
         index=1,
         rgb=(250, 0, 0),
     )
-    assert analysis.catalog.assignments[0].color.name == "candidate-red"
-    assert analysis.catalog.assignments[0].distance == pytest.approx(
+    assert analysis.catalog_assignments.assignments[0].color.name == "candidate-red"
+    assert analysis.catalog_assignments.assignments[0].distance == pytest.approx(
         0.0,
+    )
+
+
+# =========================================================
+# Analysis result semantics
+# =========================================================
+
+
+def test_artwork_color_analysis_uses_assignment_scope_names() -> None:
+    """
+    Artwork color analysis exposes the assignment-set identities defined
+    by the permanent Artwork model.
+    """
+
+    fields = tuple(field.name for field in dataclasses.fields(ArtworkColorAnalysis))
+
+    assert fields == (
+        "printer_assignments",
+        "library_assignments",
+        "catalog_assignments",
     )
 
 
@@ -376,17 +398,23 @@ def test_registered_artwork_analysis_produces_three_independent_assignment_scope
         resolver=resolver,
     )
 
-    assert tuple(assignment.color.name for assignment in analysis.printer.assignments) == (
+    assert tuple(
+        assignment.color.name for assignment in analysis.printer_assignments.assignments
+    ) == (
         "printer-red",
         "printer-blue",
     )
 
-    assert tuple(assignment.color.name for assignment in analysis.library.assignments) == (
+    assert tuple(
+        assignment.color.name for assignment in analysis.library_assignments.assignments
+    ) == (
         "library-red",
         "library-blue",
     )
 
-    assert tuple(assignment.color.name for assignment in analysis.catalog.assignments) == (
+    assert tuple(
+        assignment.color.name for assignment in analysis.catalog_assignments.assignments
+    ) == (
         "catalog-red",
         "catalog-blue",
     )
@@ -454,9 +482,9 @@ def test_registered_artwork_analysis_uses_global_one_to_one_assignment(
     )
 
     for scope in (
-        analysis.printer,
-        analysis.library,
-        analysis.catalog,
+        analysis.printer_assignments,
+        analysis.library_assignments,
+        analysis.catalog_assignments,
     ):
         selected = tuple(assignment.color.name for assignment in scope.assignments)
 
@@ -552,23 +580,23 @@ def test_three_color_artwork_selects_three_colors_from_five_candidates(
         resolver=resolver,
     )
 
-    assert len(analysis.printer.assignments) == 3
-    assert len(analysis.library.assignments) == 3
-    assert len(analysis.catalog.assignments) == 3
+    assert len(analysis.printer_assignments.assignments) == 3
+    assert len(analysis.library_assignments.assignments) == 3
+    assert len(analysis.catalog_assignments.assignments) == 3
 
-    assert {assignment.color.name for assignment in analysis.printer.assignments} == {
+    assert {assignment.color.name for assignment in analysis.printer_assignments.assignments} == {
         "red",
         "green",
         "blue",
     }
 
-    assert {assignment.color.name for assignment in analysis.library.assignments} == {
+    assert {assignment.color.name for assignment in analysis.library_assignments.assignments} == {
         "red",
         "green",
         "blue",
     }
 
-    assert {assignment.color.name for assignment in analysis.catalog.assignments} == {
+    assert {assignment.color.name for assignment in analysis.catalog_assignments.assignments} == {
         "red",
         "green",
         "blue",
@@ -654,9 +682,9 @@ def test_registered_artwork_analysis_exposes_individual_and_aggregate_distances(
     )
 
     for scope in (
-        analysis.printer,
-        analysis.library,
-        analysis.catalog,
+        analysis.printer_assignments,
+        analysis.library_assignments,
+        analysis.catalog_assignments,
     ):
         assert all(assignment.distance >= 0.0 for assignment in scope.assignments)
 
@@ -717,9 +745,9 @@ def test_catalog_assignment_excludes_synthetic_test_colors(
         resolver=resolver,
     )
 
-    assert analysis.printer.assignments[0].color.name == "test-red"
-    assert analysis.library.assignments[0].color.name == "test-red"
-    assert analysis.catalog.assignments[0].color.name == "physical-red"
+    assert analysis.printer_assignments.assignments[0].color.name == "test-red"
+    assert analysis.library_assignments.assignments[0].color.name == "test-red"
+    assert analysis.catalog_assignments.assignments[0].color.name == "physical-red"
 
 
 # =========================================================
@@ -946,7 +974,11 @@ def test_registered_artwork_analysis_does_not_mutate_inputs(
     manifest_before = manifest.read_bytes()
     printer_before = list(printer_colors)
     library_before = list(library_colors)
-    catalog_before = json.loads(json.dumps(colors))
+    catalog_before = json.loads(
+        json.dumps(
+            colors,
+        )
+    )
 
     analyze_registered_artwork_colors(
         manifest=manifest,

@@ -40,16 +40,16 @@ def display_color_analysis(
     table.add_column("Catalog")
 
     printer = _assignments_by_index(
-        analysis.printer,
+        analysis.printer_assignments,
     )
     library = _assignments_by_index(
-        analysis.library,
+        analysis.library_assignments,
     )
     catalog = _assignments_by_index(
-        analysis.catalog,
+        analysis.catalog_assignments,
     )
 
-    for assignment in analysis.printer.assignments:
+    for assignment in analysis.printer_assignments.assignments:
         index = assignment.measured.index
 
         table.add_row(
@@ -76,9 +76,18 @@ def display_color_analysis(
     totals.add_column("Aggregate Distance")
 
     for scope, result in (
-        ("Printer", analysis.printer),
-        ("Library", analysis.library),
-        ("Catalog", analysis.catalog),
+        (
+            "Printer",
+            analysis.printer_assignments,
+        ),
+        (
+            "Library",
+            analysis.library_assignments,
+        ),
+        (
+            "Catalog",
+            analysis.catalog_assignments,
+        ),
     ):
         totals.add_row(
             scope,

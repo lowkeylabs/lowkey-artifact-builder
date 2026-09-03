@@ -78,7 +78,7 @@ def _analysis() -> ArtworkColorAnalysis:
     """
 
     return ArtworkColorAnalysis(
-        printer=_assignment_result(
+        printer_assignments=_assignment_result(
             names=(
                 "printer-red",
                 "printer-green",
@@ -90,7 +90,7 @@ def _analysis() -> ArtworkColorAnalysis:
                 3.0,
             ),
         ),
-        library=_assignment_result(
+        library_assignments=_assignment_result(
             names=(
                 "library-red",
                 "library-green",
@@ -102,7 +102,7 @@ def _analysis() -> ArtworkColorAnalysis:
                 6.0,
             ),
         ),
-        catalog=_assignment_result(
+        catalog_assignments=_assignment_result(
             names=(
                 "catalog-red",
                 "catalog-green",
@@ -225,7 +225,7 @@ def test_color_report_displays_source_derived_artifact_rgb(
     )
 
     analysis = ArtworkColorAnalysis(
-        printer=ColorAssignmentResult(
+        printer_assignments=ColorAssignmentResult(
             assignments=(
                 ColorAssignment(
                     measured=measured,
@@ -238,7 +238,7 @@ def test_color_report_displays_source_derived_artifact_rgb(
             ),
             distance=1.0,
         ),
-        library=ColorAssignmentResult(
+        library_assignments=ColorAssignmentResult(
             assignments=(
                 ColorAssignment(
                     measured=measured,
@@ -251,7 +251,7 @@ def test_color_report_displays_source_derived_artifact_rgb(
             ),
             distance=2.0,
         ),
-        catalog=ColorAssignmentResult(
+        catalog_assignments=ColorAssignmentResult(
             assignments=(
                 ColorAssignment(
                     measured=measured,
