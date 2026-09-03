@@ -1,11 +1,12 @@
 """
-High-level artifact configuration services.
+High-level artifact configuration and lifecycle services.
 
-This module owns artifact-level configuration operations that combine
-persistent configuration with artifact-owned input ingestion.
+This module owns artifact-level operations that combine persistent
+configuration, artifact-owned input ingestion, artifact discovery, and
+derived-product lifecycle management.
 
-Callers describe an artifact in terms of configuration values and
-external input files. They do not need to know the physical artifact
+Callers describe artifacts in terms of logical configuration and
+lifecycle operations. They do not need to know the physical artifact
 workspace layout or canonical names used for ingested inputs.
 """
 # File: src/lowkey_artifact_builder/config/artifact.py
@@ -33,6 +34,11 @@ from .config import (
 _ARTWORK_INPUT = "artwork"
 _ARTWORK_MODEL = "artwork"
 _ARTWORK_FILENAME = "artifact.png"
+
+_GENERATED_MODEL_DIRECTORIES = (
+    "artwork",
+    "shape",
+)
 
 
 # =========================================================
@@ -90,6 +96,88 @@ def configure_artifact(
         updates,
         project_root=root,
     )
+
+
+def list_artifacts(
+    *,
+    project_root: Path | None = None,
+) -> tuple[str, ...]:
+    """
+    Return the IDs of persistent artifacts defined in the project.
+
+    An artifact is discoverable when its artifact directory contains its
+    persistent ``artifact.toml`` definition.
+
+    Derived product directories without persistent artifact
+    configuration are not treated as artifact definitions.
+    """
+
+    root = project_root if project_root is not None else Path.cwd()
+    artifacts_root = root / "artifacts"
+
+    if not artifacts_root.is_dir():
+        return ()
+
+    artifact_ids = [
+        path.name
+        for path in artifacts_root.iterdir()
+        if path.is_dir()
+        and artifact_config_path(
+            path.name,
+            project_root=root,
+        ).is_file()
+    ]
+
+    return tuple(sorted(artifact_ids))
+
+
+def clean_artifact(
+    artifact_id: str,
+    *,
+    project_root: Path | None = None,
+) -> None:
+    """
+    Remove derived products for an artifact.
+
+    Persistent artifact configuration and artifact-owned source inputs
+    are preserved.
+
+    The initial cleaning contract removes complete generated model
+    directories beneath the artifact silo. More specific product-level
+    cleaning may be introduced later without changing the public
+    lifecycle operation.
+    """
+
+    root = project_root if project_root is not None else Path.cwd()
+
+    config_path = artifact_config_path(
+        artifact_id,
+        project_root=root,
+    )
+
+    if not config_path.is_file():
+        raise ConfigError(f"Artifact {artifact_id!r} is not defined.")
+
+    artifact_dir = config_path.parent
+
+    for directory_name in _GENERATED_MODEL_DIRECTORIES:
+        generated_dir = artifact_dir / directory_name
+
+        if not generated_dir.exists():
+            continue
+
+        try:
+            if generated_dir.is_dir():
+                shutil.rmtree(
+                    generated_dir,
+                )
+            else:
+                generated_dir.unlink()
+
+        except OSError as exc:
+            raise ConfigError(
+                f"Cannot clean artifact {artifact_id!r}: {generated_dir}: {exc}"
+            ) from exc
 
 
 # =========================================================
@@ -222,5 +310,7 @@ def _ingest_file(
 
 
 __all__ = [
+    "clean_artifact",
     "configure_artifact",
+    "list_artifacts",
 ]

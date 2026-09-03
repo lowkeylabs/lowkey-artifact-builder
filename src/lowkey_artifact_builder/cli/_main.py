@@ -11,9 +11,12 @@ import click
 
 from ..logging_config import configure_logging, get_logger
 from .cmd_build import cli as cmd_build
+from .cmd_clean import cli as cmd_clean
 from .cmd_color import cli as cmd_color
 from .cmd_config import cli as cmd_config
 from .cmd_create import cli as cmd_create
+from .cmd_list import cli as cmd_list
+from .cmd_show import cli as cmd_show
 
 logger = get_logger(__name__)
 
@@ -63,5 +66,9 @@ cli.add_command(cmd_config, name="config")
 cli.add_command(cmd_build, name="build")
 cli.add_command(cmd_color, name="colors")
 cli.add_command(cmd_create, name="create")
+
+cli.add_command(cmd_show, name="show")
+cli.add_command(cmd_clean, name="clean")
+cli.add_command(cmd_list, name="list")
 
 # cli.add_command(alias_command(cmd_vals, name="vals", help="Display values from workspace"))

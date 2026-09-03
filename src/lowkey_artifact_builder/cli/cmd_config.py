@@ -1,7 +1,10 @@
 """
 Configuration command.
 
-Provides configuration inspection and management for artifacts.
+Provides configuration inspection and management for existing artifacts.
+
+Artifact creation is a distinct lifecycle operation owned by the
+``artifact create`` command.
 
 Positional arguments to this command are reserved for artifact IDs.
 Additional configuration operations are exposed through command-line
@@ -14,7 +17,6 @@ options.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import click
 
@@ -23,12 +25,8 @@ from lowkey_artifact_builder.cli.display import (
     display_model_workplans,
     display_models,
 )
-from lowkey_artifact_builder.cli.setup import (
-    setup_artifact,
-)
 from lowkey_artifact_builder.config import (
     ConfigError,
-    configure_artifact,
     get_resolver,
     load_artifact_config,
 )
@@ -68,9 +66,11 @@ def cli(
     workplan: bool,
 ) -> None:
     """
-    Manage artifact configuration.
+    Manage configuration for an existing artifact.
 
     Positional arguments are artifact IDs.
+
+    Artifact creation is performed by ``artifact create``.
     """
 
     # =====================================================
@@ -116,17 +116,6 @@ def cli(
     project_root = Path.cwd()
 
     # =====================================================
-    # Configuration dump
-    # =====================================================
-
-    if dump:
-        _display_artifact(
-            artifact_id,
-            project_root=project_root,
-        )
-        return
-
-    # =====================================================
     # Existing artifact
     # =====================================================
 
@@ -135,44 +124,8 @@ def cli(
         project_root=project_root,
     )
 
-    if existing:
-        _display_artifact(
-            artifact_id,
-            project_root=project_root,
-        )
-        return
-
-    # =====================================================
-    # Interactive configuration
-    # =====================================================
-
-    registry = build_model_registry()
-
-    setup = setup_artifact(
-        artifact_id,
-        registry,
-        project_root=project_root,
-    )
-
-    values = dict(setup.values)
-
-    input_files = _extract_input_files(
-        values,
-        project_root=project_root,
-    )
-
-    values["model"] = setup.model
-
-    try:
-        configure_artifact(
-            artifact_id,
-            values=values,
-            input_files=input_files,
-            project_root=project_root,
-        )
-
-    except ConfigError as exc:
-        raise click.ClickException(str(exc)) from exc
+    if not existing:
+        raise click.ClickException(f"Artifact {artifact_id!r} is not defined.")
 
     # =====================================================
     # Artifact display
@@ -182,48 +135,6 @@ def cli(
         artifact_id,
         project_root=project_root,
     )
-
-
-# =========================================================
-# Setup translation
-# =========================================================
-
-
-def _extract_input_files(
-    values: dict[str, Any],
-    *,
-    project_root: Path,
-) -> dict[str, Path]:
-    """
-    Extract external inputs collected by interactive setup.
-
-    Setup collects model parameter values but does not persist them or
-    materialize external files.
-
-    External source parameters are translated here into semantic input
-    roles understood by the high-level artifact configuration API.
-
-    Extracted source parameters are removed from values so external
-    filesystem paths are not persisted directly by the CLI.
-    """
-
-    input_files: dict[str, Path] = {}
-
-    source = values.pop(
-        "source",
-        None,
-    )
-
-    if source is not None:
-        if not isinstance(
-            source,
-            str,
-        ):
-            raise click.ClickException("Artifact source must be a path string.")
-
-        input_files["artwork"] = project_root / source
-
-    return input_files
 
 
 # =========================================================
@@ -259,7 +170,9 @@ def _display_artifact(
         model_name = resolver("model")
 
         registry = build_model_registry()
-        model = registry.get_model(model_name)
+        model = registry.get_model(
+            model_name,
+        )
 
     except (
         ConfigError,

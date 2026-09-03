@@ -2,7 +2,8 @@
 Artifact configuration subsystem.
 
 This package provides configuration loading, persistence, resolution,
-provenance tracking, reference color data, and model-derived values.
+provenance tracking, reference color data, model-derived values, and
+high-level artifact lifecycle services.
 
 Application code should normally import configuration services from
 this package rather than directly from config.py.
@@ -14,7 +15,9 @@ this package rather than directly from config.py.
 from __future__ import annotations
 
 from lowkey_artifact_builder.config.artifact import (
+    clean_artifact,
     configure_artifact,
+    list_artifacts,
 )
 from lowkey_artifact_builder.config.config import (
     ConfigError,
@@ -37,12 +40,14 @@ __all__ = [
     "Derivations",
     "Resolver",
     "artifact_config_path",
+    "clean_artifact",
+    "configure_artifact",
+    "get_product_dependency_binding",
     "get_realization_names",
     "get_resolver",
+    "has_product_dependency_binding",
+    "list_artifacts",
     "load_artifact_config",
     "update_artifact_config",
-    "get_product_dependency_binding",
-    "has_product_dependency_binding",
     "write_artifact_config",
-    "configure_artifact",
 ]

@@ -1,17 +1,18 @@
 """
-Tests for the artifact config command.
+Tests for the artifact clean command.
 """
-# File: tests/cli/test_config.py
+# File: tests/cli/test_clean.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from click.testing import CliRunner
 
-import lowkey_artifact_builder.cli.cmd_config as cmd_config
+import lowkey_artifact_builder.cli.cmd_clean as cmd_clean
 from lowkey_artifact_builder.cli._main import cli
 
 # =========================================================
@@ -23,7 +24,7 @@ def _invoke(
     *args: str,
 ) -> Any:
     """
-    Invoke the artifact config command.
+    Invoke the artifact clean command.
     """
 
     runner = CliRunner()
@@ -31,7 +32,7 @@ def _invoke(
     return runner.invoke(
         cli,
         [
-            "config",
+            "clean",
             *args,
         ],
     )
@@ -42,10 +43,9 @@ def _invoke(
 # =========================================================
 
 
-def test_config_requires_artifact_id() -> None:
+def test_clean_requires_artifact_id() -> None:
     """
-    Artifact configuration requires an artifact ID unless performing
-    model inspection.
+    Artifact cleaning requires exactly one artifact ID.
     """
 
     result = _invoke()
@@ -54,9 +54,9 @@ def test_config_requires_artifact_id() -> None:
     assert "artifact" in result.output.lower()
 
 
-def test_config_rejects_multiple_artifact_ids() -> None:
+def test_clean_rejects_multiple_artifact_ids() -> None:
     """
-    Artifact configuration operates on exactly one artifact at a time.
+    Artifact cleaning operates on one artifact at a time.
     """
 
     result = _invoke(
@@ -68,60 +68,19 @@ def test_config_rejects_multiple_artifact_ids() -> None:
 
 
 # =========================================================
-# Existing artifact
+# Artifact existence
 # =========================================================
 
 
-def test_config_displays_existing_artifact(
+def test_clean_rejects_undefined_artifact(
     monkeypatch,
 ) -> None:
     """
-    Supplying an existing artifact ID displays its configuration.
-    """
-
-    displayed: list[str] = []
-
-    monkeypatch.setattr(
-        cmd_config,
-        "load_artifact_config",
-        lambda *args, **kwargs: {
-            "model": "artwork",
-        },
-    )
-
-    monkeypatch.setattr(
-        cmd_config,
-        "_display_artifact",
-        lambda artifact_id, **kwargs: displayed.append(
-            artifact_id,
-        ),
-    )
-
-    result = _invoke(
-        "skippy",
-    )
-
-    assert result.exit_code == 0
-    assert displayed == ["skippy"]
-
-
-# =========================================================
-# Undefined artifact
-# =========================================================
-
-
-def test_config_rejects_undefined_artifact(
-    monkeypatch,
-) -> None:
-    """
-    Configuration does not implicitly create an undefined artifact.
-
-    Artifact creation is a distinct lifecycle operation owned by
-    `artifact create`.
+    Cleaning requires an existing persistent artifact definition.
     """
 
     monkeypatch.setattr(
-        cmd_config,
+        cmd_clean,
         "load_artifact_config",
         lambda *args, **kwargs: {},
     )
@@ -132,3 +91,55 @@ def test_config_rejects_undefined_artifact(
 
     assert result.exit_code != 0
     assert "not defined" in result.output.lower()
+
+
+# =========================================================
+# Cleaning
+# =========================================================
+
+
+def test_clean_delegates_to_artifact_api(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    The CLI delegates cleaning to the artifact lifecycle API.
+
+    Filesystem ownership and deletion semantics belong below the CLI
+    boundary.
+    """
+
+    calls: list[tuple[str, Path]] = []
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_clean,
+        "load_artifact_config",
+        lambda *args, **kwargs: {
+            "model": "artwork",
+        },
+    )
+
+    monkeypatch.setattr(
+        cmd_clean,
+        "clean_artifact",
+        lambda artifact_id, *, project_root: calls.append(
+            (
+                artifact_id,
+                project_root,
+            )
+        ),
+    )
+
+    result = _invoke(
+        "skippy",
+    )
+
+    assert result.exit_code == 0
+    assert calls == [
+        (
+            "skippy",
+            tmp_path,
+        ),
+    ]
