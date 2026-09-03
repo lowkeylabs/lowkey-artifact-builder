@@ -218,3 +218,24 @@ def test_generic_engine_contains_no_artwork_color_policy() -> None:
         "catalog_assignments",
     ):
         assert term not in source
+
+
+def test_artifact_colors_are_product_information_not_configuration() -> None:
+    """
+    Artifact colors are persistent product information rather than
+    resolvable Artwork configuration.
+    """
+
+    from lowkey_artifact_builder.config import get_resolver
+
+    resolver = get_resolver(
+        "example",
+        model="artwork",
+    )
+
+    assert "artifact_colors" not in resolver.names()
+    assert not resolver.has("artifact_colors")
+
+    assert resolver.has("artifact_color_count")
+    assert resolver.has("printer_colors")
+    assert resolver.has("library_colors")
