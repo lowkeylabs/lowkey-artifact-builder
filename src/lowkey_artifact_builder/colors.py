@@ -701,9 +701,7 @@ def assign_colors(
     #
 
     if candidate_priority is not None:
-        tolerance = 1e-7
-
-        problem += distance_objective <= minimum_distance + tolerance
+        problem += distance_objective == minimum_distance
 
         priority_objective = pulp.lpSum(
             priorities[palette_colors[palette_index].name]

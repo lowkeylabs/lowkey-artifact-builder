@@ -210,11 +210,24 @@ Artifact-to-physical-color perceptual distances in that assignment.
 The aggregate distance therefore measures how closely the selected physical
 palette represents the complete set of Artifact colors.
 
-Assignment is deterministic for the same ordered Artifact colors and ordered
-candidate colors.
+Assignment is deterministic for the same Artifact colors, candidate colors,
+and applicable assignment policy.
 
-Candidate order provides deterministic resolution when multiple assignments
-have equal aggregate distance.
+Printer and library assignments minimize aggregate perceptual distance.
+
+Catalog assignment first minimizes aggregate perceptual distance. Among
+catalog assignments having the same minimum aggregate perceptual distance,
+Artwork prefers an assignment using more colors already present in
+`library_colors`.
+
+Library preference is strictly secondary. It must not cause a catalog
+assignment having greater aggregate perceptual distance to replace an
+assignment having lower aggregate perceptual distance.
+
+This catalog tie-breaking rule is Artwork policy. Generic color-assignment
+infrastructure may provide a model-independent mechanism for expressing
+secondary preference, but it does not own printer, library, catalog, or
+filament-availability semantics.
 
 Printer, library, and catalog assignments are independent.
 
