@@ -265,19 +265,25 @@ def analyze_registered_artwork_colors(
         )
     )
 
+    printer_assignments = assign_colors(
+        artwork_colors,
+        printer_colors,
+    )
+
+    library_assignments = assign_colors(
+        artwork_colors,
+        library_colors,
+    )
+
+    catalog_assignments = assign_colors(
+        artwork_colors,
+        catalog_colors,
+    )
+
     return ArtworkColorAnalysis(
-        printer_assignments=assign_colors(
-            artwork_colors,
-            printer_colors,
-        ),
-        library_assignments=assign_colors(
-            artwork_colors,
-            library_colors,
-        ),
-        catalog_assignments=assign_colors(
-            artwork_colors,
-            catalog_colors,
-        ),
+        printer_assignments=printer_assignments,
+        library_assignments=library_assignments,
+        catalog_assignments=catalog_assignments,
     )
 
 

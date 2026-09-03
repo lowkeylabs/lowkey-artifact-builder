@@ -50,7 +50,7 @@
 printer_colors = [
     "black",
     "brown",
-    "gold",
+    "concrete-grey",
     "cold-white",
     "silver",
 ]
