@@ -278,6 +278,7 @@ def analyze_registered_artwork_colors(
     catalog_assignments = assign_colors(
         artwork_colors,
         catalog_colors,
+        candidate_priority={color.name: 1 for color in library_colors},
     )
 
     return ArtworkColorAnalysis(

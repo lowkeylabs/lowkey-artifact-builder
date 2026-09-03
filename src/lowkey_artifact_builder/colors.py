@@ -526,6 +526,8 @@ def color_distance(
 def assign_colors(
     measured: Sequence[MeasuredColor],
     palette: Sequence[PaletteColor],
+    *,
+    candidate_priority: Mapping[str, int] | None = None,
 ) -> ColorAssignmentResult:
     """
     Assign measured colors to palette colors.
@@ -536,6 +538,13 @@ def assign_colors(
     The palette may contain more colors than are required. Each measured
     color is assigned to one distinct palette color, and unused palette
     colors remain unassigned.
+
+    When multiple assignments have the same minimum aggregate distance,
+    candidate_priority may express a secondary preference among those
+    equally optimal assignments. Higher values are preferred.
+
+    Candidate priority never changes the primary minimum-distance
+    objective.
     """
 
     if not measured:
@@ -560,6 +569,18 @@ def assign_colors(
     _validate_palette_colors(
         palette_colors,
     )
+
+    priorities = {
+        color.name: (
+            candidate_priority.get(
+                color.name,
+                0,
+            )
+            if candidate_priority is not None
+            else 0
+        )
+        for color in palette_colors
+    }
 
     #
     # Calculate the complete assignment cost matrix once.
@@ -598,20 +619,6 @@ def assign_colors(
     }
 
     #
-    # Minimize aggregate perceptual distance.
-    #
-
-    problem += pulp.lpSum(
-        distances[measured_index][palette_index]
-        * variables[
-            measured_index,
-            palette_index,
-        ]
-        for measured_index in range(len(measured_colors))
-        for palette_index in range(len(palette_colors))
-    )
-
-    #
     # Every measured color receives exactly one palette color.
     #
 
@@ -644,8 +651,22 @@ def assign_colors(
         )
 
     #
-    # Solve the assignment problem.
+    # Primary objective: minimize aggregate perceptual distance.
     #
+
+    distance_objective = pulp.lpSum(
+        distances[measured_index][palette_index]
+        * variables[
+            measured_index,
+            palette_index,
+        ]
+        for measured_index in range(len(measured_colors))
+        for palette_index in range(len(palette_colors))
+    )
+
+    problem.setObjective(
+        distance_objective,
+    )
 
     status = problem.solve(
         pulp.COIN_CMD(
@@ -655,6 +676,59 @@ def assign_colors(
 
     if status != pulp.LpStatusOptimal:
         raise ColorError("Could not determine a color assignment.")
+
+    minimum_distance = sum(
+        distances[measured_index][palette_index]
+        * (
+            variables[
+                measured_index,
+                palette_index,
+            ].varValue
+            or 0.0
+        )
+        for measured_index in range(len(measured_colors))
+        for palette_index in range(len(palette_colors))
+    )
+
+    #
+    # Secondary objective: among assignments having the same minimum
+    # perceptual distance, maximize caller-supplied candidate priority.
+    #
+    # The tolerance exists only to accommodate solver floating-point
+    # arithmetic around the already-established primary optimum. It is
+    # not incorporated into the objective and therefore cannot trade
+    # perceptual distance for priority.
+    #
+
+    if candidate_priority is not None:
+        tolerance = 1e-7
+
+        problem += distance_objective <= minimum_distance + tolerance
+
+        priority_objective = pulp.lpSum(
+            priorities[palette_colors[palette_index].name]
+            * variables[
+                measured_index,
+                palette_index,
+            ]
+            for measured_index in range(len(measured_colors))
+            for palette_index in range(len(palette_colors))
+        )
+
+        problem.sense = pulp.LpMaximize
+
+        problem.setObjective(
+            priority_objective,
+        )
+
+        status = problem.solve(
+            pulp.COIN_CMD(
+                msg=False,
+            )
+        )
+
+        if status != pulp.LpStatusOptimal:
+            raise ColorError("Could not determine a color assignment.")
 
     #
     # Recover the selected palette color for each measured color.

@@ -989,3 +989,197 @@ def test_registered_artwork_analysis_does_not_mutate_inputs(
     assert printer_colors == printer_before
     assert library_colors == library_before
     assert colors == catalog_before
+
+
+def test_catalog_assignment_prefers_library_color_for_equal_match(
+    tmp_path: Path,
+) -> None:
+    """
+    Equal-quality catalog matches prefer a color already in the library.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    _write_registered_artwork_manifest(
+        manifest,
+        products=[
+            _registered_artwork_product(
+                index=1,
+                artifact_rgb=(100, 100, 100),
+                printer_name="printer-color",
+                printer_rgb=(100, 100, 100),
+                distance=0.0,
+            ),
+        ],
+    )
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": [
+                "printer-color",
+            ],
+            "library_colors": [
+                "library-color",
+            ],
+        },
+        colors={
+            "printer-color": _catalog_color(
+                manufacturer="test",
+                rgb=(100, 100, 100),
+            ),
+            "catalog-color": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(110, 110, 110),
+            ),
+            "library-color": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(110, 110, 110),
+            ),
+        },
+    )
+
+    analysis = analyze_registered_artwork_colors(
+        manifest=manifest,
+        resolver=resolver,
+    )
+
+    assert analysis.catalog_assignments.assignments[0].color.name == "library-color"
+
+
+def test_catalog_assignment_does_not_prefer_library_over_better_match(
+    tmp_path: Path,
+) -> None:
+    """
+    Library membership never overrides a better perceptual catalog match.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    _write_registered_artwork_manifest(
+        manifest,
+        products=[
+            _registered_artwork_product(
+                index=1,
+                artifact_rgb=(100, 100, 100),
+                printer_name="printer-color",
+                printer_rgb=(100, 100, 100),
+                distance=0.0,
+            ),
+        ],
+    )
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": [
+                "printer-color",
+            ],
+            "library_colors": [
+                "library-color",
+            ],
+        },
+        colors={
+            "printer-color": _catalog_color(
+                manufacturer="test",
+                rgb=(100, 100, 100),
+            ),
+            "library-color": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(120, 120, 120),
+            ),
+            "better-catalog-color": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(101, 101, 101),
+            ),
+        },
+    )
+
+    analysis = analyze_registered_artwork_colors(
+        manifest=manifest,
+        resolver=resolver,
+    )
+
+    assert analysis.catalog_assignments.assignments[0].color.name == "better-catalog-color"
+
+
+def test_catalog_assignment_maximizes_library_preference_across_equal_optimum(
+    tmp_path: Path,
+) -> None:
+    """
+    Catalog assignment maximizes library use among equal-distance optima.
+
+    Library preference is evaluated across the complete one-to-one
+    assignment rather than independently for each Artifact color.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    _write_registered_artwork_manifest(
+        manifest,
+        products=[
+            _registered_artwork_product(
+                index=1,
+                artifact_rgb=(100, 100, 100),
+                printer_name="printer-a",
+                printer_rgb=(100, 100, 100),
+                distance=0.0,
+            ),
+            _registered_artwork_product(
+                index=2,
+                artifact_rgb=(200, 200, 200),
+                printer_name="printer-b",
+                printer_rgb=(200, 200, 200),
+                distance=0.0,
+            ),
+        ],
+    )
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": [
+                "printer-a",
+                "printer-b",
+            ],
+            "library_colors": [
+                "library-dark",
+                "library-light",
+            ],
+        },
+        colors={
+            "printer-a": _catalog_color(
+                manufacturer="test",
+                rgb=(100, 100, 100),
+            ),
+            "printer-b": _catalog_color(
+                manufacturer="test",
+                rgb=(200, 200, 200),
+            ),
+            "catalog-dark": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(110, 110, 110),
+            ),
+            "library-dark": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(110, 110, 110),
+            ),
+            "catalog-light": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(190, 190, 190),
+            ),
+            "library-light": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(190, 190, 190),
+            ),
+        },
+    )
+
+    analysis = analyze_registered_artwork_colors(
+        manifest=manifest,
+        resolver=resolver,
+    )
+
+    assert tuple(
+        assignment.color.name for assignment in analysis.catalog_assignments.assignments
+    ) == (
+        "library-dark",
+        "library-light",
+    )

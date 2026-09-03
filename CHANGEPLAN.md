@@ -642,4 +642,3 @@ Before declaring completion:
 * verify that any permanent invariants discovered during implementation have been incorporated into `ARCHITECTURE.md` or the appropriate model `DEFINITION.md`.
 
 Once permanent specifications and HEAD are aligned, remove the completed `CHANGEPLAN.md` content rather than treating this temporary plan as an additional permanent specification.
-
