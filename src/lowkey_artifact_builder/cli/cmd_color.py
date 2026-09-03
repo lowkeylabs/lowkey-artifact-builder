@@ -22,6 +22,7 @@ from lowkey_artifact_builder.config import (
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     create_build_plan,
+    execute_dependency_build,
 )
 from lowkey_artifact_builder.model import (
     ProductRef,
@@ -42,8 +43,9 @@ def analyze_artifact_colors(
     """
     Analyze physical color assignments for one configured artifact.
 
-    Analysis consumes the existing registered Artwork manifest identified
-    by targeted build planning without executing the build.
+    Analysis targets the registered Artwork manifest and realizes the
+    required products through normal dependency-aware build orchestration
+    before consuming the manifest.
     """
 
     project_root = Path.cwd()
@@ -75,6 +77,10 @@ def analyze_artifact_colors(
         realization=realization,
         targets=(target,),
         project_root=project_root,
+    )
+
+    execute_dependency_build(
+        plan,
     )
 
     manifest = _registered_artwork_manifest(

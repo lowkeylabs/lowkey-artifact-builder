@@ -130,12 +130,12 @@ def test_colors_command_analyzes_and_displays_artifact(
 # =========================================================
 
 
-def test_analyze_artifact_colors_uses_registered_artwork_manifest(
+def test_analyze_artifact_colors_targets_registered_artwork_manifest(
     monkeypatch,
     tmp_path,
 ) -> None:
     """
-    Artifact color analysis consumes the planned registered Artwork manifest.
+    Color analysis plans only the registered Artwork manifest it requires.
     """
 
     from lowkey_artifact_builder.cli.cmd_color import (
@@ -144,11 +144,18 @@ def test_analyze_artifact_colors_uses_registered_artwork_manifest(
 
     manifest = tmp_path / "products.json"
     resolver = object()
-    expected_analysis = object()
 
     plan = SimpleNamespace(
         resolver=resolver,
         stages=(
+            SimpleNamespace(
+                name="prepare",
+                products=(),
+            ),
+            SimpleNamespace(
+                name="raster",
+                products=(),
+            ),
             SimpleNamespace(
                 name="vector",
                 products=(
@@ -169,7 +176,6 @@ def test_analyze_artifact_colors_uses_registered_artwork_manifest(
             Path,
         ]
     ] = []
-    analyzed: list[tuple[object, object]] = []
 
     def fake_create_build_plan(
         artifact_id: str,
@@ -188,19 +194,6 @@ def test_analyze_artifact_colors_uses_registered_artwork_manifest(
         )
         return plan
 
-    def fake_analyze_registered_artwork_colors(
-        *,
-        manifest,
-        resolver,
-    ) -> object:
-        analyzed.append(
-            (
-                manifest,
-                resolver,
-            )
-        )
-        return expected_analysis
-
     _patch_artwork_identity_resolver(
         monkeypatch,
     )
@@ -210,18 +203,22 @@ def test_analyze_artifact_colors_uses_registered_artwork_manifest(
         fake_create_build_plan,
     )
     monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.execute_dependency_build",
+        lambda plan: object(),
+        raising=False,
+    )
+    monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.analyze_registered_artwork_colors",
-        fake_analyze_registered_artwork_colors,
+        lambda *, manifest, resolver: object(),
     )
     monkeypatch.chdir(
         tmp_path,
     )
 
-    result = analyze_artifact_colors(
+    analyze_artifact_colors(
         "nydeli",
     )
 
-    assert result is expected_analysis
     assert len(planned) == 1
 
     artifact_id, realization, targets, project_root = planned[0]
@@ -240,20 +237,16 @@ def test_analyze_artifact_colors_uses_registered_artwork_manifest(
     assert target.stage == "vector"
     assert target.product == "manifest"
 
-    assert analyzed == [
-        (
-            manifest,
-            resolver,
-        )
-    ]
 
-
-def test_analyze_artifact_colors_does_not_execute_build(
+def test_analyze_artifact_colors_realizes_target_before_analysis(
     monkeypatch,
     tmp_path,
 ) -> None:
     """
-    Color analysis reads persistent Artwork products without executing a build.
+    Color analysis realizes its targeted Artwork products before reading them.
+
+    Realization uses normal dependency-aware build orchestration rather than
+    directly invoking Artwork producer stages.
     """
 
     from lowkey_artifact_builder.cli.cmd_color import (
@@ -261,9 +254,136 @@ def test_analyze_artifact_colors_does_not_execute_build(
     )
 
     manifest = tmp_path / "products.json"
+    resolver = object()
+    expected_analysis = object()
 
     plan = SimpleNamespace(
-        resolver=object(),
+        resolver=resolver,
+        stages=(
+            SimpleNamespace(
+                name="prepare",
+                products=(),
+            ),
+            SimpleNamespace(
+                name="raster",
+                products=(),
+            ),
+            SimpleNamespace(
+                name="vector",
+                products=(
+                    SimpleNamespace(
+                        name="manifest",
+                        path=manifest,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    actions: list[tuple[str, object]] = []
+
+    _patch_artwork_identity_resolver(
+        monkeypatch,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
+        lambda artifact_id, *, realization, targets, project_root: plan,
+    )
+
+    def fake_execute_dependency_build(
+        build_plan,
+    ) -> object:
+        assert build_plan is plan
+
+        actions.append(
+            (
+                "execute",
+                build_plan,
+            )
+        )
+
+        manifest.write_text(
+            "{}",
+            encoding="utf-8",
+        )
+
+        return object()
+
+    def fake_analyze_registered_artwork_colors(
+        *,
+        manifest: Path,
+        resolver,
+    ) -> object:
+        assert manifest.is_file()
+
+        actions.append(
+            (
+                "analyze",
+                manifest,
+            )
+        )
+
+        return expected_analysis
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.execute_dependency_build",
+        fake_execute_dependency_build,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.analyze_registered_artwork_colors",
+        fake_analyze_registered_artwork_colors,
+    )
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    result = analyze_artifact_colors(
+        "nydeli",
+    )
+
+    assert result is expected_analysis
+
+    assert actions == [
+        (
+            "execute",
+            plan,
+        ),
+        (
+            "analyze",
+            manifest,
+        ),
+    ]
+
+
+def test_analyze_artifact_colors_reuses_current_registered_artwork(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """
+    Current persistent Artwork remains subject to normal incremental execution.
+
+    Color analysis does not invent its own filesystem-existence shortcut.
+    The targeted plan is still passed through normal orchestration, which owns
+    the decision to reuse current products without producer execution.
+    """
+
+    from lowkey_artifact_builder.cli.cmd_color import (
+        analyze_artifact_colors,
+    )
+
+    manifest = tmp_path / "products.json"
+    manifest.write_text(
+        "{}",
+        encoding="utf-8",
+    )
+
+    resolver = object()
+    expected_analysis = object()
+
+    plan = SimpleNamespace(
+        resolver=resolver,
         stages=(
             SimpleNamespace(
                 name="vector",
@@ -277,6 +397,9 @@ def test_analyze_artifact_colors_does_not_execute_build(
         ),
     )
 
+    executed: list[object] = []
+    analyzed: list[tuple[Path, object]] = []
+
     _patch_artwork_identity_resolver(
         monkeypatch,
     )
@@ -285,28 +408,53 @@ def test_analyze_artifact_colors_does_not_execute_build(
         "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
         lambda artifact_id, *, realization, targets, project_root: plan,
     )
+
+    def fake_execute_dependency_build(
+        build_plan,
+    ) -> object:
+        executed.append(
+            build_plan,
+        )
+        return object()
+
+    def fake_analyze_registered_artwork_colors(
+        *,
+        manifest,
+        resolver,
+    ) -> object:
+        analyzed.append(
+            (
+                manifest,
+                resolver,
+            )
+        )
+        return expected_analysis
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.execute_dependency_build",
+        fake_execute_dependency_build,
+        raising=False,
+    )
     monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.analyze_registered_artwork_colors",
-        lambda *, manifest, resolver: object(),
-    )
-
-    def fail_execute(
-        *args,
-        **kwargs,
-    ) -> None:
-        raise AssertionError("color analysis must not execute a build")
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.engine.execute_build",
-        fail_execute,
+        fake_analyze_registered_artwork_colors,
     )
     monkeypatch.chdir(
         tmp_path,
     )
 
-    analyze_artifact_colors(
+    result = analyze_artifact_colors(
         "nydeli",
     )
+
+    assert result is expected_analysis
+    assert executed == [plan]
+    assert analyzed == [
+        (
+            manifest,
+            resolver,
+        )
+    ]
 
 
 def test_analyze_artifact_colors_does_not_modify_configuration(
@@ -314,7 +462,7 @@ def test_analyze_artifact_colors_does_not_modify_configuration(
     tmp_path,
 ) -> None:
     """
-    Color analysis is a read-only configuration diagnostic.
+    Demand-driven color analysis remains a read-only configuration diagnostic.
     """
 
     from lowkey_artifact_builder.cli.cmd_color import (
@@ -355,6 +503,24 @@ def test_analyze_artifact_colors_does_not_modify_configuration(
         "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
         lambda artifact_id, *, realization, targets, project_root: plan,
     )
+
+    def fake_execute_dependency_build(
+        build_plan,
+    ) -> object:
+        assert build_plan is plan
+
+        manifest.write_text(
+            "{}",
+            encoding="utf-8",
+        )
+
+        return object()
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.execute_dependency_build",
+        fake_execute_dependency_build,
+        raising=False,
+    )
     monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.analyze_registered_artwork_colors",
         lambda *, manifest, resolver: object(),
@@ -380,28 +546,25 @@ def test_analyze_artifact_colors_does_not_modify_configuration(
     )
 
 
-def test_analyze_artifact_colors_does_not_require_standalone_artwork_configuration(
+def test_analyze_artifact_colors_does_not_require_standalone_artwork_stages(
     monkeypatch,
     tmp_path,
 ) -> None:
     """
-    Registered Artwork color analysis does not require standalone stages.
+    Demand-driven color analysis stops at registered Artwork.
 
-    Color analysis requires the registered vector manifest, so standalone
-    extrusion and packaging must not participate in the requested plan.
+    The targeted plan may contain prepare, raster, and vector, but standalone
+    extrusion and packaging are not requested merely to perform analysis.
     """
 
     from lowkey_artifact_builder.cli.cmd_color import (
         analyze_artifact_colors,
     )
 
-    planned_targets: list[tuple[ProductRef, ...]] = []
-
     manifest = tmp_path / "products.json"
-    resolver = object()
 
     plan = SimpleNamespace(
-        resolver=resolver,
+        resolver=object(),
         stages=(
             SimpleNamespace(
                 name="prepare",
@@ -437,11 +600,29 @@ def test_analyze_artifact_colors_does_not_require_standalone_artwork_configurati
         if targets is None:
             raise AssertionError("color analysis must not request a complete Artwork plan")
 
-        planned_targets.append(
-            targets,
+        return plan
+
+    def fake_execute_dependency_build(
+        build_plan,
+    ) -> object:
+        assert build_plan is plan
+
+        stage_names = tuple(stage.name for stage in build_plan.stages)
+
+        assert stage_names == (
+            "prepare",
+            "raster",
+            "vector",
+        )
+        assert "extrude" not in stage_names
+        assert "package" not in stage_names
+
+        manifest.write_text(
+            "{}",
+            encoding="utf-8",
         )
 
-        return plan
+        return object()
 
     _patch_artwork_identity_resolver(
         monkeypatch,
@@ -450,6 +631,11 @@ def test_analyze_artifact_colors_does_not_require_standalone_artwork_configurati
     monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
         fake_create_build_plan,
+    )
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.execute_dependency_build",
+        fake_execute_dependency_build,
+        raising=False,
     )
     monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.analyze_registered_artwork_colors",
@@ -463,17 +649,3 @@ def test_analyze_artifact_colors_does_not_require_standalone_artwork_configurati
     analyze_artifact_colors(
         "nydeli",
     )
-
-    assert len(planned_targets) == 1
-
-    targets = planned_targets[0]
-
-    assert len(targets) == 1
-
-    target = targets[0]
-
-    assert target.artifact == "nydeli"
-    assert target.model == "artwork"
-    assert target.realization == "default"
-    assert target.stage == "vector"
-    assert target.product == "manifest"
