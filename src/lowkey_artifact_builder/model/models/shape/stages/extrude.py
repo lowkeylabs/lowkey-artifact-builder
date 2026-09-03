@@ -436,8 +436,9 @@ def _render_artwork_components(
     transform, the same Shape physical X/Y scaling, and the same physical
     Z interval.
 
-    Artwork semantic color identity is preserved while being normalized into
-    the physical-component color representation consumed by packaging.
+    Artifact color semantics remain persistent Artwork information. The
+    already-selected printer assignment supplies physical component color
+    metadata consumed by packaging.
 
     The persistent registered coordinate extent is required so downstream
     physical dimensionalization retains the Artwork coordinate-system
@@ -509,38 +510,48 @@ def _render_artwork_components(
         if not source_path.is_file():
             raise ValueError(f"Registered Artwork component does not exist: {source_path}")
 
-        color_name = component.get(
+        printer_color = component.get(
+            "printer_color",
+        )
+
+        if not isinstance(
+            printer_color,
+            dict,
+        ):
+            raise ValueError(
+                f"Registered Artwork component {index} requires printer color metadata."
+            )
+
+        printer_color_name = printer_color.get(
             "name",
         )
 
         if (
             not isinstance(
-                color_name,
+                printer_color_name,
                 str,
             )
-            or not color_name
+            or not printer_color_name
         ):
-            raise ValueError(
-                f"Registered Artwork component {index} requires a semantic color name."
-            )
+            raise ValueError(f"Registered Artwork component {index} requires a printer color name.")
 
-        color = component.get(
-            "color",
+        printer_rgb = printer_color.get(
+            "rgb",
         )
 
         if not isinstance(
-            color,
+            printer_rgb,
             dict,
         ):
-            raise ValueError(f"Registered Artwork component {index} requires color metadata.")
+            raise ValueError(f"Registered Artwork component {index} requires printer RGB metadata.")
 
-        red = color.get(
+        red = printer_rgb.get(
             "red",
         )
-        green = color.get(
+        green = printer_rgb.get(
             "green",
         )
-        blue = color.get(
+        blue = printer_rgb.get(
             "blue",
         )
 
@@ -556,11 +567,11 @@ def _render_artwork_components(
             )
         ):
             raise ValueError(
-                f"Registered Artwork component {index} requires valid RGB color metadata."
+                f"Registered Artwork component {index} requires valid printer RGB metadata."
             )
 
         physical_color: dict[str, object] = {
-            "name": color_name,
+            "name": printer_color_name,
             "rgb": [
                 red,
                 green,

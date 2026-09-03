@@ -130,22 +130,44 @@ def _write_vector_manifest(
                     {
                         "index": 1,
                         "path": "white.svg",
-                        "name": "white",
-                        "color": {
-                            "red": 255,
-                            "green": 255,
-                            "blue": 255,
+                        "artifact_color": {
+                            "index": 1,
+                            "rgb": {
+                                "red": 250,
+                                "green": 250,
+                                "blue": 250,
+                            },
                         },
+                        "printer_color": {
+                            "name": "white",
+                            "rgb": {
+                                "red": 255,
+                                "green": 255,
+                                "blue": 255,
+                            },
+                        },
+                        "distance": 1.25,
                     },
                     {
                         "index": 2,
                         "path": "black.svg",
-                        "name": "black",
-                        "color": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 0,
+                        "artifact_color": {
+                            "index": 2,
+                            "rgb": {
+                                "red": 5,
+                                "green": 5,
+                                "blue": 5,
+                            },
                         },
+                        "printer_color": {
+                            "name": "black",
+                            "rgb": {
+                                "red": 0,
+                                "green": 0,
+                                "blue": 0,
+                            },
+                        },
+                        "distance": 1.5,
                     },
                 ],
             }
@@ -360,10 +382,10 @@ def test_load_registered_artwork_preserves_component_metadata(
     tmp_path: Path,
 ) -> None:
     """
-    Shape retains semantic component identity supplied by Artwork.
+    Shape retains Artwork and printer color semantics supplied by Artwork.
 
-    The registered component payload remains opaque; Shape needs membership
-    and semantic metadata without independently interpreting SVG geometry.
+    Artifact color identity and measured RGB remain distinct from the selected
+    printer color identity and RGB when Shape consumes registered Artwork.
     """
 
     manifest = tmp_path / "vector" / "products.json"
@@ -380,20 +402,34 @@ def test_load_registered_artwork_preserves_component_metadata(
     second = artwork.components[1]
 
     assert first.index == 1
-    assert first.name == "white"
-    assert first.color == {
+    assert first.artifact_color_index == 1
+    assert first.artifact_color == {
+        "red": 250,
+        "green": 250,
+        "blue": 250,
+    }
+    assert first.printer_color_name == "white"
+    assert first.printer_color == {
         "red": 255,
         "green": 255,
         "blue": 255,
     }
+    assert first.distance == pytest.approx(1.25)
 
     assert second.index == 2
-    assert second.name == "black"
-    assert second.color == {
+    assert second.artifact_color_index == 2
+    assert second.artifact_color == {
+        "red": 5,
+        "green": 5,
+        "blue": 5,
+    }
+    assert second.printer_color_name == "black"
+    assert second.printer_color == {
         "red": 0,
         "green": 0,
         "blue": 0,
     }
+    assert second.distance == pytest.approx(1.5)
 
 
 def test_load_registered_artwork_reads_common_registered_extent(
@@ -1609,24 +1645,36 @@ def test_registered_artwork_components_share_one_transform(
             compose.RegisteredArtworkComponent(
                 index=1,
                 path=tmp_path / "white.svg",
-                name="white",
-                color={
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255,
+                artifact_color_index=1,
+                artifact_color={
+                    "red": 250,
+                    "green": 250,
+                    "blue": 250,
                 },
+                printer_color_name="white",
+                printer_color={
+                    "red": 255,
+                    "green": 255,
+                    "blue": 255,
+                },
+                distance=1.25,
             ),
             compose.RegisteredArtworkComponent(
                 index=2,
                 path=tmp_path / "black.svg",
-                name="black",
-                color={
-                    "r": 0,
-                    "g": 0,
-                    "b": 0,
-                    "a": 255,
+                artifact_color_index=2,
+                artifact_color={
+                    "red": 5,
+                    "green": 5,
+                    "blue": 5,
                 },
+                printer_color_name="black",
+                printer_color={
+                    "red": 0,
+                    "green": 0,
+                    "blue": 0,
+                },
+                distance=1.5,
             ),
         ),
     )
@@ -2076,10 +2124,19 @@ def test_composition_manifest_preserves_artwork_registered_extent(
             compose.RegisteredArtworkComponent(
                 index=1,
                 path=component,
-                name="color-1",
-                color={
-                    "hex": "#ff0000",
+                artifact_color_index=1,
+                artifact_color={
+                    "red": 255,
+                    "green": 0,
+                    "blue": 0,
                 },
+                printer_color_name="red",
+                printer_color={
+                    "red": 255,
+                    "green": 0,
+                    "blue": 0,
+                },
+                distance=0.0,
             ),
         ),
     )
@@ -2863,9 +2920,9 @@ def test_compose_manifest_preserves_registered_artwork_membership(
     """
     Shape composition persists incorporated Artwork component membership.
 
-    Dynamic Artwork membership comes from the producer manifest and is
-    retained explicitly so downstream stages never discover components by
-    scanning directories.
+    Dynamic Artwork membership and its Artifact/printer color semantics come
+    from the producer manifest and are retained explicitly so downstream
+    stages never rediscover either membership or color meaning.
     """
 
     artwork_dir = tmp_path / "artwork"
@@ -2918,22 +2975,44 @@ def test_compose_manifest_preserves_registered_artwork_membership(
         {
             "index": 1,
             "path": "white.svg",
-            "name": "white",
-            "color": {
-                "red": 255,
-                "green": 255,
-                "blue": 255,
+            "artifact_color": {
+                "index": 1,
+                "rgb": {
+                    "red": 250,
+                    "green": 250,
+                    "blue": 250,
+                },
             },
+            "printer_color": {
+                "name": "white",
+                "rgb": {
+                    "red": 255,
+                    "green": 255,
+                    "blue": 255,
+                },
+            },
+            "distance": 1.25,
         },
         {
             "index": 2,
             "path": "black.svg",
-            "name": "black",
-            "color": {
-                "red": 0,
-                "green": 0,
-                "blue": 0,
+            "artifact_color": {
+                "index": 2,
+                "rgb": {
+                    "red": 5,
+                    "green": 5,
+                    "blue": 5,
+                },
             },
+            "printer_color": {
+                "name": "black",
+                "rgb": {
+                    "red": 0,
+                    "green": 0,
+                    "blue": 0,
+                },
+            },
+            "distance": 1.5,
         },
     ]
 
@@ -3011,22 +3090,44 @@ def test_compose_stage_places_artwork_from_manifest_envelope_occupancy(
                     {
                         "index": 1,
                         "path": "left.svg",
-                        "name": "white",
-                        "color": {
-                            "red": 255,
-                            "green": 255,
-                            "blue": 255,
+                        "artifact_color": {
+                            "index": 1,
+                            "rgb": {
+                                "red": 250,
+                                "green": 250,
+                                "blue": 250,
+                            },
                         },
+                        "printer_color": {
+                            "name": "white",
+                            "rgb": {
+                                "red": 255,
+                                "green": 255,
+                                "blue": 255,
+                            },
+                        },
+                        "distance": 1.25,
                     },
                     {
                         "index": 2,
                         "path": "right.svg",
-                        "name": "black",
-                        "color": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 0,
+                        "artifact_color": {
+                            "index": 2,
+                            "rgb": {
+                                "red": 5,
+                                "green": 5,
+                                "blue": 5,
+                            },
                         },
+                        "printer_color": {
+                            "name": "black",
+                            "rgb": {
+                                "red": 0,
+                                "green": 0,
+                                "blue": 0,
+                            },
+                        },
+                        "distance": 1.5,
                     },
                 ],
             }
@@ -3076,17 +3177,6 @@ def test_compose_stage_places_artwork_from_manifest_envelope_occupancy(
 
     transform = manifest["artwork"]["transform"]
 
-    #
-    # Circular containment is limited by the envelope corner radius.
-    #
-    # Envelope:
-    #
-    #     x = 3..15     center x = 9
-    #     y = 2..18     center y = 10
-    #
-    # Its half extents are 6 x 8. The envelope corner radius is therefore
-    # 10, so fitting it inside the radius-0.5 Shape uses scale 0.05.
-    #
     expected_scale = 0.5 / math.hypot(
         6.0,
         8.0,
@@ -3096,13 +3186,6 @@ def test_compose_stage_places_artwork_from_manifest_envelope_occupancy(
         expected_scale,
     )
 
-    #
-    # The envelope center, not registered_extent center (10, 10), is mapped
-    # onto the Shape origin.
-    #
-    # This distinction is deliberate: using registered_extent would produce
-    # translate_x = -0.5 rather than the required -0.45.
-    #
     assert transform["translate_x"] == pytest.approx(
         -(9.0 * expected_scale),
     )
@@ -3111,9 +3194,6 @@ def test_compose_stage_places_artwork_from_manifest_envelope_occupancy(
         -(10.0 * expected_scale),
     )
 
-    #
-    # Individual component extents do not participate in placement.
-    #
     assert transform["translate_x"] != pytest.approx(
         -(5.5 * expected_scale),
     )
@@ -3210,12 +3290,13 @@ def test_load_registered_artwork_accepts_artwork_vector_extent(
 
     manifest = tmp_path / "products.json"
     envelope = tmp_path / "envelope.svg"
-    component = tmp_path / "color-0.svg"
+    component = tmp_path / "color-1.svg"
 
     envelope.write_text(
         '<svg xmlns="http://www.w3.org/2000/svg"><rect x="2" y="3" width="10" height="8"/></svg>',
         encoding="utf-8",
     )
+
     component.write_text(
         '<svg xmlns="http://www.w3.org/2000/svg"/>',
         encoding="utf-8",
@@ -3228,14 +3309,25 @@ def test_load_registered_artwork_accepts_artwork_vector_extent(
                 "envelope": "envelope.svg",
                 "products": [
                     {
-                        "index": 0,
-                        "path": "color-0.svg",
-                        "name": "white",
-                        "color": {
-                            "red": 255,
-                            "green": 255,
-                            "blue": 255,
+                        "index": 1,
+                        "path": "color-1.svg",
+                        "artifact_color": {
+                            "index": 1,
+                            "rgb": {
+                                "red": 250,
+                                "green": 250,
+                                "blue": 250,
+                            },
                         },
+                        "printer_color": {
+                            "name": "white",
+                            "rgb": {
+                                "red": 255,
+                                "green": 255,
+                                "blue": 255,
+                            },
+                        },
+                        "distance": 1.25,
                     },
                 ],
             }
@@ -3257,57 +3349,56 @@ def test_load_registered_artwork_preserves_artwork_vector_color_metadata(
     tmp_path: Path,
 ) -> None:
     """
-    Shape preserves semantic color metadata published by Artwork vectorization.
+    Registered Artwork preserves Artifact and printer color semantics.
 
-    The consumer accepts Artwork's shared RGB representation without
-    translating it into a Shape-specific color schema.
+    Shape consumes the persistent Artifact color identity and measured RGB
+    independently from the selected physical printer color identity and RGB.
     """
 
-    manifest = tmp_path / "products.json"
-    envelope = tmp_path / "envelope.svg"
-    component = tmp_path / "color-0.svg"
+    manifest = tmp_path / "vector" / "products.json"
 
-    envelope.write_text(
-        '<svg xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="16" height="16"/></svg>',
-        encoding="utf-8",
-    )
-    component.write_text(
-        '<svg xmlns="http://www.w3.org/2000/svg"/>',
-        encoding="utf-8",
-    )
-
-    manifest.write_text(
-        json.dumps(
-            {
-                "registered_extent": 16,
-                "envelope": "envelope.svg",
-                "products": [
-                    {
-                        "index": 0,
-                        "path": "color-0.svg",
-                        "name": "gold",
-                        "color": {
-                            "red": 212,
-                            "green": 175,
-                            "blue": 55,
-                        },
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
+    _write_vector_manifest(
+        manifest,
     )
 
     artwork = compose.load_registered_artwork(
         manifest,
     )
 
-    assert artwork.components[0].name == "gold"
-    assert artwork.components[0].color == {
-        "red": 212,
-        "green": 175,
-        "blue": 55,
+    first = artwork.components[0]
+    second = artwork.components[1]
+
+    assert first.artifact_color_index == 1
+    assert first.artifact_color == {
+        "red": 250,
+        "green": 250,
+        "blue": 250,
     }
+    assert first.printer_color_name == "white"
+    assert first.printer_color == {
+        "red": 255,
+        "green": 255,
+        "blue": 255,
+    }
+    assert first.distance == pytest.approx(
+        1.25,
+    )
+
+    assert second.artifact_color_index == 2
+    assert second.artifact_color == {
+        "red": 5,
+        "green": 5,
+        "blue": 5,
+    }
+    assert second.printer_color_name == "black"
+    assert second.printer_color == {
+        "red": 0,
+        "green": 0,
+        "blue": 0,
+    }
+    assert second.distance == pytest.approx(
+        1.5,
+    )
 
 
 def test_compose_stage_succeeds_without_registered_artwork(

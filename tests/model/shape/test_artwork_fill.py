@@ -80,12 +80,23 @@ def _write_registered_artwork_manifest(
                     {
                         "index": 1,
                         "path": "white.svg",
-                        "name": "white",
-                        "color": {
-                            "red": 255,
-                            "green": 255,
-                            "blue": 255,
+                        "artifact_color": {
+                            "index": 1,
+                            "rgb": {
+                                "red": 250,
+                                "green": 250,
+                                "blue": 250,
+                            },
                         },
+                        "printer_color": {
+                            "name": "white",
+                            "rgb": {
+                                "red": 255,
+                                "green": 255,
+                                "blue": 255,
+                            },
+                        },
+                        "distance": 1.25,
                     },
                 ],
             }
@@ -337,22 +348,36 @@ def test_artwork_fill_region_uses_authoritative_artwork_envelope(
             compose.RegisteredArtworkComponent(
                 index=1,
                 path=left_component,
-                name="left",
-                color={
+                artifact_color_index=1,
+                artifact_color={
+                    "red": 250,
+                    "green": 250,
+                    "blue": 250,
+                },
+                printer_color_name="white",
+                printer_color={
                     "red": 255,
                     "green": 255,
                     "blue": 255,
                 },
+                distance=1.25,
             ),
             compose.RegisteredArtworkComponent(
                 index=2,
                 path=right_component,
-                name="right",
-                color={
+                artifact_color_index=2,
+                artifact_color={
+                    "red": 5,
+                    "green": 5,
+                    "blue": 5,
+                },
+                printer_color_name="black",
+                printer_color={
                     "red": 0,
                     "green": 0,
                     "blue": 0,
                 },
+                distance=1.5,
             ),
         ),
     )
@@ -1376,12 +1401,23 @@ def _write_physical_fill_manifest(
                         {
                             "index": 1,
                             "path": artwork_component.name,
-                            "name": "white",
-                            "color": {
-                                "red": 255,
-                                "green": 255,
-                                "blue": 255,
+                            "artifact_color": {
+                                "index": 1,
+                                "rgb": {
+                                    "red": 250,
+                                    "green": 250,
+                                    "blue": 250,
+                                },
                             },
+                            "printer_color": {
+                                "name": "white",
+                                "rgb": {
+                                    "red": 255,
+                                    "green": 255,
+                                    "blue": 255,
+                                },
+                            },
+                            "distance": 1.25,
                         },
                     ],
                 },

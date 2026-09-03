@@ -349,6 +349,46 @@ def _registered_artwork(
     }
 
 
+def _registered_artwork_component(
+    *,
+    index: int,
+    path: str,
+    artifact_color_index: int,
+    artifact_rgb: tuple[int, int, int],
+    printer_color_name: str,
+    printer_rgb: tuple[int, int, int],
+    distance: float = 0.0,
+) -> dict[str, object]:
+    """
+    Build one persistent registered-Artwork component.
+
+    Artifact color identity describes the traced Artwork region independently
+    of its selected physical printer color.
+    """
+
+    return {
+        "index": index,
+        "path": path,
+        "artifact_color": {
+            "index": artifact_color_index,
+            "rgb": {
+                "red": artifact_rgb[0],
+                "green": artifact_rgb[1],
+                "blue": artifact_rgb[2],
+            },
+        },
+        "printer_color": {
+            "name": printer_color_name,
+            "rgb": {
+                "red": printer_rgb[0],
+                "green": printer_rgb[1],
+                "blue": printer_rgb[2],
+            },
+        },
+        "distance": distance,
+    }
+
+
 def _configure_extrude_context_inputs(
     context: Mock,
     *,
@@ -3880,16 +3920,23 @@ def test_incorporated_artwork_is_dimensionalized_above_shape_base(
         composition_manifest,
         artwork=_registered_artwork(
             components=[
-                {
-                    "index": 1,
-                    "path": "color-1.svg",
-                    "name": "red",
-                    "color": {
-                        "red": 220,
-                        "green": 38,
-                        "blue": 38,
-                    },
-                },
+                _registered_artwork_component(
+                    index=1,
+                    path="color-1.svg",
+                    artifact_color_index=1,
+                    artifact_rgb=(
+                        224,
+                        32,
+                        32,
+                    ),
+                    printer_color_name="red",
+                    printer_rgb=(
+                        220,
+                        38,
+                        38,
+                    ),
+                    distance=1.25,
+                ),
             ],
         ),
     )
@@ -3990,26 +4037,40 @@ def test_incorporated_artwork_components_share_physical_z_dimensionalization(
         composition_manifest,
         artwork=_registered_artwork(
             components=[
-                {
-                    "index": 1,
-                    "path": "color-1.svg",
-                    "name": "red",
-                    "color": {
-                        "red": 220,
-                        "green": 38,
-                        "blue": 38,
-                    },
-                },
-                {
-                    "index": 2,
-                    "path": "color-2.svg",
-                    "name": "blue",
-                    "color": {
-                        "red": 37,
-                        "green": 99,
-                        "blue": 235,
-                    },
-                },
+                _registered_artwork_component(
+                    index=1,
+                    path="color-1.svg",
+                    artifact_color_index=1,
+                    artifact_rgb=(
+                        224,
+                        32,
+                        32,
+                    ),
+                    printer_color_name="red",
+                    printer_rgb=(
+                        220,
+                        38,
+                        38,
+                    ),
+                    distance=1.25,
+                ),
+                _registered_artwork_component(
+                    index=2,
+                    path="color-2.svg",
+                    artifact_color_index=2,
+                    artifact_rgb=(
+                        32,
+                        96,
+                        240,
+                    ),
+                    printer_color_name="blue",
+                    printer_rgb=(
+                        37,
+                        99,
+                        235,
+                    ),
+                    distance=0.75,
+                ),
             ],
         ),
     )
@@ -4053,16 +4114,14 @@ def test_incorporated_artwork_components_share_physical_z_dimensionalization(
         assert bounds[5] == pytest.approx(3.25)
 
 
-def test_incorporated_artwork_manifest_preserves_semantic_colors(
+def test_incorporated_artwork_manifest_preserves_printer_assignment(
     tmp_path: Path,
 ) -> None:
     """
-    Dimensionalization preserves Artwork semantic color identity.
+    Artwork dimensionalization preserves its selected printer assignment.
 
-    Artwork supplies semantic color name and RGB identity independently of
-    physical manufacturing. Shape extrusion preserves that identity while
-    expressing it through the common physical-component color contract used
-    by downstream packaging.
+    Artifact RGB remains persistent Artwork information, while physical Shape
+    components use the independently selected printer identity and RGB.
     """
 
     composition = tmp_path / "composition.svg"
@@ -4094,16 +4153,23 @@ def test_incorporated_artwork_manifest_preserves_semantic_colors(
         composition_manifest,
         artwork=_registered_artwork(
             components=[
-                {
-                    "index": 1,
-                    "path": "color-1.svg",
-                    "name": "red",
-                    "color": {
-                        "red": 220,
-                        "green": 38,
-                        "blue": 38,
-                    },
-                },
+                _registered_artwork_component(
+                    index=1,
+                    path="color-1.svg",
+                    artifact_color_index=7,
+                    artifact_rgb=(
+                        17,
+                        43,
+                        91,
+                    ),
+                    printer_color_name="physical-blue",
+                    printer_rgb=(
+                        20,
+                        40,
+                        90,
+                    ),
+                    distance=1.25,
+                ),
             ],
         ),
     )
@@ -4116,11 +4182,13 @@ def test_incorporated_artwork_manifest_preserves_semantic_colors(
         spec=StageContext,
     )
     context.resolver = resolver
+
     _configure_extrude_context_inputs(
         context,
         composition=composition,
         composition_manifest=composition_manifest,
     )
+
     context.output.return_value = output_manifest
 
     extrude.execute(
@@ -4136,11 +4204,11 @@ def test_incorporated_artwork_manifest_preserves_semantic_colors(
     )
 
     assert artwork_component_data["color"] == {
-        "name": "red",
+        "name": "physical-blue",
         "rgb": [
-            220,
-            38,
-            38,
+            20,
+            40,
+            90,
         ],
     }
 
@@ -4204,16 +4272,23 @@ def test_incorporated_artwork_preserves_registered_composition_transform(
             translate_x=0.1,
             translate_y=-0.2,
             components=[
-                {
-                    "index": 1,
-                    "path": "color-1.svg",
-                    "name": "red",
-                    "color": {
-                        "red": 220,
-                        "green": 38,
-                        "blue": 38,
-                    },
-                },
+                _registered_artwork_component(
+                    index=1,
+                    path="color-1.svg",
+                    artifact_color_index=1,
+                    artifact_rgb=(
+                        224,
+                        32,
+                        32,
+                    ),
+                    printer_color_name="red",
+                    printer_rgb=(
+                        220,
+                        38,
+                        38,
+                    ),
+                    distance=1.25,
+                ),
             ],
         ),
     )
@@ -4316,16 +4391,23 @@ def test_shape_size_scales_incorporated_artwork_physical_xy_extent(
             artwork=_registered_artwork(
                 scale=0.8,
                 components=[
-                    {
-                        "index": 1,
-                        "path": "color-1.svg",
-                        "name": "red",
-                        "color": {
-                            "red": 220,
-                            "green": 38,
-                            "blue": 38,
-                        },
-                    },
+                    _registered_artwork_component(
+                        index=1,
+                        path="color-1.svg",
+                        artifact_color_index=1,
+                        artifact_rgb=(
+                            224,
+                            32,
+                            32,
+                        ),
+                        printer_color_name="red",
+                        printer_rgb=(
+                            220,
+                            38,
+                            38,
+                        ),
+                        distance=1.25,
+                    ),
                 ],
             ),
         )
@@ -4463,16 +4545,23 @@ def test_incorporated_artwork_preserves_registered_asymmetric_geometry(
             registered_width=100.0,
             registered_height=100.0,
             components=[
-                {
-                    "index": 1,
-                    "path": "color-1.svg",
-                    "name": "red",
-                    "color": {
-                        "red": 220,
-                        "green": 38,
-                        "blue": 38,
-                    },
-                },
+                _registered_artwork_component(
+                    index=1,
+                    path="color-1.svg",
+                    artifact_color_index=1,
+                    artifact_rgb=(
+                        224,
+                        32,
+                        32,
+                    ),
+                    printer_color_name="red",
+                    printer_rgb=(
+                        220,
+                        38,
+                        38,
+                    ),
+                    distance=1.25,
+                ),
             ],
         ),
     )

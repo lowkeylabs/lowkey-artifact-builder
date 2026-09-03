@@ -627,12 +627,23 @@ def test_artwork_extrusion_passes_registered_extent_to_scad_builder(
             {
                 "index": 1,
                 "path": "color-1.svg",
-                "name": "red",
-                "color": {
-                    "red": 220,
-                    "green": 38,
-                    "blue": 38,
+                "artifact_color": {
+                    "index": 1,
+                    "rgb": {
+                        "red": 224,
+                        "green": 32,
+                        "blue": 32,
+                    },
                 },
+                "printer_color": {
+                    "name": "red",
+                    "rgb": {
+                        "red": 220,
+                        "green": 38,
+                        "blue": 38,
+                    },
+                },
+                "distance": 1.25,
             },
         ],
     }
@@ -845,12 +856,23 @@ def test_artwork_extrusion_physically_applies_persisted_composition_transform(
             {
                 "index": 1,
                 "path": "color-1.svg",
-                "name": "red",
-                "color": {
-                    "red": 220,
-                    "green": 38,
-                    "blue": 38,
+                "artifact_color": {
+                    "index": 1,
+                    "rgb": {
+                        "red": 224,
+                        "green": 32,
+                        "blue": 32,
+                    },
                 },
+                "printer_color": {
+                    "name": "red",
+                    "rgb": {
+                        "red": 220,
+                        "green": 38,
+                        "blue": 38,
+                    },
+                },
+                "distance": 1.25,
             },
         ],
     }
@@ -1002,12 +1024,23 @@ def test_extrude_stage_physically_preserves_composed_artwork_centering(
                         {
                             "index": 1,
                             "path": "color-1.svg",
-                            "name": "red",
-                            "color": {
-                                "red": 220,
-                                "green": 38,
-                                "blue": 38,
+                            "artifact_color": {
+                                "index": 1,
+                                "rgb": {
+                                    "red": 224,
+                                    "green": 32,
+                                    "blue": 32,
+                                },
                             },
+                            "printer_color": {
+                                "name": "red",
+                                "rgb": {
+                                    "red": 220,
+                                    "green": 38,
+                                    "blue": 38,
+                                },
+                            },
+                            "distance": 1.25,
                         },
                     ],
                 },

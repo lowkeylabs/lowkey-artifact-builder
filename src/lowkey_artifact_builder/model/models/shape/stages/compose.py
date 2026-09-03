@@ -64,13 +64,18 @@ class RegisteredArtworkComponent:
     """
     One component declared by a registered Artwork manifest.
 
-    The component payload remains opaque to this manifest-loading boundary.
+    Artifact color identity and measured RGB describe the persistent Artwork
+    region. Printer color identity and RGB describe the selected physical
+    realization. Both semantics remain distinct through Shape composition.
     """
 
     index: int
     path: Path
-    name: str
-    color: dict[str, Any]
+    artifact_color_index: int
+    artifact_color: dict[str, int]
+    printer_color_name: str
+    printer_color: dict[str, int]
+    distance: float
 
 
 @dataclass(frozen=True)
@@ -506,9 +511,10 @@ def _registered_artwork_manifest(
     """
     Serialize incorporated registered Artwork for persistent composition.
 
-    The common registered coordinate extent, component membership, semantic
-    metadata, and placement transformation are preserved so downstream stages
-    can interpret the registered Artwork without rediscovering source geometry.
+    The common registered coordinate extent, component membership, Artifact
+    color semantics, printer assignment, and placement transformation are
+    preserved so downstream stages can interpret the registered Artwork
+    without rediscovering source geometry or color semantics.
     """
 
     return {
@@ -525,8 +531,15 @@ def _registered_artwork_manifest(
             {
                 "index": component.index,
                 "path": component.path.name,
-                "name": component.name,
-                "color": component.color,
+                "artifact_color": {
+                    "index": component.artifact_color_index,
+                    "rgb": component.artifact_color,
+                },
+                "printer_color": {
+                    "name": component.printer_color_name,
+                    "rgb": component.printer_color,
+                },
+                "distance": component.distance,
             }
             for component in artwork.components
         ],
@@ -2192,7 +2205,10 @@ def _load_component(
     manifest_path: Path,
 ) -> RegisteredArtworkComponent:
     """
-    Read one registered component declaration.
+    Read one registered Artwork component declaration.
+
+    Artifact color semantics and the selected printer assignment are consumed
+    independently from the persistent Artwork vector manifest.
     """
 
     if not isinstance(
@@ -2201,16 +2217,34 @@ def _load_component(
     ):
         raise ValueError("Registered Artwork product must contain an object.")
 
-    index = product["index"]
-    relative_path = product["path"]
-    name = product["name"]
-    color = product["color"]
+    index = product.get(
+        "index",
+    )
+    relative_path = product.get(
+        "path",
+    )
+    artifact_color = product.get(
+        "artifact_color",
+    )
+    printer_color = product.get(
+        "printer_color",
+    )
+    distance = product.get(
+        "distance",
+    )
 
-    if not isinstance(
-        index,
-        int,
+    if (
+        not isinstance(
+            index,
+            int,
+        )
+        or isinstance(
+            index,
+            bool,
+        )
+        or index <= 0
     ):
-        raise ValueError("Registered Artwork product index must be an integer.")
+        raise ValueError("Registered Artwork product index must be a positive integer.")
 
     if not isinstance(
         relative_path,
@@ -2219,22 +2253,184 @@ def _load_component(
         raise ValueError("Registered Artwork product path must be a string.")
 
     if not isinstance(
-        name,
-        str,
-    ):
-        raise ValueError("Registered Artwork product name must be a string.")
-
-    if not isinstance(
-        color,
+        artifact_color,
         dict,
     ):
-        raise ValueError("Registered Artwork product color must contain an object.")
+        raise ValueError(f"Registered Artwork product {index} requires Artifact color metadata.")
+
+    artifact_color_index = artifact_color.get(
+        "index",
+    )
+    artifact_rgb = artifact_color.get(
+        "rgb",
+    )
+
+    if (
+        not isinstance(
+            artifact_color_index,
+            int,
+        )
+        or isinstance(
+            artifact_color_index,
+            bool,
+        )
+        or artifact_color_index <= 0
+    ):
+        raise ValueError(
+            f"Registered Artwork product {index} requires a positive Artifact color index."
+        )
+
+    if not isinstance(
+        artifact_rgb,
+        dict,
+    ):
+        raise ValueError(f"Registered Artwork product {index} requires Artifact RGB metadata.")
+
+    artifact_red = artifact_rgb.get(
+        "red",
+    )
+    artifact_green = artifact_rgb.get(
+        "green",
+    )
+    artifact_blue = artifact_rgb.get(
+        "blue",
+    )
+
+    if (
+        not isinstance(
+            artifact_red,
+            int,
+        )
+        or isinstance(
+            artifact_red,
+            bool,
+        )
+        or not 0 <= artifact_red <= 255
+        or not isinstance(
+            artifact_green,
+            int,
+        )
+        or isinstance(
+            artifact_green,
+            bool,
+        )
+        or not 0 <= artifact_green <= 255
+        or not isinstance(
+            artifact_blue,
+            int,
+        )
+        or isinstance(
+            artifact_blue,
+            bool,
+        )
+        or not 0 <= artifact_blue <= 255
+    ):
+        raise ValueError(
+            f"Registered Artwork product {index} requires valid Artifact RGB metadata."
+        )
+
+    if not isinstance(
+        printer_color,
+        dict,
+    ):
+        raise ValueError(f"Registered Artwork product {index} requires printer color metadata.")
+
+    printer_color_name = printer_color.get(
+        "name",
+    )
+    printer_rgb = printer_color.get(
+        "rgb",
+    )
+
+    if (
+        not isinstance(
+            printer_color_name,
+            str,
+        )
+        or not printer_color_name
+    ):
+        raise ValueError(f"Registered Artwork product {index} requires a printer color name.")
+
+    if not isinstance(
+        printer_rgb,
+        dict,
+    ):
+        raise ValueError(f"Registered Artwork product {index} requires printer RGB metadata.")
+
+    printer_red = printer_rgb.get(
+        "red",
+    )
+    printer_green = printer_rgb.get(
+        "green",
+    )
+    printer_blue = printer_rgb.get(
+        "blue",
+    )
+
+    if (
+        not isinstance(
+            printer_red,
+            int,
+        )
+        or isinstance(
+            printer_red,
+            bool,
+        )
+        or not 0 <= printer_red <= 255
+        or not isinstance(
+            printer_green,
+            int,
+        )
+        or isinstance(
+            printer_green,
+            bool,
+        )
+        or not 0 <= printer_green <= 255
+        or not isinstance(
+            printer_blue,
+            int,
+        )
+        or isinstance(
+            printer_blue,
+            bool,
+        )
+        or not 0 <= printer_blue <= 255
+    ):
+        raise ValueError(f"Registered Artwork product {index} requires valid printer RGB metadata.")
+
+    if (
+        not isinstance(
+            distance,
+            int | float,
+        )
+        or isinstance(
+            distance,
+            bool,
+        )
+        or distance < 0.0
+    ):
+        raise ValueError(
+            f"Registered Artwork product {index} requires a nonnegative assignment distance."
+        )
 
     return RegisteredArtworkComponent(
         index=index,
         path=manifest_path.parent / relative_path,
-        name=name,
-        color=color,
+        artifact_color_index=artifact_color_index,
+        artifact_color={
+            "red": artifact_red,
+            "green": artifact_green,
+            "blue": artifact_blue,
+        },
+        printer_color_name=printer_color_name,
+        printer_color={
+            "red": printer_red,
+            "green": printer_green,
+            "blue": printer_blue,
+        },
+        distance=float(
+            distance,
+        ),
     )
 
 
