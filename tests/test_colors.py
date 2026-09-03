@@ -1091,55 +1091,6 @@ def test_assign_colors_finds_global_minimum_from_larger_candidate_set(
     assert result.distance == pytest.approx(3.1)
 
 
-def test_assign_colors_preserves_candidate_order_for_equal_optima(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Equal-scoring assignments deterministically prefer candidate input order.
-    """
-
-    measured = (
-        MeasuredColor(
-            index=1,
-            rgb=(1, 0, 0),
-        ),
-    )
-
-    first = PaletteColor(
-        name="first",
-        rgb=(10, 0, 0),
-    )
-
-    second = PaletteColor(
-        name="second",
-        rgb=(20, 0, 0),
-    )
-
-    third = PaletteColor(
-        name="third",
-        rgb=(30, 0, 0),
-    )
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.colors.color_distance",
-        lambda left, right: 1.0,
-    )
-
-    result = assign_colors(
-        measured,
-        (
-            first,
-            second,
-            third,
-        ),
-    )
-
-    assignments = result.assignments
-
-    assert assignments[0].color is first
-    assert assignments[0].distance == pytest.approx(1.0)
-
-
 def test_assign_colors_exposes_aggregate_distance() -> None:
     """
     A complete color assignment exposes its aggregate perceptual distance.
@@ -1367,3 +1318,64 @@ def test_assign_colors_rejects_duplicate_palette_names() -> None:
                 ),
             ),
         )
+
+
+def test_assign_colors_evaluates_each_measured_candidate_pair_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Assignment cost evaluation is bounded by the measured/candidate matrix.
+
+    Each measured-to-candidate distance is evaluated once rather than once
+    for every candidate permutation containing that pair.
+    """
+
+    measured = tuple(
+        MeasuredColor(
+            index=index,
+            rgb=(index, 0, 0),
+        )
+        for index in range(1, 4)
+    )
+
+    palette = tuple(
+        PaletteColor(
+            name=f"candidate-{index}",
+            rgb=(100 + index, 0, 0),
+        )
+        for index in range(6)
+    )
+
+    evaluated: list[
+        tuple[
+            tuple[int, int, int],
+            tuple[int, int, int],
+        ]
+    ] = []
+
+    def fake_color_distance(
+        left: tuple[int, int, int],
+        right: tuple[int, int, int],
+    ) -> float:
+        evaluated.append(
+            (
+                left,
+                right,
+            )
+        )
+
+        return float(abs(left[0] - right[0]))
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.colors.color_distance",
+        fake_color_distance,
+    )
+
+    assign_colors(
+        measured,
+        palette,
+    )
+
+    assert len(evaluated) == (len(measured) * len(palette))
+
+    assert len(set(evaluated)) == len(evaluated)

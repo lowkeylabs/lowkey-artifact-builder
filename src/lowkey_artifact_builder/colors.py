@@ -33,7 +33,6 @@ printer, or filament-specific behavior.
 
 from __future__ import annotations
 
-import itertools
 import math
 from collections.abc import (
     Mapping,
@@ -42,6 +41,7 @@ from collections.abc import (
 from dataclasses import dataclass
 from typing import Any
 
+import pulp
 from PIL import ImageColor
 
 # =========================================================
@@ -536,9 +536,6 @@ def assign_colors(
     The palette may contain more colors than are required. Each measured
     color is assigned to one distinct palette color, and unused palette
     colors remain unassigned.
-
-    This exhaustive assignment is intentionally simple. Artifact
-    palettes are expected to contain only a small number of colors.
     """
 
     if not measured:
@@ -564,63 +561,146 @@ def assign_colors(
         palette_colors,
     )
 
-    best_assignment: (
-        tuple[
-            PaletteColor,
-            ...,
-        ]
-        | None
-    ) = None
+    #
+    # Calculate the complete assignment cost matrix once.
+    #
 
-    best_distances: (
-        tuple[
-            float,
-            ...,
-        ]
-        | None
-    ) = None
-
-    best_total: float | None = None
-
-    for candidate_assignment in itertools.permutations(
-        palette_colors,
-        len(measured_colors),
-    ):
-        distances = tuple(
+    distances = tuple(
+        tuple(
             color_distance(
                 measured_color.rgb,
                 palette_color.rgb,
             )
-            for measured_color, palette_color in zip(
-                measured_colors,
-                candidate_assignment,
-                strict=True,
+            for palette_color in palette_colors
+        )
+        for measured_color in measured_colors
+    )
+
+    #
+    # Construct a binary assignment problem.
+    #
+
+    problem = pulp.LpProblem(
+        "color_assignment",
+        pulp.LpMinimize,
+    )
+
+    variables = {
+        (
+            measured_index,
+            palette_index,
+        ): problem.add_variable(
+            f"assign_{measured_index}_{palette_index}",
+            cat=pulp.LpBinary,
+        )
+        for measured_index in range(len(measured_colors))
+        for palette_index in range(len(palette_colors))
+    }
+
+    #
+    # Minimize aggregate perceptual distance.
+    #
+
+    problem += pulp.lpSum(
+        distances[measured_index][palette_index]
+        * variables[
+            measured_index,
+            palette_index,
+        ]
+        for measured_index in range(len(measured_colors))
+        for palette_index in range(len(palette_colors))
+    )
+
+    #
+    # Every measured color receives exactly one palette color.
+    #
+
+    for measured_index in range(len(measured_colors)):
+        problem += (
+            pulp.lpSum(
+                variables[
+                    measured_index,
+                    palette_index,
+                ]
+                for palette_index in range(len(palette_colors))
             )
+            == 1
         )
 
-        total = sum(
-            distances,
+    #
+    # Each palette color may be used at most once.
+    #
+
+    for palette_index in range(len(palette_colors)):
+        problem += (
+            pulp.lpSum(
+                variables[
+                    measured_index,
+                    palette_index,
+                ]
+                for measured_index in range(len(measured_colors))
+            )
+            <= 1
         )
 
-        if best_total is None or total < best_total:
-            best_assignment = candidate_assignment
-            best_distances = distances
-            best_total = total
+    #
+    # Solve the assignment problem.
+    #
 
-    if best_assignment is None or best_distances is None or best_total is None:
+    status = problem.solve(
+        pulp.COIN_CMD(
+            msg=False,
+        )
+    )
+
+    if status != pulp.LpStatusOptimal:
         raise ColorError("Could not determine a color assignment.")
+
+    #
+    # Recover the selected palette color for each measured color.
+    #
+
+    selected: list[int] = []
+
+    for measured_index in range(len(measured_colors)):
+        palette_index: int | None = None
+
+        for candidate_index in range(len(palette_colors)):
+            value = variables[
+                measured_index,
+                candidate_index,
+            ].varValue
+
+            if value is not None and value > 0.5:
+                palette_index = candidate_index
+                break
+
+        if palette_index is None:
+            raise ColorError("Could not determine a color assignment.")
+
+        selected.append(
+            palette_index,
+        )
+
+    #
+    # Preserve measured-color order in the public result.
+    #
 
     assignments = tuple(
         ColorAssignment(
             measured=measured_color,
-            color=palette_color,
-            distance=distance,
+            color=palette_colors[palette_index],
+            distance=distances[measured_index][palette_index],
         )
-        for measured_color, palette_color, distance in zip(
-            measured_colors,
-            best_assignment,
-            best_distances,
-            strict=True,
+        for measured_index, (
+            measured_color,
+            palette_index,
+        ) in enumerate(
+            zip(
+                measured_colors,
+                selected,
+                strict=True,
+            )
         )
     )
 
