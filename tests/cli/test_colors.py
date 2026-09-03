@@ -9,9 +9,12 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
+import pytest
 from click.testing import CliRunner
 
+import lowkey_artifact_builder.cli.cmd_color as cmd_color
 from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.model import ProductRef
 
@@ -649,3 +652,93 @@ def test_analyze_artifact_colors_does_not_require_standalone_artwork_stages(
     analyze_artifact_colors(
         "nydeli",
     )
+
+
+def test_analyze_artifact_colors_propagates_realization_failure(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Color analysis stops when required product realization fails.
+
+    A failure from normal dependency-aware build orchestration propagates
+    rather than allowing analysis to continue against an unavailable
+    registered Artwork manifest.
+    """
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    resolver = Mock()
+
+    resolver.side_effect = lambda name: {
+        "model": "artwork",
+        "realization": "default",
+    }[name]
+
+    monkeypatch.setattr(
+        cmd_color,
+        "get_resolver",
+        Mock(
+            return_value=resolver,
+        ),
+    )
+
+    manifest = tmp_path / "registered" / "products.json"
+
+    plan = Mock()
+    plan.resolver = resolver
+    plan.stages = (
+        Mock(
+            name="vector",
+            products=(
+                Mock(
+                    name="manifest",
+                    path=manifest,
+                ),
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_build_plan",
+        Mock(
+            return_value=plan,
+        ),
+    )
+
+    realization_error = RuntimeError("registered Artwork realization failed")
+
+    execute = Mock(
+        side_effect=realization_error,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        execute,
+    )
+
+    analyze = Mock()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        analyze,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="registered Artwork realization failed",
+    ):
+        cmd_color.analyze_artifact_colors(
+            "nydeli",
+        )
+
+    execute.assert_called_once_with(
+        plan,
+    )
+
+    analyze.assert_not_called()
