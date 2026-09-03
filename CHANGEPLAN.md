@@ -6,7 +6,9 @@ This change plan aligns the current implementation with the desired artifact-aut
 
 Implementation should proceed test-first in coherent slices. Before each phase, compare the proposed behavior with current HEAD, `ARCHITECTURE.md`, and every relevant model `DEFINITION.md`. Do not silently resolve specification discrepancies in implementation. If a requirement in this plan requires a permanent architectural or model-semantic change, update the appropriate permanent specification deliberately before or with the implementation.
 
-The generic engine must remain model-independent. Model-specific feature semantics, configuration rules, and validation remain model-owned.
+The generic engine must remain model-independent. Model-specific feature semantics, configuration rules, validation, and analysis policy remain model-owned.
+
+Completed work should be removed from this plan once it is implemented, committed, and adequately evidenced. Git history and tests record completed implementation work. This plan records only the remaining work required to align HEAD with the permanent specifications.
 
 ---
 
@@ -14,23 +16,62 @@ The generic engine must remain model-independent. Model-specific feature semanti
 
 Make `artifact colors <artifact_id>` work for artifacts whose required Artwork products have not previously been built.
 
-The color command currently identifies the registered Artwork vector manifest through the planner but assumes the planned product already exists before performing analysis.
-
-Change the workflow so color analysis realizes only the products required to perform the requested analysis.
+The color command should identify the registered Artwork vector manifest through normal product planning and realize only the products required to perform the requested analysis.
 
 Tests should establish that:
 
 * `artifact colors <artifact_id>` succeeds when the required registered Artwork products already exist and are current;
+
 * `artifact colors <artifact_id>` succeeds when the artifact has never been built;
+
 * the command uses normal planning and execution rather than directly invoking historical producer stages;
+
 * only the stages required to obtain the registered Artwork color-analysis inputs are executed;
+
 * Artwork extrusion and packaging are not executed merely to perform color analysis;
+
 * current persistent products satisfy dependencies without unnecessary producer execution;
+
 * normal freshness and dependency semantics remain authoritative;
+
 * failure to realize a required product produces an appropriate command failure rather than an incidental `FileNotFoundError`;
+
 * color-analysis behavior remains independent of filesystem-path assumptions beyond normal product resolution.
 
 Prefer fixing the orchestration of existing planning and execution mechanisms rather than introducing color-specific build logic.
+
+## 1.1 Catalog Assignment Preference
+
+Color analysis produces independent assignment scopes for the current printer, the user's physical-color library, and the complete physical-color catalog.
+
+When catalog assignment has multiple assignments with the same minimum aggregate perceptual distance, prefer an equally optimal assignment that uses colors already present in the user's library.
+
+The governing ordering is:
+
+1. minimize aggregate perceptual color distance;
+2. among equally optimal catalog assignments, prefer assignments using more colors already present in the library.
+
+Library preference must never cause a perceptually worse assignment to replace a better assignment.
+
+This preference is Artwork color-analysis policy rather than a generic property of color assignment. Generic color-assignment infrastructure must not contain concepts such as printer, library, catalog, filament ownership, or Artwork.
+
+Tests should establish that:
+
+* a strictly better perceptual catalog assignment wins regardless of library membership;
+
+* when catalog assignments have equal minimum perceptual distance, an assignment using a library color is preferred over an otherwise equivalent assignment using a non-library color;
+
+* when multiple colors participate in an equal-cost assignment, the assignment using the greatest applicable library preference is selected;
+
+* printer assignment remains independent of catalog preference;
+
+* library assignment remains independent of catalog preference;
+
+* catalog preference does not alter the primary minimum-distance objective;
+
+* catalog preference is expressed through a generic assignment mechanism or other model-independent abstraction rather than by introducing library/catalog semantics into generic color utilities.
+
+Avoid numerical tie-breaking techniques that can change the primary distance optimum.
 
 ---
 
@@ -65,11 +106,17 @@ artifact <artifact_id> --build
 Creation and configuration should become conceptually distinct:
 
 * `create` establishes a new persistent artifact definition;
+
 * `config` inspects or modifies an existing artifact definition;
+
 * `show` provides non-mutating inspection;
+
 * `build` realizes requested products;
+
 * `colors` performs color analysis;
+
 * `clean` removes derived products while preserving persistent artifact configuration;
+
 * `list` discovers available artifacts.
 
 Tests should establish the intended lifecycle semantics before changing existing command behavior.
@@ -113,12 +160,19 @@ artifact.toml
 Tests should establish that:
 
 * cleaning preserves `artifact.toml`;
+
 * generated Artwork products are removed;
+
 * generated Shape products are removed;
+
 * cleaning an artifact with no generated products is safe;
+
 * cleaning one artifact does not affect another artifact;
+
 * subsequently rebuilding a cleaned artifact works through normal planning and execution;
+
 * published root-level realization products introduced by a later phase are considered derived products and are also removed by clean;
+
 * clean does not become an alternate configuration-deletion mechanism.
 
 The governing invariant is:
@@ -216,10 +270,8 @@ Evaluate support for explicit positive and negative feature vocabulary such as:
 ```text
 hanger
 no_hanger
-
 handle
 no_handle
-
 lettering
 no_lettering
 ```
@@ -229,9 +281,13 @@ The purpose is human-readable configuration, particularly when `artifact.toml` i
 If this representation is adopted:
 
 * positive and negative forms represent explicit intent;
+
 * contradictory selections such as `hanger` and `no_hanger` must be rejected rather than resolved through precedence;
+
 * feature semantics remain model-owned;
+
 * generic configuration infrastructure must not contain Shape-specific feature rules;
+
 * adding a new model feature must not silently change the semantics of an existing realization.
 
 The exact representation should follow from the HEAD audit rather than being imposed if the existing feature mechanism provides a cleaner equivalent.
@@ -246,6 +302,7 @@ Evaluate a generated informational section such as:
 
 ```toml
 [feature_catalog]
+
 features = [
     "artwork",
     "no_artwork",
@@ -285,9 +342,13 @@ It must not modify the effective configuration of existing realizations.
 Tests should establish that:
 
 * newly supported features can become discoverable in an existing artifact configuration;
+
 * existing realizations are not automatically given new positive or negative feature selections;
+
 * parameter values belonging to existing realizations remain unchanged;
+
 * freshening the informational configuration cannot change the products produced by an existing realization;
+
 * repeated freshening is stable/idempotent where appropriate.
 
 The governing invariant is:
@@ -345,13 +406,21 @@ Planning, dependency resolution, freshness evaluation, and stage execution must 
 Tests should establish that:
 
 * a compact local product reference parses correctly;
+
 * a compact cross-artifact product reference parses correctly;
+
 * the existing structured representation remains supported;
+
 * equivalent compact and structured references produce equal logical product identities;
+
 * malformed compact references produce configuration errors;
+
 * product references are not interpreted as filesystem paths;
+
 * a current persistent product in another artifact can satisfy a dependency without rebuilding its producer;
+
 * a missing or stale external product causes the normal planner to select the required producer work;
+
 * dependencies may cross artifact boundaries without model-specific planner behavior.
 
 Prefer a simple unambiguous grammar. If compact references use `.` as their delimiter, establish and validate whatever identifier restrictions are required rather than introducing unnecessary escaping rules.
@@ -405,61 +474,28 @@ dog.keychain.3mf
 Tests should establish that:
 
 * building the default realization publishes `<artifact_id>.default.3mf`;
+
 * building a named realization publishes `<artifact_id>.<realization>.3mf`;
+
 * publishing does not replace or relocate the canonical stage product;
+
 * publishing occurs only after the required packaged product has been successfully produced;
+
 * rebuilding a realization safely refreshes its published copy;
+
 * building one realization does not overwrite another realization's published product;
+
 * artifact IDs and realization names are handled consistently with identifier rules;
+
 * `artifact clean` removes published copies because they are derived products;
+
 * publication remains a convenience/output operation rather than a second source of product truth.
 
 Do not encode feature bundle, physical size, stage identity, or another configuration dimension into the published filename beyond the realization name.
 
 ---
 
-# Phase 7 — Polynomial-Time Color Assignment
-
-Replace exhaustive permutation enumeration in `assign_colors` with an exact polynomial-time assignment solution.
-
-The existing semantic contract must remain intact.
-
-For artifact colors and a candidate physical-color scope:
-
-* assignments are jointly determined;
-* each artifact color receives exactly one candidate color;
-* no candidate color is assigned to more than one artifact color when sufficient candidates exist;
-* aggregate perceptual distance is minimized;
-* assignments remain deterministic for the same ordered artifact colors and candidate colors;
-* existing candidate-order tie semantics are preserved;
-* printer, library, and complete physical-catalog scopes remain independent.
-
-The mathematical problem is a rectangular minimum-cost bipartite assignment problem.
-
-Do not require a general-purpose linear-programming implementation if a smaller exact assignment algorithm or existing project dependency is more appropriate.
-
-Before selecting an implementation, review current dependencies and determine how exact deterministic candidate-order tie behavior will be preserved.
-
-Avoid numerical tie-breaking techniques that can change the primary distance optimum.
-
-Tests should establish that:
-
-* known small examples return the exact optimal assignment;
-* candidate colors remain one-to-one;
-* a larger candidate palette selects the globally optimal subset;
-* assignment output remains aligned with artifact-color order;
-* deterministic equal-cost cases preserve the required candidate-order semantics;
-* existing validation behavior remains intact;
-* the implementation no longer enumerates candidate permutations;
-* cost evaluation scales with the artifact/candidate cost matrix rather than factorial/permutation search.
-
-Where practical, precompute reusable color-space representations rather than repeatedly converting identical RGB values during cost evaluation.
-
-The full physical catalog should become practical for ordinary interactive use.
-
----
-
-# Phase 8 — Visual Color Comparison
+# Phase 7 — Visual Color Comparison
 
 Add graphical comparison to color analysis:
 
@@ -487,18 +523,24 @@ Tests should separate graphical-data preparation from GUI mechanics so correctne
 Tests should establish that:
 
 * the four comparison renderings are produced from the same registered Artwork geometry;
+
 * original Artwork colors remain unchanged in the original panel;
+
 * each assignment panel substitutes the corresponding assigned physical colors;
+
 * semantic color identity and RGB values remain correctly associated;
+
 * the view uses color-analysis results rather than independently recomputing assignment policy;
+
 * `--view` works when color analysis first requires demand-driven realization of Artwork products;
+
 * GUI/view concerns remain outside generic planning and model semantics.
 
 The exact graphical toolkit should be selected only after reviewing existing project rendering/vector dependencies.
 
 ---
 
-# Phase 9 — Shape/Artwork Creation Workflow
+# Phase 8 — Shape/Artwork Creation Workflow
 
 Improve interactive Shape creation so Artwork selection is natural for the maker while continuing to use normal product dependency semantics.
 
@@ -524,17 +566,14 @@ The common workflow should support an artifact silo representing an image/design
 ```text
 artifacts/customer-image/
     artifact.toml
-
     artwork/
         default/
-
     shape/
         default/
         ornament/
         ornament_large/
         coaster/
         keychain/
-
     customer-image.default.3mf
     customer-image.ornament.3mf
     customer-image.ornament_large.3mf
@@ -553,33 +592,54 @@ Do not make filesystem co-location a prerequisite for composition.
 Tests should establish that:
 
 * Shape setup can select Artwork from the current artifact;
+
 * Shape setup can select Artwork from another artifact;
+
 * Shape setup can explicitly select no Artwork where model semantics permit it;
+
 * Shape setup can invoke/reuse normal Artwork creation;
+
 * created dependencies are ordinary product references;
+
 * subsequent planning follows those dependencies normally;
+
 * no duplicate Shape-specific Artwork configuration implementation is introduced;
+
 * multiple Shape realizations can reuse the same Artwork;
+
 * the workflow remains compatible with the self-documenting realization configuration established earlier.
 
 ---
 
 # Completion Criteria
 
-The change plan is complete when all phases are implemented and HEAD conforms to the resulting permanent architecture and model definitions.
+The change plan is complete when all remaining phases are implemented and HEAD conforms to the resulting permanent architecture and model definitions.
 
 Before declaring completion:
 
 * run the full non-slow test suite;
+
 * run the project's static/type checks;
+
 * compare HEAD against `ARCHITECTURE.md`;
+
 * compare each affected model against its `DEFINITION.md`;
+
 * verify that generic engine/configuration/planning code contains no model-specific semantic rules introduced by this work;
+
 * verify that artifact configuration remains understandable and editable without requiring knowledge of internal stage paths;
+
 * verify that `(artifact_id, realization)` is sufficient to identify a maker-facing manufacturable product;
+
 * verify that both local and cross-artifact dependencies use the same logical product-reference mechanisms;
+
 * verify that cleaning followed by rebuilding reproduces derived products from persistent configuration and required source inputs;
+
 * verify that color analysis is practical against the complete physical catalog;
+
+* verify that catalog assignment prefers already-owned library colors only when doing so preserves the minimum perceptual-distance optimum;
+
 * verify that any permanent invariants discovered during implementation have been incorporated into `ARCHITECTURE.md` or the appropriate model `DEFINITION.md`.
 
 Once permanent specifications and HEAD are aligned, remove the completed `CHANGEPLAN.md` content rather than treating this temporary plan as an additional permanent specification.
+
