@@ -20,6 +20,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from lowkey_artifact_builder.model import build_model_registry
+
 from .config import (
     ConfigError,
     artifact_config_path,
@@ -34,11 +36,6 @@ from .config import (
 _ARTWORK_INPUT = "artwork"
 _ARTWORK_MODEL = "artwork"
 _ARTWORK_FILENAME = "artifact.png"
-
-_GENERATED_MODEL_DIRECTORIES = (
-    "artwork",
-    "shape",
-)
 
 
 # =========================================================
@@ -142,10 +139,9 @@ def clean_artifact(
     Persistent artifact configuration and artifact-owned source inputs
     are preserved.
 
-    The initial cleaning contract removes complete generated model
-    directories beneath the artifact silo. More specific product-level
-    cleaning may be introduced later without changing the public
-    lifecycle operation.
+    Complete generated model silos are removed for every model
+    discovered by the model subsystem. Unknown artifact-owned
+    directories are preserved.
     """
 
     root = project_root if project_root is not None else Path.cwd()
@@ -159,9 +155,10 @@ def clean_artifact(
         raise ConfigError(f"Artifact {artifact_id!r} is not defined.")
 
     artifact_dir = config_path.parent
+    registry = build_model_registry()
 
-    for directory_name in _GENERATED_MODEL_DIRECTORIES:
-        generated_dir = artifact_dir / directory_name
+    for model in registry.all_models():
+        generated_dir = artifact_dir / model.name
 
         if not generated_dir.exists():
             continue

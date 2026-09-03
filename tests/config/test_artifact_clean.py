@@ -8,9 +8,11 @@ Tests for artifact cleaning lifecycle services.
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
+import lowkey_artifact_builder.config.artifact as artifact_services
 from lowkey_artifact_builder.config import (
     ConfigError,
     clean_artifact,
@@ -326,3 +328,96 @@ def test_clean_rejects_undefined_artifact(
             "skippy",
             project_root=tmp_path,
         )
+
+
+def test_clean_removes_generated_silos_for_discovered_models(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Cleaning derives generated model silo names from model discovery.
+    """
+
+    artifact_dir = _define_artifact(
+        tmp_path,
+        "skippy",
+    )
+
+    generated = _write_product(
+        artifact_dir,
+        "future-model/default/10-build/product.dat",
+    )
+
+    model = Mock()
+    model.name = "future-model"
+
+    registry = Mock()
+    registry.all_models.return_value = [
+        model,
+    ]
+
+    monkeypatch.setattr(
+        artifact_services,
+        "build_model_registry",
+        lambda: registry,
+    )
+
+    clean_artifact(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert not generated.exists()
+    assert not (artifact_dir / "future-model").exists()
+
+
+def test_clean_preserves_non_generated_artifact_owned_files(
+    tmp_path: Path,
+) -> None:
+    """
+    Cleaning generated model silos does not remove artifact-owned files.
+    """
+
+    artifact_dir = _define_artifact(
+        tmp_path,
+        "skippy",
+    )
+
+    source = artifact_dir / "artifact.png"
+    source.write_bytes(b"source")
+
+    other_input = artifact_dir / "reference.svg"
+    other_input.write_bytes(b"reference")
+
+    clean_artifact(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert source.read_bytes() == b"source"
+    assert other_input.read_bytes() == b"reference"
+
+
+def test_clean_preserves_unknown_artifact_directories(
+    tmp_path: Path,
+) -> None:
+    """
+    Cleaning does not treat arbitrary artifact directories as model silos.
+    """
+
+    artifact_dir = _define_artifact(
+        tmp_path,
+        "skippy",
+    )
+
+    persistent = _write_product(
+        artifact_dir,
+        "reference-data/reference.svg",
+    )
+
+    clean_artifact(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert persistent.is_file()
