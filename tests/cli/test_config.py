@@ -560,3 +560,39 @@ def test_config_api_error_is_reported(
 
     assert result.exit_code != 0
     assert "cannot configure artifact" in result.output
+
+
+def test_config_rejects_undefined_artifact(
+    monkeypatch,
+) -> None:
+    """
+    Configuration does not implicitly create an undefined artifact.
+
+    Artifact creation is a distinct lifecycle operation owned by
+    `artifact create`.
+    """
+
+    monkeypatch.setattr(
+        cmd_config,
+        "load_artifact_config",
+        lambda *args, **kwargs: {},
+    )
+
+    def unexpected_setup(
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        raise AssertionError("config must not create an artifact")
+
+    monkeypatch.setattr(
+        cmd_config,
+        "setup_artifact",
+        unexpected_setup,
+    )
+
+    result = _invoke(
+        "skippy",
+    )
+
+    assert result.exit_code != 0
+    assert "not defined" in result.output.lower()

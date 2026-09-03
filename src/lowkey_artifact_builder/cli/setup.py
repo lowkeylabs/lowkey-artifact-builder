@@ -7,7 +7,8 @@ artifact configuration from the user.
 Setup is driven by the selected model's declared stage parameters and
 the resolved configuration stack.
 
-Only parameters that cannot already be resolved are prompted for.
+Initial values supplied by the caller participate in normal resolution.
+Only parameters that remain unresolved are prompted for.
 
 The setup routines collect configuration choices. They do not persist
 configuration or perform artifact builds.
@@ -48,13 +49,13 @@ from lowkey_artifact_builder.model import (
 )
 class ArtifactSetup:
     """
-    Configuration collected by an artifact setup walkthrough.
+    Configuration collected for an artifact setup.
 
-    values contains only configuration that must be persisted for this
-    artifact.
+    values contains explicit artifact configuration supplied by the
+    caller or collected interactively.
 
-    Values already supplied by system, model, workspace, or existing
-    artifact configuration are intentionally omitted.
+    Values supplied by system, model, variant, or workspace
+    configuration are intentionally omitted.
     """
 
     artifact_id: str
@@ -75,26 +76,38 @@ def setup_artifact(
     artifact_id: str,
     registry: ModelRegistry,
     *,
+    values: dict[str, object] | None = None,
     project_root: Path | None = None,
 ) -> ArtifactSetup:
     """
-    Interactively collect missing configuration for an artifact.
+    Complete configuration required to define an artifact.
 
     The artifact ID is supplied by the command line and is therefore
     not prompted for.
 
-    If artifact.toml already identifies a model, that model is used.
+    Explicit values supplied by the caller are treated as initial
+    artifact configuration. They participate in resolution before
+    missing parameters are determined.
 
-    Otherwise the user selects a model.
+    If the model is supplied explicitly, that model is used. Otherwise
+    an existing artifact model is used when present. If neither source
+    identifies the model, the user selects one interactively.
 
     Once the model is known, its declared stage parameters are examined
-    against the complete configuration stack. Only unresolved
-    parameters are prompted for.
+    against the complete configuration stack plus the supplied initial
+    values. Only parameters that remain unresolved are prompted for.
 
     Source files are discovered relative to the project root.
+
+    This function collects configuration only. It does not persist the
+    artifact.
     """
 
     root = project_root if project_root is not None else Path.cwd()
+
+    supplied_values = dict(
+        values or {},
+    )
 
     console.print()
     console.print(f"[bold]Configure artifact:[/bold] {artifact_id}")
@@ -105,7 +118,14 @@ def setup_artifact(
         project_root=root,
     )
 
-    model_name = existing.get("model")
+    model_name = supplied_values.get(
+        "model",
+    )
+
+    if model_name is None:
+        model_name = existing.get(
+            "model",
+        )
 
     if model_name is None:
         model_name = _prompt_model(
@@ -116,10 +136,12 @@ def setup_artifact(
         model_name,
         str,
     ):
-        raise click.ClickException("Existing artifact model must be a string.")
+        raise click.ClickException("Artifact model must be a string.")
 
     try:
-        model = registry.get_model(model_name)
+        model = registry.get_model(
+            model_name,
+        )
 
     except KeyError as exc:
         raise click.ClickException(f"Unknown artifact model {model_name!r}.") from exc
@@ -130,20 +152,33 @@ def setup_artifact(
         project_root=root,
     )
 
+    resolver = resolver.with_values(
+        supplied_values,
+        provenance="setup",
+    )
+
     missing = _missing_parameters(
         model,
         resolver,
     )
 
-    values = _prompt_missing_parameters(
+    prompted_values = _prompt_missing_parameters(
         missing,
         project_root=root,
+    )
+
+    result_values = dict(
+        supplied_values,
+    )
+
+    result_values.update(
+        prompted_values,
     )
 
     result = ArtifactSetup(
         artifact_id=artifact_id,
         model=model_name,
-        values=values,
+        values=result_values,
     )
 
     _display_summary(
@@ -206,14 +241,17 @@ def _missing_parameters(
     Parameters are considered in their model-defined order.
 
     A parameter may be satisfied by system defaults, model defaults,
-    workspace overrides, artifact overrides, or derivation.
+    workspace overrides, artifact overrides, supplied setup values, or
+    derivation.
     """
 
     missing: list[str] = []
 
     for parameter in model.parameters:
         try:
-            resolver.resolve(parameter)
+            resolver.resolve(
+                parameter,
+            )
 
         except ConfigError as exc:
             if not _is_unknown_parameter_error(
@@ -222,9 +260,13 @@ def _missing_parameters(
             ):
                 raise
 
-            missing.append(parameter)
+            missing.append(
+                parameter,
+            )
 
-    return tuple(missing)
+    return tuple(
+        missing,
+    )
 
 
 def _is_unknown_parameter_error(
@@ -284,10 +326,14 @@ def _prompt_parameter(
     """
 
     if parameter == "source":
-        return _prompt_source(project_root)
+        return _prompt_source(
+            project_root,
+        )
 
     if parameter == "artwork_size":
-        return _prompt_positive_float("Artwork size (mm)")
+        return _prompt_positive_float(
+            "Artwork size (mm)",
+        )
 
     raise click.ClickException(
         f"Model requires unresolved parameter "
@@ -367,7 +413,7 @@ def _display_summary(
     setup: ArtifactSetup,
 ) -> None:
     """
-    Display configuration collected during this walkthrough.
+    Display explicit configuration collected for this artifact.
     """
 
     console.print()
@@ -378,16 +424,18 @@ def _display_summary(
 
     console.print(f"  [bold]Model:[/bold]       {setup.model}")
 
-    if not setup.values:
+    display_values = {name: value for name, value in setup.values.items() if name != "model"}
+
+    if not display_values:
         console.print()
         console.print("  [dim]All model parameters are already configured.[/dim]")
 
         return
 
     console.print()
-    console.print("[bold]New artifact values[/bold]")
+    console.print("[bold]Artifact values[/bold]")
 
-    for name, value in setup.values.items():
+    for name, value in display_values.items():
         console.print(f"  [bold]{name}:[/bold] {value}")
 
 
