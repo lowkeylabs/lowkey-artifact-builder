@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Bring the current repository into conformance with `ARCHITECTURE.md` and the applicable Model `DEFINITION.md` files following the revised architectural semantics of Model, Feature, Variant, Artifact, Realization, Stage, and Product.
+Bring the current repository into conformance with `ARCHITECTURE.md` and the applicable Model `DEFINITION.md` files following the clarified architectural semantics of Model, Feature, Variant, Artifact, Realization, Stage, and Product.
 
 This plan is temporary.
 
 `ARCHITECTURE.md` and the Model `DEFINITION.md` files are the permanent normative specifications. Existing implementation terminology and tests are evidence of current behavior, not independent architectural authority.
 
-The migration should preserve the large body of existing correct behavior while correcting the narrower set of semantics that have become conflated over time.
+The migration should preserve the large body of existing correct behavior while adding the comparatively small amount of machinery necessary to make Variant semantics explicit.
 
 The final action of this plan is to delete `CHANGEPLAN.md`.
 
@@ -16,357 +16,440 @@ The final action of this plan is to delete `CHANGEPLAN.md`.
 
 # Migration Principles and Invariants
 
-These principles govern every phase of the migration.
-
-## 1. Architecture is normative; terminology in HEAD is not
+## 1. Architecture is normative
 
 Do not infer architectural meaning from an identifier, filename, configuration section, test name, comment, or historical term alone.
 
-Terms such as:
-
-* `product`
-* `realization`
-* `variant`
-* `artifact`
-* `model`
-
-may have been used historically for concepts that do not exactly correspond to the normative concepts now defined by `ARCHITECTURE.md`.
-
-Determine what an existing construct **does** before deciding what architectural concept it represents.
+Determine what an existing construct does before deciding what architectural concept it represents.
 
 A lexical match is evidence for investigation, not evidence of architectural identity.
 
-## 2. Interpret terminology semantically, not lexically
+## 2. Preserve compatible existing representations
 
-For every significant historical use of an architectural term:
+The migration is not a terminology cleanup.
 
-1. determine the behavior or concept represented in that context;
-2. map that concept to the current architecture;
-3. determine whether the behavior is compatible with the architecture;
-4. only then decide whether code, tests, configuration, or terminology should change.
-
-Do not perform repository-wide search-and-replace migrations based only on terminology.
-
-Historical terminology may remain when it has a distinct, unambiguous technical meaning and does not conflict with the architectural model.
-
-## 3. Realization means instantiation of a Variant
-
-For purposes of the architectural domain model:
-
-> A Realization is the instantiation of a Variant for an Artifact, with or without Artifact-specific customization.
-
-Equivalently:
+In particular, the existing decomposed representation:
 
 ```text
-Artifact + Variant + optional customization
+model = shape
+realization = ornament
+```
+
+may represent the same Variant identity as the fully qualified reference:
+
+```text
+variant = shape.ornament
+```
+
+where the historical `realization` field carries the local Variant name.
+
+Such representations may remain where their meaning is unambiguous.
+
+Do not rename Product references, execution identities, filesystem namespaces, completion identities, fingerprints, or similar structures merely to replace this decomposed representation with a fully qualified Variant string.
+
+## 3. Variant identity has compact and decomposed forms
+
+A Variant's complete identity is:
+
+```text
+Model + local Variant name
+```
+
+For example:
+
+```text
+shape + ornament
+```
+
+may be represented compactly as:
+
+```text
+shape.ornament
+```
+
+or decomposed as:
+
+```text
+model = shape
+local name = ornament
+```
+
+A fully qualified Variant reference is a compact representation of the same identity, not an additional identity mechanism.
+
+Public interfaces may support the compact form while normalizing immediately to existing decomposed machinery.
+
+## 4. Realization means application of a Variant
+
+An architectural Realization is:
+
+```text
+Artifact + Variant + optional Artifact-specific customization
                     ↓
                Realization
 ```
 
 A Realization is concrete and Artifact-specific.
 
-A Realization is **not**:
+It is not:
 
 * a reusable catalog definition;
 * a second parameter-preset mechanism;
-* an independently reusable product configuration;
 * an independent Model selection;
 * an independent Variant selection separate from Model identity.
 
-Whenever historical code uses `realization`, ask:
-
-> Does this represent the instantiation of a Variant for an Artifact?
-
-If yes, it is a candidate for the architectural Realization concept.
-
-If no, determine what concept it actually represents before changing it.
-
-## 4. Historical named realizations may actually be Variants
-
-A historical construct such as:
-
-```toml
-[realizations.ornament]
-model = "shape"
-variant = "default"
-...
-```
-
-must not automatically be treated as an architectural Realization merely because it is named `realizations`.
-
-If it defines a reusable named constructible configuration, its semantics are closer to a Variant.
-
-Tests around such constructs may therefore contain useful Variant behavior under historical Realization terminology.
-
-Preserve useful behavioral coverage while migrating the concept to its proper architectural home.
+Historical fields named `realization` do not necessarily represent this domain concept.
 
 ## 5. Variant is the reusable catalog definition
 
 A Variant is a complete, named, Model-scoped constructible configuration.
 
-Its identity is:
-
-```text
-Model + Variant name
-```
-
-A Variant may define:
+It defines:
 
 * selected Features;
 * parameter defaults;
-* other Model-owned configuration necessary to describe the reusable offering.
+* other Model-owned configuration necessary to describe the offering.
 
 Selecting a Variant necessarily identifies its Model.
 
-Two Variants may legitimately select identical Features and differ only in parameter defaults when they represent distinct catalog offerings.
+Two Variants may select identical Features and differ only in parameter defaults when they intentionally represent distinct catalog offerings.
 
 Artifact-specific customization does not create a new Variant.
 
-## 6. Do not conflate customer-facing products with Stage Products
+## 6. Default Variants preserve historical Model behavior
 
-The word `product` may occur in two different senses.
+Existing Models already provide directly usable behavior without explicit specialized Variant selection.
 
-A customer-facing or catalog product is conceptually represented by a Variant.
+That historical behavior is understood as behavior of the corresponding `default` Variant.
 
-An architectural `Product` is:
+Making the default Variant explicit, including explicitly articulating its Features, must not by itself reduce or redefine that historical behavior.
 
-> a named persistent output produced by a Stage.
+An implicitly supplied `default` Variant is therefore not assumed to be semantically empty merely because its definition was historically implicit.
 
-Examples include manifests, SVGs, STLs, registered geometry, and 3MF files.
+## 7. Existing ordinary Model tests are default-Variant tests
 
-These concepts must remain distinct even when ordinary prose uses the same English word for both.
+Tests exercising a Model's ordinary historical behavior without selecting a specialized Variant are presumed to exercise that Model's `default` Variant unless their assertions explicitly conflict with the permanent specifications.
 
-Do not rename or migrate technical Product infrastructure merely because a Variant is also described informally as a product offering.
+Do not rewrite such tests merely to make `default` selection explicit.
 
-## 7. Preserve behavior that the architecture does not require us to change
+Existing tests should be classified as:
 
-The migration is not an opportunity for broad cleanup or redesign.
+### Default-Variant behavioral test
 
-Existing behavior remains a regression requirement unless:
+The test describes historical Model-default behavior now understood as behavior of `<model>.default`.
 
-* `ARCHITECTURE.md` requires different behavior;
-* an applicable Model `DEFINITION.md` requires different behavior; or
-* the behavior exists only to support a superseded semantic model.
-
-Prefer the smallest architectural change that establishes the required boundary.
-
-## 8. Existing tests must be classified, not blindly preserved or rewritten
-
-Tests encountered during migration fall into three broad categories.
-
-### Semantic rewrite
-
-The test asserts behavior that conflicts with the normative architecture.
-
-Rewrite or remove the conflicting assertion and replace it with architectural behavior.
-
-### Fixture or API migration
-
-The behavior asserted by the test remains correct, but its setup uses superseded configuration, naming, or APIs.
-
-Migrate the setup while preserving the behavioral assertion.
+Preserve it.
 
 ### Architectural invariant
 
-The test exercises behavior unaffected by the semantic migration.
+The test exercises behavior unaffected by this migration.
 
-Do not rewrite it merely because nearby implementation details change.
+Preserve it.
 
-The large existing test suite is a regression shield. Preserve it whenever possible.
+### Fixture or API migration
 
-## 9. Migrate incrementally from green to intentional red to green
+The behavioral assertion remains correct but setup must change to exercise new Variant machinery.
 
-Do not perform a broad architectural rewrite and then classify hundreds of failures afterward.
+Change only the necessary setup.
 
-The expected development pattern is:
+### Semantic reclassification
+
+The test exercises useful behavior but historically assigns that behavior to the wrong architectural concept.
+
+Preserve the useful behavioral coverage while moving ownership to the correct concept.
+
+### Semantic replacement
+
+The test explicitly requires behavior prohibited by the permanent architecture.
+
+Replace that assertion with the normative behavior.
+
+Preservation is the default.
+
+## 8. Do not conflate customer offerings with Stage Products
+
+A customer-facing or catalog offering is represented by a Variant.
+
+An architectural Product is a named persistent output produced by a Stage.
+
+Existing ProductSpec, ProductRef, Product Catalog, Product dependency, persistence, and reuse machinery should remain unchanged unless a specific architectural discrepancy is demonstrated.
+
+## 9. Features articulate optional Model capabilities
+
+Features are Model-owned optional composable capabilities or behaviors.
+
+Stages are not automatically Features.
+
+Intrinsic Model behavior is not automatically a Feature.
+
+During this migration, introduce Features to articulate existing separable capabilities before using Feature machinery to introduce new Model behavior.
+
+Do not invent Feature definitions merely to map every existing Stage or operation onto one.
+
+## 10. Prefer normalization at boundaries
+
+Where a compact Variant reference such as:
+
+```text
+shape.ornament
+```
+
+is accepted by an API or configuration interface, prefer normalizing it at that boundary into the representation already used by the implementation.
+
+Do not propagate a second parallel identity representation through the runtime merely because compact Variant references are convenient externally.
+
+## 11. Migrate incrementally
+
+Use:
 
 ```text
 green suite
     ↓
-small intentional RED slice
+intentional RED slice
     ↓
 minimal production change
     ↓
 green suite
     ↓
-next intentional RED slice
+next slice
 ```
 
-Each slice begins by reviewing the applicable permanent specifications and existing tests.
+Do not perform broad migrations and classify failures afterward.
 
-New or revised tests establish the intended architectural boundary before production code changes.
+## 12. Every phase ends in acceptance
 
-## 10. Every phase ends in acceptance
+Each implementation phase ends with integrated executable evidence demonstrating the capability introduced or verified by that phase.
 
-Each phase must end with an acceptance test or equivalent integrated executable evidence demonstrating that the architectural capability introduced by that phase works through its intended boundary.
+Existing non-conflicting tests remain green.
 
-Unit tests alone do not close a phase.
-
-Existing non-conflicting tests must remain green at phase completion.
-
-## 11. Avoid compatibility architecture unless it has demonstrated value
-
-Do not preserve superseded semantics merely to keep old tests or internal APIs unchanged.
-
-Temporary compatibility mechanisms may be introduced when they materially reduce migration risk, but they must not create a second permanent architectural model.
-
-If compatibility code is introduced, its removal must be accounted for before this plan closes.
-
-## 12. Names should converge after semantics converge
-
-Correct behavior and ownership first.
-
-Rename identifiers, tests, comments, configuration sections, and documentation when doing so improves correspondence with the normative architecture, but do not begin with mechanical terminology cleanup.
-
-The final terminology audit is semantic, not merely lexical.
+If a phase's required behavior is already satisfied by HEAD, prove that behavior and close the phase without manufacturing production changes.
 
 ---
 
 # Phase 0 — Semantic Inventory and Migration Boundary
 
-Establish the semantic migration boundary before changing production behavior.
+## Status: Complete
 
-Review current implementation and tests involving:
+The repository and permanent specifications have been reviewed sufficiently to establish the migration boundary.
 
-* Model;
-* Feature;
-* Variant;
-* Realization;
-* Artifact configuration;
-* Product;
-* Product references;
-* graph construction;
-* planning;
-* dependency binding;
-* execution context;
-* completion and fingerprint identity;
-* persistent paths;
-* CLI workflows.
+The resulting architectural conclusions have been incorporated into `ARCHITECTURE.md`.
 
-For each important occurrence of historically overloaded terminology, determine the concept represented by its behavior.
+## Findings
 
-In particular, distinguish:
+### Variant definition is the principal declarative gap
+
+Current Variant machinery principally treats a Variant as a named Model-scoped parameter preset.
+
+The permanent architecture requires a Variant to be a complete constructible Model-scoped configuration including:
+
+* selected Features;
+* parameter defaults;
+* Model identity through Model ownership.
+
+This is the primary new semantic machinery required.
+
+### Existing decomposed runtime identity is compatible
+
+Existing structures commonly identify execution context using a pair such as:
 
 ```text
-historical reusable "realization" configuration
-    → candidate Variant semantics
-
-Artifact-specific application of a Variant
-    → Realization semantics
-
-customer-facing "product"
-    → Variant/catalog-offering semantics
-
-persistent Stage output
-    → Product semantics
-
-ordinary execution/stage "realization"
-    → inspect independently; do not assume domain Realization
+model = shape
+realization = ornament
 ```
 
-Classify affected test families as:
+where `realization` carries the local Variant name.
 
-* semantic rewrite;
-* fixture/API migration;
-* expected architectural invariant.
+This is compatible with the fully qualified Variant identity:
 
-Record the resulting impact map in this `CHANGEPLAN.md` rather than creating another permanent specification.
+```text
+shape.ornament
+```
 
-Do not attempt to enumerate every individual affected test before beginning implementation. The purpose is to establish the semantic boundaries and identify the major migration surfaces.
+No repository-wide runtime identity rename is required.
 
-### Phase acceptance
+### Product infrastructure is architecturally compatible
 
-Phase 0 is complete when the repository has been reviewed sufficiently to identify:
+Technical Product infrastructure represents persistent Stage outputs.
 
-* which current constructs are actually acting as Variants;
-* which current constructs represent architectural Realizations;
-* where `Product` means persistent Stage output versus informal catalog offering;
-* the major test families requiring semantic rewrite;
-* the major test families likely requiring fixture/API migration;
-* the major test families expected to remain invariant.
+It is not the catalog-offering concept represented by Variant.
 
-No production semantic change is required to close Phase 0.
+ProductSpec, ProductRef, dependency binding, Product state, persistence, and reuse are expected architectural invariants unless later tests demonstrate a specific discrepancy.
+
+### Filesystem namespaces are compatible
+
+A path such as:
+
+```text
+artifacts/cat/shape/ornament/...
+```
+
+already decomposes the relevant Variant identity into Model and local Variant/Realization namespace.
+
+No physical path migration is required merely to introduce fully qualified Variant references.
+
+### Historical default behavior maps to default Variants
+
+Existing Model behavior exercised without specialized Variant selection is understood as behavior of:
+
+```text
+artwork.default
+shape.default
+```
+
+Existing tests exercising that behavior should ordinarily remain unchanged.
+
+### Historical reusable realization configuration requires semantic inspection
+
+Historical reusable named configuration under constructs such as `realizations.*` must be classified according to behavior.
+
+Where such configuration defines a reusable catalog offering, that responsibility belongs to Variant.
+
+This does not imply that every runtime field or namespace named `realization` must change.
+
+## Phase 0 acceptance
+
+Satisfied.
+
+The migration boundary is now:
+
+```text
+substantive new machinery:
+    Variant = Model-owned Features + parameter defaults
+
+compact identity:
+    shape.ornament
+
+equivalent existing representation:
+    model=shape + realization=ornament
+
+architectural Realization:
+    Artifact + Variant + optional customization
+
+expected invariant:
+    existing runtime/Product/path machinery
+```
+
+No production semantic change is required for Phase 0.
 
 ---
 
-# Phase 1 — Declarative Model, Feature, and Variant Alignment
+# Phase 1 — Complete Declarative Variant Semantics
 
 Align the reusable Model-owned definition layer with `ARCHITECTURE.md`.
 
-A Model must own its Features and Variants.
+This phase should begin with tests in the existing Model/Variant test family.
 
-A Variant must represent a complete constructible Model-scoped configuration rather than merely a named parameter preset.
+## Required behavior
 
-Establish support for Variant Feature selection and the validation necessary to ensure that Variant definitions are internally valid.
+Establish that:
 
-Preserve the useful existing behavior of Model defaults and Variant parameter defaults where compatible with the architecture.
-
-The declarative model should establish at minimum that:
-
-* Variant identity is Model-scoped;
-* a Variant belongs to exactly one Model;
-* a Variant may select zero or more Model Features;
-* selected Features must exist in that Model;
-* duplicate Feature selection is invalid;
+* a Model owns its Variants;
+* Variant local names are Model-scoped;
+* a Variant may select zero or more Features belonging to that Model;
+* Variant Feature selections are immutable definition data;
 * Variant parameter defaults remain immutable definition data;
-* two Variants may select the same Features and differ only in parameter defaults;
+* selected Features must exist in the owning Model;
+* duplicate Feature selections are invalid;
+* two Variants may select the same Features while differing in parameter defaults;
 * a default Variant remains available where appropriate;
-* a Variant is sufficient, together with Model defaults and required Artifact inputs, to describe a constructible offering.
+* existing implicit default behavior remains valid;
+* making an existing default Variant explicit does not reduce historical Model behavior.
 
-Do not yet force Artifact/configuration/runtime migration into this phase.
+Prefer extending the existing `VariantSpec` and Model-definition validation rather than introducing a second Variant abstraction.
 
-### Phase acceptance
+Do not introduce Artifact/configuration/runtime changes merely to complete this declarative layer.
 
-Demonstrate through an integrated declarative Model test that a Model can define multiple complete Variants with Feature selections and parameter defaults, that those definitions validate independently of any Artifact, and that their identities are unambiguously Model-scoped.
+## TDD boundary
 
-All non-conflicting existing tests must remain green.
+The first RED slice should establish the complete Variant definition contract before changing production code.
+
+Existing Variant tests that correctly establish Model scoping, immutability, default availability, and parameter behavior should be retained and expanded rather than replaced.
+
+## Phase acceptance
+
+Using an integrated declarative Model definition, demonstrate multiple Model-owned Features and multiple complete Variants whose Feature selections and parameter defaults differ.
+
+The definitions must validate independently of any Artifact.
+
+The Variant identities must be unambiguously Model-scoped.
+
+Existing default Model behavior must remain green.
 
 ---
 
-# Phase 2 — Artifact, Variant, and Realization Configuration Semantics
+# Phase 2 — Compact Variant References and Configuration Application
 
-Migrate configuration semantics to the architectural relationship:
+Add fully qualified Variant references where they materially simplify selection and configuration.
+
+The central equivalence is:
 
 ```text
-Artifact + Variant + optional Artifact customization
-                    ↓
-               Realization
+variant = shape.ornament
+
+        ⇅
+
+model = shape
+realization = ornament
 ```
 
-Remove the semantic requirement that a Realization independently select both Model and Variant.
+The compact form should normalize to the existing decomposed representation rather than creating parallel runtime identity machinery.
 
-Selecting a Variant must identify its Model.
+## Required behavior
 
-Historical named reusable `realizations.*` configuration must be evaluated by behavior. Where it is actually defining reusable catalog configurations, migrate that responsibility to Variants rather than preserving it as architectural Realization behavior.
+Establish that:
 
-Artifact configuration should express which Variant or Variants are applied to the Artifact and any Artifact-specific customization required for each application.
+* a fully qualified Variant reference identifies both Model and local Variant name;
+* selecting `shape.ornament` identifies Model `shape`;
+* malformed or unknown Variant references fail clearly;
+* compact and decomposed references to the same Variant are equivalent;
+* conflicting compact and decomposed selections are rejected or otherwise handled by one explicit, tested rule;
+* omission of specialized Variant selection continues to select the appropriate default Variant;
+* Artifact-specific parameter overrides customize the resulting Realization without changing its originating Variant;
+* existing configuration precedence remains deterministic.
 
-The resulting Realization must retain its originating Variant even when Artifact customization changes effective parameter values.
+Where existing APIs benefit from compact selection, add a `variant=` form or equivalent boundary syntax and normalize it immediately.
 
-Configuration precedence must continue to provide deterministic effective configuration, but its implementation must reflect the new ownership model.
+Do not require every internal structure to carry a fully qualified Variant string.
 
-Rewrite existing tests only where their asserted semantics conflict with the architecture. Tests whose assertions remain valid should receive only the fixture/API migration necessary to express the new configuration.
+## Historical configuration
 
-### Phase acceptance
+Inspect historical reusable named `realizations.*` configuration separately from runtime fields named `realization`.
 
-Using real configuration resolution, demonstrate:
+Where a historical configuration block is actually defining a reusable catalog offering, migrate that reusable definition responsibility to Model-owned Variants.
 
-* a Model-owned Variant can be selected for an Artifact;
-* selecting the Variant determines the Model;
-* applying it produces the effective Realization configuration;
-* Artifact-specific overrides customize that Realization;
-* customization does not change the originating Variant;
-* multiple Variants can be applied to the same Artifact without defining reusable configurations as independently named Realizations.
+Do not migrate runtime identity fields merely because they share the same historical name.
 
-All non-conflicting existing tests must remain green.
+## Phase acceptance
+
+Using real configuration resolution, demonstrate that:
+
+```text
+variant = shape.ornament
+```
+
+and:
+
+```text
+model = shape
+realization = ornament
+```
+
+identify the same Variant and produce equivalent effective configuration for the same Artifact.
+
+Also demonstrate Artifact-specific customization while retaining `shape.ornament` as the originating Variant.
+
+All non-conflicting configuration tests remain green.
 
 ---
 
-# Phase 3 — Runtime Identity, Graph, Planning, and Persistence Alignment
+# Phase 3 — Runtime Conformance Verification
 
-Propagate the corrected Variant/Realization semantics through the runtime without changing unrelated execution behavior.
+Verify that the existing runtime correctly carries the clarified Variant/Realization semantics.
 
-Review and align as necessary:
+This is primarily a verification phase.
+
+Do not assume runtime refactoring is required.
+
+Review:
 
 * requested Realization construction;
 * Defined Graph derivation;
@@ -380,13 +463,23 @@ Review and align as necessary:
 * fingerprints;
 * incremental reuse;
 * persistent Product lookup;
-* filesystem realization namespaces.
+* filesystem Realization namespaces.
 
-Do not assume that every current use of the word `realization` represents the architectural Realization. Change behavior only where the represented concept conflicts with the normative model.
+## Expected result
 
-The Defined Graph must continue to validate complete Model-owned definitions independently of which Variants are instantiated for particular Artifacts.
+Existing decomposed runtime identities such as:
 
-A runtime Realization must be traceable to:
+```text
+artifact
+model
+realization/local Variant name
+stage
+product
+```
+
+are expected to remain valid.
+
+A runtime Realization must remain traceable to:
 
 ```text
 Artifact
@@ -396,48 +489,100 @@ Model-scoped Variant
 optional Artifact customization
 ```
 
-Product identity must continue to identify persistent Stage outputs rather than customer-facing Variant offerings.
+without requiring every runtime object to carry a new fully qualified Variant field.
 
-Preserve dependency-driven execution, resumability, persistent reuse, incremental behavior, and cross-Artifact/cross-Model dependencies unless the architecture specifically requires a change.
+## Required evidence
 
-Prefer migration of fixture/configuration construction over rewriting engine behavioral assertions when those assertions remain architecturally valid.
+Demonstrate that compact and decomposed Variant selection converge before or at the runtime boundary and therefore produce equivalent:
 
-### Phase acceptance
+* Realization Graphs;
+* Build Plans;
+* ProductRefs;
+* dependency bindings;
+* Stage contexts;
+* canonical Product locations;
+* completion identities;
+* fingerprints;
+* incremental/reuse behavior.
 
-Demonstrate through integrated planning and execution tests that:
+If existing behavior already satisfies these requirements, add or identify sufficient integrated evidence and close the phase without production changes.
 
-* a requested Artifact/Variant application produces the correct Realization graph;
-* the correct Stage/Product dependency closure is planned;
-* Products retain stable logical identity;
-* existing current Products can still satisfy dependencies;
-* incremental execution and reuse continue to operate;
-* Variant identity and Realization identity are not conflated.
+Change production runtime code only where a focused test demonstrates an architectural discrepancy.
 
-All non-conflicting engine and acceptance tests must remain green.
+## Phase acceptance
+
+An Artifact/Variant application must produce the correct dependency closure and stable Product identities.
+
+Current Products must continue to satisfy dependencies.
+
+Incremental execution and cross-Artifact/cross-Model reuse must remain intact.
+
+Compact Variant references must not create a second runtime identity system.
 
 ---
 
-# Phase 4 — Model Catalogs and Public Workflow Alignment
+# Phase 4 — Articulate Actual Artwork and Shape Variants
 
-Apply the corrected semantics to the actual Artwork and Shape Models and to user-facing workflows.
+Apply the completed generic machinery to the actual Artwork and Shape Models.
 
-Review each Model `DEFINITION.md` before changing that Model.
+Review each Model's `DEFINITION.md` before changing that Model.
 
-Define only those Features and Variants justified by the applicable permanent Model specification. Examples in `ARCHITECTURE.md` are conceptual unless the Model definition makes them normative.
+Do not infer Feature membership solely from existing Stages.
 
-Align as necessary:
+## Existing behavior first
 
-* Model registration;
-* Model Variant catalogs;
-* Artifact creation/configuration;
-* CLI display and selection;
-* build commands;
-* dependency references;
-* configuration inspection;
-* filesystem presentation;
-* user-visible terminology.
+Identify which optional or separable capabilities are currently implicit in each Model's historical default behavior.
 
-The normal workflow should make the catalog relationship apparent:
+Articulate those capabilities as Features only where justified by the applicable Model definition and architecture.
+
+Then make the Model's Variant catalog explicit.
+
+The first explicit `default` Variant for an existing Model must describe the existing constructible default offering rather than redefine it.
+
+In particular:
+
+```text
+artwork.default after migration
+```
+
+must preserve the applicable historical behavior of:
+
+```text
+artwork before explicit Variant articulation
+```
+
+and likewise for:
+
+```text
+shape.default
+```
+
+unless a permanent Model specification explicitly requires different behavior.
+
+## Variant catalogs
+
+Define only Variants justified by the applicable Model specification.
+
+Potential names appearing in `ARCHITECTURE.md`, such as:
+
+```text
+shape.ornament
+shape.ornament-large
+shape.coaster
+shape.keychain
+```
+
+remain conceptual until made normative by the Shape Model definition or an intentional Model-definition change.
+
+Distinct reusable offerings should be distinct Variants.
+
+Artifact-specific customization remains customization of an application, not creation of another Variant.
+
+## Public workflow
+
+Expose Variant discovery and compact Variant selection where useful through normal configuration and CLI workflows.
+
+The intended user model should be apparent:
 
 ```text
 Model
@@ -453,63 +598,69 @@ Products
 
 Do not expose architectural Realization as a second reusable catalog-definition layer.
 
-Where a local Variant name is sufficient to identify the single application of that Variant to an Artifact, preserve the architecture's allowance for using that Variant name as the Realization namespace.
+Do not change filesystem presentation merely to replace an existing valid decomposed Variant representation.
 
-### Phase acceptance
+## Phase acceptance
 
-Demonstrate real user workflows for the applicable Artwork and Shape Models that:
+Demonstrate real Artwork and Shape workflows that:
 
+* preserve historical default behavior;
 * discover/select valid Variants;
-* apply them to Artifacts;
+* apply a Variant to an Artifact;
 * accept Artifact-specific customization;
+* select the correct Feature behavior;
 * build the expected dependency graph;
-* produce the expected persistent Products;
-* permit multiple Variant applications to the same Artifact where supported;
-* do not require independently defined reusable Realization configurations.
+* produce expected persistent Products.
 
 At least one acceptance path must produce actual manufacturing output through the normal CLI workflow.
 
-All non-conflicting existing CLI, Model, and acceptance tests must remain green.
+All non-conflicting existing Model, CLI, and acceptance tests remain green.
 
 ---
 
-# Phase 5 — Repository-Wide Architectural Conformance
+# Phase 5 — Repository-Wide Conformance and Cleanup
 
 Perform the final conformance audit against:
 
 * `ARCHITECTURE.md`;
 * every applicable Model `DEFINITION.md`;
-* the implementation at HEAD;
+* implementation at HEAD;
 * the complete test suite.
 
-Search for terminology associated with the migration, but treat search results only as candidates for semantic inspection.
+Search for historical terms such as `variant`, `realization`, `model`, and `product`, but inspect their semantics rather than treating lexical matches as defects.
 
-For significant remaining occurrences of overloaded terms such as `realization` and `product`, determine their actual meaning in context before deciding whether they require modification.
+## Verify
 
-Verify specifically that:
+Confirm that:
 
-* reusable constructible catalog definitions are Variants;
-* Variants are Model-scoped;
-* Variant selection identifies the Model;
-* Features are Model-owned capabilities selected/configured by Variants;
-* architectural Realizations are Artifact-specific instantiations of Variants;
+* Variant definitions are complete Model-owned constructible configurations;
+* Variants select Features and provide parameter defaults;
+* Variant identity is Model-scoped;
+* fully qualified Variant references are equivalent to decomposed Model/local-name references;
+* historical fields named `realization` may remain when they unambiguously carry the local Variant/Realization namespace required by the implementation;
+* selecting a Variant identifies its Model;
+* default Variants preserve historical Model-default behavior;
+* Features represent Model-owned optional capabilities rather than mechanically mirroring Stages;
+* architectural Realizations are Artifact-specific applications of Variants;
 * Artifact customization does not create a new Variant;
-* Realization is not a second reusable configuration mechanism;
+* reusable catalog offerings are not independently defined as Realizations;
 * persistent Stage outputs remain architectural Products;
-* customer-facing product terminology is not conflated with Stage Product identity;
-* Defined Graph validation remains complete;
+* Product identity and reuse remain stable;
 * dependency-driven planning remains intact;
-* Product reuse and incremental execution remain intact;
-* Model-specific semantics have not leaked into generic infrastructure;
-* obsolete compatibility behavior introduced during migration has been removed or explicitly justified by the permanent specifications.
+* Defined Graph validation remains complete;
+* incremental execution remains intact;
+* cross-Model and cross-Artifact Product reuse remains intact;
+* generic infrastructure contains no Model-specific Feature semantics;
+* no unnecessary second Variant identity representation has been propagated through the runtime;
+* temporary compatibility mechanisms introduced during the migration have been removed or permanently justified.
 
-Review tests changed during the migration and ensure that behavioral assertions were not weakened merely to obtain green results.
+Review tests changed during the migration and ensure behavioral assertions were not weakened merely to obtain green results.
 
-Run the complete repository checks, including the full non-slow test suite, type checking, linting, and other normal project validation.
+Run the complete repository validation suite, including the normal non-slow tests, type checking, linting, and other project checks.
 
-### Final architectural acceptance
+## Final architectural acceptance
 
-Add or identify integrated acceptance coverage demonstrating the complete normative relationship:
+Demonstrate:
 
 ```text
 Model
@@ -526,9 +677,15 @@ Artifact ─────────────> Realization
                                   └── persistent Products
 ```
 
-The acceptance coverage must demonstrate both an uncustomized and an Artifact-customized application of a Variant and establish that both Realizations retain the same originating Variant.
+Acceptance must include:
 
-It must also demonstrate that a distinct reusable catalog offering is represented by a distinct Variant rather than by an independently reusable Realization definition.
+1. an uncustomized application of a Variant;
+2. a customized application of the same Variant;
+3. proof that both retain the same originating Variant;
+4. a distinct reusable catalog offering represented by a distinct Variant;
+5. equivalent compact and decomposed Variant references;
+6. preservation of default-Variant historical behavior;
+7. stable persistent Product identity and reuse.
 
 All repository checks must pass.
 
@@ -538,10 +695,11 @@ All repository checks must pass.
 
 When Phase 5 acceptance is green and the repository conforms to the permanent specifications:
 
-1. perform one final comparison of HEAD against `ARCHITECTURE.md` and the applicable Model `DEFINITION.md` files;
-2. confirm that no unresolved item in this plan remains;
-3. confirm that temporary compatibility mechanisms introduced by this migration have been removed unless permanently justified;
+1. perform one final comparison of HEAD against `ARCHITECTURE.md` and every applicable Model `DEFINITION.md`;
+2. confirm no unresolved item in this plan remains;
+3. confirm temporary compatibility mechanisms introduced by this migration have been removed unless permanently justified;
 4. confirm the complete repository validation suite is green;
 5. delete `CHANGEPLAN.md`.
 
 Deletion of `CHANGEPLAN.md` is the final change of this migration.
+

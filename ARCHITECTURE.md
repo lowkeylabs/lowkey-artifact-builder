@@ -793,7 +793,6 @@ A Variant is not merely a parameter preset. It is the reusable
 
 definition of a constructible product configuration.
 
-definition of a constructible product configuration.
 
 ## 4.7 Variant configuration and customization
 
