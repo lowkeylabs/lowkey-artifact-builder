@@ -10,6 +10,8 @@ configuration.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from lowkey_artifact_builder.cli.display.common import (
     console,
     create_table,
@@ -27,10 +29,31 @@ from lowkey_artifact_builder.model import (
 # =========================================================
 
 
+def _format_parameter_value(
+    value: object,
+) -> str:
+    """
+    Format a resolved parameter value for display.
+
+    Paths are displayed relative to the current working directory when
+    possible. Other values use the standard CLI value formatting.
+    """
+
+    if isinstance(value, Path):
+        try:
+            value = value.relative_to(Path.cwd())
+        except ValueError:
+            pass
+
+    return format_value(value)
+
+
 def display_artifact_config(
     artifact_id: str,
     model: ModelSpec,
     resolver: Resolver,
+    *,
+    realization: str = "default",
 ) -> None:
     """
     Display complete resolved configuration information for an
@@ -62,6 +85,11 @@ def display_artifact_config(
     summary.add_row(
         "Model",
         model.name,
+    )
+
+    summary.add_row(
+        "Realization",
+        realization,
     )
 
     console.print(summary)
@@ -110,9 +138,21 @@ def _display_artifact_parameters(
 
         source = resolver.source(name)
 
+        if name == "source" and isinstance(value, str):
+            try:
+                value = str(
+                    Path(value)
+                    .resolve()
+                    .relative_to(
+                        Path.cwd().resolve(),
+                    )
+                )
+            except ValueError:
+                pass
+
         table.add_row(
             name,
-            format_value(value),
+            _format_parameter_value(value),
             source,
         )
 

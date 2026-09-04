@@ -2595,4 +2595,3 @@ The long-term manufacturing objective is:
 > applying Model-owned Variants to Artifacts and composing
 
 > generic, well-defined operations with minimal manual intervention.
-
