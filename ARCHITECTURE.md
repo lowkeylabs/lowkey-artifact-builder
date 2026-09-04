@@ -36,8 +36,7 @@ Each:
 
 ``` text
 
-model/models/\<model>/DEFINITION.md
-
+model/models/\\<model>/DEFINITION.md
 ```
 
 defines the normative semantics, requirements, and invariants specific
@@ -60,13 +59,15 @@ specification and may be removed once alignment is complete.
 
 Tests provide executable evidence of conformance. They do not replace
 
-the permanent specifications. Tests exercising a Model's ordinary behavior
+the permanent specifications. Tests exercising a Model's ordinary
+behavior
 
 without selecting a specialized Variant may be understood as exercising
 
 that Model's `default` Variant. Such tests need not explicitly name the
 
-`default` Variant unless Variant selection or identity is itself under test.
+`default` Variant unless Variant selection or identity is itself under
+test.
 
 When evaluating architectural completeness, compare the current
 
@@ -135,7 +136,6 @@ A common use case begins with a customer image:
                              ▼
 
                     manufacturing geometry
-
 ```
 
 The same interpreted artwork should be reusable across many manufactured
@@ -151,7 +151,6 @@ artwork A ──┐
 artwork B ──┼──> registered composition ──> manufactured object
 
 artwork C ──┘
-
 ```
 
 The architecture should optimize the user experience for the common case
@@ -201,20 +200,33 @@ Artifact ───────> Realization
                            │
 
                            └── Product
-
 ```
 
 A Model defines reusable manufacturing capabilities.
 
 A Feature is a Model-owned optional capability or behavior.
 
-A Variant is a complete, named, Model-scoped product configuration. It
+A Variant is a named, Model-scoped set of parameter overrides
+representing
 
-selects Features and supplies parameter defaults sufficient, together
+a reusable configuration of that Model. Variant overrides are applied
+over
 
-with Model defaults and required Artifact inputs, to define a
+the Model's ordinary parameter defaults. They do not independently
+redefine
 
-constructible catalog offering.
+Features or their semantics.
+
+A Model's parameter defaults establish its ordinary behavior, including
+
+Feature participation where participation is determined by parameter
+values.
+
+A Variant specifies only the values that differ for that reusable
+
+configuration. The `default` Variant may therefore contain no parameter
+
+overrides.
 
 A Variant's complete identity includes its Model. Selecting a Variant
 
@@ -232,14 +244,13 @@ Conceptually:
 
 Variant
 
-    = Model + named product configuration
+    = Model + named reusable configuration
 
-    = selected Features + parameter defaults
+    = sparse parameter overrides over Model defaults
 
 Realization
 
     = Artifact + Variant + optional Artifact-specific customizations
-
 ```
 
 A Realization is not a second mechanism for defining reusable product
@@ -248,15 +259,15 @@ configurations. Reusable catalog configurations belong to Variants.
 
 A Product may be consumed by:
 
--   a later Stage of the same Realization;
+\-   a later Stage of the same Realization;
 
--   another Realization;
+\-   another Realization;
 
--   another Model;
+\-   another Model;
 
--   another Artifact;
+\-   another Artifact;
 
--   another build executed in the future.
+\-   another build executed in the future.
 
 The build system is therefore fundamentally a graph of Products and the
 
@@ -295,7 +306,6 @@ color-1.stl
 products.json
 
 artifact.3mf
-
 ```
 
 The build engine does not architecturally distinguish between
@@ -331,7 +341,6 @@ extrude
    ↓
 
 package
-
 ```
 
 A consumer may require only `prepare:envelope`, `raster:colors`, or
@@ -381,7 +390,6 @@ For example:
 ``` text
 
 nydeli:artwork:default:vector:colors
-
 ```
 
 may identify a Product belonging to the Realization produced by applying
@@ -393,7 +401,6 @@ Its files might currently exist beneath:
 ``` text
 
 artifacts/nydeli/artwork/default/30-vector/
-
 ```
 
 The logical reference is architectural. The physical path is resolver
@@ -485,7 +492,6 @@ nydeli
 family-2026
 
 mydog
-
 ```
 
 An Artifact is not a Model, manufactured object, Variant, Realization,
@@ -515,24 +521,23 @@ Examples include:
 artwork
 
 shape
-
 ```
 
 A Model declares:
 
--   inputs;
+\-   inputs;
 
--   parameters;
+\-   parameters;
 
--   Features;
+\-   Features;
 
--   Variants;
+\-   Variants;
 
--   Stages;
+\-   Stages;
 
--   Products;
+\-   Products;
 
--   dependencies.
+\-   dependencies.
 
 Models should increasingly be compositions of generic operations rather
 
@@ -589,7 +594,6 @@ add-hanger
 extrude
 
 package
-
 ```
 
 A Stage is an execution and persistence boundary. An Operation is
@@ -621,28 +625,33 @@ inner-ridge
 lettering
 
 hanger
-
 ```
 
 A Feature may:
 
--   alter geometry;
+\-   alter geometry;
 
--   affect behavior of an always-present Stage;
+\-   affect behavior of an always-present Stage;
 
--   enable or disable Stage participation;
+\-   enable or disable Stage participation;
 
--   affect Product generation;
+\-   affect Product generation;
 
--   introduce or remove configuration requirements;
+\-   introduce or remove configuration requirements;
 
--   affect dependencies.
+\-   affect dependencies.
 
 Features describe Model capabilities. They are not independently
 
 constructible catalog offerings and do not identify Realizations.
 
-Variants select and configure Features.
+Variants configure Model behavior by overriding parameters. Those
+parameter
+
+values may affect Feature participation according to Model-owned Feature
+
+semantics. A separate generic Feature-selection mechanism is not
+required.
 
 Generic configuration, graph, planning, and execution infrastructure
 
@@ -650,204 +659,162 @@ must not contain Model-specific Feature semantics.
 
 ## 4.6 Variant
 
-A Variant is a complete, named, Model-scoped product configuration.
+A Variant is a named, Model-scoped set of parameter overrides
+representing a reusable configuration of that Model.
 
-A Variant defines:
-
--   the Features selected for the configuration;
-
--   parameter defaults required to configure those Features and the
-
-    Model;
-
--   enough configuration, together with Model defaults and required
-
-    Artifact inputs, to construct the offering without requiring
-
-    Artifact-specific customization.
+A Variant does not need to repeat the Model's complete configuration.
+Instead, effective configuration begins with the Model's ordinary
+parameter defaults and applies the Variant's parameter overrides.
+Feature participation and behavior remain Model-owned semantics and may
+be determined by the resulting parameter values.
 
 Variants are reusable across Artifacts and constitute the Model's
-
-catalog of constructible configurations.
+catalog of named configurations.
 
 Examples:
 
 ``` text
-
 artwork.default
-
 shape.default
-
 shape.ornament
-
 shape.ornament-large
-
 shape.coaster
-
 shape.keychain
-
 ```
 
 The local Variant name is Model-scoped. Therefore:
 
 ``` text
-
 shape.default
-
 artwork.default
-
 ```
 
 are distinct Variants.
 
 A Variant's complete identity consists of its Model and local Variant
-
 name:
 
 ``` text
-
 Variant identity = Model + local Variant name
-
 ```
 
-A fully qualified Variant reference may represent that identity compactly
-
-as `<model>.<local-name>`. For example:
+A fully qualified Variant reference may represent that identity
+compactly as `<model>.<local-name>`. For example:
 
 ``` text
-
 Model name:          shape
 local Variant name: ornament
 Variant reference:  shape.ornament
-
 ```
 
 A fully qualified Variant reference and a decomposed representation of
-
 the Model name and local Variant name identify the same Variant. The
-
 architecture does not require every internal data structure or interface
-
 to use the same representation.
 
 Existing implementation structures may decompose Variant identity into a
-
 Model name and a local name. Historical implementation fields named
-
-`realization` may serve as that local-name component. Such a representation
-
-does not by itself imply a separate architectural Realization identity and
-
-does not require renaming when its meaning is otherwise unambiguous. For
-
-example:
+`realization` may serve as that local-name component. Such a
+representation does not by itself imply a separate architectural
+Realization identity and does not require renaming when its meaning is
+otherwise unambiguous. For example:
 
 ``` text
-
 model = shape
 realization = ornament
-
 ```
 
 may be a decomposed representation of:
 
 ``` text
-
 variant = shape.ornament
-
 ```
 
 Architectural meaning is determined by the relationship represented, not
-
 by the historical field name.
 
 Interfaces may accept a fully qualified Variant reference as a compact
-
-alternative to supplying its Model name and local Variant name separately.
-
-Such syntax does not introduce another identity mechanism; it is another
-
-representation of the same Variant identity.
+alternative to supplying its Model name and local Variant name
+separately. Such syntax does not introduce another identity mechanism;
+it is another representation of the same Variant identity.
 
 Selecting a Variant therefore necessarily selects its Model.
 
 A `default` Variant should normally exist or be implicitly available so
+that a Model remains directly usable without specialized Variant
+selection. The `default` Variant represents the Model's ordinary
+behavior. Because that behavior is established by Model defaults, the
+`default` Variant may contain no parameter overrides.
 
-that a Model with no specialized catalog configurations remains directly
+A specialized Variant specifies only the parameter values that
+distinguish its reusable configuration from the Model defaults. Adding a
+new Feature or parameter to a Model therefore does not require modifying
+every existing Variant when the new Model default already gives those
+Variants the intended behavior.
 
-usable. When a Model historically provides directly usable behavior
-
-without explicit Variant selection, its `default` Variant represents that
-
-existing constructible offering. Making that Variant explicit, including
-
-explicitly identifying its Feature selections, must not by itself reduce
-
-or redefine the historical default behavior. An implicitly available
-
-`default` Variant is therefore not necessarily semantically empty merely
-
-because no explicit Variant definition exists.
-
-A Variant is not merely a parameter preset. It is the reusable
-
-definition of a constructible product configuration.
-
+A Variant is a reusable named configuration, not a second mechanism for
+defining Feature semantics or duplicating the Model's complete
+configuration.
 
 ## 4.7 Variant configuration and customization
 
-Parameters may contribute to Model defaults, Variant defaults, or
-
+Parameters may contribute to Model defaults, Variant overrides, or
 Artifact-specific customization.
 
-A Model author may intentionally define two Variants whose Feature
+Effective parameter resolution is conceptually:
 
-selections are identical and whose principal difference is one or more
+``` text
+Model parameter defaults
+        ↓
+Variant parameter overrides
+        ↓
+Artifact-specific overrides
+        ↓
+effective Realization configuration
+```
 
-parameter values when those Variants represent distinct catalog
+Variant definitions are intentionally sparse. A Variant need specify
+only parameters whose values differ from the Model defaults. The Model
+owns the semantics of those parameters, including any values that
+enable, disable, or otherwise affect Feature participation.
 
-offerings.
+For example, a Model may define an optional Feature whose width of zero
+means that the Feature does not participate. A Variant may enable that
+Feature simply by overriding the width with a positive value. The
+generic Variant mechanism need not separately encode a boolean Feature
+selection.
+
+A Model author may intentionally define two Variants whose principal
+difference is one or more parameter values when those Variants represent
+distinct reusable catalog configurations.
 
 For example:
 
 ``` text
-
 shape.ornament
-
-    size = 100
+    size = 100
 
 shape.ornament-large
-
-    size = 125
-
+    size = 125
 ```
 
 are valid distinct Variants even if size is their only material
-
 difference.
 
 By contrast:
 
 ``` text
-
 Artifact = mydog
-
 Variant = shape.ornament
-
 customization:
-
-    size = 110
-
+    size = 110
 ```
 
 does not create another Variant. It produces a customized Realization
-
 whose originating Variant remains `shape.ornament`.
 
 Whether a configuration difference deserves a distinct Variant is
-
 therefore a Model/catalog decision, not a mechanical consequence of
-
 changing a parameter.
 
 ## 4.8 Realization
@@ -858,17 +825,17 @@ without Artifact-specific customizations.
 
 A Realization has:
 
--   one Artifact;
+\-   one Artifact;
 
--   one originating Variant;
+\-   one originating Variant;
 
--   the Model identified by that Variant;
+\-   the Model identified by that Variant;
 
--   effective Feature selections;
+\-   effective Feature selections;
 
--   effective parameter values;
+\-   effective parameter values;
 
--   resolved inputs.
+\-   resolved inputs.
 
 A Realization is concrete and Artifact-specific. A Variant is reusable
 
@@ -893,7 +860,6 @@ mydog + shape.ornament
             ▼
 
         Realization
-
 ```
 
 and:
@@ -909,42 +875,41 @@ mydog + shape.ornament
             ▼
 
    customized Realization
-
 ```
 
 both originate from `shape.ornament`.
 
 ### Variant and Realization invariants
 
--   Every Variant belongs to exactly one Model.
+\-   Every Variant belongs to exactly one Model.
 
--   A Variant's complete identity includes its Model.
+\-   A Variant's complete identity includes its Model.
 
--   A Variant defines a complete constructible catalog configuration
+\-   A Variant defines a complete constructible catalog configuration
 
     through Feature selections and parameter defaults.
 
--   Every Realization originates from exactly one Variant.
+\-   Every Realization originates from exactly one Variant.
 
--   A Realization is produced by applying that Variant to an Artifact.
+\-   A Realization is produced by applying that Variant to an Artifact.
 
--   Artifact-specific customizations may modify effective configuration
+\-   Artifact-specific customizations may modify effective configuration
 
     without changing the originating Variant.
 
--   Model and Variant are not independent selections within a
+\-   Model and Variant are not independent selections within a
 
     Realization.
 
--   Realization is not a second reusable configuration or
+\-   Realization is not a second reusable configuration or
 
     catalog-definition mechanism.
 
--   Distinct reusable catalog offerings are represented by distinct
+\-   Distinct reusable catalog offerings are represented by distinct
 
     Variants.
 
--   Two Variants may legitimately differ only by parameter values such
+\-   Two Variants may legitimately differ only by parameter values such
 
     as size.
 
@@ -1007,7 +972,6 @@ geometry
 components
 
 artifact
-
 ```
 
 A Product may materialize as one file, multiple files, or a manifest
@@ -1056,7 +1020,8 @@ Physical dimensions belong to the downstream Operation or Model that
 
 introduces the physical constraint.
 
-A Shape Variant may provide default dimensions for its catalog offering,
+A Shape Variant may override default dimensions for its catalog
+offering,
 
 while the Shape Model owns the semantics of how those dimensions
 
@@ -1085,7 +1050,6 @@ Dimensioned2DGeometry
         ▼
 
 Physical3DGeometry
-
 ```
 
 ## 5.5 Dimensional responsibility
@@ -1094,7 +1058,7 @@ Physical dimensions belong to the Operation or Model that introduces the
 
 corresponding physical constraint.
 
-Variant parameter defaults configure those semantics; they do not
+Variant parameter overrides configure those semantics; they do not
 
 transfer dimensional responsibility to the Variant abstraction itself.
 
@@ -1178,11 +1142,11 @@ A Model should not require a monolithic builder that understands
 
 upstream artwork internals.
 
-Variants configure the recipe by selecting Features and supplying
-
-parameter defaults. They do not replace Stages, Operations, Products, or
-
-dependency definitions.
+Variants configure the recipe by supplying sparse parameter overrides
+over Model defaults. Those resolved parameter values may affect Feature
+participation according to Model-owned semantics. Variants do not
+replace Stages, Operations, Products, Features, or dependency
+definitions.
 
 ------------------------------------------------------------------------
 
@@ -1209,7 +1173,6 @@ Realization context
 Stage
 
 Product
-
 ```
 
 A serialized reference may continue to include explicit Artifact, Model,
@@ -1223,7 +1186,6 @@ For example:
 ``` text
 
 nydeli:artwork:default:vector:colors
-
 ```
 
 may represent the `vector:colors` Product of the Realization obtained by
@@ -1234,15 +1196,15 @@ The architecture does not require a particular number of colon-separated
 
 fields. It requires that:
 
-1\.  references are logical;
+1\\.  references are logical;
 
-2\.  references are globally unambiguous within a Workspace;
+2\\.  references are globally unambiguous within a Workspace;
 
-3\.  references do not contain generated filesystem paths;
+3\\.  references do not contain generated filesystem paths;
 
-4\.  parsing and formatting are centralized;
+4\\.  parsing and formatting are centralized;
 
-5\.  filesystem organization may change without changing Product
+5\\.  filesystem organization may change without changing Product
 
     semantics.
 
@@ -1325,7 +1287,6 @@ Artifact context     ModelRegistry
                           ▼
 
                   filesystem path
-
 ```
 
 The resolver may answer which Artifact owns a Product, which Variant and
@@ -1348,7 +1309,7 @@ Conceptually:
 
 artifacts/
 
-└── \<artifact_id>/
+└── \\<artifact_id>/
 
     ├── artifact.png
 
@@ -1356,14 +1317,13 @@ artifacts/
 
     │
 
-    └── \<model>/
+    └── \\<model>/
 
-        └── \<realization>/
+        └── \\<realization>/
 
-            └── \<stage-id>-\<stage-name>/
+            └── \\<stage-id>-\\<stage-name>/
 
                 └── products...
-
 ```
 
 Because a Realization originates from a Variant, an implementation may
@@ -1393,7 +1353,6 @@ artifacts/
             ├── 40-extrude/
 
             └── 50-package/
-
 ```
 
 The filesystem materializes logical ownership; it does not define the
@@ -1453,7 +1412,6 @@ ProductSpec(
     path="envelope.svg",
 
 )
-
 ```
 
 rather than repeating global Artifact, Model, Realization, or Stage
@@ -1472,26 +1430,25 @@ It is derived from:
 
 registered Models
 
-+
+\+
 
 Model-scoped Features
 
-+
+\+
 
 Model-scoped Variants
 
-+
+\+
 
 Stages
 
-+
+\+
 
 Products
 
-+
+\+
 
 declared dependencies
-
 ```
 
 The Defined Graph exists independently of Artifact-specific
@@ -1527,7 +1484,6 @@ INVALID
 STALE
 
 CURRENT
-
 ```
 
 This technical Product Catalog is distinct from the catalog of Variant
@@ -1536,7 +1492,7 @@ offerings exposed by a Model.
 
 A Variant catalog answers:
 
-> Which complete configurations may be applied to an Artifact?
+> Which named reusable configurations may be applied to an Artifact?
 
 The Product Catalog answers:
 
@@ -1565,7 +1521,6 @@ shape.ornament-large
 shape.coaster
 
 shape.keychain
-
 ```
 
 External presentation may attach additional metadata such as title,
@@ -1617,7 +1572,6 @@ Shape Variants:
     coaster
 
     keychain
-
 ```
 
 may produce four Realizations without requiring four independently named
@@ -1633,7 +1587,6 @@ must remain:
 ``` text
 
 Artifact + Variant + optional customization -> Realization
-
 ```
 
 Explicit ProductRefs remain available for advanced composition and
@@ -1697,7 +1650,6 @@ Realization Graph
       ▼
 
 Execution Plan
-
 ```
 
 The Execution Plan describes what must actually execute now.
@@ -1739,7 +1691,6 @@ INVALID
 STALE
 
 CURRENT
-
 ```
 
 A subsequent build should reuse current Products.
@@ -1829,7 +1780,6 @@ vector
     ▼
 
 registered relative geometry
-
 ```
 
 The resulting geometry is dimension-independent and reusable by
@@ -1865,74 +1815,54 @@ requires.
 A Shape Model may define reusable Features:
 
 ``` text
-
 artwork
-
 outer-ridge
-
 inner-ridge
-
 lettering
-
 hanger
-
 ```
 
-and complete Variants:
+The Shape Model defines the parameters, defaults, and semantics
+governing those Features. It may then define sparse Variants such as:
 
 ``` text
-
 shape.ornament
-
-    features = artwork, outer-ridge, inner-ridge, lettering, hanger
-
-    size = 100
+    size = 100
+    outer_ridge_width = 2
 
 shape.ornament-large
-
-    features = artwork, outer-ridge, inner-ridge, lettering, hanger
-
-    size = 125
+    size = 125
+    outer_ridge_width = 2
 
 shape.coaster
-
-    features = artwork, outer-ridge
-
-    size = 100
+    size = 100
 
 shape.keychain
-
-    features = artwork, outer-ridge, hanger
-
-    size = 45
-
+    size = 45
+    hanger_size = 4
 ```
 
-These examples are conceptual; exact Feature names and parameter
+Only values that differ from Shape's Model defaults need appear in a
+Variant. Whether values such as `outer_ridge_width` or `hanger_size`
+cause a Feature to participate is a Shape Model semantic, not a generic
+Variant semantic.
 
+These examples are conceptual; exact Feature names and parameter
 semantics belong to the Shape Model's `DEFINITION.md`.
 
 Applying these Variants to Artifact `mydog` yields distinct
-
 Realizations:
 
 ``` text
-
 mydog + shape.ornament
-
 mydog + shape.ornament-large
-
 mydog + shape.coaster
-
 mydog + shape.keychain
-
 ```
 
-No Artifact-specific size selection is required merely to make these
-
-Variants buildable.
-
-------------------------------------------------------------------------
+No Artifact-specific parameter selection is required merely to make
+these Variants usable when Model defaults and Variant overrides already
+provide the intended reusable configuration.
 
 # 28. Reference Scenario: Customized Variant
 
@@ -1947,7 +1877,6 @@ shape.ornament
     size = 110
 
     lettering = disabled
-
 ```
 
 The resulting Realization remains an application of `shape.ornament`.
@@ -2025,7 +1954,6 @@ ProductDependencyBinding
         ▼
 
 ProductRef
-
 ```
 
 A declared dependency does not require every Variant or Realization of
@@ -2056,17 +1984,17 @@ Generated filesystem paths must not be used as dependency identity.
 
 Responsible for:
 
--   loading configuration;
+\-   loading configuration;
 
--   applying defaults;
+\-   applying defaults;
 
--   resolving Variant defaults;
+\-   resolving Variant defaults;
 
--   applying Artifact-specific customizations;
+\-   applying Artifact-specific customizations;
 
--   validating resolved values;
+\-   validating resolved values;
 
--   tracking provenance.
+\-   tracking provenance.
 
 It does not define Model-specific Feature semantics or execute geometry.
 
@@ -2074,35 +2002,35 @@ It does not define Model-specific Feature semantics or execute geometry.
 
 Responsible for:
 
--   discovering Models;
+\-   discovering Models;
 
--   registering ModelSpec definitions;
+\-   registering ModelSpec definitions;
 
--   exposing Model metadata;
+\-   exposing Model metadata;
 
--   exposing Features;
+\-   exposing Features;
 
--   exposing Variants.
+\-   exposing Variants.
 
 ## Model specification
 
 Responsible for declaring:
 
--   inputs;
+\-   inputs;
 
--   parameters;
+\-   parameters;
 
--   Features;
+\-   Features;
 
--   Variants;
+\-   Variants;
 
--   Stages;
+\-   Stages;
 
--   dependencies;
+\-   dependencies;
 
--   Products;
+\-   Products;
 
--   Product contracts.
+\-   Product contracts.
 
 A Variant definition is part of the Model specification.
 
@@ -2110,17 +2038,17 @@ A Variant definition is part of the Model specification.
 
 Responsible for:
 
--   parsing logical references;
+\-   parsing logical references;
 
--   resolving Artifacts;
+\-   resolving Artifacts;
 
--   resolving Realizations and their originating Variants/Models;
+\-   resolving Realizations and their originating Variants/Models;
 
--   resolving Stages;
+\-   resolving Stages;
 
--   resolving Products;
+\-   resolving Products;
 
--   constructing canonical filesystem locations.
+\-   constructing canonical filesystem locations.
 
 It does not decide what must execute.
 
@@ -2132,15 +2060,15 @@ Responsible for constructing and validating the Defined Graph.
 
 Responsible for:
 
--   selecting requested Products;
+\-   selecting requested Products;
 
--   computing dependency closure;
+\-   computing dependency closure;
 
--   constructing Realization Graphs;
+\-   constructing Realization Graphs;
 
--   evaluating Product state;
+\-   evaluating Product state;
 
--   constructing Execution Plans.
+\-   constructing Execution Plans.
 
 ## Stage runner
 
@@ -2278,17 +2206,15 @@ includes that Model.
 
 Selecting a Variant therefore selects its Model.
 
-## Invariant 20 --- Variant completeness
+## Invariant 20 --- Sparse Variant configuration
 
-A Variant is a complete constructible product configuration consisting
+A Variant is a named, Model-scoped set of parameter overrides over Model
+defaults. A Variant need not repeat parameters whose Model defaults
+already provide the intended behavior.
 
-of Feature selections and parameter defaults, together with applicable
-
-Model defaults.
-
-Artifact-specific customization must not be required merely to make a
-
-Variant buildable when its required Artifact inputs are present.
+The `default` Variant may contain no parameter overrides. Adding a Model
+Feature or parameter does not require modifying existing Variants when
+the new Model default already provides their intended behavior.
 
 ## Invariant 21 --- Realization is application
 
@@ -2308,9 +2234,9 @@ definition mechanism.
 
 ## Invariant 23 --- Customization preserves originating Variant
 
-Artifact-specific customization may alter effective Feature selections
-
-or parameter values without changing the originating Variant.
+Artifact-specific customization may alter effective parameter values and
+therefore may alter Feature participation according to Model-owned
+semantics, without changing the originating Variant.
 
 ## Invariant 24 --- Catalog differences may be dimensional
 
@@ -2382,17 +2308,17 @@ vectorization, and, when requested, extrusion and packaging.
 
 ### Case B --- Shape ornament Variant
 
-The same registered artwork is applied to `shape.ornament`, whose
-
-Feature selection and defaults define a complete ornament offering.
+The same registered artwork is applied to `shape.ornament`, whose sparse
+parameter overrides over Shape defaults define the reusable ornament
+configuration.
 
 The standalone artwork 3MF is not required.
 
 ### Case C --- Shape keychain Variant
 
 The same registered artwork is reused through `shape.keychain` at a
-
-smaller physical size with keychain Features.
+smaller physical size with parameter values whose Shape-owned semantics
+produce the keychain behavior.
 
 Rasterization and vectorization are not repeated merely because the
 
@@ -2401,8 +2327,8 @@ physical size changes.
 ### Case D --- Shape coaster Variant
 
 The same registered artwork is used through `shape.coaster`, which
-
-determines its physical dimensions and selected Features.
+overrides the Shape defaults needed for the reusable coaster
+configuration.
 
 ### Case E --- Multiple catalog Variants
 
@@ -2419,12 +2345,10 @@ shape.ornament-large
 shape.coaster
 
 shape.keychain
-
 ```
 
-without requiring `artifact.toml` to redefine each Variant's sizes or
-
-Features.
+without requiring `artifact.toml` to redefine each Variant's parameter
+overrides.
 
 ### Case F --- Customized Variant application
 
@@ -2462,8 +2386,7 @@ against:
 
 ARCHITECTURE.md
 
-model/models/\<model>/DEFINITION.md
-
+model/models/\\<model>/DEFINITION.md
 ```
 
 Differences between permanent specifications and implementation should
@@ -2492,97 +2415,98 @@ temporary change plan is no longer required.
 
 When proposing a feature or refactor, ask:
 
-1\.  What Products does this Operation consume?
+1\\.  What Products does this Operation consume?
 
-2\.  What Products does it produce?
+2\\.  What Products does it produce?
 
-3\.  Which Stage owns each Product?
+3\\.  Which Stage owns each Product?
 
-4\.  Are dependencies expressed logically?
+4\\.  Are dependencies expressed logically?
 
-5\.  Can the resolver uniquely locate every Product?
+5\\.  Can the resolver uniquely locate every Product?
 
-6\.  Is this geometry relative or physically dimensioned?
+6\\.  Is this geometry relative or physically dimensioned?
 
-7\.  Which Model or Operation owns the physical dimension?
+7\\.  Which Model or Operation owns the physical dimension?
 
-8\.  Does the transformation preserve registered geometry?
+8\\.  Does the transformation preserve registered geometry?
 
-9\.  Does the consumer unnecessarily understand its input payload?
+9\\.  Does the consumer unnecessarily understand its input payload?
 
-10\. Can current upstream Products be reused?
+10\\. Can current upstream Products be reused?
 
-11\. Can another Model or Artifact consume this Product?
+11\\. Can another Model or Artifact consume this Product?
 
-12\. Does the change introduce Model-specific behavior into the generic
+12\\. Does the change introduce Model-specific behavior into the generic
 
     engine?
 
-13\. Does filesystem organization remain an implementation detail?
+13\\. Does filesystem organization remain an implementation detail?
 
-14\. Is the behavior a Model Feature?
+14\\. Is the behavior a Model Feature?
 
-15\. If it is a reusable catalog configuration, is it represented as a
+15\\. If it is a reusable catalog configuration, is it represented as a
 
     Variant?
 
-16\. Does the Variant completely define its offering through Features and
+16\\. Does the Variant completely define its offering through Features
+and
 
     parameter defaults?
 
-17\. Is a proposed Realization truly an application of a Variant to an
+17\\. Is a proposed Realization truly an application of a Variant to an
 
     Artifact, rather than another reusable configuration definition?
 
-18\. Does Artifact customization preserve the originating Variant?
+18\\. Does Artifact customization preserve the originating Variant?
 
-19\. Can the Model's Variant catalog be discovered without redundant
+19\\. Can the Model's Variant catalog be discovered without redundant
 
     Artifact configuration?
 
-20\. Does the common user workflow remain simple?
+20\\. Does the common user workflow remain simple?
 
 Warning signs include designs that:
 
--   treat Variant as merely a parameter preset;
+\-   treat Variant as merely a parameter preset;
 
--   allow Model and Variant to become independent Realization
+\-   allow Model and Variant to become independent Realization
 
     selections;
 
--   create independently named Realizations as reusable catalog
+\-   create independently named Realizations as reusable catalog
 
     definitions;
 
--   require Artifact configuration to repeat Variant Features or
+\-   require Artifact configuration to repeat Variant Features or
 
     defaults merely to make a Variant buildable;
 
--   automatically create a new Variant identity for every parameter
+\-   automatically create a new Variant identity for every parameter
 
     override;
 
--   prohibit useful dimensional Variants merely because their primary
+\-   prohibit useful dimensional Variants merely because their primary
 
     difference is size;
 
--   confuse Variant catalog offerings with persistent Stage Products;
+\-   confuse Variant catalog offerings with persistent Stage Products;
 
--   require a complete producer Model to execute before consuming an
+\-   require a complete producer Model to execute before consuming an
 
     upstream Product;
 
--   treat a 3MF as the definition of Model completion;
+\-   treat a 3MF as the definition of Model completion;
 
--   rerasterize or revectorize artwork merely because physical output
+\-   rerasterize or revectorize artwork merely because physical output
 
     size changed;
 
--   embed generated filesystem paths in configuration;
+\-   embed generated filesystem paths in configuration;
 
--   independently scale registered components;
+\-   independently scale registered components;
 
--   duplicate Products merely to create a convenient output directory.
+\-   duplicate Products merely to create a convenient output directory.
 
 ------------------------------------------------------------------------
 
@@ -2613,12 +2537,9 @@ Realization
   = application of Variant to Artifact
 
     + optional Artifact-specific customizations
-
 ```
 
-A Model's Variants form a reusable catalog of constructible
-
-configurations.
+A Model's Variants form a reusable catalog of named configurations.
 
 For example:
 
@@ -2631,14 +2552,11 @@ shape.ornament-large
 shape.coaster
 
 shape.keychain
-
 ```
 
 may all be applied to the same Artifact and source image without
 
-requiring the Artifact to redefine their sizes, Features, or other
-
-defaults.
+requiring the Artifact to redefine their Variant parameter overrides.
 
 A customized application remains a Realization of its originating
 
@@ -2674,7 +2592,7 @@ The long-term manufacturing objective is:
 
 > assets, and create increasingly sophisticated physical products by
 
-> applying complete Model-owned Variants to Artifacts and composing
+> applying Model-owned Variants to Artifacts and composing
 
 > generic, well-defined operations with minimal manual intervention.
 
