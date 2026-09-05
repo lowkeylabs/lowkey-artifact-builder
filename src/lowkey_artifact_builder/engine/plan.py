@@ -86,6 +86,7 @@ def create_build_plan(
     artifact_id: str,
     *,
     model_name: str | None = None,
+    variant_name: str | None = None,
     realization: str | None = None,
     targets: tuple[ProductRef, ...] | None = None,
     project_root: Path | None = None,
@@ -93,13 +94,15 @@ def create_build_plan(
     """
     Construct the build plan for one configured artifact realization.
 
-    Configuration is resolved once for the selected realization. The
-    resulting Resolver is retained by the BuildPlan and later supplied
-    unchanged to every StageContext created during execution.
+    Configuration is resolved once for the selected Model, Variant, and
+    Artifact Realization. The resulting Resolver is retained by the
+    BuildPlan and later supplied unchanged to every StageContext created
+    during execution.
 
-    Model and realization may be supplied together as the decomposed
-    identity of a qualified Variant. The Model selects the Variant
-    namespace and realization carries its local Variant name.
+    A Variant may be selected independently by its local name. A Model
+    name may also be supplied to identify the Model namespace of a
+    qualified Variant. Variant selection does not select an Artifact
+    Realization.
 
     When realization is omitted, configuration resolution determines
     the realization. Legacy single-realization artifact configuration
@@ -120,19 +123,22 @@ def create_build_plan(
 
     root = project_root if project_root is not None else Path.cwd()
 
-    if model_name is None:
-        resolver = get_resolver(
-            artifact_id,
-            realization=realization,
-            project_root=root,
-        )
-    else:
-        resolver = get_resolver(
-            artifact_id,
-            model=model_name,
-            realization=realization,
-            project_root=root,
-        )
+    resolver_options = {}
+
+    if model_name is not None:
+        resolver_options["model"] = model_name
+
+    if variant_name is not None:
+        resolver_options["variant"] = variant_name
+
+    if realization is not None:
+        resolver_options["realization"] = realization
+
+    resolver = get_resolver(
+        artifact_id,
+        project_root=root,
+        **resolver_options,
+    )
 
     resolved_model_name = resolver("model")
 
@@ -251,6 +257,7 @@ def create_build_plans(
     artifact_id: str,
     *,
     model_name: str | None = None,
+    variant_name: str | None = None,
     realization: str | None = None,
     targets: tuple[ProductRef, ...] | None = None,
     project_root: Path | None = None,
@@ -264,12 +271,14 @@ def create_build_plans(
     Legacy single-realization artifact configuration produces exactly
     one plan for the implicit realization named "default".
 
-    Model and realization may be supplied together as the decomposed
-    identity of a qualified Variant. In that case exactly the selected
-    Variant is planned.
+    A Variant may be selected independently by its local name. A Model
+    name may also be supplied to identify the Model namespace of a
+    qualified Variant. Variant selection does not select an Artifact
+    Realization.
 
     When realization and targets are omitted, every realization receives
-    its normal complete-artifact build plan.
+    its normal complete-artifact build plan using the selected Variant,
+    when one was supplied.
 
     When realization is supplied without targets, only that realization
     receives its normal complete-artifact build plan.
@@ -295,6 +304,7 @@ def create_build_plans(
                 create_build_plan(
                     artifact_id,
                     model_name=model_name,
+                    variant_name=variant_name,
                     realization=realization,
                     project_root=root,
                 ),
@@ -303,6 +313,8 @@ def create_build_plans(
         return tuple(
             create_build_plan(
                 artifact_id,
+                model_name=model_name,
+                variant_name=variant_name,
                 realization=realization_name,
                 project_root=root,
             )
@@ -317,6 +329,8 @@ def create_build_plans(
     return tuple(
         create_build_plan(
             artifact_id,
+            model_name=model_name,
+            variant_name=variant_name,
             realization=realization_name,
             targets=realization_targets,
             project_root=root,

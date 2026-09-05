@@ -559,167 +559,76 @@ def test_create_build_plan_selects_named_realization(
 
 def test_create_build_plan_selects_model_with_local_variant_name(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Planning may receive the decomposed identity of a qualified Variant.
+    Planning may select a Model-scoped Variant independently of Realization.
 
-    The Model and local Variant name are coordinates of one Variant
-    identity rather than independent public selections.
+    The selected Variant contributes its sparse parameter overrides while
+    the artifact retains its implicit default Realization.
     """
 
-    model = ModelSpec(
-        name="example-model",
-        title="Example Model",
-        variants=(
-            VariantSpec(
-                name="ornament",
-                parameters={
-                    "ridge_width": 2.0,
-                },
-            ),
-        ),
-    )
-
-    class StubRegistry:
-        def get_model(
-            self,
-            name: str,
-        ) -> ModelSpec:
-            assert name == model.name
-            return model
-
-    class Resolver:
-        def __call__(
-            self,
-            name: str,
-        ):
-            values = {
-                "model": model.name,
-                "variant": "ornament",
-                "realization": "ornament",
-                "ridge_width": 2.0,
-            }
-
-            return values[name]
-
-        def source(
-            self,
-            name: str,
-        ) -> str:
-            return "test"
-
-    requested: list[tuple[str | None, str | None]] = []
-
-    def fake_get_resolver(
-        artifact_id: str,
-        *,
-        model: str | None = None,
-        realization: str | None = None,
-        project_root: Path,
-    ) -> Resolver:
-        assert artifact_id == "example"
-
-        requested.append(
-            (
-                model,
-                realization,
-            )
-        )
-
-        return Resolver()
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.engine.plan.get_resolver",
-        fake_get_resolver,
-    )
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.engine.plan.build_model_registry",
-        lambda: StubRegistry(),
+    write_artifact_config(
+        "example",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
     )
 
     plan = create_build_plan(
         "example",
-        model_name="example-model",
-        realization="ornament",
+        model_name="shape",
+        variant_name="ornament",
         project_root=tmp_path,
     )
 
-    assert requested == [
-        (
-            "example-model",
-            "ornament",
-        )
-    ]
+    assert plan.model_name == "shape"
+    assert plan.realization_name == "default"
 
-    assert plan.model_name == "example-model"
-    assert plan.realization_name == "ornament"
+    assert plan.resolver("model") == "shape"
     assert plan.resolver("variant") == "ornament"
-    assert plan.resolver("ridge_width") == 2.0
+    assert plan.resolver("realization") == "default"
+
+    assert plan.resolver("shape_outer_ridge_width") == 2.0
+    assert plan.resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
 
 
 def test_create_build_plans_selects_model_with_local_variant_name(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Artifact-level planning preserves the decomposed identity of a
-    qualified Variant when selecting one complete build.
+    Artifact-level planning preserves Model-scoped Variant selection
+    independently of Artifact Realization selection.
     """
 
-    expected_plan = object()
-
-    requested: list[
-        tuple[
-            str,
-            str | None,
-            str | None,
-            Path | None,
-        ]
-    ] = []
-
-    def fake_create_build_plan(
-        artifact_id: str,
-        *,
-        model_name: str | None = None,
-        realization: str | None = None,
-        targets: tuple[ProductRef, ...] | None = None,
-        project_root: Path | None = None,
-    ):
-        requested.append(
-            (
-                artifact_id,
-                model_name,
-                realization,
-                project_root,
-            )
-        )
-
-        return expected_plan
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.engine.plan.create_build_plan",
-        fake_create_build_plan,
+    write_artifact_config(
+        "example",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
     )
 
     plans = create_build_plans(
         "example",
         model_name="shape",
-        realization="ornament",
+        variant_name="ornament",
         project_root=tmp_path,
     )
 
-    assert plans == (expected_plan,)
+    assert len(plans) == 1
 
-    assert requested == [
-        (
-            "example",
-            "shape",
-            "ornament",
-            tmp_path,
-        )
-    ]
+    plan = plans[0]
+
+    assert plan.model_name == "shape"
+    assert plan.realization_name == "default"
+
+    assert plan.resolver("model") == "shape"
+    assert plan.resolver("variant") == "ornament"
+    assert plan.resolver("realization") == "default"
+
+    assert plan.resolver("shape_outer_ridge_width") == 2.0
+    assert plan.resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
 
 
 def test_named_realization_owns_planned_products(
