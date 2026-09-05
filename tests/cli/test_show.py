@@ -14,6 +14,9 @@ from click.testing import CliRunner
 
 import lowkey_artifact_builder.cli.cmd_show as cmd_show
 from lowkey_artifact_builder.cli._main import cli
+from lowkey_artifact_builder.config import (
+    write_artifact_config,
+)
 
 # =========================================================
 # Helpers
@@ -174,14 +177,14 @@ def test_show_qualified_variant_selects_model_and_local_variant(
         artifact_id: str,
         *,
         model_name: str | None = None,
-        realization: str | None = None,
+        variant_name: str | None = None,
         project_root: Path,
     ) -> None:
         displayed.append(
             (
                 artifact_id,
                 model_name,
-                realization,
+                variant_name,
                 project_root,
             )
         )
@@ -224,6 +227,7 @@ def test_show_resolves_qualified_variant_configuration(
             str,
             str | None,
             str | None,
+            str | None,
             Path,
         ]
     ] = []
@@ -244,6 +248,7 @@ def test_show_resolves_qualified_variant_configuration(
         artifact_id: str,
         *,
         model: str | None = None,
+        variant: str | None = None,
         realization: str | None = None,
         project_root: Path,
     ) -> Resolver:
@@ -251,6 +256,7 @@ def test_show_resolves_qualified_variant_configuration(
             (
                 artifact_id,
                 model,
+                variant,
                 realization,
                 project_root,
             )
@@ -287,7 +293,7 @@ def test_show_resolves_qualified_variant_configuration(
     cmd_show._display_artifact(
         "skippy",
         model_name="shape",
-        realization="ornament",
+        variant_name="ornament",
         project_root=tmp_path,
     )
 
@@ -296,6 +302,76 @@ def test_show_resolves_qualified_variant_configuration(
             "skippy",
             "shape",
             "ornament",
+            None,
             tmp_path,
+        )
+    ]
+
+
+def test_show_qualified_variant_uses_effective_variant_configuration(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Show displays the effective configuration of the selected qualified
+    Variant rather than the Artifact's configured default Variant.
+    """
+
+    displayed: list[
+        tuple[
+            str,
+            str,
+            str,
+            float,
+            str,
+        ]
+    ] = []
+
+    monkeypatch.chdir(tmp_path)
+
+    write_artifact_config(
+        "skippy",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    def display(
+        artifact_id: str,
+        model,
+        resolver,
+    ) -> None:
+        displayed.append(
+            (
+                artifact_id,
+                model.name,
+                resolver("variant"),
+                resolver("shape_outer_ridge_width"),
+                resolver.source("shape_outer_ridge_width"),
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_show,
+        "display_artifact_config",
+        display,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--variant",
+        "shape.ornament",
+    )
+
+    assert result.exit_code == 0
+
+    assert displayed == [
+        (
+            "skippy",
+            "shape",
+            "ornament",
+            2.0,
+            "variant 'ornament'",
         )
     ]

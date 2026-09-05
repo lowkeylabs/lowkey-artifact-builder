@@ -392,6 +392,7 @@ def get_resolver(
     artifact_id: str,
     *,
     model: str | None = None,
+    variant: str | None = None,
     realization: str | None = None,
     project_root: Path | str | None = None,
 ) -> Resolver:
@@ -430,19 +431,31 @@ def get_resolver(
     realization. Realization-specific configurable values override
     inherited artifact values.
 
-    Model and variant identity are selected by the realization itself
-    and are not inherited as ordinary artifact parameters.
+    Model and Variant identity may be selected explicitly by the caller.
+    Otherwise, they are obtained from the selected artifact Realization.
+
+    Explicit Variant selection is independent of artifact Realization
+    selection. For example:
+
+        get_resolver(
+            "nydeli",
+            model="shape",
+            variant="ornament",
+        )
+
+    selects the ``shape.ornament`` Variant while retaining the Artifact's
+    implicit ``default`` Realization.
 
     During initial artifact setup, configuration may not yet contain a
-    model. In that case setup may supply the selected model explicitly:
+    Model. In that case setup may supply the selected Model explicitly:
 
         get_resolver(
             "nydeli",
             model="artwork",
         )
 
-    A realization may select one of the variants declared by its model.
-    When no variant is configured, the model's default variant is used.
+    When no Variant is selected explicitly or configured by the Artifact,
+    the Model's default Variant is used.
 
     Configuration precedence is:
 
@@ -487,8 +500,8 @@ def get_resolver(
     # -----------------------------------------------------
     # Artifact and realization configuration
     #
-    # Inspect these before model parameters are loaded because
-    # the selected realization identifies its model and variant.
+    # Artifact Realization selection and Model Variant
+    # selection are independent coordinates.
     #
     # Legacy artifact configuration is normalized to an
     # implicit realization named "default".
@@ -521,9 +534,11 @@ def get_resolver(
         requested_model=model,
     )
 
-    variant_name = _artifact_variant(
+    configured_variant = _artifact_variant(
         realization_document,
     )
+
+    variant_name = variant if variant is not None else configured_variant
 
     # -----------------------------------------------------
     # Model configuration
@@ -541,7 +556,7 @@ def get_resolver(
         model_name,
     )
 
-    variant = _resolve_variant(
+    resolved_variant = _resolve_variant(
         model_spec,
         variant_name,
     )
@@ -604,8 +619,8 @@ def get_resolver(
     _merge(
         values,
         provenance,
-        variant.parameters,
-        source=f"variant {variant.name!r}",
+        resolved_variant.parameters,
+        source=f"variant {resolved_variant.name!r}",
     )
 
     _merge(
@@ -631,7 +646,7 @@ def get_resolver(
         )
 
     # -----------------------------------------------------
-    # Artifact and realization identity
+    # Artifact, realization, Model, and Variant identity
     # -----------------------------------------------------
 
     values["artifact_id"] = artifact_id
@@ -649,9 +664,11 @@ def get_resolver(
     else:
         provenance["model"] = "setup"
 
-    values["variant"] = variant.name
+    values["variant"] = resolved_variant.name
 
-    if variant_name is not None:
+    if variant is not None:
+        provenance["variant"] = "selection"
+    elif configured_variant is not None:
         provenance["variant"] = (
             f"realization {realization_name!r}" if explicit_realizations else "artifact"
         )

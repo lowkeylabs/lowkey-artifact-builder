@@ -80,14 +80,14 @@ def cli(
         )
         return
 
-    model_name, realization = parse_variant_reference(
+    model_name, variant_name = parse_variant_reference(
         variant,
     )
 
     _display_artifact(
         artifact_id,
         model_name=model_name,
-        realization=realization,
+        variant_name=variant_name,
         project_root=project_root,
     )
 
@@ -101,7 +101,7 @@ def _display_artifact(
     artifact_id: str,
     *,
     model_name: str | None = None,
-    realization: str | None = None,
+    variant_name: str | None = None,
     project_root: Path,
 ) -> None:
     """
@@ -109,12 +109,12 @@ def _display_artifact(
 
     The artifact must already be defined.
 
-    Model and realization may carry the decomposed identity of a
-    selected qualified Variant.
+    Model and Variant may carry the decomposed identity of a selected
+    qualified Variant.
     """
 
     try:
-        if model_name is None and realization is None:
+        if model_name is None and variant_name is None:
             resolver = get_resolver(
                 artifact_id,
                 project_root=project_root,
@@ -123,7 +123,7 @@ def _display_artifact(
             resolver = get_resolver(
                 artifact_id,
                 model=model_name,
-                realization=realization,
+                variant=variant_name,
                 project_root=project_root,
             )
 
