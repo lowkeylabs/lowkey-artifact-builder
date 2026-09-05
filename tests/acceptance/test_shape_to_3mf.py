@@ -2850,3 +2850,112 @@ def test_shape_ornament_variant_builds_complete_3mf(
 
     assert "ornament-shape-base-white" in object_names
     assert "ornament-shape-ridge-white" in object_names
+
+
+@pytest.mark.slow
+def test_shape_ornament_variant_accepts_artifact_customization(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    Artifact customization overlays the selected shape.ornament Variant.
+
+    The customization changes the resulting physical Shape without
+    creating a new Variant identity.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    runner = CliRunner()
+
+    write_artifact_config(
+        "custom-ornament",
+        {
+            "model": "shape",
+            "shape_size": 80.0,
+        },
+        project_root=project_root,
+    )
+
+    build_result = runner.invoke(
+        cli,
+        [
+            "build",
+            "custom-ornament",
+            "--variant",
+            "shape.ornament",
+        ],
+    )
+
+    assert build_result.exit_code == 0, (
+        f"Customized ornament build failed:\n{build_result.output}\n{build_result.exception!r}"
+    )
+
+    plans = create_build_plans(
+        "custom-ornament",
+        model_name="shape",
+        variant_name="ornament",
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    # Variant identity is unchanged.
+    assert plan.model_name == "shape"
+    assert plan.resolver("variant") == "ornament"
+
+    # The specialized Variant still supplies its sparse override.
+    assert plan.resolver("shape_outer_ridge_width") == 2.0
+    assert plan.resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
+
+    # Artifact customization overlays Model/Variant configuration.
+    assert plan.resolver("shape_size") == 80.0
+    assert plan.resolver.source("shape_size") == "artifact"
+
+    # The customized physical Shape is manufactured in the existing
+    # Artifact Realization.
+    shape_root = project_root / "artifacts" / "custom-ornament" / "shape" / "default"
+
+    base = shape_root / "30-extrude" / "base.stl"
+
+    assert base.is_file()
+    assert base.stat().st_size > 0
+
+    # Inspect the manufactured STL rather than stopping at resolver
+    # assertions. An 80 mm circular Shape should span approximately
+    # 80 mm in X and Y.
+    x_values: list[float] = []
+    y_values: list[float] = []
+
+    for line in base.read_text(
+        encoding="utf-8",
+    ).splitlines():
+        stripped = line.strip()
+
+        if not stripped.startswith("vertex "):
+            continue
+
+        coordinates = stripped.split()
+
+        assert len(coordinates) == 4
+
+        x_values.append(float(coordinates[1]))
+        y_values.append(float(coordinates[2]))
+
+    assert x_values
+    assert y_values
+
+    assert max(x_values) - min(x_values) == pytest.approx(
+        80.0,
+        abs=0.1,
+    )
+    assert max(y_values) - min(y_values) == pytest.approx(
+        80.0,
+        abs=0.1,
+    )
