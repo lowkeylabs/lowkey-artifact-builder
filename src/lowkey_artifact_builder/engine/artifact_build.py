@@ -39,6 +39,7 @@ from .plan import (
 def execute_artifact_build(
     artifact_id: str,
     *,
+    model_name: str | None = None,
     realization: str | None = None,
     project_root: Path | None = None,
     event_sink: EventSink | None = None,
@@ -46,10 +47,15 @@ def execute_artifact_build(
     """
     Build one or more realized workflows for one configured artifact.
 
-    The artifact identity and optional realization are the public inputs to
-    this orchestration boundary. When realization is omitted, every configured
-    realization is built. When realization is supplied, only that realization
-    is built.
+    The artifact identity and optional realization are the ordinary public
+    inputs to this orchestration boundary.
+
+    Model and realization may also be supplied together as the decomposed
+    identity of a qualified Variant. The Model selects the Variant namespace
+    and realization carries its local Variant name.
+
+    When realization is omitted, every configured realization is built.
+    When realization is supplied, only that realization is built.
 
     Build-plan creation and execution strategy remain engine responsibilities.
 
@@ -65,6 +71,9 @@ def execute_artifact_build(
     """
 
     planning_options = {}
+
+    if model_name is not None:
+        planning_options["model_name"] = model_name
 
     if realization is not None:
         planning_options["realization"] = realization

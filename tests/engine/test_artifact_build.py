@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+import lowkey_artifact_builder.engine.artifact_build as artifact_build
 from lowkey_artifact_builder.config import (
     write_artifact_config,
 )
@@ -250,3 +251,66 @@ def test_artifact_build_selects_requested_realization(
     )
 
     assert not alternate_output.exists()
+
+
+def test_artifact_build_selects_model_with_local_variant_name(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    The artifact-build boundary preserves qualified Variant identity.
+
+    A Model name and local Variant name supplied by the caller are forwarded
+    together to build planning.
+    """
+
+    requested: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+            Path | None,
+        ]
+    ] = []
+
+    def fake_create_build_plans(
+        artifact_id: str,
+        *,
+        model_name: str | None = None,
+        realization: str | None = None,
+        project_root: Path | None = None,
+    ):
+        requested.append(
+            (
+                artifact_id,
+                model_name,
+                realization,
+                project_root,
+            )
+        )
+
+        return ()
+
+    monkeypatch.setattr(
+        artifact_build,
+        "create_build_plans",
+        fake_create_build_plans,
+    )
+
+    plans = execute_artifact_build(
+        "example",
+        model_name="shape",
+        realization="ornament",
+        project_root=tmp_path,
+    )
+
+    assert plans == ()
+
+    assert requested == [
+        (
+            "example",
+            "shape",
+            "ornament",
+            tmp_path,
+        )
+    ]
