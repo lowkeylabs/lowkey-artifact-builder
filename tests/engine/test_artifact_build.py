@@ -534,3 +534,56 @@ def test_artifact_build_all_variants_preserves_selected_realization(
             "alternate",
         ),
     ]
+
+
+def test_artifact_build_planning_rejects_variant_with_all_variants(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-level planning rejects contradictory Variant selection.
+
+    A caller may request one Variant or all Model Variants, but not both.
+    """
+
+    with pytest.raises(
+        ValueError,
+        match="variant_name and all_variants cannot be used together",
+    ):
+        artifact_build.create_artifact_build_plans(
+            "example",
+            variant_name="ornament",
+            all_variants=True,
+            project_root=tmp_path,
+        )
+
+
+def test_artifact_build_execution_rejects_variant_with_all_variants(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact execution preserves the artifact-planning selection contract.
+
+    Invalid Variant selection fails before dependency execution begins.
+    """
+
+    executed: list[object] = []
+
+    monkeypatch.setattr(
+        artifact_build,
+        "execute_dependency_build",
+        lambda plan, **kwargs: executed.append(plan),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="variant_name and all_variants cannot be used together",
+    ):
+        execute_artifact_build(
+            "example",
+            variant_name="ornament",
+            all_variants=True,
+            project_root=tmp_path,
+        )
+
+    assert executed == []

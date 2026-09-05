@@ -60,6 +60,8 @@ def create_artifact_build_plans(
     Model, Variant, all-Variant, and Artifact Realization selection remain
     distinct coordinates.
 
+    A caller may select one Variant or all Variants, but not both.
+
     When all_variants is true, every Variant owned by the applicable Model
     is planned independently. Variant enumeration does not create or select
     Artifact Realizations.
@@ -67,6 +69,9 @@ def create_artifact_build_plans(
     Otherwise ordinary build planning preserves explicit Model, Variant, and
     Artifact Realization selection while leaving omitted selections implicit.
     """
+
+    if variant_name is not None and all_variants:
+        raise ValueError("variant_name and all_variants cannot be used together")
 
     if all_variants:
         resolver_options = {}
