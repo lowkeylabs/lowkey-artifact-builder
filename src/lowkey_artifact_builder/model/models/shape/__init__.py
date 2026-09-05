@@ -20,6 +20,7 @@ from lowkey_artifact_builder.model.specs import (
     ProductDependencySpec,
     ProductSpec,
     StageSpec,
+    VariantSpec,
 )
 
 from .stages import register_stage_implementations
@@ -33,6 +34,15 @@ MODEL = ModelSpec(
     name="shape",
     title="Shape",
     description=("Parameterized geometric body that may consume registered Artwork geometry."),
+    variants=(
+        VariantSpec(
+            name="ornament",
+            description=("Shape with an enabled outer ridge suitable for an ornament."),
+            parameters={
+                "shape_outer_ridge_width": 2.0,
+            },
+        ),
+    ),
     stages=(
         StageSpec(
             id=10,
