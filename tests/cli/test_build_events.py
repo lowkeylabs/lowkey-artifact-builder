@@ -51,6 +51,7 @@ def _install_plans(
     def create_build_plans(
         artifact_id: str,
         *,
+        realization: str | None = None,
         project_root: Path,
     ):
         assert artifact_id == "example"
@@ -86,6 +87,7 @@ def test_build_command_delegates_artifact_execution_to_engine(
     def execute_artifact_build(
         artifact_id: str,
         *,
+        realization: str | None = None,
         project_root: Path,
         event_sink=None,
     ):
@@ -147,6 +149,7 @@ def test_build_command_supplies_event_sink_to_artifact_execution(
     def execute_artifact_build(
         artifact_id: str,
         *,
+        realization: str | None = None,
         project_root: Path,
         event_sink=None,
     ):
@@ -221,6 +224,7 @@ def test_dry_run_prepares_build_without_executing_artifact_build(
     def execute_artifact_build(
         artifact_id: str,
         *,
+        realization: str | None = None,
         project_root: Path,
         event_sink=None,
     ):

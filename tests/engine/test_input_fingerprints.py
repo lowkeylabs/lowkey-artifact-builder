@@ -362,7 +362,7 @@ def test_each_external_input_contributes_to_stage_fingerprint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Changing any declared external input changes consuming-stage provenance.
+    Changing each declared external input changes consuming-stage provenance.
     """
 
     build_plan = artwork_plan(
@@ -374,8 +374,7 @@ def test_each_external_input_contributes_to_stage_fingerprint(
         build_plan,
     )
 
-    if len(stage.inputs) < 2:
-        pytest.skip("Artwork input stage declares fewer than two external inputs.")
+    assert stage.inputs
 
     for index, planned_input in enumerate(
         stage.inputs,

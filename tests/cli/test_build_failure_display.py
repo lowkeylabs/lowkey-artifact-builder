@@ -27,6 +27,7 @@ from lowkey_artifact_builder.engine import (
 def _emit_failed_build(
     artifact_id: str,
     *,
+    realization: str | None = None,
     project_root: Path,
     event_sink=None,
 ) -> None:

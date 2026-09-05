@@ -44,22 +44,29 @@ def _invoke(
 # =========================================================
 
 
-def test_build_delegates_artifact_execution_to_engine(
+def test_build_without_variant_selects_default(
     monkeypatch,
 ) -> None:
     """
-    Normal builds delegate artifact orchestration to the engine.
+    A normal build with no Variant option builds only the Artifact's
+    ordinary default Variant.
     """
 
-    executed: list[str] = []
+    executed: list[tuple[str, str | None]] = []
 
     def execute_artifact(
         artifact_id: str,
         *,
+        realization: str | None = None,
         project_root: Path,
         event_sink=None,
     ) -> None:
-        executed.append(artifact_id)
+        executed.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
 
     monkeypatch.setattr(
         cmd_build,
@@ -72,7 +79,13 @@ def test_build_delegates_artifact_execution_to_engine(
     )
 
     assert result.exit_code == 0
-    assert executed == ["skippy"]
+
+    assert executed == [
+        (
+            "skippy",
+            "default",
+        ),
+    ]
 
 
 def test_build_does_not_create_build_plans(
@@ -85,6 +98,7 @@ def test_build_does_not_create_build_plans(
     def unexpected_planning(
         artifact_id: str,
         *,
+        realization: str | None = None,
         project_root: Path,
     ):
         raise AssertionError("normal CLI execution created build plans")
@@ -98,7 +112,7 @@ def test_build_does_not_create_build_plans(
     monkeypatch.setattr(
         cmd_build,
         "execute_artifact_build",
-        lambda artifact_id, *, project_root, event_sink=None: None,
+        lambda artifact_id, *, realization=None, project_root, event_sink=None: None,
     )
 
     result = _invoke(
@@ -121,6 +135,7 @@ def test_build_passes_project_root(
     def execute_artifact(
         artifact_id: str,
         *,
+        realization: str | None = None,
         project_root: Path,
         event_sink=None,
     ) -> None:
@@ -147,40 +162,38 @@ def test_build_passes_project_root(
 # =========================================================
 
 
-def test_build_dry_run_prepares_and_displays_all_plans(
+def test_build_dry_run_without_variant_selects_default(
     monkeypatch,
 ) -> None:
     """
-    A dry run prepares and displays every realization plan for the artifact.
+    A normal dry run plans only the Artifact's ordinary default Variant.
     """
 
-    first = object()
-    second = object()
+    plan = object()
 
-    plans = (
-        first,
-        second,
-    )
-
+    selections: list[str | None] = []
     prepared: list[object] = []
     displayed: list[object] = []
+
+    def create_plans(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+    ):
+        selections.append(realization)
+        return (plan,)
 
     monkeypatch.setattr(
         cmd_build,
         "create_build_plans",
-        lambda artifact_id, *, project_root: plans,
+        create_plans,
     )
-
-    def prepare(
-        plan: object,
-    ) -> object:
-        prepared.append(plan)
-        return object()
 
     monkeypatch.setattr(
         cmd_build,
         "prepare_incremental_build",
-        prepare,
+        lambda candidate: prepared.append(candidate),
         raising=False,
     )
 
@@ -196,16 +209,9 @@ def test_build_dry_run_prepares_and_displays_all_plans(
     )
 
     assert result.exit_code == 0
-
-    assert prepared == [
-        first,
-        second,
-    ]
-
-    assert displayed == [
-        first,
-        second,
-    ]
+    assert selections == ["default"]
+    assert prepared == [plan]
+    assert displayed == [plan]
 
 
 def test_build_dry_run_prepares_plan_before_display(
@@ -222,7 +228,7 @@ def test_build_dry_run_prepares_plan_before_display(
     monkeypatch.setattr(
         cmd_build,
         "create_build_plans",
-        lambda artifact_id, *, project_root: (plan,),
+        lambda artifact_id, *, realization=None, project_root: (plan,),
     )
 
     def prepare(
@@ -296,7 +302,7 @@ def test_build_dry_run_does_not_execute(
     monkeypatch.setattr(
         cmd_build,
         "create_build_plans",
-        lambda artifact_id, *, project_root: plans,
+        lambda artifact_id, *, realization=None, project_root: plans,
     )
 
     monkeypatch.setattr(
@@ -315,6 +321,7 @@ def test_build_dry_run_does_not_execute(
     def execute_artifact(
         artifact_id: str,
         *,
+        realization: str | None = None,
         project_root: Path,
         event_sink=None,
     ) -> None:
@@ -352,6 +359,7 @@ def test_build_multiple_artifacts_in_argument_order(
     def execute_artifact(
         artifact_id: str,
         *,
+        realization: str | None = None,
         project_root: Path,
         event_sink=None,
     ) -> None:
@@ -400,7 +408,7 @@ def test_build_multiple_artifacts_dry_run_in_argument_order(
     monkeypatch.setattr(
         cmd_build,
         "create_build_plans",
-        lambda artifact_id, *, project_root: plans_by_artifact[artifact_id],
+        lambda artifact_id, *, realization=None, project_root: plans_by_artifact[artifact_id],
     )
 
     def prepare(
@@ -489,6 +497,7 @@ def test_build_plan_error_is_reported(
     def create_plans(
         artifact_id: str,
         *,
+        realization: str | None = None,
         project_root: Path,
     ):
         raise cmd_build.BuildPlanError("cannot create build plan")
@@ -521,7 +530,7 @@ def test_build_dry_run_configuration_error_is_reported_before_display(
     monkeypatch.setattr(
         cmd_build,
         "create_build_plans",
-        lambda artifact_id, *, project_root: (plan,),
+        lambda artifact_id, *, realization=None, project_root: (plan,),
     )
 
     def prepare(
@@ -568,6 +577,7 @@ def test_build_execution_error_is_reported(
     def execute_artifact(
         artifact_id: str,
         *,
+        realization: str | None = None,
         project_root: Path,
         event_sink=None,
     ) -> None:

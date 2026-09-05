@@ -212,16 +212,13 @@ def _execute_build(
 
     for artifact_id in artifact_ids:
         try:
-            realization_options = {}
-
-            if realization is not None:
-                realization_options["realization"] = realization
+            selected_realization = realization or "default"
 
             if dry_run:
                 plans = create_build_plans(
                     artifact_id,
+                    realization=selected_realization,
                     project_root=project_root,
-                    **realization_options,
                 )
 
                 for plan in plans:
@@ -237,9 +234,9 @@ def _execute_build(
 
             execute_artifact_build(
                 artifact_id,
+                realization=selected_realization,
                 project_root=project_root,
                 event_sink=_display_execution_event,
-                **realization_options,
             )
 
         except (
