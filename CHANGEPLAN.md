@@ -53,8 +53,7 @@ A Variant:
 
 -   belongs to exactly one Model;
 -   has a Model-scoped local name;
--   contains only parameter overrides that distinguish that reusable
-    configuration from Model defaults;
+-   contains sparse parameter overrides over Model defaults;
 -   may contain no overrides, particularly for `default`;
 -   does not independently define or select Features;
 -   does not redefine Model-owned parameter or Feature semantics.
@@ -182,8 +181,8 @@ Tests must establish that:
 -   the `default` Variant may contain zero parameter overrides;
 -   Model parameter defaults establish ordinary behavior;
 -   a specialized Variant overrides only the parameters it names;
--   parameters omitted by a specialized Variant continue to resolve from
-    the Model/default configuration layers;
+-   parameters omitted by a specialized Variant continue to resolve from 
+    Model defaults and other applicable lower-precedence configuration scopes;    
 -   Variant overrides do not require a separate Feature-selection
     declaration;
 -   Model-owned parameter semantics remain unchanged by the generic
@@ -251,8 +250,7 @@ For each Model changed:
 -   keep Model parameter defaults authoritative for ordinary behavior;
 -   keep the `default` Variant empty unless an actual override is
     required;
--   define specialized Variants using only the parameter overrides that
-    distinguish them from Model defaults;
+-   define specialized Variants using sparse parameter overrides over Model defaults;
 -   rely on existing Model-owned parameter semantics for Feature
     participation;
 -   do not duplicate all Model parameters into each Variant;
@@ -425,8 +423,7 @@ is equivalent to selecting the applicable Model's `default` Variant.
 artifact build dog --all-variants
 ```
 
-builds all defined Variants applicable to the Artifact across applicable
-Models.
+builds all Model-owned Variants selected as applicable to the Artifact by the existing Model/Artifact selection semantics.
 
 The observable result should be equivalent to requesting those Variants
 individually. Existing planning and Product-state machinery may avoid
@@ -588,6 +585,7 @@ as:
 
 -   a complete duplicate of Model configuration;
 -   an explicit Feature-selection list;
+-   merely a parameter preset without its Model-scoped reusable catalog semantics;
 -   an independently reusable Realization definition.
 
 Update only materially misleading language.

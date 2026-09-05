@@ -885,9 +885,7 @@ both originate from `shape.ornament`.
 
 \-   A Variant's complete identity includes its Model.
 
-\-   A Variant defines a complete constructible catalog configuration
-
-    through Feature selections and parameter defaults.
+\- A Variant defines a reusable constructible catalog configuration through sparse parameter overrides over Model defaults. Feature participation is determined by the resulting effective parameter values according to Model-owned semantics.
 
 \-   Every Realization originates from exactly one Variant.
 
@@ -2449,10 +2447,7 @@ When proposing a feature or refactor, ask:
 
     Variant?
 
-16\\. Does the Variant completely define its offering through Features
-and
-
-    parameter defaults?
+16\\. Does the Variant define its reusable offering through sparse parameter overrides over Model defaults, with Feature participation remaining governed by Model-owned parameter semantics?
 
 17\\. Is a proposed Realization truly an application of a Variant to an
 
@@ -2528,15 +2523,16 @@ Model
 
 Variant
 
-  = Model-scoped complete product configuration
+  = Model-scoped reusable configuration
 
-  = selected Features + parameter defaults
+  = sparse parameter overrides over Model defaults
 
 Realization
 
-  = application of Variant to Artifact
+  = application of Variant to Artifact
 
-    + optional Artifact-specific customizations
+    + optional Artifact-specific customizations
+
 ```
 
 A Model's Variants form a reusable catalog of named configurations.
