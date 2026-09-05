@@ -68,6 +68,11 @@ from lowkey_artifact_builder.engine import (
     help="Select one artifact Variant.",
 )
 @click.option(
+    "--all-variants",
+    is_flag=True,
+    help="Select all applicable artifact Variants.",
+)
+@click.option(
     "--input",
     "input_bindings",
     metavar="NAME=PATH",
@@ -98,6 +103,7 @@ def cli(
     stage: str | None,
     realization: str | None,
     variant: str | None,
+    all_variants: bool,
     input_bindings: tuple[str, ...],
     parameter_bindings: tuple[str, ...],
     output_bindings: tuple[str, ...],
@@ -110,7 +116,8 @@ def cli(
 
     Without --stage, the complete configured artifact workflow is
     planned and executed incrementally. An optional --variant selects
-    one Variant; otherwise the default Variant is built.
+    one Variant; --all-variants selects all applicable Variants.
+    Otherwise the default Variant is built.
 
     With --stage, exactly one declared stage is executed independently.
     Explicit input, parameter, and output bindings apply only to this
@@ -144,6 +151,9 @@ def cli(
     if variant is not None and realization is not None:
         raise click.UsageError("--variant and --realization cannot be used together.")
 
+    if variant is not None and all_variants:
+        raise click.UsageError("--variant and --all-variants cannot be used together.")
+
     model_name: str | None = None
     variant_name: str | None = None
 
@@ -157,6 +167,7 @@ def cli(
         model_name=model_name,
         variant_name=variant_name,
         realization=realization,
+        all_variants=all_variants,
         dry_run=dry_run,
     )
 
@@ -216,15 +227,20 @@ def _execute_build(
     model_name: str | None,
     variant_name: str | None,
     realization: str | None,
+    all_variants: bool,
     dry_run: bool,
 ) -> None:
     """
     Execute normal graph-driven artifact builds.
 
     Normal execution delegates artifact orchestration to the engine.
-    Model, Variant, and Artifact Realization selection remain independent
-    coordinates. When no Variant is explicitly selected, configuration
-    resolution selects the Model's default Variant.
+    Model, Variant, all-Variant, and Artifact Realization selection remain
+    distinct selection coordinates. When no Variant selection is explicit,
+    configuration resolution selects the Model's default Variant.
+
+    All-Variant selection is accepted at this command boundary. Variant
+    enumeration is delegated to subsequent orchestration behavior rather
+    than represented as an Artifact Realization.
 
     Dry-run creates each selected BuildPlan, prepares its
     persistent-state-aware ExecutionPlan, and validates the configuration

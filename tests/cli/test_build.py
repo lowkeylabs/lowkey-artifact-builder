@@ -1091,3 +1091,165 @@ def test_build_dry_run_qualified_variant_selects_model_and_local_variant(
             None,
         )
     ]
+
+
+def test_build_rejects_variant_with_all_variants(
+    monkeypatch,
+) -> None:
+    """
+    One Variant and all Variants are mutually exclusive selections.
+    """
+
+    executed: list[str] = []
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        project_root: Path,
+        event_sink=None,
+        **kwargs,
+    ) -> None:
+        executed.append(artifact_id)
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--variant",
+        "shape.ornament",
+        "--all-variants",
+    )
+
+    assert result.exit_code != 0
+    assert "--variant and --all-variants cannot be used together" in result.output
+    assert executed == []
+
+
+def test_build_all_variants_selects_all_variants_before_execution(
+    monkeypatch,
+) -> None:
+    """
+    Normal build forwards all-Variant selection without manufacturing
+    Model, Variant, or Artifact Realization selection.
+    """
+
+    selected: list[
+        tuple[
+            tuple[str, ...],
+            str | None,
+            str | None,
+            str | None,
+            bool,
+            bool,
+        ]
+    ] = []
+
+    def execute_build(
+        artifact_ids: tuple[str, ...],
+        *,
+        model_name: str | None,
+        variant_name: str | None,
+        realization: str | None,
+        all_variants: bool,
+        dry_run: bool,
+    ) -> None:
+        selected.append(
+            (
+                artifact_ids,
+                model_name,
+                variant_name,
+                realization,
+                all_variants,
+                dry_run,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "_execute_build",
+        execute_build,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--all-variants",
+    )
+
+    assert result.exit_code == 0
+    assert selected == [
+        (
+            ("skippy",),
+            None,
+            None,
+            None,
+            True,
+            False,
+        )
+    ]
+
+
+def test_build_all_variants_selects_all_variants_for_dry_run(
+    monkeypatch,
+) -> None:
+    """
+    Dry-run preserves all-Variant selection at the normal build boundary.
+    """
+
+    selected: list[
+        tuple[
+            tuple[str, ...],
+            str | None,
+            str | None,
+            str | None,
+            bool,
+            bool,
+        ]
+    ] = []
+
+    def execute_build(
+        artifact_ids: tuple[str, ...],
+        *,
+        model_name: str | None,
+        variant_name: str | None,
+        realization: str | None,
+        all_variants: bool,
+        dry_run: bool,
+    ) -> None:
+        selected.append(
+            (
+                artifact_ids,
+                model_name,
+                variant_name,
+                realization,
+                all_variants,
+                dry_run,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "_execute_build",
+        execute_build,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--all-variants",
+        "--dry-run",
+    )
+
+    assert result.exit_code == 0
+    assert selected == [
+        (
+            ("skippy",),
+            None,
+            None,
+            None,
+            True,
+            True,
+        )
+    ]
