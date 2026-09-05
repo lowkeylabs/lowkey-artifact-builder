@@ -44,19 +44,26 @@ def _invoke(
 # =========================================================
 
 
-def test_build_without_variant_selects_default(
+def test_build_without_variant_leaves_variant_selection_implicit(
     monkeypatch,
 ) -> None:
     """
-    A normal build with no Variant option builds only the Artifact's
-    ordinary default Variant.
+    A normal build with no Variant option leaves Variant selection
+    implicit so configuration resolution may select the default Variant.
     """
 
-    executed: list[tuple[str, str | None]] = []
+    executed: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+        ]
+    ] = []
 
     def execute_artifact(
         artifact_id: str,
         *,
+        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path,
         event_sink=None,
@@ -64,6 +71,7 @@ def test_build_without_variant_selects_default(
         executed.append(
             (
                 artifact_id,
+                variant_name,
                 realization,
             )
         )
@@ -83,7 +91,8 @@ def test_build_without_variant_selects_default(
     assert executed == [
         (
             "skippy",
-            "default",
+            None,
+            None,
         ),
     ]
 
@@ -162,26 +171,38 @@ def test_build_passes_project_root(
 # =========================================================
 
 
-def test_build_dry_run_without_variant_selects_default(
+def test_build_dry_run_without_variant_leaves_variant_selection_implicit(
     monkeypatch,
 ) -> None:
     """
-    A normal dry run plans only the Artifact's ordinary default Variant.
+    A normal dry run with no Variant option leaves Variant selection
+    implicit so configuration resolution may select the default Variant.
     """
 
     plan = object()
 
-    selections: list[str | None] = []
+    selections: list[
+        tuple[
+            str | None,
+            str | None,
+        ]
+    ] = []
     prepared: list[object] = []
     displayed: list[object] = []
 
     def create_plans(
         artifact_id: str,
         *,
+        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path,
     ):
-        selections.append(realization)
+        selections.append(
+            (
+                variant_name,
+                realization,
+            )
+        )
         return (plan,)
 
     monkeypatch.setattr(
@@ -209,7 +230,12 @@ def test_build_dry_run_without_variant_selects_default(
     )
 
     assert result.exit_code == 0
-    assert selections == ["default"]
+    assert selections == [
+        (
+            None,
+            None,
+        )
+    ]
     assert prepared == [plan]
     assert displayed == [plan]
 
@@ -646,14 +672,22 @@ def test_build_explicit_default_variant_selects_default(
     monkeypatch,
 ) -> None:
     """
-    An explicit default Variant selects the Artifact's default Variant.
+    An explicit default Variant selects the Model's default Variant
+    without selecting an Artifact Realization.
     """
 
-    executed: list[tuple[str, str | None]] = []
+    executed: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+        ]
+    ] = []
 
     def execute_artifact(
         artifact_id: str,
         *,
+        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path,
         event_sink=None,
@@ -661,6 +695,7 @@ def test_build_explicit_default_variant_selects_default(
         executed.append(
             (
                 artifact_id,
+                variant_name,
                 realization,
             )
         )
@@ -683,7 +718,8 @@ def test_build_explicit_default_variant_selects_default(
         (
             "skippy",
             "default",
-        ),
+            None,
+        )
     ]
 
 
@@ -691,20 +727,32 @@ def test_build_dry_run_explicit_default_variant_selects_default(
     monkeypatch,
 ) -> None:
     """
-    An explicit default Variant dry-run plans the Artifact's default Variant.
+    An explicit default Variant dry-run selects the Model's default
+    Variant without selecting an Artifact Realization.
     """
 
     plan = object()
 
-    selections: list[str | None] = []
+    selections: list[
+        tuple[
+            str | None,
+            str | None,
+        ]
+    ] = []
 
     def create_plans(
         artifact_id: str,
         *,
+        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path,
     ):
-        selections.append(realization)
+        selections.append(
+            (
+                variant_name,
+                realization,
+            )
+        )
         return (plan,)
 
     monkeypatch.setattr(
@@ -734,7 +782,13 @@ def test_build_dry_run_explicit_default_variant_selects_default(
     )
 
     assert result.exit_code == 0
-    assert selections == ["default"]
+
+    assert selections == [
+        (
+            "default",
+            None,
+        )
+    ]
 
 
 def test_build_rejects_variant_with_realization(
@@ -780,11 +834,18 @@ def test_build_parses_bare_variant_before_execution(
 ) -> None:
     """
     Normal build selection parses a bare Variant reference before
-    forwarding its local name to the engine.
+    forwarding its local name to the engine as Variant selection.
     """
 
     parsed: list[str] = []
-    executed: list[tuple[str, str | None]] = []
+    executed: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+            str | None,
+        ]
+    ] = []
 
     def parse_variant(reference: str) -> tuple[str | None, str]:
         parsed.append(reference)
@@ -796,6 +857,8 @@ def test_build_parses_bare_variant_before_execution(
     def execute_artifact(
         artifact_id: str,
         *,
+        model_name: str | None = None,
+        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path,
         event_sink=None,
@@ -803,6 +866,8 @@ def test_build_parses_bare_variant_before_execution(
         executed.append(
             (
                 artifact_id,
+                model_name,
+                variant_name,
                 realization,
             )
         )
@@ -829,7 +894,9 @@ def test_build_parses_bare_variant_before_execution(
     assert executed == [
         (
             "skippy",
+            None,
             "parsed-variant",
+            None,
         )
     ]
 
@@ -842,7 +909,14 @@ def test_build_dry_run_parses_bare_variant_before_planning(
     """
 
     parsed: list[str] = []
-    planned: list[tuple[str, str | None]] = []
+    planned: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+            str | None,
+        ]
+    ] = []
 
     def parse_variant(reference: str) -> tuple[str | None, str]:
         parsed.append(reference)
@@ -854,12 +928,16 @@ def test_build_dry_run_parses_bare_variant_before_planning(
     def create_plans(
         artifact_id: str,
         *,
+        model_name: str | None = None,
+        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path,
     ) -> tuple:
         planned.append(
             (
                 artifact_id,
+                model_name,
+                variant_name,
                 realization,
             )
         )
@@ -888,7 +966,9 @@ def test_build_dry_run_parses_bare_variant_before_planning(
     assert planned == [
         (
             "skippy",
+            None,
             "parsed-variant",
+            None,
         )
     ]
 
@@ -897,12 +977,14 @@ def test_build_qualified_variant_selects_model_and_local_variant(
     monkeypatch,
 ) -> None:
     """
-    A qualified Variant selects its Model and local Variant name for execution.
+    A qualified Variant selects its Model and local Variant name for execution
+    without selecting an Artifact Realization.
     """
 
     executed: list[
         tuple[
             str,
+            str | None,
             str | None,
             str | None,
         ]
@@ -912,6 +994,7 @@ def test_build_qualified_variant_selects_model_and_local_variant(
         artifact_id: str,
         *,
         model_name: str | None = None,
+        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path,
         event_sink=None,
@@ -920,6 +1003,7 @@ def test_build_qualified_variant_selects_model_and_local_variant(
             (
                 artifact_id,
                 model_name,
+                variant_name,
                 realization,
             )
         )
@@ -943,6 +1027,7 @@ def test_build_qualified_variant_selects_model_and_local_variant(
             "skippy",
             "shape",
             "ornament",
+            None,
         )
     ]
 
@@ -952,12 +1037,13 @@ def test_build_dry_run_qualified_variant_selects_model_and_local_variant(
 ) -> None:
     """
     A qualified Variant selects the same Model and local Variant name
-    during dry-run planning.
+    during dry-run planning without selecting an Artifact Realization.
     """
 
     planned: list[
         tuple[
             str,
+            str | None,
             str | None,
             str | None,
         ]
@@ -967,6 +1053,7 @@ def test_build_dry_run_qualified_variant_selects_model_and_local_variant(
         artifact_id: str,
         *,
         model_name: str | None = None,
+        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path,
     ) -> tuple:
@@ -974,6 +1061,7 @@ def test_build_dry_run_qualified_variant_selects_model_and_local_variant(
             (
                 artifact_id,
                 model_name,
+                variant_name,
                 realization,
             )
         )
@@ -1000,5 +1088,6 @@ def test_build_dry_run_qualified_variant_selects_model_and_local_variant(
             "skippy",
             "shape",
             "ornament",
+            None,
         )
     ]

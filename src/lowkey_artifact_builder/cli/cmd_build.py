@@ -145,15 +145,17 @@ def cli(
         raise click.UsageError("--variant and --realization cannot be used together.")
 
     model_name: str | None = None
+    variant_name: str | None = None
 
     if variant is not None:
-        model_name, realization = parse_variant_reference(
+        model_name, variant_name = parse_variant_reference(
             variant,
         )
 
     _execute_build(
         artifact_ids,
         model_name=model_name,
+        variant_name=variant_name,
         realization=realization,
         dry_run=dry_run,
     )
@@ -212,6 +214,7 @@ def _execute_build(
     artifact_ids: tuple[str, ...],
     *,
     model_name: str | None,
+    variant_name: str | None,
     realization: str | None,
     dry_run: bool,
 ) -> None:
@@ -219,9 +222,9 @@ def _execute_build(
     Execute normal graph-driven artifact builds.
 
     Normal execution delegates artifact orchestration to the engine.
-    A qualified Variant is represented internally by its Model name
-    and the existing realization local-name coordinate. When no Variant
-    is explicitly selected, the default Variant is built.
+    Model, Variant, and Artifact Realization selection remain independent
+    coordinates. When no Variant is explicitly selected, configuration
+    resolution selects the Model's default Variant.
 
     Dry-run creates each selected BuildPlan, prepares its
     persistent-state-aware ExecutionPlan, and validates the configuration
@@ -233,17 +236,20 @@ def _execute_build(
 
     for artifact_id in artifact_ids:
         try:
-            selected_realization = realization or "default"
-
             planning_options = {}
 
             if model_name is not None:
                 planning_options["model_name"] = model_name
 
+            if variant_name is not None:
+                planning_options["variant_name"] = variant_name
+
+            if realization is not None:
+                planning_options["realization"] = realization
+
             if dry_run:
                 plans = create_build_plans(
                     artifact_id,
-                    realization=selected_realization,
                     project_root=project_root,
                     **planning_options,
                 )
@@ -261,7 +267,6 @@ def _execute_build(
 
             execute_artifact_build(
                 artifact_id,
-                realization=selected_realization,
                 project_root=project_root,
                 event_sink=_display_execution_event,
                 **planning_options,
