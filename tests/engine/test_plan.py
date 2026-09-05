@@ -557,6 +557,171 @@ def test_create_build_plan_selects_named_realization(
     assert plan.resolver("ridge_raise") == 0.75
 
 
+def test_create_build_plan_selects_model_with_local_variant_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Planning may receive the decomposed identity of a qualified Variant.
+
+    The Model and local Variant name are coordinates of one Variant
+    identity rather than independent public selections.
+    """
+
+    model = ModelSpec(
+        name="example-model",
+        title="Example Model",
+        variants=(
+            VariantSpec(
+                name="ornament",
+                parameters={
+                    "ridge_width": 2.0,
+                },
+            ),
+        ),
+    )
+
+    class StubRegistry:
+        def get_model(
+            self,
+            name: str,
+        ) -> ModelSpec:
+            assert name == model.name
+            return model
+
+    class Resolver:
+        def __call__(
+            self,
+            name: str,
+        ):
+            values = {
+                "model": model.name,
+                "variant": "ornament",
+                "realization": "ornament",
+                "ridge_width": 2.0,
+            }
+
+            return values[name]
+
+        def source(
+            self,
+            name: str,
+        ) -> str:
+            return "test"
+
+    requested: list[tuple[str | None, str | None]] = []
+
+    def fake_get_resolver(
+        artifact_id: str,
+        *,
+        model: str | None = None,
+        realization: str | None = None,
+        project_root: Path,
+    ) -> Resolver:
+        assert artifact_id == "example"
+
+        requested.append(
+            (
+                model,
+                realization,
+            )
+        )
+
+        return Resolver()
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_resolver",
+        fake_get_resolver,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.build_model_registry",
+        lambda: StubRegistry(),
+    )
+
+    plan = create_build_plan(
+        "example",
+        model_name="example-model",
+        realization="ornament",
+        project_root=tmp_path,
+    )
+
+    assert requested == [
+        (
+            "example-model",
+            "ornament",
+        )
+    ]
+
+    assert plan.model_name == "example-model"
+    assert plan.realization_name == "ornament"
+    assert plan.resolver("variant") == "ornament"
+    assert plan.resolver("ridge_width") == 2.0
+
+
+def test_create_build_plans_selects_model_with_local_variant_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Artifact-level planning preserves the decomposed identity of a
+    qualified Variant when selecting one complete build.
+    """
+
+    expected_plan = object()
+
+    requested: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+            Path | None,
+        ]
+    ] = []
+
+    def fake_create_build_plan(
+        artifact_id: str,
+        *,
+        model_name: str | None = None,
+        realization: str | None = None,
+        targets: tuple[ProductRef, ...] | None = None,
+        project_root: Path | None = None,
+    ):
+        requested.append(
+            (
+                artifact_id,
+                model_name,
+                realization,
+                project_root,
+            )
+        )
+
+        return expected_plan
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.create_build_plan",
+        fake_create_build_plan,
+    )
+
+    plans = create_build_plans(
+        "example",
+        model_name="shape",
+        realization="ornament",
+        project_root=tmp_path,
+    )
+
+    assert plans == (expected_plan,)
+
+    assert requested == [
+        (
+            "example",
+            "shape",
+            "ornament",
+            tmp_path,
+        )
+    ]
+
+
 def test_named_realization_owns_planned_products(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

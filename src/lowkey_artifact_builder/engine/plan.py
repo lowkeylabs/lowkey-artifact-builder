@@ -85,6 +85,7 @@ class BuildPlanError(RuntimeError):
 def create_build_plan(
     artifact_id: str,
     *,
+    model_name: str | None = None,
     realization: str | None = None,
     targets: tuple[ProductRef, ...] | None = None,
     project_root: Path | None = None,
@@ -95,6 +96,10 @@ def create_build_plan(
     Configuration is resolved once for the selected realization. The
     resulting Resolver is retained by the BuildPlan and later supplied
     unchanged to every StageContext created during execution.
+
+    Model and realization may be supplied together as the decomposed
+    identity of a qualified Variant. The Model selects the Variant
+    namespace and realization carries its local Variant name.
 
     When realization is omitted, configuration resolution determines
     the realization. Legacy single-realization artifact configuration
@@ -115,16 +120,24 @@ def create_build_plan(
 
     root = project_root if project_root is not None else Path.cwd()
 
-    resolver = get_resolver(
-        artifact_id,
-        realization=realization,
-        project_root=root,
-    )
+    if model_name is None:
+        resolver = get_resolver(
+            artifact_id,
+            realization=realization,
+            project_root=root,
+        )
+    else:
+        resolver = get_resolver(
+            artifact_id,
+            model=model_name,
+            realization=realization,
+            project_root=root,
+        )
 
-    model_name = resolver("model")
+    resolved_model_name = resolver("model")
 
     if not isinstance(
-        model_name,
+        resolved_model_name,
         str,
     ):
         raise BuildPlanError("Artifact model must resolve to a string.")
@@ -141,11 +154,11 @@ def create_build_plan(
 
     try:
         model = registry.get_model(
-            model_name,
+            resolved_model_name,
         )
 
     except ModelNotFoundError as exc:
-        raise BuildPlanError(f"unknown model {model_name!r}") from exc
+        raise BuildPlanError(f"unknown model {resolved_model_name!r}") from exc
 
     product_resolver = ProductResolver(
         project_root=root,
@@ -237,6 +250,7 @@ def create_product_dependency_build_plan(
 def create_build_plans(
     artifact_id: str,
     *,
+    model_name: str | None = None,
     realization: str | None = None,
     targets: tuple[ProductRef, ...] | None = None,
     project_root: Path | None = None,
@@ -249,6 +263,10 @@ def create_build_plans(
 
     Legacy single-realization artifact configuration produces exactly
     one plan for the implicit realization named "default".
+
+    Model and realization may be supplied together as the decomposed
+    identity of a qualified Variant. In that case exactly the selected
+    Variant is planned.
 
     When realization and targets are omitted, every realization receives
     its normal complete-artifact build plan.
@@ -272,7 +290,15 @@ def create_build_plans(
     )
 
     if targets is None:
-        selected_realizations = (realization,) if realization is not None else realization_names
+        if realization is not None:
+            return (
+                create_build_plan(
+                    artifact_id,
+                    model_name=model_name,
+                    realization=realization,
+                    project_root=root,
+                ),
+            )
 
         return tuple(
             create_build_plan(
@@ -280,7 +306,7 @@ def create_build_plans(
                 realization=realization_name,
                 project_root=root,
             )
-            for realization_name in selected_realizations
+            for realization_name in realization_names
         )
 
     _validate_target_artifact(
@@ -863,6 +889,7 @@ def _plan_stage_products(
 # =========================================================
 # Exports
 # =========================================================
+
 
 __all__ = [
     "BuildPlanError",
