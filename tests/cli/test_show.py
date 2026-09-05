@@ -208,3 +208,94 @@ def test_show_qualified_variant_selects_model_and_local_variant(
             tmp_path,
         )
     ]
+
+
+def test_show_resolves_qualified_variant_configuration(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact inspection resolves a qualified Variant using its Model
+    and local Variant name.
+    """
+
+    resolved: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+            Path,
+        ]
+    ] = []
+
+    class Resolver:
+        def __call__(
+            self,
+            name: str,
+        ) -> str:
+            if name == "model":
+                return "shape"
+
+            raise KeyError(name)
+
+    resolver = Resolver()
+
+    def get_resolver(
+        artifact_id: str,
+        *,
+        model: str | None = None,
+        realization: str | None = None,
+        project_root: Path,
+    ) -> Resolver:
+        resolved.append(
+            (
+                artifact_id,
+                model,
+                realization,
+                project_root,
+            )
+        )
+
+        return resolver
+
+    class Registry:
+        def get_model(
+            self,
+            model_name: str,
+        ) -> object:
+            assert model_name == "shape"
+            return object()
+
+    monkeypatch.setattr(
+        cmd_show,
+        "get_resolver",
+        get_resolver,
+    )
+
+    monkeypatch.setattr(
+        cmd_show,
+        "build_model_registry",
+        lambda: Registry(),
+    )
+
+    monkeypatch.setattr(
+        cmd_show,
+        "display_artifact_config",
+        lambda *args: None,
+    )
+
+    cmd_show._display_artifact(
+        "skippy",
+        model_name="shape",
+        realization="ornament",
+        project_root=tmp_path,
+    )
+
+    assert resolved == [
+        (
+            "skippy",
+            "shape",
+            "ornament",
+            tmp_path,
+        )
+    ]

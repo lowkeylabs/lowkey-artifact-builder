@@ -114,10 +114,18 @@ def _display_artifact(
     """
 
     try:
-        resolver = get_resolver(
-            artifact_id,
-            project_root=project_root,
-        )
+        if model_name is None and realization is None:
+            resolver = get_resolver(
+                artifact_id,
+                project_root=project_root,
+            )
+        else:
+            resolver = get_resolver(
+                artifact_id,
+                model=model_name,
+                realization=realization,
+                project_root=project_root,
+            )
 
         resolved_model_name = resolver("model")
 
