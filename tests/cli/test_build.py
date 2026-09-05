@@ -1566,3 +1566,53 @@ def test_build_all_variants_dry_run_preserves_selected_realization(
         first_plan,
         second_plan,
     ]
+
+
+def test_build_dry_run_qualified_variant_uses_effective_variant_configuration(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    Qualified Variant dry-run uses the selected Model and Variant's
+    effective configuration through the real planning boundary.
+    """
+
+    from lowkey_artifact_builder.config import write_artifact_config
+
+    write_artifact_config(
+        "example",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    plans = []
+
+    def display(plan) -> None:
+        plans.append(plan)
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_build_plan",
+        display,
+    )
+
+    result = _invoke(
+        "example",
+        "--variant",
+        "shape.ornament",
+        "--dry-run",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert plans
+
+    for plan in plans:
+        assert plan.model_name == "shape"
+        assert plan.realization_name == "default"
+        assert plan.resolver("variant") == "ornament"
+        assert plan.resolver("shape_outer_ridge_width") == 2.0
+        assert plan.resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
