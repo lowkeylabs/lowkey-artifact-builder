@@ -81,7 +81,7 @@ def test_shape_builds_complete_3mf_without_artwork(
     config_result = runner.invoke(
         cli,
         [
-            "config",
+            "create",
             "testshape",
         ],
         input="2\n",
@@ -281,7 +281,7 @@ def test_shape_ridge_preserves_distinct_component_colors(
     config_result = runner.invoke(
         cli,
         [
-            "config",
+            "create",
             "colored-shape",
         ],
         input="2\n",
@@ -427,7 +427,7 @@ def test_shape_component_colors_do_not_change_geometry(
         config_result = runner.invoke(
             cli,
             [
-                "config",
+                "create",
                 artifact_id,
             ],
             input="2\n",

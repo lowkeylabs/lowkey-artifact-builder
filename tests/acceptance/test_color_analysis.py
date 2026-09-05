@@ -67,7 +67,7 @@ def test_colors_realizes_never_built_registered_artwork_without_standalone_build
     config_result = runner.invoke(
         cli,
         [
-            "config",
+            "create",
             "nydeli",
         ],
         input="1\n1\n70\n",
@@ -204,7 +204,7 @@ def test_colors_rebuilds_stale_registered_artwork_without_standalone_build(
     config_result = runner.invoke(
         cli,
         [
-            "config",
+            "create",
             "nydeli",
         ],
         input="1\n1\n70\n",

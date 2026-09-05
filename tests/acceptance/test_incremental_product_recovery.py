@@ -69,7 +69,7 @@ def _configure_artifact(
     config_result = runner.invoke(
         cli,
         [
-            "config",
+            "create",
             "nydeli",
         ],
         input=("1\n1\n70\n"),

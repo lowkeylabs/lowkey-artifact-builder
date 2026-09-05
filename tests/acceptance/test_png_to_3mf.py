@@ -73,7 +73,7 @@ def test_png_builds_complete_3mf(
     config_result = runner.invoke(
         cli,
         [
-            "config",
+            "create",
             "nydeli",
         ],
         input="1\n1\n70\n",
