@@ -118,9 +118,6 @@ def cli(
         raise click.UsageError("At least one artifact ID is required.")
 
     if stage is not None:
-        # if variant is not None:
-        #    raise click.UsageError("--variant is not supported with --stage.")
-
         _execute_stage(
             artifact_ids,
             stage_name=stage,
@@ -140,6 +137,9 @@ def cli(
 
     if output_bindings:
         raise click.UsageError("--output requires --stage.")
+
+    if variant is not None and realization is not None:
+        raise click.UsageError("--variant and --realization cannot be used together.")
 
     if variant is not None:
         realization = variant

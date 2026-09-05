@@ -735,3 +735,41 @@ def test_build_dry_run_explicit_default_variant_selects_default(
 
     assert result.exit_code == 0
     assert selections == ["default"]
+
+
+def test_build_rejects_variant_with_realization(
+    monkeypatch,
+) -> None:
+    """
+    Variant and historical realization selection cannot independently
+    select the same normal artifact build.
+    """
+
+    executed: list[str] = []
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        executed.append(artifact_id)
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--variant",
+        "default",
+        "--realization",
+        "default",
+    )
+
+    assert result.exit_code != 0
+    assert "--variant and --realization cannot be used together" in result.output
+    assert executed == []
