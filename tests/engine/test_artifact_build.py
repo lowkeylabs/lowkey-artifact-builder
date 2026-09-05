@@ -261,12 +261,13 @@ def test_artifact_build_selects_model_with_local_variant_name(
     The artifact-build boundary preserves qualified Variant identity.
 
     A Model name and local Variant name supplied by the caller are forwarded
-    together to build planning.
+    together to build planning without selecting an Artifact Realization.
     """
 
     requested: list[
         tuple[
             str,
+            str | None,
             str | None,
             str | None,
             Path | None,
@@ -277,6 +278,7 @@ def test_artifact_build_selects_model_with_local_variant_name(
         artifact_id: str,
         *,
         model_name: str | None = None,
+        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path | None = None,
     ):
@@ -284,6 +286,7 @@ def test_artifact_build_selects_model_with_local_variant_name(
             (
                 artifact_id,
                 model_name,
+                variant_name,
                 realization,
                 project_root,
             )
@@ -300,7 +303,7 @@ def test_artifact_build_selects_model_with_local_variant_name(
     plans = execute_artifact_build(
         "example",
         model_name="shape",
-        realization="ornament",
+        variant_name="ornament",
         project_root=tmp_path,
     )
 
@@ -311,6 +314,61 @@ def test_artifact_build_selects_model_with_local_variant_name(
             "example",
             "shape",
             "ornament",
+            None,
             tmp_path,
+        )
+    ]
+
+
+def test_artifact_build_selects_local_variant_without_realization(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    A local Variant selection is forwarded independently of Artifact
+    Realization selection.
+    """
+
+    requested: list[
+        tuple[
+            str | None,
+            str | None,
+        ]
+    ] = []
+
+    def fake_create_build_plans(
+        artifact_id: str,
+        *,
+        variant_name: str | None = None,
+        realization: str | None = None,
+        project_root: Path | None = None,
+    ):
+        requested.append(
+            (
+                variant_name,
+                realization,
+            )
+        )
+
+        return ()
+
+    monkeypatch.setattr(
+        artifact_build,
+        "create_build_plans",
+        fake_create_build_plans,
+    )
+
+    plans = execute_artifact_build(
+        "example",
+        variant_name="ornament",
+        project_root=tmp_path,
+    )
+
+    assert plans == ()
+
+    assert requested == [
+        (
+            "ornament",
+            None,
         )
     ]

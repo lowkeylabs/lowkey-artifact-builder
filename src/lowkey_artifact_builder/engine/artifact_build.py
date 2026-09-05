@@ -40,6 +40,7 @@ def execute_artifact_build(
     artifact_id: str,
     *,
     model_name: str | None = None,
+    variant_name: str | None = None,
     realization: str | None = None,
     project_root: Path | None = None,
     event_sink: EventSink | None = None,
@@ -47,15 +48,15 @@ def execute_artifact_build(
     """
     Build one or more realized workflows for one configured artifact.
 
-    The artifact identity and optional realization are the ordinary public
-    inputs to this orchestration boundary.
+    The artifact identity and optional Artifact Realization are ordinary
+    public inputs to this orchestration boundary.
 
-    Model and realization may also be supplied together as the decomposed
-    identity of a qualified Variant. The Model selects the Variant namespace
-    and realization carries its local Variant name.
+    A Variant may be selected independently by its local name. A Model name
+    may also be supplied to identify the Model namespace of a qualified
+    Variant. Variant selection does not select an Artifact Realization.
 
-    When realization is omitted, every configured realization is built.
-    When realization is supplied, only that realization is built.
+    When realization is omitted, build planning determines the applicable
+    Artifact Realization scope.
 
     Build-plan creation and execution strategy remain engine responsibilities.
 
@@ -66,7 +67,7 @@ def execute_artifact_build(
     Structured execution events are forwarded unchanged to the supplied
     presentation-independent event sink.
 
-    Return the execution plan produced for each selected artifact realization
+    Return the execution plan produced for each selected Artifact Realization
     in build-plan order.
     """
 
@@ -74,6 +75,9 @@ def execute_artifact_build(
 
     if model_name is not None:
         planning_options["model_name"] = model_name
+
+    if variant_name is not None:
+        planning_options["variant_name"] = variant_name
 
     if realization is not None:
         planning_options["realization"] = realization
