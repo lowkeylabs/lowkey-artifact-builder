@@ -1253,3 +1253,102 @@ def test_build_all_variants_selects_all_variants_for_dry_run(
             True,
         )
     ]
+
+
+def test_build_all_variants_delegates_all_variants_to_artifact_build(
+    monkeypatch,
+) -> None:
+    """
+    Normal all-Variant execution delegates Variant enumeration to the
+    artifact-build engine boundary.
+    """
+
+    requested: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+            str | None,
+            bool,
+        ]
+    ] = []
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        model_name: str | None = None,
+        variant_name: str | None = None,
+        realization: str | None = None,
+        all_variants: bool = False,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        requested.append(
+            (
+                artifact_id,
+                model_name,
+                variant_name,
+                realization,
+                all_variants,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--all-variants",
+    )
+
+    assert result.exit_code == 0
+    assert requested == [
+        (
+            "skippy",
+            None,
+            None,
+            None,
+            True,
+        )
+    ]
+
+
+def test_build_without_all_variants_preserves_existing_execution_call_shape(
+    monkeypatch,
+) -> None:
+    """
+    Ordinary execution does not add an all-Variant selection argument.
+
+    The existing artifact-build call shape remains unchanged when
+    all-Variant selection was not requested.
+    """
+
+    executed: list[str] = []
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        executed.append(
+            artifact_id,
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "skippy",
+    )
+
+    assert result.exit_code == 0
+    assert executed == [
+        "skippy",
+    ]

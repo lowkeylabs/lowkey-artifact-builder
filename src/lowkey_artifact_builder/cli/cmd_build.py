@@ -281,11 +281,18 @@ def _execute_build(
 
                 continue
 
+            execution_options = dict(
+                planning_options,
+            )
+
+            if all_variants:
+                execution_options["all_variants"] = True
+
             execute_artifact_build(
                 artifact_id,
                 project_root=project_root,
                 event_sink=_display_execution_event,
-                **planning_options,
+                **execution_options,
             )
 
         except (
