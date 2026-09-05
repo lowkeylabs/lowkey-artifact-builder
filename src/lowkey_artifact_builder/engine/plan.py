@@ -197,10 +197,15 @@ def create_build_plan(
         product_resolver=product_resolver,
     )
 
+    # Explicit Variant selection owns the persistent Model product
+    # namespace. Otherwise, preserve the configured Artifact Realization
+    # namespace used by existing realization-based planning.
+    product_namespace = variant_name if variant_name is not None else realization_name
+
     stages = _plan_stages(
         artifact_id,
         model,
-        realization_name,
+        product_namespace,
         selected_stages,
         resolver,
         root,

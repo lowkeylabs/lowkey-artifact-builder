@@ -2746,3 +2746,41 @@ def test_create_build_plans_selects_one_complete_realization(
         "extrude",
         "package",
     )
+
+
+def test_selected_variant_owns_persistent_product_namespace(
+    tmp_path: Path,
+) -> None:
+    """
+    Variant identity owns the persistent Model product namespace.
+
+    Artifact Realization identity remains distinct from Variant identity.
+    Selecting shape.ornament for the implicit default Artifact Realization
+    therefore preserves realization identity while placing persistent
+    products beneath the local Variant name.
+    """
+
+    write_artifact_config(
+        "variant-product-identity",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        "variant-product-identity",
+        model_name="shape",
+        variant_name="ornament",
+        project_root=tmp_path,
+    )
+
+    assert plan.realization_name == "default"
+    assert plan.resolver("realization") == "default"
+    assert plan.resolver("variant") == "ornament"
+
+    for stage in plan.stages:
+        for product in stage.products:
+            assert product.path.is_relative_to(
+                tmp_path / "artifacts" / "variant-product-identity" / "shape" / "ornament"
+            )
