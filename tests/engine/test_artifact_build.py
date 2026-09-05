@@ -261,7 +261,7 @@ def test_artifact_build_selects_model_with_local_variant_name(
     The artifact-build boundary preserves qualified Variant identity.
 
     A Model name and local Variant name supplied by the caller are forwarded
-    together to build planning without selecting an Artifact Realization.
+    together while omitted Artifact Realization selection resolves to default.
     """
 
     requested: list[
@@ -314,7 +314,7 @@ def test_artifact_build_selects_model_with_local_variant_name(
             "example",
             "shape",
             "ornament",
-            None,
+            "default",
             tmp_path,
         )
     ]
@@ -325,8 +325,10 @@ def test_artifact_build_selects_local_variant_without_realization(
     tmp_path: Path,
 ) -> None:
     """
-    A local Variant selection is forwarded independently of Artifact
-    Realization selection.
+    A local Variant selection remains independent of Artifact Realization.
+
+    When no Artifact Realization is explicitly selected, ordinary artifact
+    planning uses the default Realization.
     """
 
     requested: list[
@@ -369,7 +371,7 @@ def test_artifact_build_selects_local_variant_without_realization(
     assert requested == [
         (
             "ornament",
-            None,
+            "default",
         )
     ]
 
@@ -587,3 +589,83 @@ def test_artifact_build_execution_rejects_variant_with_all_variants(
         )
 
     assert executed == []
+
+
+def test_artifact_build_without_selection_plans_default_realization_only(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Ordinary artifact build does not expand across configured Realizations.
+
+    Omitting Variant and Realization selection means ordinary/default
+    behavior rather than requesting every configured Artifact Realization.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "realizations": {
+                "default": {
+                    "model": "shape",
+                },
+                "alternate": {
+                    "model": "shape",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    requested: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+            str | None,
+            Path | None,
+        ]
+    ] = []
+
+    def fake_create_build_plans(
+        artifact_id: str,
+        *,
+        model_name: str | None = None,
+        variant_name: str | None = None,
+        realization: str | None = None,
+        project_root: Path | None = None,
+    ):
+        requested.append(
+            (
+                artifact_id,
+                model_name,
+                variant_name,
+                realization,
+                project_root,
+            )
+        )
+
+        return ()
+
+    monkeypatch.setattr(
+        artifact_build,
+        "create_build_plans",
+        fake_create_build_plans,
+    )
+
+    plans = artifact_build.create_artifact_build_plans(
+        "example",
+        project_root=tmp_path,
+    )
+
+    assert plans == ()
+
+    assert requested == [
+        (
+            "example",
+            None,
+            None,
+            "default",
+            tmp_path,
+        )
+    ]

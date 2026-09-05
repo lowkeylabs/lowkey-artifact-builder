@@ -66,8 +66,10 @@ def create_artifact_build_plans(
     is planned independently. Variant enumeration does not create or select
     Artifact Realizations.
 
-    Otherwise ordinary build planning preserves explicit Model, Variant, and
-    Artifact Realization selection while leaving omitted selections implicit.
+    Otherwise ordinary build planning preserves explicit Model and Variant
+    selection. An explicit Artifact Realization is preserved; when none is
+    selected, ordinary build planning selects the default Artifact
+    Realization.
     """
 
     if variant_name is not None and all_variants:
@@ -116,8 +118,7 @@ def create_artifact_build_plans(
     if variant_name is not None:
         planning_options["variant_name"] = variant_name
 
-    if realization is not None:
-        planning_options["realization"] = realization
+    planning_options["realization"] = realization if realization is not None else "default"
 
     return create_build_plans(
         artifact_id,
