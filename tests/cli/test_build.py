@@ -1509,3 +1509,148 @@ def test_build_dry_run_qualified_variant_uses_effective_variant_configuration(
         assert plan.resolver("variant") == "ornament"
         assert plan.resolver("shape_outer_ridge_width") == 2.0
         assert plan.resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
+
+
+def test_build_dry_run_omitted_variant_matches_explicit_default(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    Omitted Variant and explicit default Variant produce the same
+    effective default configuration through normal CLI planning.
+    """
+
+    from lowkey_artifact_builder.config import write_artifact_config
+
+    write_artifact_config(
+        "example",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    displayed = []
+
+    def display(plan) -> None:
+        displayed.append(
+            (
+                plan.model_name,
+                plan.realization_name,
+                plan.resolver("variant"),
+                plan.resolver("shape_outer_ridge_width"),
+                plan.resolver.source("shape_outer_ridge_width"),
+            )
+        )
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_build_plan",
+        display,
+    )
+
+    omitted = _invoke(
+        "example",
+        "--dry-run",
+    )
+
+    assert omitted.exit_code == 0, omitted.output
+    assert displayed
+
+    omitted_plans = tuple(displayed)
+    displayed.clear()
+
+    explicit = _invoke(
+        "example",
+        "--variant",
+        "default",
+        "--dry-run",
+    )
+
+    assert explicit.exit_code == 0, explicit.output
+    assert displayed
+
+    explicit_plans = tuple(displayed)
+
+    assert omitted_plans == explicit_plans
+
+    for (
+        model_name,
+        realization_name,
+        variant_name,
+        ridge_width,
+        ridge_source,
+    ) in omitted_plans:
+        assert model_name == "shape"
+        assert realization_name == "default"
+        assert variant_name == "default"
+        assert ridge_width == 0.0
+        assert ridge_source == "model"
+
+
+def test_build_all_variants_dry_run_selects_all_model_variants(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    All-Variant dry-run plans every Variant owned by the Artifact's Model
+    through the real artifact-planning boundary.
+    """
+
+    from lowkey_artifact_builder.config import write_artifact_config
+
+    write_artifact_config(
+        "example",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    displayed = []
+
+    def display(plan) -> None:
+        displayed.append(
+            (
+                plan.model_name,
+                plan.realization_name,
+                plan.resolver("variant"),
+                plan.resolver("shape_outer_ridge_width"),
+                plan.resolver.source("shape_outer_ridge_width"),
+            )
+        )
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_build_plan",
+        display,
+    )
+
+    result = _invoke(
+        "example",
+        "--all-variants",
+        "--dry-run",
+    )
+
+    assert result.exit_code == 0, result.output
+
+    assert displayed == [
+        (
+            "shape",
+            "default",
+            "default",
+            0.0,
+            "model",
+        ),
+        (
+            "shape",
+            "default",
+            "ornament",
+            2.0,
+            "variant 'ornament'",
+        ),
+    ]
