@@ -12,6 +12,7 @@ from typing import Any
 
 from click.testing import CliRunner
 
+import lowkey_artifact_builder.cli.cmd_build as cmd_build
 import lowkey_artifact_builder.cli.cmd_show as cmd_show
 from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.config import (
@@ -375,3 +376,101 @@ def test_show_qualified_variant_uses_effective_variant_configuration(
             "variant 'ornament'",
         )
     ]
+
+
+def test_show_and_build_dry_run_resolve_same_qualified_variant_configuration(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Show and normal-build dry-run resolve the same effective
+    configuration for a qualified Variant selection.
+    """
+
+    write_artifact_config(
+        "skippy",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    shown: list[tuple[str, str, float, str]] = []
+    planned: list[tuple[str, str, float, str]] = []
+
+    def capture_show(
+        artifact_id: str,
+        model,
+        resolver,
+    ) -> None:
+        assert artifact_id == "skippy"
+
+        shown.append(
+            (
+                resolver("model"),
+                resolver("variant"),
+                resolver("shape_outer_ridge_width"),
+                resolver.source("shape_outer_ridge_width"),
+            )
+        )
+
+    def capture_plan(plan) -> None:
+        planned.append(
+            (
+                plan.resolver("model"),
+                plan.resolver("variant"),
+                plan.resolver("shape_outer_ridge_width"),
+                plan.resolver.source("shape_outer_ridge_width"),
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_show,
+        "display_artifact_config",
+        capture_show,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_build_plan",
+        capture_plan,
+    )
+
+    show_result = _invoke(
+        "skippy",
+        "--variant",
+        "shape.ornament",
+    )
+
+    assert show_result.exit_code == 0, show_result.output
+
+    runner = CliRunner()
+
+    build_result = runner.invoke(
+        cli,
+        [
+            "build",
+            "skippy",
+            "--variant",
+            "shape.ornament",
+            "--dry-run",
+        ],
+    )
+
+    assert build_result.exit_code == 0, build_result.output
+
+    assert shown == [
+        (
+            "shape",
+            "ornament",
+            2.0,
+            "variant 'ornament'",
+        )
+    ]
+
+    assert planned
+
+    for state in planned:
+        assert state == shown[0]
