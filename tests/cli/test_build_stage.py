@@ -212,22 +212,23 @@ def test_build_stage_passes_realization(
 # =========================================================
 
 
-def test_build_stage_does_not_create_build_plans(
+def test_build_stage_does_not_create_artifact_build_plans(
     monkeypatch,
 ) -> None:
     """
-    Explicit stage execution does not enter graph-driven build planning.
+    Explicit stage execution does not enter artifact graph-driven
+    build planning.
     """
 
     def unexpected_planning(
         *args,
         **kwargs,
     ):
-        raise AssertionError("explicit stage execution entered build planning")
+        raise AssertionError("explicit stage execution entered artifact build planning")
 
     monkeypatch.setattr(
         cmd_build,
-        "create_build_plans",
+        "create_artifact_build_plans",
         unexpected_planning,
     )
 
@@ -235,13 +236,12 @@ def test_build_stage_does_not_create_build_plans(
         cmd_build,
         "execute_artifact_stage",
         lambda *args, **kwargs: None,
-        raising=False,
     )
 
     result = _invoke(
-        "skippy",
+        "example",
         "--stage",
-        "vector",
+        "prepare",
     )
 
     assert result.exit_code == 0

@@ -45,10 +45,11 @@ def _install_plans(
     *plans,
 ) -> None:
     """
-    Replace dry-run build-plan creation with deterministic realized plans.
+    Replace dry-run artifact build-plan creation with deterministic
+    realized plans.
     """
 
-    def create_build_plans(
+    def create_artifact_build_plans(
         artifact_id: str,
         *,
         realization: str | None = None,
@@ -60,8 +61,8 @@ def _install_plans(
 
     monkeypatch.setattr(
         cmd_build,
-        "create_build_plans",
-        create_build_plans,
+        "create_artifact_build_plans",
+        create_artifact_build_plans,
     )
 
 

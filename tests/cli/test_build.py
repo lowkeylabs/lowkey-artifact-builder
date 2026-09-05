@@ -97,24 +97,25 @@ def test_build_without_variant_leaves_variant_selection_implicit(
     ]
 
 
-def test_build_does_not_create_build_plans(
+def test_build_does_not_create_artifact_build_plans(
     monkeypatch,
 ) -> None:
     """
-    Normal execution leaves build-plan creation to the engine boundary.
+    Normal execution leaves artifact build-plan creation to the engine
+    execution boundary.
     """
 
     def unexpected_planning(
         artifact_id: str,
         *,
-        realization: str | None = None,
         project_root: Path,
+        **kwargs,
     ):
-        raise AssertionError("normal CLI execution created build plans")
+        raise AssertionError("normal CLI execution created artifact build plans")
 
     monkeypatch.setattr(
         cmd_build,
-        "create_build_plans",
+        "create_artifact_build_plans",
         unexpected_planning,
     )
 
@@ -203,11 +204,12 @@ def test_build_dry_run_without_variant_leaves_variant_selection_implicit(
                 realization,
             )
         )
+
         return (plan,)
 
     monkeypatch.setattr(
         cmd_build,
-        "create_build_plans",
+        "create_artifact_build_plans",
         create_plans,
     )
 
@@ -253,7 +255,7 @@ def test_build_dry_run_prepares_plan_before_display(
 
     monkeypatch.setattr(
         cmd_build,
-        "create_build_plans",
+        "create_artifact_build_plans",
         lambda artifact_id, *, realization=None, project_root: (plan,),
     )
 
@@ -327,7 +329,7 @@ def test_build_dry_run_does_not_execute(
 
     monkeypatch.setattr(
         cmd_build,
-        "create_build_plans",
+        "create_artifact_build_plans",
         lambda artifact_id, *, realization=None, project_root: plans,
     )
 
@@ -433,7 +435,7 @@ def test_build_multiple_artifacts_dry_run_in_argument_order(
 
     monkeypatch.setattr(
         cmd_build,
-        "create_build_plans",
+        "create_artifact_build_plans",
         lambda artifact_id, *, realization=None, project_root: plans_by_artifact[artifact_id],
     )
 
@@ -530,7 +532,7 @@ def test_build_plan_error_is_reported(
 
     monkeypatch.setattr(
         cmd_build,
-        "create_build_plans",
+        "create_artifact_build_plans",
         create_plans,
     )
 
@@ -555,7 +557,7 @@ def test_build_dry_run_configuration_error_is_reported_before_display(
 
     monkeypatch.setattr(
         cmd_build,
-        "create_build_plans",
+        "create_artifact_build_plans",
         lambda artifact_id, *, realization=None, project_root: (plan,),
     )
 
@@ -753,11 +755,12 @@ def test_build_dry_run_explicit_default_variant_selects_default(
                 realization,
             )
         )
+
         return (plan,)
 
     monkeypatch.setattr(
         cmd_build,
-        "create_build_plans",
+        "create_artifact_build_plans",
         create_plans,
     )
 
@@ -950,7 +953,7 @@ def test_build_dry_run_parses_bare_variant_before_planning(
     )
     monkeypatch.setattr(
         cmd_build,
-        "create_build_plans",
+        "create_artifact_build_plans",
         create_plans,
     )
 
@@ -1070,7 +1073,7 @@ def test_build_dry_run_qualified_variant_selects_model_and_local_variant(
 
     monkeypatch.setattr(
         cmd_build,
-        "create_build_plans",
+        "create_artifact_build_plans",
         create_plans,
     )
 
@@ -1351,4 +1354,215 @@ def test_build_without_all_variants_preserves_existing_execution_call_shape(
     assert result.exit_code == 0
     assert executed == [
         "skippy",
+    ]
+
+
+def test_build_all_variants_dry_run_delegates_selection_to_artifact_planning(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    All-Variant dry-run delegates Variant enumeration to the artifact-level
+    engine planning boundary.
+
+    The CLI preserves Model, Variant, and Artifact Realization selection as
+    independent coordinates rather than enumerating Model Variants itself.
+    """
+
+    first_plan = object()
+    second_plan = object()
+
+    requested: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+            str | None,
+            bool,
+            Path,
+        ]
+    ] = []
+    prepared: list[object] = []
+    displayed: list[object] = []
+
+    def create_plans(
+        artifact_id: str,
+        *,
+        model_name: str | None = None,
+        variant_name: str | None = None,
+        realization: str | None = None,
+        all_variants: bool = False,
+        project_root: Path,
+    ) -> tuple[object, ...]:
+        requested.append(
+            (
+                artifact_id,
+                model_name,
+                variant_name,
+                realization,
+                all_variants,
+                project_root,
+            )
+        )
+
+        return (
+            first_plan,
+            second_plan,
+        )
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "create_artifact_build_plans",
+        create_plans,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        lambda plan: prepared.append(plan),
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_build_plan",
+        displayed.append,
+    )
+
+    result = _invoke(
+        "example",
+        "--all-variants",
+        "--dry-run",
+    )
+
+    assert result.exit_code == 0
+
+    assert requested == [
+        (
+            "example",
+            None,
+            None,
+            None,
+            True,
+            tmp_path,
+        )
+    ]
+
+    assert prepared == [
+        first_plan,
+        second_plan,
+    ]
+
+    assert displayed == [
+        first_plan,
+        second_plan,
+    ]
+
+
+def test_build_all_variants_dry_run_preserves_selected_realization(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    All-Variant dry-run keeps Artifact Realization selection independent
+    while delegating Variant enumeration to artifact-level engine planning.
+    """
+
+    first_plan = object()
+    second_plan = object()
+
+    requested: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+            str | None,
+            bool,
+            Path,
+        ]
+    ] = []
+    prepared: list[object] = []
+    displayed: list[object] = []
+
+    def create_plans(
+        artifact_id: str,
+        *,
+        model_name: str | None = None,
+        variant_name: str | None = None,
+        realization: str | None = None,
+        all_variants: bool = False,
+        project_root: Path,
+    ) -> tuple[object, ...]:
+        requested.append(
+            (
+                artifact_id,
+                model_name,
+                variant_name,
+                realization,
+                all_variants,
+                project_root,
+            )
+        )
+
+        return (
+            first_plan,
+            second_plan,
+        )
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "create_artifact_build_plans",
+        create_plans,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        lambda plan: prepared.append(plan),
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_build_plan",
+        displayed.append,
+    )
+
+    result = _invoke(
+        "example",
+        "--realization",
+        "alternate",
+        "--all-variants",
+        "--dry-run",
+    )
+
+    assert result.exit_code == 0
+
+    assert requested == [
+        (
+            "example",
+            None,
+            None,
+            "alternate",
+            True,
+            tmp_path,
+        )
+    ]
+
+    assert prepared == [
+        first_plan,
+        second_plan,
+    ]
+
+    assert displayed == [
+        first_plan,
+        second_plan,
     ]

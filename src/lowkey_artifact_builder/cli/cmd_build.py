@@ -33,7 +33,7 @@ from lowkey_artifact_builder.engine import (
     BuildError,
     BuildPlanError,
     ExecutionEvent,
-    create_build_plans,
+    create_artifact_build_plans,
     execute_artifact_build,
     execute_artifact_stage,
     prepare_incremental_build,
@@ -239,13 +239,13 @@ def _execute_build(
     configuration resolution selects the Model's default Variant.
 
     All-Variant selection is accepted at this command boundary. Variant
-    enumeration is delegated to subsequent orchestration behavior rather
-    than represented as an Artifact Realization.
+    enumeration is delegated to engine planning rather than represented as
+    an Artifact Realization.
 
-    Dry-run creates each selected BuildPlan, prepares its
-    persistent-state-aware ExecutionPlan, and validates the configuration
-    required by that execution scope before displaying the BuildPlan.
-    No stages are executed during dry-run.
+    Dry-run uses the same artifact-level plan selection as normal execution,
+    prepares each selected BuildPlan's persistent-state-aware ExecutionPlan,
+    and validates the configuration required by that execution scope before
+    displaying the BuildPlan. No stages are executed during dry-run.
     """
 
     project_root = Path.cwd()
@@ -264,10 +264,17 @@ def _execute_build(
                 planning_options["realization"] = realization
 
             if dry_run:
-                plans = create_build_plans(
+                dry_run_options = dict(
+                    planning_options,
+                )
+
+                if all_variants:
+                    dry_run_options["all_variants"] = True
+
+                plans = create_artifact_build_plans(
                     artifact_id,
                     project_root=project_root,
-                    **planning_options,
+                    **dry_run_options,
                 )
 
                 for plan in plans:

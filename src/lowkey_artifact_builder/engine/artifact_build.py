@@ -1,12 +1,13 @@
 """
 Public artifact-build orchestration.
 
-This module provides the application-level engine boundary for building a
-configured artifact.
+This module provides the application-level engine boundary for planning and
+building a configured artifact.
 
-Callers identify the artifact they want built. The engine owns build-plan
-creation, dependency-aware orchestration, persistent-state-aware incremental
-execution, and production of the requested artifact.
+Callers identify the artifact they want planned or built. The engine owns
+build-plan creation, Variant selection, dependency-aware orchestration,
+persistent-state-aware incremental execution, and production of the requested
+artifact.
 
 Callers do not construct BuildPlans or select an execution strategy.
 """
@@ -35,6 +36,7 @@ from .execution import (
     ExecutionPlan,
 )
 from .plan import (
+    BuildPlan,
     create_build_plans,
 )
 
@@ -43,7 +45,7 @@ from .plan import (
 # =========================================================
 
 
-def execute_artifact_build(
+def create_artifact_build_plans(
     artifact_id: str,
     *,
     model_name: str | None = None,
@@ -51,36 +53,19 @@ def execute_artifact_build(
     realization: str | None = None,
     all_variants: bool = False,
     project_root: Path | None = None,
-    event_sink: EventSink | None = None,
-) -> tuple[ExecutionPlan, ...]:
+) -> tuple[BuildPlan, ...]:
     """
-    Build one or more realized workflows for one configured artifact.
+    Create the selected BuildPlans for one configured artifact.
 
-    The artifact identity and optional Artifact Realization are ordinary
-    public inputs to this orchestration boundary.
-
-    A Variant may be selected independently by its local name. A Model name
-    may also be supplied to identify the Model namespace of a qualified
-    Variant. Variant selection does not select an Artifact Realization.
+    Model, Variant, all-Variant, and Artifact Realization selection remain
+    distinct coordinates.
 
     When all_variants is true, every Variant owned by the applicable Model
     is planned independently. Variant enumeration does not create or select
     Artifact Realizations.
 
-    When realization is omitted, build planning determines the applicable
-    Artifact Realization scope.
-
-    Build-plan creation and execution strategy remain engine responsibilities.
-
-    Each realized BuildPlan is executed through dependency-aware orchestration.
-    That orchestration determines required producer work, reuses persistent
-    products when valid, and incrementally executes the requested artifact.
-
-    Structured execution events are forwarded unchanged to the supplied
-    presentation-independent event sink.
-
-    Return the execution plan produced for each selected build plan in
-    planning order.
+    Otherwise ordinary build planning preserves explicit Model, Variant, and
+    Artifact Realization selection while leaving omitted selections implicit.
     """
 
     if all_variants:
@@ -106,7 +91,7 @@ def execute_artifact_build(
             resolved_model_name,
         )
 
-        plans = tuple(
+        return tuple(
             plan
             for variant in model.variants
             for plan in create_build_plans(
@@ -118,23 +103,64 @@ def execute_artifact_build(
             )
         )
 
-    else:
-        planning_options = {}
+    planning_options = {}
 
-        if model_name is not None:
-            planning_options["model_name"] = model_name
+    if model_name is not None:
+        planning_options["model_name"] = model_name
 
-        if variant_name is not None:
-            planning_options["variant_name"] = variant_name
+    if variant_name is not None:
+        planning_options["variant_name"] = variant_name
 
-        if realization is not None:
-            planning_options["realization"] = realization
+    if realization is not None:
+        planning_options["realization"] = realization
 
-        plans = create_build_plans(
-            artifact_id,
-            project_root=project_root,
-            **planning_options,
-        )
+    return create_build_plans(
+        artifact_id,
+        project_root=project_root,
+        **planning_options,
+    )
+
+
+def execute_artifact_build(
+    artifact_id: str,
+    *,
+    model_name: str | None = None,
+    variant_name: str | None = None,
+    realization: str | None = None,
+    all_variants: bool = False,
+    project_root: Path | None = None,
+    event_sink: EventSink | None = None,
+) -> tuple[ExecutionPlan, ...]:
+    """
+    Build one or more selected workflows for one configured artifact.
+
+    Build-plan selection is shared with non-executing callers such as dry-run.
+    Each selected BuildPlan is then executed through dependency-aware
+    orchestration.
+
+    Return the execution plan produced for each selected build plan in
+    planning order.
+    """
+
+    planning_options = {}
+
+    if model_name is not None:
+        planning_options["model_name"] = model_name
+
+    if variant_name is not None:
+        planning_options["variant_name"] = variant_name
+
+    if realization is not None:
+        planning_options["realization"] = realization
+
+    if all_variants:
+        planning_options["all_variants"] = True
+
+    plans = create_artifact_build_plans(
+        artifact_id,
+        project_root=project_root,
+        **planning_options,
+    )
 
     return tuple(
         execute_dependency_build(
@@ -146,5 +172,6 @@ def execute_artifact_build(
 
 
 __all__ = [
+    "create_artifact_build_plans",
     "execute_artifact_build",
 ]

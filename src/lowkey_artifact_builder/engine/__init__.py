@@ -57,6 +57,7 @@ the subset of stages that must execute for the current build context.
 # SPDX-License-Identifier: Apache-2.0
 
 from .artifact_build import (
+    create_artifact_build_plans,
     execute_artifact_build,
 )
 from .build import (
@@ -182,6 +183,7 @@ __all__ = [
     "StageExecutionError",
     "StageInputError",
     "completion_path",
+    "create_artifact_build_plans",
     "create_build_plan",
     "create_build_plans",
     "create_execution_plan",
