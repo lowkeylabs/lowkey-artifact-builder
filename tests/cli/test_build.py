@@ -10,6 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import click
+import pytest
 from click.testing import CliRunner
 
 import lowkey_artifact_builder.cli.cmd_build as cmd_build
@@ -773,3 +775,43 @@ def test_build_rejects_variant_with_realization(
     assert result.exit_code != 0
     assert "--variant and --realization cannot be used together" in result.output
     assert executed == []
+
+
+def test_parse_variant_reference_accepts_bare_variant() -> None:
+    """
+    A bare Variant reference contains only its local Variant name.
+    """
+
+    assert cmd_build._parse_variant_reference("default") == (
+        None,
+        "default",
+    )
+
+
+def test_parse_variant_reference_accepts_qualified_variant() -> None:
+    """
+    A qualified Variant reference identifies its Model and local name.
+    """
+
+    assert cmd_build._parse_variant_reference("shape.ornament") == (
+        "shape",
+        "ornament",
+    )
+
+
+def test_parse_variant_reference_rejects_malformed_variant() -> None:
+    """
+    A Variant reference must be either a local name or model.local-name.
+    """
+
+    for reference in (
+        "",
+        ".ornament",
+        "shape.",
+        "shape.ornament.extra",
+    ):
+        with pytest.raises(
+            click.UsageError,
+            match="Invalid Variant",
+        ):
+            cmd_build._parse_variant_reference(reference)

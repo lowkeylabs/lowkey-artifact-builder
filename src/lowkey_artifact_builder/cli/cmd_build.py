@@ -155,6 +155,37 @@ def cli(
 # Build observation
 # =========================================================
 
+# =========================================================
+# Variant selection
+# =========================================================
+
+
+def _parse_variant_reference(
+    reference: str,
+) -> tuple[str | None, str]:
+    """
+    Parse a public Variant reference.
+
+    A bare reference identifies a local Variant name. A qualified
+    reference identifies a Model and its local Variant name.
+    """
+
+    parts = reference.split(".")
+
+    if len(parts) == 1 and parts[0]:
+        return (
+            None,
+            parts[0],
+        )
+
+    if len(parts) == 2 and parts[0] and parts[1]:
+        return (
+            parts[0],
+            parts[1],
+        )
+
+    raise click.UsageError(f"Invalid Variant reference: {reference!r}.")
+
 
 def _display_execution_event(
     event: ExecutionEvent,
