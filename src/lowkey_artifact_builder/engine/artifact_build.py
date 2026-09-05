@@ -18,6 +18,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from lowkey_artifact_builder.config import (
+    get_resolver,
+)
+from lowkey_artifact_builder.model import (
+    build_model_registry,
+)
+
 from .dependency_build import (
     execute_dependency_build,
 )
@@ -42,6 +49,7 @@ def execute_artifact_build(
     model_name: str | None = None,
     variant_name: str | None = None,
     realization: str | None = None,
+    all_variants: bool = False,
     project_root: Path | None = None,
     event_sink: EventSink | None = None,
 ) -> tuple[ExecutionPlan, ...]:
@@ -55,6 +63,10 @@ def execute_artifact_build(
     may also be supplied to identify the Model namespace of a qualified
     Variant. Variant selection does not select an Artifact Realization.
 
+    When all_variants is true, every Variant owned by the applicable Model
+    is planned independently. Variant enumeration does not create or select
+    Artifact Realizations.
+
     When realization is omitted, build planning determines the applicable
     Artifact Realization scope.
 
@@ -67,26 +79,62 @@ def execute_artifact_build(
     Structured execution events are forwarded unchanged to the supplied
     presentation-independent event sink.
 
-    Return the execution plan produced for each selected Artifact Realization
-    in build-plan order.
+    Return the execution plan produced for each selected build plan in
+    planning order.
     """
 
-    planning_options = {}
+    if all_variants:
+        resolver_options = {}
 
-    if model_name is not None:
-        planning_options["model_name"] = model_name
+        if model_name is not None:
+            resolver_options["model"] = model_name
 
-    if variant_name is not None:
-        planning_options["variant_name"] = variant_name
+        if realization is not None:
+            resolver_options["realization"] = realization
 
-    if realization is not None:
-        planning_options["realization"] = realization
+        resolver = get_resolver(
+            artifact_id,
+            project_root=project_root,
+            **resolver_options,
+        )
 
-    plans = create_build_plans(
-        artifact_id,
-        project_root=project_root,
-        **planning_options,
-    )
+        resolved_model_name = resolver("model")
+
+        registry = build_model_registry()
+
+        model = registry.get_model(
+            resolved_model_name,
+        )
+
+        plans = tuple(
+            plan
+            for variant in model.variants
+            for plan in create_build_plans(
+                artifact_id,
+                model_name=resolved_model_name,
+                variant_name=variant.name,
+                realization=realization,
+                project_root=project_root,
+            )
+        )
+
+    else:
+        planning_options = {}
+
+        if model_name is not None:
+            planning_options["model_name"] = model_name
+
+        if variant_name is not None:
+            planning_options["variant_name"] = variant_name
+
+        if realization is not None:
+            planning_options["realization"] = realization
+
+        plans = create_build_plans(
+            artifact_id,
+            project_root=project_root,
+            **planning_options,
+        )
 
     return tuple(
         execute_dependency_build(

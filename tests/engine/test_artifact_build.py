@@ -372,3 +372,165 @@ def test_artifact_build_selects_local_variant_without_realization(
             None,
         )
     ]
+
+
+def test_artifact_build_all_variants_plans_each_model_variant(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    All-Variant execution plans every Variant owned by the artifact's Model.
+
+    Each Variant is forwarded independently through variant_name rather
+    than represented as an Artifact Realization.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    requested: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+            str | None,
+            Path | None,
+        ]
+    ] = []
+
+    def fake_create_build_plans(
+        artifact_id: str,
+        *,
+        model_name: str | None = None,
+        variant_name: str | None = None,
+        realization: str | None = None,
+        project_root: Path | None = None,
+    ):
+        requested.append(
+            (
+                artifact_id,
+                model_name,
+                variant_name,
+                realization,
+                project_root,
+            )
+        )
+
+        return ()
+
+    monkeypatch.setattr(
+        artifact_build,
+        "create_build_plans",
+        fake_create_build_plans,
+    )
+
+    plans = execute_artifact_build(
+        "example",
+        all_variants=True,
+        project_root=tmp_path,
+    )
+
+    assert plans == ()
+
+    assert requested == [
+        (
+            "example",
+            "shape",
+            "default",
+            None,
+            tmp_path,
+        ),
+        (
+            "example",
+            "shape",
+            "ornament",
+            None,
+            tmp_path,
+        ),
+    ]
+
+
+def test_artifact_build_all_variants_preserves_selected_realization(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    All-Variant selection is independent of Artifact Realization selection.
+
+    A selected Artifact Realization applies to every Model Variant rather
+    than being replaced by a Variant local name.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "realizations": {
+                "default": {
+                    "model": "shape",
+                },
+                "alternate": {
+                    "model": "shape",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    requested: list[
+        tuple[
+            str | None,
+            str | None,
+            str | None,
+        ]
+    ] = []
+
+    def fake_create_build_plans(
+        artifact_id: str,
+        *,
+        model_name: str | None = None,
+        variant_name: str | None = None,
+        realization: str | None = None,
+        project_root: Path | None = None,
+    ):
+        requested.append(
+            (
+                model_name,
+                variant_name,
+                realization,
+            )
+        )
+
+        return ()
+
+    monkeypatch.setattr(
+        artifact_build,
+        "create_build_plans",
+        fake_create_build_plans,
+    )
+
+    plans = execute_artifact_build(
+        "example",
+        realization="alternate",
+        all_variants=True,
+        project_root=tmp_path,
+    )
+
+    assert plans == ()
+
+    assert requested == [
+        (
+            "shape",
+            "default",
+            "alternate",
+        ),
+        (
+            "shape",
+            "ornament",
+            "alternate",
+        ),
+    ]
