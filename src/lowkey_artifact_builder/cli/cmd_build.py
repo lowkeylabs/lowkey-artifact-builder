@@ -59,6 +59,12 @@ from lowkey_artifact_builder.engine import (
     help="Select one artifact realization.",
 )
 @click.option(
+    "--variant",
+    type=str,
+    default=None,
+    help="Select one artifact Variant.",
+)
+@click.option(
     "--input",
     "input_bindings",
     metavar="NAME=PATH",
@@ -88,6 +94,7 @@ def cli(
     artifact_ids: tuple[str, ...],
     stage: str | None,
     realization: str | None,
+    variant: str | None,
     input_bindings: tuple[str, ...],
     parameter_bindings: tuple[str, ...],
     output_bindings: tuple[str, ...],
@@ -99,9 +106,8 @@ def cli(
     Positional arguments are artifact IDs.
 
     Without --stage, the complete configured artifact workflow is
-    planned and executed incrementally. An optional --realization selects
-    one configured realization; otherwise every configured realization
-    is built.
+    planned and executed incrementally. An optional --variant selects
+    one Variant; otherwise the default Variant is built.
 
     With --stage, exactly one declared stage is executed independently.
     Explicit input, parameter, and output bindings apply only to this
@@ -112,6 +118,9 @@ def cli(
         raise click.UsageError("At least one artifact ID is required.")
 
     if stage is not None:
+        # if variant is not None:
+        #    raise click.UsageError("--variant is not supported with --stage.")
+
         _execute_stage(
             artifact_ids,
             stage_name=stage,
@@ -131,6 +140,9 @@ def cli(
 
     if output_bindings:
         raise click.UsageError("--output requires --stage.")
+
+    if variant is not None:
+        realization = variant
 
     _execute_build(
         artifact_ids,
@@ -198,9 +210,9 @@ def _execute_build(
     Execute normal graph-driven artifact builds.
 
     Normal execution delegates artifact orchestration to the engine.
-    An explicitly selected realization is forwarded to that orchestration
-    boundary. When no realization is selected, existing all-realization
-    behavior is preserved.
+    The selected Variant is represented internally by the existing
+    realization local-name coordinate. When no Variant is explicitly
+    selected, the default Variant is built.
 
     Dry-run creates each selected BuildPlan, prepares its
     persistent-state-aware ExecutionPlan, and validates the configuration

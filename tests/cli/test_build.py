@@ -640,3 +640,98 @@ def test_build_passes_selected_realization_to_engine(
             "default",
         ),
     ]
+
+
+def test_build_explicit_default_variant_selects_default(
+    monkeypatch,
+) -> None:
+    """
+    An explicit default Variant selects the Artifact's default Variant.
+    """
+
+    executed: list[tuple[str, str | None]] = []
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        executed.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--variant",
+        "default",
+    )
+
+    assert result.exit_code == 0
+
+    assert executed == [
+        (
+            "skippy",
+            "default",
+        ),
+    ]
+
+
+def test_build_dry_run_explicit_default_variant_selects_default(
+    monkeypatch,
+) -> None:
+    """
+    An explicit default Variant dry-run plans the Artifact's default Variant.
+    """
+
+    plan = object()
+
+    selections: list[str | None] = []
+
+    def create_plans(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+    ):
+        selections.append(realization)
+        return (plan,)
+
+    monkeypatch.setattr(
+        cmd_build,
+        "create_build_plans",
+        create_plans,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        lambda candidate: object(),
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_build_plan",
+        lambda candidate: None,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--variant",
+        "default",
+        "--dry-run",
+    )
+
+    assert result.exit_code == 0
+    assert selections == ["default"]
