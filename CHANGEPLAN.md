@@ -181,8 +181,8 @@ Tests must establish that:
 -   the `default` Variant may contain zero parameter overrides;
 -   Model parameter defaults establish ordinary behavior;
 -   a specialized Variant overrides only the parameters it names;
--   parameters omitted by a specialized Variant continue to resolve from 
-    Model defaults and other applicable lower-precedence configuration scopes;    
+-   parameters omitted by a specialized Variant continue to resolve from
+    Model defaults and other applicable lower-precedence configuration scopes;
 -   Variant overrides do not require a separate Feature-selection
     declaration;
 -   Model-owned parameter semantics remain unchanged by the generic

@@ -1,11 +1,12 @@
 """
-Tests for model-scoped variant configuration resolution.
+Tests for model-scoped Variant configuration resolution.
 
-Variants are reusable parameter presets defined by a model.
+Variants are reusable named Model-scoped configurations expressed as
+sparse parameter overrides over Model defaults.
 
-These tests establish how variant selection participates in artifact
-configuration resolution. Realization identity, realization naming,
-filesystem placement, and planning belong to later Phase 5 changes.
+These tests establish how Variant selection participates in configuration
+resolution. Runtime Realization identity, filesystem placement, planning,
+and public Variant selection belong to later phases.
 """
 # File: tests/config/test_variants.py
 # Copyright 2026 LowKeyLabs LLC
@@ -35,7 +36,10 @@ from lowkey_artifact_builder.model import (
 
 def _model_with_variants() -> ModelSpec:
     """
-    Return a minimal model containing default and named variants.
+    Return a minimal model with default and specialized Variants.
+
+    Ordinary behavior belongs to Model defaults. The specialized Variant
+    overrides only the value that distinguishes it from that behavior.
     """
 
     return ModelSpec(
@@ -44,15 +48,10 @@ def _model_with_variants() -> ModelSpec:
         variants=(
             VariantSpec(
                 name="default",
-                parameters={
-                    "ridge": False,
-                    "ridge_width": 1.0,
-                },
             ),
             VariantSpec(
                 name="ridged",
                 parameters={
-                    "ridge": True,
                     "ridge_width": 3.0,
                 },
             ),
@@ -96,18 +95,18 @@ def _write_workspace(
 def _install_models(
     monkeypatch: pytest.MonkeyPatch,
     models: dict[str, ModelSpec],
+    *,
+    model_parameters: dict[str, dict[str, object]] | None = None,
 ) -> None:
     """
-    Install deterministic model definitions for resolver tests.
+    Install deterministic Model definitions and parameter defaults.
 
-    Configuration currently obtains model parameter defaults and derived
-    values by importing the model implementation package while model
-    declarations are obtained through the model registry.
-
-    These tests are concerned with variant resolution rather than model
-    package discovery, so those legacy package-loading boundaries are
-    isolated here.
+    Variant lookup occurs through the Model registry. Model parameter
+    defaults remain a separate configuration layer beneath sparse
+    Variant overrides.
     """
+
+    parameters = model_parameters or {}
 
     class StubRegistry:
         def get_model(
@@ -129,7 +128,7 @@ def _install_models(
     monkeypatch.setattr(
         config_module,
         "_load_model_parameters",
-        lambda name: {},
+        lambda name: dict(parameters.get(name, {})),
     )
 
     monkeypatch.setattr(
@@ -144,10 +143,7 @@ def variant_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> ModelSpec:
     """
-    Install a model containing deterministic variant definitions.
-
-    Variant lookup is expected to occur through the model registry rather
-    than through a separate global variant registry.
+    Install a Model with ordinary defaults and one sparse Variant.
     """
 
     model = _model_with_variants()
@@ -157,28 +153,32 @@ def variant_model(
         {
             model.name: model,
         },
+        model_parameters={
+            model.name: {
+                "ridge": False,
+                "ridge_width": 1.0,
+                "material": "pla",
+            },
+        },
     )
 
     return model
 
 
 # =========================================================
-# Default variant
+# Default Variant
 # =========================================================
 
 
-def test_resolver_uses_default_variant_when_none_is_configured(
+def test_resolver_uses_empty_default_variant_with_model_defaults(
     tmp_path: Path,
     variant_model: ModelSpec,
 ) -> None:
     """
-    An artifact that does not select a variant uses the model's default
-    variant.
+    The empty default Variant preserves ordinary Model behavior.
     """
 
-    _write_workspace(
-        tmp_path,
-    )
+    _write_workspace(tmp_path)
 
     write_artifact_config(
         "example",
@@ -197,6 +197,11 @@ def test_resolver_uses_default_variant_when_none_is_configured(
 
     assert resolver("ridge") is False
     assert resolver("ridge_width") == 1.0
+    assert resolver("material") == "pla"
+
+    assert resolver.source("ridge") == "model"
+    assert resolver.source("ridge_width") == "model"
+    assert resolver.source("material") == "model"
 
 
 def test_implicit_empty_default_variant_preserves_existing_resolution(
@@ -204,8 +209,8 @@ def test_implicit_empty_default_variant_preserves_existing_resolution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    A model relying on its implicit empty default variant does not alter
-    existing parameter resolution.
+    A Model needing no explicit Variant declaration still receives an
+    empty default Variant without changing Model parameter resolution.
     """
 
     model = ModelSpec(
@@ -218,15 +223,15 @@ def test_implicit_empty_default_variant_preserves_existing_resolution(
         {
             model.name: model,
         },
-    )
-
-    _write_workspace(
-        tmp_path,
-        parameters={
-            "ridge": True,
-            "ridge_width": 7.0,
+        model_parameters={
+            model.name: {
+                "ridge": False,
+                "ridge_width": 1.0,
+            },
         },
     )
+
+    _write_workspace(tmp_path)
 
     write_artifact_config(
         "example",
@@ -243,26 +248,30 @@ def test_implicit_empty_default_variant_preserves_existing_resolution(
 
     assert resolver("variant") == "default"
 
-    assert resolver("ridge") is True
-    assert resolver("ridge_width") == 7.0
+    assert resolver("ridge") is False
+    assert resolver("ridge_width") == 1.0
+
+    assert resolver.source("ridge") == "model"
+    assert resolver.source("ridge_width") == "model"
 
 
 # =========================================================
-# Named variant selection
+# Sparse specialized Variant
 # =========================================================
 
 
-def test_resolver_applies_selected_variant_parameters(
+def test_resolver_applies_sparse_variant_over_model_defaults(
     tmp_path: Path,
     variant_model: ModelSpec,
 ) -> None:
     """
-    Selecting a named variant contributes that variant's parameter preset.
+    A specialized Variant overrides only the parameters it names.
+
+    Parameters omitted by the Variant continue to resolve from Model
+    defaults.
     """
 
-    _write_workspace(
-        tmp_path,
-    )
+    _write_workspace(tmp_path)
 
     write_artifact_config(
         "example",
@@ -280,21 +289,60 @@ def test_resolver_applies_selected_variant_parameters(
 
     assert resolver("variant") == "ridged"
 
-    assert resolver("ridge") is True
+    assert resolver("ridge") is False
     assert resolver("ridge_width") == 3.0
+    assert resolver("material") == "pla"
+
+    assert resolver.source("ridge") == "model"
+    assert resolver.source("ridge_width") == "variant 'ridged'"
+    assert resolver.source("material") == "model"
 
 
-# =========================================================
-# Configuration precedence
-# =========================================================
-
-
-def test_workspace_parameters_override_variant_parameters(
+def test_new_model_default_does_not_require_variant_change(
     tmp_path: Path,
     variant_model: ModelSpec,
 ) -> None:
     """
-    Workspace configuration has higher precedence than a variant preset.
+    A specialized Variant automatically inherits usable Model defaults
+    for parameters it does not override.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "model": variant_model.name,
+            "variant": "ridged",
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        project_root=tmp_path,
+    )
+
+    ridged = next(variant for variant in variant_model.variants if variant.name == "ridged")
+
+    assert "material" not in ridged.parameters
+
+    assert resolver("material") == "pla"
+    assert resolver.source("material") == "model"
+
+
+# =========================================================
+# Later configuration scopes
+# =========================================================
+
+
+def test_workspace_parameters_override_sparse_variant_parameters(
+    tmp_path: Path,
+    variant_model: ModelSpec,
+) -> None:
+    """
+    Workspace configuration retains its existing precedence over Variant
+    overrides.
     """
 
     _write_workspace(
@@ -318,30 +366,26 @@ def test_workspace_parameters_override_variant_parameters(
         project_root=tmp_path,
     )
 
-    assert resolver("variant") == "ridged"
-
-    assert resolver("ridge") is True
     assert resolver("ridge_width") == 4.0
+    assert resolver.source("ridge_width") == "workspace"
 
 
-def test_artifact_parameters_override_variant_parameters(
+def test_artifact_customization_overrides_variant_without_changing_identity(
     tmp_path: Path,
     variant_model: ModelSpec,
 ) -> None:
     """
-    Artifact configuration has higher precedence than a variant preset.
+    Artifact-specific customization changes effective configuration
+    without changing the originating Variant.
     """
 
-    _write_workspace(
-        tmp_path,
-    )
+    _write_workspace(tmp_path)
 
     write_artifact_config(
         "example",
         {
             "model": variant_model.name,
             "variant": "ridged",
-            "ridge": False,
             "ridge_width": 5.0,
         },
         project_root=tmp_path,
@@ -356,6 +400,11 @@ def test_artifact_parameters_override_variant_parameters(
 
     assert resolver("ridge") is False
     assert resolver("ridge_width") == 5.0
+    assert resolver("material") == "pla"
+
+    assert resolver.source("ridge") == "model"
+    assert resolver.source("ridge_width") == "artifact"
+    assert resolver.source("material") == "model"
 
 
 # =========================================================
@@ -368,12 +417,10 @@ def test_resolver_rejects_unknown_variant(
     variant_model: ModelSpec,
 ) -> None:
     """
-    A configured variant must exist in the selected model.
+    A configured Variant must exist in the selected Model.
     """
 
-    _write_workspace(
-        tmp_path,
-    )
+    _write_workspace(tmp_path)
 
     write_artifact_config(
         "example",
@@ -399,10 +446,7 @@ def test_variant_selection_is_model_scoped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    A variant is resolved only within the artifact's selected model.
-
-    The existence of the same variant name in another model must not make
-    that variant available to the selected model.
+    A Variant is resolved only within the selected Model.
     """
 
     selected_model = ModelSpec(
@@ -417,7 +461,7 @@ def test_variant_selection_is_model_scoped(
             VariantSpec(
                 name="ridged",
                 parameters={
-                    "ridge": True,
+                    "ridge_width": 3.0,
                 },
             ),
         ),
@@ -431,9 +475,7 @@ def test_variant_selection_is_model_scoped(
         },
     )
 
-    _write_workspace(
-        tmp_path,
-    )
+    _write_workspace(tmp_path)
 
     write_artifact_config(
         "example",
