@@ -142,7 +142,12 @@ def cli(
         raise click.UsageError("--variant and --realization cannot be used together.")
 
     if variant is not None:
-        realization = variant
+        model_name, realization = _parse_variant_reference(
+            variant,
+        )
+
+        if model_name is not None:
+            raise click.UsageError("Qualified Variant selection is not yet supported.")
 
     _execute_build(
         artifact_ids,

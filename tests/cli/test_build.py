@@ -815,3 +815,121 @@ def test_parse_variant_reference_rejects_malformed_variant() -> None:
             match="Invalid Variant",
         ):
             cmd_build._parse_variant_reference(reference)
+
+
+def test_build_parses_bare_variant_before_execution(
+    monkeypatch,
+) -> None:
+    """
+    Normal build selection parses a bare Variant reference before
+    forwarding its local name to the engine.
+    """
+
+    parsed: list[str] = []
+    executed: list[tuple[str, str | None]] = []
+
+    def parse_variant(reference: str) -> tuple[str | None, str]:
+        parsed.append(reference)
+        return (
+            None,
+            "parsed-variant",
+        )
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        executed.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "_parse_variant_reference",
+        parse_variant,
+    )
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--variant",
+        "default",
+    )
+
+    assert result.exit_code == 0
+    assert parsed == ["default"]
+    assert executed == [
+        (
+            "skippy",
+            "parsed-variant",
+        )
+    ]
+
+
+def test_build_dry_run_parses_bare_variant_before_planning(
+    monkeypatch,
+) -> None:
+    """
+    Dry-run uses the same bare Variant normalization as execution.
+    """
+
+    parsed: list[str] = []
+    planned: list[tuple[str, str | None]] = []
+
+    def parse_variant(reference: str) -> tuple[str | None, str]:
+        parsed.append(reference)
+        return (
+            None,
+            "parsed-variant",
+        )
+
+    def create_plans(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+    ) -> tuple:
+        planned.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+        return ()
+
+    monkeypatch.setattr(
+        cmd_build,
+        "_parse_variant_reference",
+        parse_variant,
+    )
+    monkeypatch.setattr(
+        cmd_build,
+        "create_build_plans",
+        create_plans,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--variant",
+        "default",
+        "--dry-run",
+    )
+
+    assert result.exit_code == 0
+    assert parsed == ["default"]
+    assert planned == [
+        (
+            "skippy",
+            "parsed-variant",
+        )
+    ]
