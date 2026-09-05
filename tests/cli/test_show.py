@@ -140,3 +140,71 @@ def test_show_displays_existing_artifact(
             tmp_path,
         ),
     ]
+
+
+def test_show_qualified_variant_selects_model_and_local_variant(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    A qualified Variant selects its Model and local Variant name for
+    artifact inspection.
+    """
+
+    displayed: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+            Path,
+        ]
+    ] = []
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_show,
+        "load_artifact_config",
+        lambda *args, **kwargs: {
+            "model": "shape",
+        },
+    )
+
+    def display_artifact(
+        artifact_id: str,
+        *,
+        model_name: str | None = None,
+        realization: str | None = None,
+        project_root: Path,
+    ) -> None:
+        displayed.append(
+            (
+                artifact_id,
+                model_name,
+                realization,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_show,
+        "_display_artifact",
+        display_artifact,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--variant",
+        "shape.ornament",
+    )
+
+    assert result.exit_code == 0
+
+    assert displayed == [
+        (
+            "skippy",
+            "shape",
+            "ornament",
+            tmp_path,
+        )
+    ]

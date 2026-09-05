@@ -17,6 +17,9 @@ import click
 from lowkey_artifact_builder.cli.display import (
     display_artifact_config,
 )
+from lowkey_artifact_builder.cli.variants import (
+    parse_variant_reference,
+)
 from lowkey_artifact_builder.config import (
     ConfigError,
     get_resolver,
@@ -36,11 +39,21 @@ from lowkey_artifact_builder.model import (
     "artifact_ids",
     nargs=-1,
 )
+@click.option(
+    "--variant",
+    type=str,
+    default=None,
+    help="Select one artifact Variant.",
+)
 def cli(
     artifact_ids: tuple[str, ...],
+    variant: str | None,
 ) -> None:
     """
     Display an existing artifact's resolved configuration.
+
+    An optional --variant selects the Variant whose effective
+    configuration is inspected.
     """
 
     if not artifact_ids:
@@ -60,8 +73,21 @@ def cli(
     if not existing:
         raise click.ClickException(f"Artifact {artifact_id!r} is not defined.")
 
+    if variant is None:
+        _display_artifact(
+            artifact_id,
+            project_root=project_root,
+        )
+        return
+
+    model_name, realization = parse_variant_reference(
+        variant,
+    )
+
     _display_artifact(
         artifact_id,
+        model_name=model_name,
+        realization=realization,
         project_root=project_root,
     )
 
@@ -74,12 +100,17 @@ def cli(
 def _display_artifact(
     artifact_id: str,
     *,
+    model_name: str | None = None,
+    realization: str | None = None,
     project_root: Path,
 ) -> None:
     """
     Display an artifact's resolved configuration.
 
     The artifact must already be defined.
+
+    Model and realization may carry the decomposed identity of a
+    selected qualified Variant.
     """
 
     try:
@@ -88,11 +119,11 @@ def _display_artifact(
             project_root=project_root,
         )
 
-        model_name = resolver("model")
+        resolved_model_name = resolver("model")
 
         registry = build_model_registry()
         model = registry.get_model(
-            model_name,
+            resolved_model_name,
         )
 
     except (

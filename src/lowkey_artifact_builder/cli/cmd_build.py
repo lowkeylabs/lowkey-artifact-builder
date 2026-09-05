@@ -25,6 +25,9 @@ from lowkey_artifact_builder.cli.bindings import (
 from lowkey_artifact_builder.cli.display import (
     display_build_plan,
 )
+from lowkey_artifact_builder.cli.variants import (
+    parse_variant_reference,
+)
 from lowkey_artifact_builder.config import ConfigError
 from lowkey_artifact_builder.engine import (
     BuildError,
@@ -144,7 +147,7 @@ def cli(
     model_name: str | None = None
 
     if variant is not None:
-        model_name, realization = _parse_variant_reference(
+        model_name, realization = parse_variant_reference(
             variant,
         )
 
@@ -159,37 +162,6 @@ def cli(
 # =========================================================
 # Build observation
 # =========================================================
-
-# =========================================================
-# Variant selection
-# =========================================================
-
-
-def _parse_variant_reference(
-    reference: str,
-) -> tuple[str | None, str]:
-    """
-    Parse a public Variant reference.
-
-    A bare reference identifies a local Variant name. A qualified
-    reference identifies a Model and its local Variant name.
-    """
-
-    parts = reference.split(".")
-
-    if len(parts) == 1 and parts[0]:
-        return (
-            None,
-            parts[0],
-        )
-
-    if len(parts) == 2 and parts[0] and parts[1]:
-        return (
-            parts[0],
-            parts[1],
-        )
-
-    raise click.UsageError(f"Invalid Variant reference: {reference!r}.")
 
 
 def _display_execution_event(
