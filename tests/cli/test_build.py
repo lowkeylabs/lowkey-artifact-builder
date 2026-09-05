@@ -625,28 +625,25 @@ def test_build_execution_error_is_reported(
     assert "cannot execute build" in result.output
 
 
-def test_build_passes_selected_realization_to_engine(
+def test_build_rejects_realization_for_normal_build(
     monkeypatch,
 ) -> None:
     """
-    Normal artifact builds may select one public realization.
+    Artifact Realization is not an independent selector for normal builds.
+
+    Normal reusable build selection is expressed through Variant.
     """
 
-    executed: list[tuple[str, str | None]] = []
+    executed: list[str] = []
 
     def execute_artifact(
         artifact_id: str,
         *,
-        realization: str | None = None,
         project_root: Path,
         event_sink=None,
+        **kwargs,
     ) -> None:
-        executed.append(
-            (
-                artifact_id,
-                realization,
-            )
-        )
+        executed.append(artifact_id)
 
     monkeypatch.setattr(
         cmd_build,
@@ -657,7 +654,53 @@ def test_build_passes_selected_realization_to_engine(
     result = _invoke(
         "skippy",
         "--realization",
-        "default",
+        "alternate",
+    )
+
+    assert result.exit_code != 0
+    assert "--realization requires --stage" in result.output
+    assert executed == []
+
+
+def test_build_stage_accepts_selected_realization(
+    monkeypatch,
+) -> None:
+    """
+    Independent Stage execution may select an Artifact Realization.
+    """
+
+    executed: list[tuple[str, str, str | None]] = []
+
+    def execute_stage(
+        artifact_id: str,
+        *,
+        stage_name: str,
+        realization: str | None = None,
+        project_root: Path,
+        input_paths=None,
+        parameter_values=None,
+        output_paths=None,
+    ) -> None:
+        executed.append(
+            (
+                artifact_id,
+                stage_name,
+                realization,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_stage",
+        execute_stage,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--stage",
+        "structure",
+        "--realization",
+        "alternate",
     )
 
     assert result.exit_code == 0
@@ -665,8 +708,9 @@ def test_build_passes_selected_realization_to_engine(
     assert executed == [
         (
             "skippy",
-            "default",
-        ),
+            "structure",
+            "alternate",
+        )
     ]
 
 
@@ -792,44 +836,6 @@ def test_build_dry_run_explicit_default_variant_selects_default(
             None,
         )
     ]
-
-
-def test_build_rejects_variant_with_realization(
-    monkeypatch,
-) -> None:
-    """
-    Variant and historical realization selection cannot independently
-    select the same normal artifact build.
-    """
-
-    executed: list[str] = []
-
-    def execute_artifact(
-        artifact_id: str,
-        *,
-        realization: str | None = None,
-        project_root: Path,
-        event_sink=None,
-    ) -> None:
-        executed.append(artifact_id)
-
-    monkeypatch.setattr(
-        cmd_build,
-        "execute_artifact_build",
-        execute_artifact,
-    )
-
-    result = _invoke(
-        "skippy",
-        "--variant",
-        "default",
-        "--realization",
-        "default",
-    )
-
-    assert result.exit_code != 0
-    assert "--variant and --realization cannot be used together" in result.output
-    assert executed == []
 
 
 def test_build_parses_bare_variant_before_execution(
@@ -1137,13 +1143,12 @@ def test_build_all_variants_selects_all_variants_before_execution(
 ) -> None:
     """
     Normal build forwards all-Variant selection without manufacturing
-    Model, Variant, or Artifact Realization selection.
+    Model or Variant selection.
     """
 
     selected: list[
         tuple[
             tuple[str, ...],
-            str | None,
             str | None,
             str | None,
             bool,
@@ -1156,7 +1161,6 @@ def test_build_all_variants_selects_all_variants_before_execution(
         *,
         model_name: str | None,
         variant_name: str | None,
-        realization: str | None,
         all_variants: bool,
         dry_run: bool,
     ) -> None:
@@ -1165,7 +1169,6 @@ def test_build_all_variants_selects_all_variants_before_execution(
                 artifact_ids,
                 model_name,
                 variant_name,
-                realization,
                 all_variants,
                 dry_run,
             )
@@ -1188,7 +1191,6 @@ def test_build_all_variants_selects_all_variants_before_execution(
             ("skippy",),
             None,
             None,
-            None,
             True,
             False,
         )
@@ -1207,7 +1209,6 @@ def test_build_all_variants_selects_all_variants_for_dry_run(
             tuple[str, ...],
             str | None,
             str | None,
-            str | None,
             bool,
             bool,
         ]
@@ -1218,7 +1219,6 @@ def test_build_all_variants_selects_all_variants_for_dry_run(
         *,
         model_name: str | None,
         variant_name: str | None,
-        realization: str | None,
         all_variants: bool,
         dry_run: bool,
     ) -> None:
@@ -1227,7 +1227,6 @@ def test_build_all_variants_selects_all_variants_for_dry_run(
                 artifact_ids,
                 model_name,
                 variant_name,
-                realization,
                 all_variants,
                 dry_run,
             )
@@ -1249,7 +1248,6 @@ def test_build_all_variants_selects_all_variants_for_dry_run(
     assert selected == [
         (
             ("skippy",),
-            None,
             None,
             None,
             True,
@@ -1447,111 +1445,6 @@ def test_build_all_variants_dry_run_delegates_selection_to_artifact_planning(
             None,
             None,
             None,
-            True,
-            tmp_path,
-        )
-    ]
-
-    assert prepared == [
-        first_plan,
-        second_plan,
-    ]
-
-    assert displayed == [
-        first_plan,
-        second_plan,
-    ]
-
-
-def test_build_all_variants_dry_run_preserves_selected_realization(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    """
-    All-Variant dry-run keeps Artifact Realization selection independent
-    while delegating Variant enumeration to artifact-level engine planning.
-    """
-
-    first_plan = object()
-    second_plan = object()
-
-    requested: list[
-        tuple[
-            str,
-            str | None,
-            str | None,
-            str | None,
-            bool,
-            Path,
-        ]
-    ] = []
-    prepared: list[object] = []
-    displayed: list[object] = []
-
-    def create_plans(
-        artifact_id: str,
-        *,
-        model_name: str | None = None,
-        variant_name: str | None = None,
-        realization: str | None = None,
-        all_variants: bool = False,
-        project_root: Path,
-    ) -> tuple[object, ...]:
-        requested.append(
-            (
-                artifact_id,
-                model_name,
-                variant_name,
-                realization,
-                all_variants,
-                project_root,
-            )
-        )
-
-        return (
-            first_plan,
-            second_plan,
-        )
-
-    monkeypatch.chdir(
-        tmp_path,
-    )
-
-    monkeypatch.setattr(
-        cmd_build,
-        "create_artifact_build_plans",
-        create_plans,
-    )
-
-    monkeypatch.setattr(
-        cmd_build,
-        "prepare_incremental_build",
-        lambda plan: prepared.append(plan),
-        raising=False,
-    )
-
-    monkeypatch.setattr(
-        cmd_build,
-        "display_build_plan",
-        displayed.append,
-    )
-
-    result = _invoke(
-        "example",
-        "--realization",
-        "alternate",
-        "--all-variants",
-        "--dry-run",
-    )
-
-    assert result.exit_code == 0
-
-    assert requested == [
-        (
-            "example",
-            None,
-            None,
-            "alternate",
             True,
             tmp_path,
         )

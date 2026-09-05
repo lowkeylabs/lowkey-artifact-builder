@@ -59,7 +59,7 @@ from lowkey_artifact_builder.engine import (
     "--realization",
     type=str,
     default=None,
-    help="Select one artifact realization.",
+    help="Select one artifact realization for independent stage execution.",
 )
 @click.option(
     "--variant",
@@ -120,8 +120,9 @@ def cli(
     Otherwise the default Variant is built.
 
     With --stage, exactly one declared stage is executed independently.
-    Explicit input, parameter, and output bindings apply only to this
-    independent stage execution mode.
+    An optional --realization selects the Artifact Realization for that
+    stage. Explicit input, parameter, and output bindings apply only to
+    this independent stage execution mode.
     """
 
     if not artifact_ids:
@@ -139,6 +140,9 @@ def cli(
         )
         return
 
+    if realization is not None:
+        raise click.UsageError("--realization requires --stage.")
+
     if input_bindings:
         raise click.UsageError("--input requires --stage.")
 
@@ -147,9 +151,6 @@ def cli(
 
     if output_bindings:
         raise click.UsageError("--output requires --stage.")
-
-    if variant is not None and realization is not None:
-        raise click.UsageError("--variant and --realization cannot be used together.")
 
     if variant is not None and all_variants:
         raise click.UsageError("--variant and --all-variants cannot be used together.")
@@ -166,7 +167,6 @@ def cli(
         artifact_ids,
         model_name=model_name,
         variant_name=variant_name,
-        realization=realization,
         all_variants=all_variants,
         dry_run=dry_run,
     )
@@ -226,7 +226,6 @@ def _execute_build(
     *,
     model_name: str | None,
     variant_name: str | None,
-    realization: str | None,
     all_variants: bool,
     dry_run: bool,
 ) -> None:
@@ -234,13 +233,16 @@ def _execute_build(
     Execute normal graph-driven artifact builds.
 
     Normal execution delegates artifact orchestration to the engine.
-    Model, Variant, all-Variant, and Artifact Realization selection remain
-    distinct selection coordinates. When no Variant selection is explicit,
-    configuration resolution selects the Model's default Variant.
+    Model and Variant selection are normal-build selection coordinates.
+    When no Variant selection is explicit, configuration resolution
+    selects the Model's default Variant.
+
+    Artifact Realization selection is reserved for independent Stage
+    execution and is not a normal-build selection coordinate.
 
     All-Variant selection is accepted at this command boundary. Variant
-    enumeration is delegated to engine planning rather than represented as
-    an Artifact Realization.
+    enumeration is delegated to engine planning rather than represented
+    as an Artifact Realization.
 
     Dry-run uses the same artifact-level plan selection as normal execution,
     prepares each selected BuildPlan's persistent-state-aware ExecutionPlan,
@@ -259,9 +261,6 @@ def _execute_build(
 
             if variant_name is not None:
                 planning_options["variant_name"] = variant_name
-
-            if realization is not None:
-                planning_options["realization"] = realization
 
             if dry_run:
                 dry_run_options = dict(
