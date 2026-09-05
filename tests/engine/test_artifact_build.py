@@ -669,3 +669,81 @@ def test_artifact_build_without_selection_plans_default_realization_only(
             tmp_path,
         )
     ]
+
+
+def test_artifact_build_qualified_variant_uses_effective_variant_configuration(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact build planning resolves the effective configuration of the
+    selected qualified Variant.
+
+    The resulting plan uses the same Model and Variant configuration that
+    artifact inspection resolves for shape.ornament.
+    """
+
+    write_artifact_config(
+        "skippy",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    plans = artifact_build.create_artifact_build_plans(
+        "skippy",
+        model_name="shape",
+        variant_name="ornament",
+        project_root=tmp_path,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    assert plan.resolver("model") == "shape"
+    assert plan.resolver("variant") == "ornament"
+    assert plan.resolver("realization") == "default"
+
+    assert plan.resolver("shape_outer_ridge_width") == 2.0
+    assert plan.resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
+
+
+def test_artifact_build_omitted_variant_matches_explicit_default_variant(
+    tmp_path: Path,
+) -> None:
+    """
+    Omitted Variant selection and explicit default Variant selection resolve
+    to the same ordinary build configuration.
+    """
+
+    write_artifact_config(
+        "skippy",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    implicit_plans = artifact_build.create_artifact_build_plans(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    explicit_plans = artifact_build.create_artifact_build_plans(
+        "skippy",
+        variant_name="default",
+        project_root=tmp_path,
+    )
+
+    assert len(implicit_plans) == 1
+    assert len(explicit_plans) == 1
+
+    implicit = implicit_plans[0].resolver
+    explicit = explicit_plans[0].resolver
+
+    assert implicit("model") == explicit("model") == "shape"
+    assert implicit("variant") == explicit("variant") == "default"
+    assert implicit("realization") == explicit("realization") == "default"
+
+    assert implicit("shape_outer_ridge_width") == explicit("shape_outer_ridge_width") == 0.0
