@@ -141,16 +141,16 @@ def cli(
     if variant is not None and realization is not None:
         raise click.UsageError("--variant and --realization cannot be used together.")
 
+    model_name: str | None = None
+
     if variant is not None:
         model_name, realization = _parse_variant_reference(
             variant,
         )
 
-        if model_name is not None:
-            raise click.UsageError("Qualified Variant selection is not yet supported.")
-
     _execute_build(
         artifact_ids,
+        model_name=model_name,
         realization=realization,
         dry_run=dry_run,
     )
@@ -239,6 +239,7 @@ def _display_execution_event(
 def _execute_build(
     artifact_ids: tuple[str, ...],
     *,
+    model_name: str | None,
     realization: str | None,
     dry_run: bool,
 ) -> None:
@@ -246,9 +247,9 @@ def _execute_build(
     Execute normal graph-driven artifact builds.
 
     Normal execution delegates artifact orchestration to the engine.
-    The selected Variant is represented internally by the existing
-    realization local-name coordinate. When no Variant is explicitly
-    selected, the default Variant is built.
+    A qualified Variant is represented internally by its Model name
+    and the existing realization local-name coordinate. When no Variant
+    is explicitly selected, the default Variant is built.
 
     Dry-run creates each selected BuildPlan, prepares its
     persistent-state-aware ExecutionPlan, and validates the configuration
@@ -262,11 +263,17 @@ def _execute_build(
         try:
             selected_realization = realization or "default"
 
+            planning_options = {}
+
+            if model_name is not None:
+                planning_options["model_name"] = model_name
+
             if dry_run:
                 plans = create_build_plans(
                     artifact_id,
                     realization=selected_realization,
                     project_root=project_root,
+                    **planning_options,
                 )
 
                 for plan in plans:
@@ -285,6 +292,7 @@ def _execute_build(
                 realization=selected_realization,
                 project_root=project_root,
                 event_sink=_display_execution_event,
+                **planning_options,
             )
 
         except (

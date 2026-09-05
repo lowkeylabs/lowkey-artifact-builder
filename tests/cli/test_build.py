@@ -933,3 +933,114 @@ def test_build_dry_run_parses_bare_variant_before_planning(
             "parsed-variant",
         )
     ]
+
+
+def test_build_qualified_variant_selects_model_and_local_variant(
+    monkeypatch,
+) -> None:
+    """
+    A qualified Variant selects its Model and local Variant name for execution.
+    """
+
+    executed: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+        ]
+    ] = []
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        model_name: str | None = None,
+        realization: str | None = None,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        executed.append(
+            (
+                artifact_id,
+                model_name,
+                realization,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--variant",
+        "shape.ornament",
+    )
+
+    assert result.exit_code == 0
+
+    assert executed == [
+        (
+            "skippy",
+            "shape",
+            "ornament",
+        )
+    ]
+
+
+def test_build_dry_run_qualified_variant_selects_model_and_local_variant(
+    monkeypatch,
+) -> None:
+    """
+    A qualified Variant selects the same Model and local Variant name
+    during dry-run planning.
+    """
+
+    planned: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+        ]
+    ] = []
+
+    def create_plans(
+        artifact_id: str,
+        *,
+        model_name: str | None = None,
+        realization: str | None = None,
+        project_root: Path,
+    ) -> tuple:
+        planned.append(
+            (
+                artifact_id,
+                model_name,
+                realization,
+            )
+        )
+
+        return ()
+
+    monkeypatch.setattr(
+        cmd_build,
+        "create_build_plans",
+        create_plans,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--variant",
+        "shape.ornament",
+        "--dry-run",
+    )
+
+    assert result.exit_code == 0
+
+    assert planned == [
+        (
+            "skippy",
+            "shape",
+            "ornament",
+        )
+    ]
