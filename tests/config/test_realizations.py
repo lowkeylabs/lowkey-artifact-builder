@@ -744,3 +744,42 @@ def test_get_realization_names_returns_configured_variant_local_name(
         "example",
         project_root=tmp_path,
     ) == ("ornament",)
+
+
+def test_direct_variant_selection_preserves_explicit_named_realization(
+    tmp_path: Path,
+    example_model: ModelSpec,
+) -> None:
+    """
+    Direct Variant selection may override the Variant selected by an explicit
+    historical realization without changing that realization's identity.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "realizations": {
+                "holiday": {
+                    "model": example_model.name,
+                    "variant": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        variant="ridged",
+        realization="holiday",
+        project_root=tmp_path,
+    )
+
+    assert resolver("model") == example_model.name
+    assert resolver("realization") == "holiday"
+    assert resolver("variant") == "ridged"
+
+    assert resolver.source("realization") == "artifact"
+    assert resolver.source("variant") == "selection"
