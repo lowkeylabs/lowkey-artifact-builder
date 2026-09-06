@@ -552,16 +552,33 @@ artwork_size
 artwork_raise
 ```
 
-The common registered coordinate system is uniformly scaled so that:
+`artwork_size` defines the maximum physical X/Y extent of the occupied
+Artwork envelope.
+
+If the registered Artwork envelope has width `w` and height `h`, extrusion
+uniformly scales the registered Artwork so that:
 
 ```text
-registered_extent -> artwork_size
+max(physical envelope width, physical envelope height) = artwork_size
 ```
 
-All color layers receive the same physical X/Y transformation.
+while preserving the envelope's aspect ratio.
 
-The registered Artwork is centered as one coordinate system rather than
-centering individual color layers.
+The `registered_extent` remains the common dimensionless coordinate system.
+It does not itself determine the physical size of standalone Artwork.
+
+One common affine X/Y transformation is applied to the registered Artwork.
+That transformation:
+
+* uniformly scales the Artwork according to its occupied envelope;
+* centers the dimensionalized occupied envelope for standalone Artwork; and
+* is applied identically to the envelope and every registered color layer.
+
+Individual color layers are not independently fitted, scaled, translated, or
+centered.
+
+Artwork registration is therefore preserved even when the occupied envelope is
+non-square or offset within the common registered coordinate system.
 
 Each color layer is extruded from:
 
@@ -580,6 +597,7 @@ an extrusion manifest.
 
 Extrusion preserves the printer semantic color assignment established for
 each registered Artwork color region.
+
 
 ## Package
 
@@ -712,8 +730,8 @@ in pixels.
 `artwork_island_connectivity` defines the connectivity used for raster
 island detection.
 
-`artwork_size` defines the physical X/Y size of standalone dimensionalized
-Artwork.
+`artwork_size` defines the maximum physical X/Y extent of the occupied Artwork
+envelope when Artwork is dimensionalized as standalone Artwork.
 
 `artwork_raise` defines the physical Z height of standalone dimensionalized
 Artwork.
@@ -962,7 +980,10 @@ A conforming Artwork implementation satisfies the following:
 
 52. Standalone physical dimensionalization begins at extrusion.
 
-53. Standalone extrusion uniformly maps `registered_extent` to `artwork_size`.
+53. Standalone extrusion uniformly scales the occupied Artwork envelope so
+    that its maximum physical X/Y extent equals `artwork_size`, while applying
+    the same registration-preserving transformation to the envelope and every
+    registered color layer.
 
 54. All color layers receive the same dimensional transformation and remain
     registered.
