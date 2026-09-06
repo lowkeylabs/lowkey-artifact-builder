@@ -587,3 +587,71 @@ def test_configured_default_variant_uses_default_runtime_realization(
     assert resolver("model") == variant_model.name
     assert resolver("variant") == "default"
     assert resolver("realization") == "default"
+
+
+def test_explicit_variant_selection_uses_local_name_as_runtime_realization(
+    tmp_path: Path,
+    variant_model: ModelSpec,
+) -> None:
+    """
+    Explicit Variant selection uses the Variant's local name as the
+    decomposed runtime realization identity.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "model": variant_model.name,
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        model=variant_model.name,
+        variant="ridged",
+        project_root=tmp_path,
+    )
+
+    assert resolver("model") == variant_model.name
+    assert resolver("variant") == "ridged"
+    assert resolver("realization") == "ridged"
+
+    assert resolver.source("variant") == "selection"
+    assert resolver.source("realization") == "selection"
+
+
+def test_explicit_default_variant_selection_uses_default_runtime_realization(
+    tmp_path: Path,
+    variant_model: ModelSpec,
+) -> None:
+    """
+    Explicit selection of the default Variant preserves the single
+    decomposed default identity.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "model": variant_model.name,
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        model=variant_model.name,
+        variant="default",
+        project_root=tmp_path,
+    )
+
+    assert resolver("model") == variant_model.name
+    assert resolver("variant") == "default"
+    assert resolver("realization") == "default"
+
+    assert resolver.source("variant") == "selection"
+    assert resolver.source("realization") == "selection"

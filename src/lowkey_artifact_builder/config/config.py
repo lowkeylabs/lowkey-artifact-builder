@@ -477,12 +477,11 @@ def get_resolver(
 
     requested_realization = realization
 
-    if (
-        requested_realization is None
-        and variant is None
-        and configured_artifact_variant is not None
-    ):
-        requested_realization = configured_artifact_variant
+    if requested_realization is None and not explicit_realizations:
+        if variant is not None:
+            requested_realization = variant
+        elif configured_artifact_variant is not None:
+            requested_realization = configured_artifact_variant
 
     realization_name = _resolve_realization_name(
         artifact_document,
@@ -627,7 +626,7 @@ def get_resolver(
 
     if explicit_realizations:
         provenance["realization"] = "artifact"
-    elif realization is not None:
+    elif realization is not None or variant is not None:
         provenance["realization"] = "selection"
     elif configured_artifact_variant is not None:
         provenance["realization"] = "artifact"
