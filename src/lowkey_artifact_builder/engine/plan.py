@@ -267,33 +267,46 @@ def create_build_plans(
     """
     Construct build plans for one or more realizations of one artifact.
 
-    Explicitly configured realizations are planned in artifact.toml
-    declaration order.
+    The historical runtime realization coordinate carries the local Variant
+    name. variant_name is a compatibility input for that local name and is
+    normalized before realization discovery or lower-level planning.
 
-    Legacy single-realization artifact configuration produces exactly
-    one plan for the implicit realization named "default".
+    variant_name and realization therefore cannot be supplied together as
+    independent selectors.
 
-    A Variant may be selected independently by its local name. A Model
-    name may also be supplied to identify the Model namespace of a
-    qualified Variant. Variant selection does not select an Artifact
-    Realization.
+    When a local Variant or realization is explicitly selected without
+    targets, exactly one complete-artifact BuildPlan is constructed.
 
-    When realization and targets are omitted, every realization receives
-    its normal complete-artifact build plan using the selected Variant,
-    when one was supplied.
-
-    When realization is supplied without targets, only that realization
-    receives its normal complete-artifact build plan.
+    When neither is selected and targets are omitted, configured realizations
+    are discovered and planned in artifact.toml declaration order. Legacy
+    single-realization artifact configuration produces exactly one plan for
+    the implicit realization named "default".
 
     When targets are supplied, each target is routed to the realization
-    identified by its ProductRef. A realization with no requested
-    targets is omitted from the returned plans.
+    identified by its ProductRef. A realization with no requested targets is
+    omitted from the returned plans.
     """
 
     if targets == ():
         raise BuildPlanError("Targeted build requires at least one product.")
 
+    if variant_name is not None and realization is not None:
+        raise BuildPlanError("variant_name and realization cannot be used together")
+
+    if variant_name is not None:
+        realization = variant_name
+
     root = project_root if project_root is not None else Path.cwd()
+
+    if targets is None and realization is not None:
+        return (
+            create_build_plan(
+                artifact_id,
+                model_name=model_name,
+                realization=realization,
+                project_root=root,
+            ),
+        )
 
     realization_names = get_realization_names(
         artifact_id,
@@ -301,22 +314,10 @@ def create_build_plans(
     )
 
     if targets is None:
-        if realization is not None:
-            return (
-                create_build_plan(
-                    artifact_id,
-                    model_name=model_name,
-                    variant_name=variant_name,
-                    realization=realization,
-                    project_root=root,
-                ),
-            )
-
         return tuple(
             create_build_plan(
                 artifact_id,
                 model_name=model_name,
-                variant_name=variant_name,
                 realization=realization_name,
                 project_root=root,
             )
@@ -332,7 +333,6 @@ def create_build_plans(
         create_build_plan(
             artifact_id,
             model_name=model_name,
-            variant_name=variant_name,
             realization=realization_name,
             targets=realization_targets,
             project_root=root,

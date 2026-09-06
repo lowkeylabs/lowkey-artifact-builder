@@ -34,6 +34,166 @@ from lowkey_artifact_builder.model import (
     VariantSpec,
 )
 
+
+def test_create_build_plans_normalizes_variant_name_to_one_realization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Compatibility Variant selection identifies one local runtime realization.
+
+    Multi-plan construction must not combine a selected Variant with every
+    realization returned by realization discovery.
+    """
+
+    calls: list[tuple[str, str | None, str | None, Path | None]] = []
+
+    def fake_create_build_plan(
+        artifact_id: str,
+        *,
+        model_name: str | None = None,
+        realization: str | None = None,
+        project_root: Path | None = None,
+    ):
+        calls.append(
+            (
+                artifact_id,
+                model_name,
+                realization,
+                project_root,
+            )
+        )
+        return object()
+
+    monkeypatch.setattr(
+        plan_module,
+        "create_build_plan",
+        fake_create_build_plan,
+    )
+
+    monkeypatch.setattr(
+        plan_module,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: ("default",),
+    )
+
+    plans = create_build_plans(
+        "example",
+        model_name="shape",
+        variant_name="ornament",
+        project_root=tmp_path,
+    )
+
+    assert len(plans) == 1
+
+    assert calls == [
+        (
+            "example",
+            "shape",
+            "ornament",
+            tmp_path,
+        )
+    ]
+
+
+def test_create_build_plans_rejects_variant_name_with_realization_before_discovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Conflicting local identity selectors are rejected before realization
+    discovery or lower-level planning.
+    """
+
+    def fail_discovery(*args, **kwargs):
+        pytest.fail("realization discovery must not run")
+
+    monkeypatch.setattr(
+        plan_module,
+        "get_realization_names",
+        fail_discovery,
+    )
+
+    with pytest.raises(
+        BuildPlanError,
+        match="variant_name and realization cannot be used together",
+    ):
+        create_build_plans(
+            "example",
+            model_name="shape",
+            variant_name="ornament",
+            realization="default",
+            project_root=tmp_path,
+        )
+
+
+def test_create_build_plans_without_variant_preserves_realization_discovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Without an explicit Variant selector, configured realization discovery
+    continues to determine the plans constructed for the artifact.
+    """
+
+    calls: list[tuple[str, str | None, str | None, Path | None]] = []
+
+    def fake_create_build_plan(
+        artifact_id: str,
+        *,
+        model_name: str | None = None,
+        variant_name: str | None = None,
+        realization: str | None = None,
+        project_root: Path | None = None,
+    ):
+        calls.append(
+            (
+                artifact_id,
+                model_name,
+                realization,
+                project_root,
+            )
+        )
+        return object()
+
+    monkeypatch.setattr(
+        plan_module,
+        "create_build_plan",
+        fake_create_build_plan,
+    )
+
+    monkeypatch.setattr(
+        plan_module,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: (
+            "ornament",
+            "coaster",
+        ),
+    )
+
+    plans = create_build_plans(
+        "example",
+        project_root=tmp_path,
+    )
+
+    assert len(plans) == 2
+
+    assert calls == [
+        (
+            "example",
+            None,
+            "ornament",
+            tmp_path,
+        ),
+        (
+            "example",
+            None,
+            "coaster",
+            tmp_path,
+        ),
+    ]
+
+
 # =========================================================
 # Build planning
 # =========================================================
