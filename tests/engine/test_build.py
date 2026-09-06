@@ -1766,3 +1766,128 @@ def test_execute_targeted_artwork_vector_build_stops_before_physical_stages(
     assert not (realization / "40-extrude").exists()
 
     assert not (realization / "50-package").exists()
+
+
+def test_execute_build_publishes_packaged_3mf(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    Successful package execution publishes its 3MF beside artifact.toml.
+
+    Publication is a convenience copy of the canonical package Product.
+    The canonical Product remains unchanged at its planned Stage location,
+    while the published filename identifies the fully qualified Variant.
+    """
+
+    _create_source(tmp_path)
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    canonical = plan.artifact_dir / "artwork" / "default" / "50-package" / "artifact.3mf"
+
+    published = plan.artifact_dir / "artwork.default.3mf"
+
+    def implementation(
+        context: StageContext,
+    ) -> None:
+        _create_declared_outputs(
+            context,
+        )
+
+        if context.stage_name == "package":
+            context.output("artifact").write_bytes(b"packaged 3mf")
+
+    _install_stage_implementation(
+        monkeypatch,
+        implementation,
+    )
+
+    execute_build(
+        plan,
+    )
+
+    assert canonical.is_file()
+
+    assert canonical.read_bytes() == (b"packaged 3mf")
+
+    assert published.is_file()
+
+    assert published.read_bytes() == (b"packaged 3mf")
+
+
+def test_execute_build_does_not_publish_existing_package_when_package_is_not_executed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    A build stopping before package does not publish an existing package.
+
+    Publication reflects successful package execution during the requested
+    build. An existing canonical package Product from earlier execution is
+    not sufficient to create the convenience copy.
+    """
+
+    _create_source(tmp_path)
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+        targets=(
+            ProductRef(
+                artifact="example",
+                model="artwork",
+                realization="default",
+                stage="vector",
+                product="manifest",
+            ),
+        ),
+    )
+
+    canonical = plan.artifact_dir / "artwork" / "default" / "50-package" / "artifact.3mf"
+
+    published = plan.artifact_dir / "artwork.default.3mf"
+
+    canonical.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    canonical.write_bytes(b"old packaged 3mf")
+
+    executed: list[str] = []
+
+    def implementation(
+        context: StageContext,
+    ) -> None:
+        executed.append(
+            context.stage_name,
+        )
+
+        _create_declared_outputs(
+            context,
+        )
+
+    _install_stage_implementation(
+        monkeypatch,
+        implementation,
+    )
+
+    execute_build(
+        plan,
+    )
+
+    assert executed == [
+        "prepare",
+        "raster",
+        "vector",
+    ]
+
+    assert canonical.read_bytes() == (b"old packaged 3mf")
+
+    assert not published.exists()

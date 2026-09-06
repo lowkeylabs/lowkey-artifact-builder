@@ -95,10 +95,14 @@ def execute_build(
     implementation execution, and declared-product verification are
     delegated to the common independent stage execution boundary.
 
+    A successfully executed package stage publishes its first declared
+    Product as a Variant-qualified convenience copy in the Artifact
+    directory. The canonical Stage Product remains authoritative.
+
     Failure to realize a required product dependency, prepare the
     workspace, materialize an input, construct an execution context,
-    execute a stage, or produce its declared products stops the build
-    immediately.
+    execute a stage, produce its declared products, or publish a package
+    stops the build immediately.
     """
 
     _realize_product_dependencies(
@@ -122,6 +126,12 @@ def execute_build(
 
         except StageExecutionError as exc:
             raise BuildError(str(exc)) from exc
+
+        if stage.name == "package":
+            _publish_package(
+                plan,
+                stage,
+            )
 
 
 def execute_builds(
@@ -182,6 +192,47 @@ def execute_artifact_stage(
         StageExecutionError,
     ) as exc:
         raise BuildError(str(exc)) from exc
+
+
+def _publish_package(
+    plan: BuildPlan,
+    stage: PlannedStage,
+) -> None:
+    """
+    Publish the first Product of a successfully executed package stage.
+
+    Publication creates a Variant-qualified convenience copy in the
+    Artifact directory. The canonical Stage Product remains unchanged
+    and remains the persistent Product authority.
+    """
+
+    if not stage.products:
+        raise BuildError(
+            f"Cannot publish package for artifact "
+            f"{plan.artifact_id!r}: "
+            "package stage declares no products."
+        )
+
+    package = stage.products[0]
+
+    published = plan.artifact_dir / (
+        f"{plan.model_name}.{plan.realization_name}{package.path.suffix}"
+    )
+
+    try:
+        shutil.copy2(
+            package.path,
+            published,
+        )
+
+    except OSError as exc:
+        raise BuildError(
+            f"Cannot publish package for artifact "
+            f"{plan.artifact_id!r} "
+            f"from {package.path} "
+            f"to {published}: "
+            f"{exc}"
+        ) from exc
 
 
 # =========================================================
