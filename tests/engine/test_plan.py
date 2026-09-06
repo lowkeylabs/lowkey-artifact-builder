@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+import lowkey_artifact_builder.engine.plan as plan_module
 from lowkey_artifact_builder.config import write_artifact_config
 from lowkey_artifact_builder.engine import (
     BuildPlan,
@@ -324,6 +325,148 @@ def test_create_build_plan_rejects_unknown_model(
 # =========================================================
 
 
+def test_create_build_plan_normalizes_variant_name_to_realization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Compatibility Variant selection is normalized to the historical
+    realization coordinate before configuration resolution.
+
+    Variant and realization are not independent runtime identity axes.
+    """
+
+    calls: list[tuple[str, str | None, str | None, Path | None]] = []
+
+    real_get_resolver = plan_module.get_resolver
+
+    def recording_get_resolver(
+        artifact_id: str,
+        *,
+        model: str | None = None,
+        realization: str | None = None,
+        project_root: Path | None = None,
+    ):
+        calls.append(
+            (
+                artifact_id,
+                model,
+                realization,
+                project_root,
+            )
+        )
+
+        return real_get_resolver(
+            artifact_id,
+            model=model,
+            realization=realization,
+            project_root=project_root,
+        )
+
+    monkeypatch.setattr(
+        plan_module,
+        "get_resolver",
+        recording_get_resolver,
+    )
+
+    write_artifact_config(
+        "example",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        "example",
+        model_name="shape",
+        variant_name="ornament",
+        project_root=tmp_path,
+    )
+
+    assert calls == [
+        (
+            "example",
+            "shape",
+            "ornament",
+            tmp_path,
+        )
+    ]
+
+    assert plan.model_name == "shape"
+    assert plan.realization_name == "ornament"
+    assert plan.resolver("variant") == "ornament"
+    assert plan.resolver("realization") == "ornament"
+
+
+def test_create_build_plan_rejects_variant_name_with_realization(
+    tmp_path: Path,
+) -> None:
+    """
+    Variant and realization cannot select two independent local identities.
+
+    variant_name remains only a compatibility input for selecting the local
+    Variant name represented by the runtime realization coordinate.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(
+        BuildPlanError,
+        match="variant_name and realization cannot be used together",
+    ):
+        create_build_plan(
+            "example",
+            model_name="shape",
+            variant_name="ornament",
+            realization="default",
+            project_root=tmp_path,
+        )
+
+
+def test_create_build_plan_variant_name_has_one_local_identity(
+    tmp_path: Path,
+) -> None:
+    """
+    Compatibility Variant selection produces one local identity across the
+    BuildPlan, resolved configuration, and persistent product namespace.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        "example",
+        model_name="shape",
+        variant_name="ornament",
+        project_root=tmp_path,
+    )
+
+    assert plan.model_name == "shape"
+    assert plan.realization_name == "ornament"
+
+    assert plan.resolver("model") == "shape"
+    assert plan.resolver("variant") == "ornament"
+    assert plan.resolver("realization") == "ornament"
+
+    realization_directory = tmp_path / "artifacts" / "example" / "shape" / "ornament"
+
+    for stage in plan.stages:
+        for product in stage.products:
+            assert product.path.is_relative_to(realization_directory)
+
+
 def test_build_plan_has_default_realization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -374,84 +517,38 @@ def test_default_realization_owns_planned_products(
             assert product.path == (stage_directory / product.spec.path)
 
 
-def test_variant_identity_is_distinct_from_realization_identity(
+def test_variant_local_name_is_runtime_realization_identity(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Selecting a named variant does not rename the realization.
+    Variant identity is represented by Model plus local realization name.
 
-    A variant is a reusable model-scoped parameter preset. A realization
-    is one configured invocation of that model. Multiple realizations may
-    use the same variant, so their identities must not be conflated.
+    Selecting the local name "ornament" for the Shape Model therefore
+    resolves the shape.ornament Variant and uses "ornament" as the
+    historical runtime realization coordinate.
     """
 
-    from lowkey_artifact_builder.model import (
-        ModelSpec,
-        VariantSpec,
-    )
-
-    model = ModelSpec(
-        name="example-model",
-        title="Example Model",
-        variants=(
-            VariantSpec(
-                name="default",
-            ),
-            VariantSpec(
-                name="ridged",
-                parameters={
-                    "ridge": True,
-                },
-            ),
-        ),
-    )
-
-    class StubRegistry:
-        def get_model(
-            self,
-            name: str,
-        ) -> ModelSpec:
-            assert name == "example-model"
-
-            return model
-
-    class Resolver:
-        def __call__(
-            self,
-            name: str,
-        ):
-            values = {
-                "model": "example-model",
-                "variant": "ridged",
-                "realization": "default",
-            }
-
-            return values[name]
-
-        def source(
-            self,
-            name: str,
-        ) -> str:
-            return "test"
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.engine.plan.get_resolver",
-        lambda artifact_id, *, realization=None, project_root: Resolver(),
-    )
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.engine.plan.build_model_registry",
-        lambda: StubRegistry(),
+    write_artifact_config(
+        "example",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
     )
 
     plan = create_build_plan(
         "example",
+        model_name="shape",
+        realization="ornament",
         project_root=tmp_path,
     )
 
-    assert plan.resolver("variant") == "ridged"
-    assert plan.realization_name == "default"
+    assert plan.model_name == "shape"
+    assert plan.realization_name == "ornament"
+
+    assert plan.resolver("model") == "shape"
+    assert plan.resolver("variant") == "ornament"
+    assert plan.resolver("realization") == "ornament"
 
 
 def test_create_build_plan_selects_named_realization(
@@ -561,10 +658,10 @@ def test_create_build_plan_selects_model_with_local_variant_name(
     tmp_path: Path,
 ) -> None:
     """
-    Planning may select a Model-scoped Variant independently of Realization.
+    Planning represents a Model-scoped Variant as Model plus local name.
 
-    The selected Variant contributes its sparse parameter overrides while
-    the artifact retains its implicit default Realization.
+    The historical runtime realization coordinate carries the local Variant
+    name, so selecting shape.ornament produces one coherent runtime identity.
     """
 
     write_artifact_config(
@@ -578,16 +675,16 @@ def test_create_build_plan_selects_model_with_local_variant_name(
     plan = create_build_plan(
         "example",
         model_name="shape",
-        variant_name="ornament",
+        realization="ornament",
         project_root=tmp_path,
     )
 
     assert plan.model_name == "shape"
-    assert plan.realization_name == "default"
+    assert plan.realization_name == "ornament"
 
     assert plan.resolver("model") == "shape"
     assert plan.resolver("variant") == "ornament"
-    assert plan.resolver("realization") == "default"
+    assert plan.resolver("realization") == "ornament"
 
     assert plan.resolver("shape_outer_ridge_width") == 2.0
     assert plan.resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
@@ -597,8 +694,8 @@ def test_create_build_plans_selects_model_with_local_variant_name(
     tmp_path: Path,
 ) -> None:
     """
-    Artifact-level planning preserves Model-scoped Variant selection
-    independently of Artifact Realization selection.
+    Artifact-level planning uses the local Variant name as the historical
+    runtime realization coordinate.
     """
 
     write_artifact_config(
@@ -612,7 +709,7 @@ def test_create_build_plans_selects_model_with_local_variant_name(
     plans = create_build_plans(
         "example",
         model_name="shape",
-        variant_name="ornament",
+        realization="ornament",
         project_root=tmp_path,
     )
 
@@ -621,11 +718,11 @@ def test_create_build_plans_selects_model_with_local_variant_name(
     plan = plans[0]
 
     assert plan.model_name == "shape"
-    assert plan.realization_name == "default"
+    assert plan.realization_name == "ornament"
 
     assert plan.resolver("model") == "shape"
     assert plan.resolver("variant") == "ornament"
-    assert plan.resolver("realization") == "default"
+    assert plan.resolver("realization") == "ornament"
 
     assert plan.resolver("shape_outer_ridge_width") == 2.0
     assert plan.resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
@@ -2748,16 +2845,14 @@ def test_create_build_plans_selects_one_complete_realization(
     )
 
 
-def test_selected_variant_owns_persistent_product_namespace(
+def test_local_variant_name_owns_persistent_product_namespace(
     tmp_path: Path,
 ) -> None:
     """
-    Variant identity owns the persistent Model product namespace.
+    The local Variant name is also the persistent product namespace.
 
-    Artifact Realization identity remains distinct from Variant identity.
-    Selecting shape.ornament for the implicit default Artifact Realization
-    therefore preserves realization identity while placing persistent
-    products beneath the local Variant name.
+    A shape.ornament build therefore has one coherent local identity across
+    BuildPlan, resolved configuration, and persistent product paths.
     """
 
     write_artifact_config(
@@ -2771,16 +2866,21 @@ def test_selected_variant_owns_persistent_product_namespace(
     plan = create_build_plan(
         "variant-product-identity",
         model_name="shape",
-        variant_name="ornament",
+        realization="ornament",
         project_root=tmp_path,
     )
 
-    assert plan.realization_name == "default"
-    assert plan.resolver("realization") == "default"
+    assert plan.model_name == "shape"
+    assert plan.realization_name == "ornament"
+
+    assert plan.resolver("model") == "shape"
     assert plan.resolver("variant") == "ornament"
+    assert plan.resolver("realization") == "ornament"
+
+    realization_directory = (
+        tmp_path / "artifacts" / "variant-product-identity" / "shape" / "ornament"
+    )
 
     for stage in plan.stages:
         for product in stage.products:
-            assert product.path.is_relative_to(
-                tmp_path / "artifacts" / "variant-product-identity" / "shape" / "ornament"
-            )
+            assert product.path.is_relative_to(realization_directory)

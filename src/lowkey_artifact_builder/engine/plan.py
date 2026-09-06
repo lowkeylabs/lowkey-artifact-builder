@@ -94,19 +94,18 @@ def create_build_plan(
     """
     Construct the build plan for one configured artifact realization.
 
-    Configuration is resolved once for the selected Model, Variant, and
-    Artifact Realization. The resulting Resolver is retained by the
-    BuildPlan and later supplied unchanged to every StageContext created
-    during execution.
+    Configuration is resolved once for the selected Model and local Variant
+    name. The historical runtime realization coordinate carries that local
+    Variant name. The resulting Resolver is retained by the BuildPlan and
+    later supplied unchanged to every StageContext created during execution.
 
-    A Variant may be selected independently by its local name. A Model
-    name may also be supplied to identify the Model namespace of a
-    qualified Variant. Variant selection does not select an Artifact
-    Realization.
+    variant_name is a compatibility input for the local Variant name. It is
+    normalized immediately to the runtime realization coordinate and cannot
+    be supplied together with realization.
 
-    When realization is omitted, configuration resolution determines
-    the realization. Legacy single-realization artifact configuration
-    resolves to the implicit realization named "default".
+    When neither variant_name nor realization is supplied, configuration
+    resolution determines the local Variant name. Ordinary single-Variant
+    artifact configuration resolves to "default".
 
     When targets are supplied, only stages required to produce those
     products and their transitive dependencies are planned. Declarative
@@ -121,15 +120,18 @@ def create_build_plan(
     if targets == ():
         raise BuildPlanError("Targeted build requires at least one product.")
 
+    if variant_name is not None and realization is not None:
+        raise BuildPlanError("variant_name and realization cannot be used together")
+
+    if variant_name is not None:
+        realization = variant_name
+
     root = project_root if project_root is not None else Path.cwd()
 
     resolver_options = {}
 
     if model_name is not None:
         resolver_options["model"] = model_name
-
-    if variant_name is not None:
-        resolver_options["variant"] = variant_name
 
     if realization is not None:
         resolver_options["realization"] = realization
@@ -197,15 +199,10 @@ def create_build_plan(
         product_resolver=product_resolver,
     )
 
-    # Explicit Variant selection owns the persistent Model product
-    # namespace. Otherwise, preserve the configured Artifact Realization
-    # namespace used by existing realization-based planning.
-    product_namespace = variant_name if variant_name is not None else realization_name
-
     stages = _plan_stages(
         artifact_id,
         model,
-        product_namespace,
+        realization_name,
         selected_stages,
         resolver,
         root,
