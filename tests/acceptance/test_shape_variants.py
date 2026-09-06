@@ -534,3 +534,194 @@ def test_shape_ornament_variant_reuses_current_artwork_product(
     # Standalone Artwork manufacturing remains unnecessary.
     assert not (artwork_root / "40-extrude" / "products.json").exists()
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+
+@pytest.mark.slow
+def test_explicit_shape_default_variant_preserves_default_manufacturing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    Explicit shape.default preserves ordinary Shape manufacturing.
+
+    Selecting the default Variant explicitly produces the same Model-owned
+    manufacturing behavior as an ordinary build with no Variant selection.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    runner = CliRunner()
+
+    # -----------------------------------------------------
+    # Configure equivalent Shape Artifacts
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "implicit-default",
+        {
+            "model": "shape",
+        },
+        project_root=project_root,
+    )
+
+    write_artifact_config(
+        "explicit-default",
+        {
+            "model": "shape",
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Build ordinary/default behavior
+    # -----------------------------------------------------
+
+    implicit_result = runner.invoke(
+        cli,
+        [
+            "build",
+            "implicit-default",
+        ],
+    )
+
+    assert implicit_result.exit_code == 0, (
+        "Implicit default Shape build failed:\n"
+        f"{implicit_result.output}\n"
+        f"{implicit_result.exception!r}"
+    )
+
+    # -----------------------------------------------------
+    # Build explicit shape.default
+    # -----------------------------------------------------
+
+    explicit_result = runner.invoke(
+        cli,
+        [
+            "build",
+            "explicit-default",
+            "--variant",
+            "shape.default",
+        ],
+    )
+
+    assert explicit_result.exit_code == 0, (
+        "Explicit default Shape build failed:\n"
+        f"{explicit_result.output}\n"
+        f"{explicit_result.exception!r}"
+    )
+
+    # -----------------------------------------------------
+    # Verify equivalent resolved configuration
+    # -----------------------------------------------------
+
+    implicit_plan = create_build_plans(
+        "implicit-default",
+        project_root=project_root,
+    )[0]
+
+    explicit_plan = create_build_plans(
+        "explicit-default",
+        model_name="shape",
+        variant_name="default",
+        project_root=project_root,
+    )[0]
+
+    assert implicit_plan.model_name == "shape"
+    assert explicit_plan.model_name == "shape"
+
+    assert implicit_plan.resolver("variant") == "default"
+    assert explicit_plan.resolver("variant") == "default"
+
+    assert implicit_plan.resolver("shape_outer_ridge_width") == 0.0
+    assert explicit_plan.resolver("shape_outer_ridge_width") == 0.0
+
+    assert implicit_plan.resolver.source("shape_outer_ridge_width") == "model"
+    assert explicit_plan.resolver.source("shape_outer_ridge_width") == "model"
+
+    # -----------------------------------------------------
+    # Verify canonical persistent identity
+    # -----------------------------------------------------
+
+    implicit_artifact = (
+        project_root
+        / "artifacts"
+        / "implicit-default"
+        / "shape"
+        / "default"
+        / "40-package"
+        / "artifact.3mf"
+    )
+
+    explicit_artifact = (
+        project_root
+        / "artifacts"
+        / "explicit-default"
+        / "shape"
+        / "default"
+        / "40-package"
+        / "artifact.3mf"
+    )
+
+    assert implicit_artifact.is_file()
+    assert explicit_artifact.is_file()
+
+    assert implicit_artifact.stat().st_size > 0
+    assert explicit_artifact.stat().st_size > 0
+
+    assert zipfile.is_zipfile(
+        implicit_artifact,
+    )
+    assert zipfile.is_zipfile(
+        explicit_artifact,
+    )
+
+    # -----------------------------------------------------
+    # Inspect manufactured 3MF semantics
+    # -----------------------------------------------------
+
+    def object_names(
+        artifact: Path,
+    ) -> set[str | None]:
+        with zipfile.ZipFile(
+            artifact,
+        ) as archive:
+            model_name = next(
+                name
+                for name in archive.namelist()
+                if name.startswith("3D/") and name.endswith(".model")
+            )
+
+            model = ET.fromstring(
+                archive.read(
+                    model_name,
+                ),
+            )
+
+        return {
+            object_.get("name")
+            for object_ in model.findall(
+                f".//{{{CORE_NS}}}object",
+            )
+        }
+
+    implicit_names = object_names(
+        implicit_artifact,
+    )
+
+    explicit_names = object_names(
+        explicit_artifact,
+    )
+
+    # -----------------------------------------------------
+    # Verify equivalent default manufacturing behavior
+    # -----------------------------------------------------
+
+    assert "implicit-default-base-white" in implicit_names
+    assert "implicit-default-ridge-white" not in implicit_names
+
+    assert "explicit-default-base-white" in explicit_names
+    assert "explicit-default-ridge-white" not in explicit_names
