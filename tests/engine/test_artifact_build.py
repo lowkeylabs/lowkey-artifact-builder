@@ -258,16 +258,16 @@ def test_artifact_build_selects_model_with_local_variant_name(
     tmp_path: Path,
 ) -> None:
     """
-    The artifact-build boundary preserves qualified Variant identity.
+    The artifact-build boundary normalizes Variant identity.
 
-    A Model name and local Variant name supplied by the caller are forwarded
-    together while omitted Artifact Realization selection resolves to default.
+    A Model name and local Variant name supplied by the caller become the
+    decomposed runtime identity of Model plus realization/local Variant name.
+    No independent Variant coordinate is forwarded into planning.
     """
 
     requested: list[
         tuple[
             str,
-            str | None,
             str | None,
             str | None,
             Path | None,
@@ -278,7 +278,6 @@ def test_artifact_build_selects_model_with_local_variant_name(
         artifact_id: str,
         *,
         model_name: str | None = None,
-        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path | None = None,
     ):
@@ -286,7 +285,6 @@ def test_artifact_build_selects_model_with_local_variant_name(
             (
                 artifact_id,
                 model_name,
-                variant_name,
                 realization,
                 project_root,
             )
@@ -314,43 +312,31 @@ def test_artifact_build_selects_model_with_local_variant_name(
             "example",
             "shape",
             "ornament",
-            "default",
             tmp_path,
         )
     ]
 
 
-def test_artifact_build_selects_local_variant_without_realization(
+def test_artifact_build_selects_local_variant_as_realization_name(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    A local Variant selection remains independent of Artifact Realization.
+    A local Variant name becomes the runtime realization/local-name coordinate.
 
-    When no Artifact Realization is explicitly selected, ordinary artifact
-    planning uses the default Realization.
+    Variant selection does not create an independent runtime identity beside
+    Artifact, Model, and realization.
     """
 
-    requested: list[
-        tuple[
-            str | None,
-            str | None,
-        ]
-    ] = []
+    requested: list[tuple[str | None,]] = []
 
     def fake_create_build_plans(
         artifact_id: str,
         *,
-        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path | None = None,
     ):
-        requested.append(
-            (
-                variant_name,
-                realization,
-            )
-        )
+        requested.append((realization,))
 
         return ()
 
@@ -368,12 +354,7 @@ def test_artifact_build_selects_local_variant_without_realization(
 
     assert plans == ()
 
-    assert requested == [
-        (
-            "ornament",
-            "default",
-        )
-    ]
+    assert requested == [("ornament",)]
 
 
 def test_artifact_build_all_variants_plans_each_model_variant(
@@ -383,8 +364,8 @@ def test_artifact_build_all_variants_plans_each_model_variant(
     """
     All-Variant execution plans every Variant owned by the artifact's Model.
 
-    Each Variant is forwarded independently through variant_name rather
-    than represented as an Artifact Realization.
+    Each Variant is normalized to its Model plus realization/local Variant
+    name before entering ordinary build planning.
     """
 
     write_artifact_config(
@@ -400,7 +381,6 @@ def test_artifact_build_all_variants_plans_each_model_variant(
             str,
             str | None,
             str | None,
-            str | None,
             Path | None,
         ]
     ] = []
@@ -409,7 +389,6 @@ def test_artifact_build_all_variants_plans_each_model_variant(
         artifact_id: str,
         *,
         model_name: str | None = None,
-        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path | None = None,
     ):
@@ -417,7 +396,6 @@ def test_artifact_build_all_variants_plans_each_model_variant(
             (
                 artifact_id,
                 model_name,
-                variant_name,
                 realization,
                 project_root,
             )
@@ -444,98 +422,38 @@ def test_artifact_build_all_variants_plans_each_model_variant(
             "example",
             "shape",
             "default",
-            None,
             tmp_path,
         ),
         (
             "example",
             "shape",
             "ornament",
-            None,
             tmp_path,
         ),
     ]
 
 
-def test_artifact_build_all_variants_preserves_selected_realization(
-    monkeypatch,
+def test_artifact_build_rejects_realization_with_all_variants(
     tmp_path: Path,
 ) -> None:
     """
-    All-Variant selection is independent of Artifact Realization selection.
+    All-Variant selection cannot be combined with one local Variant name.
 
-    A selected Artifact Realization applies to every Model Variant rather
-    than being replaced by a Variant local name.
+    Historical realization is the runtime local-name component of Variant
+    identity, so selecting it together with all Variants would create two
+    competing Variant selections.
     """
 
-    write_artifact_config(
-        "example",
-        {
-            "realizations": {
-                "default": {
-                    "model": "shape",
-                },
-                "alternate": {
-                    "model": "shape",
-                },
-            },
-        },
-        project_root=tmp_path,
-    )
-
-    requested: list[
-        tuple[
-            str | None,
-            str | None,
-            str | None,
-        ]
-    ] = []
-
-    def fake_create_build_plans(
-        artifact_id: str,
-        *,
-        model_name: str | None = None,
-        variant_name: str | None = None,
-        realization: str | None = None,
-        project_root: Path | None = None,
+    with pytest.raises(
+        ValueError,
+        match="realization and all_variants cannot be used together",
     ):
-        requested.append(
-            (
-                model_name,
-                variant_name,
-                realization,
-            )
+        execute_artifact_build(
+            "example",
+            realization="alternate",
+            all_variants=True,
+            project_root=tmp_path,
         )
-
-        return ()
-
-    monkeypatch.setattr(
-        artifact_build,
-        "create_build_plans",
-        fake_create_build_plans,
-    )
-
-    plans = execute_artifact_build(
-        "example",
-        realization="alternate",
-        all_variants=True,
-        project_root=tmp_path,
-    )
-
-    assert plans == ()
-
-    assert requested == [
-        (
-            "shape",
-            "default",
-            "alternate",
-        ),
-        (
-            "shape",
-            "ornament",
-            "alternate",
-        ),
-    ]
 
 
 def test_artifact_build_planning_rejects_variant_with_all_variants(
@@ -703,7 +621,7 @@ def test_artifact_build_qualified_variant_uses_effective_variant_configuration(
 
     assert plan.resolver("model") == "shape"
     assert plan.resolver("variant") == "ornament"
-    assert plan.resolver("realization") == "default"
+    assert plan.resolver("realization") == "ornament"
 
     assert plan.resolver("shape_outer_ridge_width") == 2.0
     assert plan.resolver.source("shape_outer_ridge_width") == "variant 'ornament'"

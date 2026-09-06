@@ -397,65 +397,27 @@ def get_resolver(
     project_root: Path | str | None = None,
 ) -> Resolver:
     """
-    Construct the resolver for one artifact realization.
+    Construct the resolver for one artifact configuration.
 
-    artifact_id is always required.
+    A Variant is identified by its Model and local Variant name. For ordinary
+    single-model artifact configuration, the historical runtime realization
+    coordinate carries that local Variant name.
 
-    An artifact may use either the legacy single-realization
-    configuration form or explicit named realizations.
+    An artifact using ordinary configuration therefore behaves as though:
 
-    A legacy artifact implicitly defines exactly one realization named
-    "default":
+        model = "shape"
+        realization = "ornament"
 
-        model = "artwork"
-        variant = "default"
+    selects the ``shape.ornament`` Variant.
 
-        [parameters]
-        ...
+    When neither Variant nor realization is selected explicitly or configured
+    by the Artifact, the Model's default Variant is used and the runtime
+    realization name is "default".
 
-    An artifact may instead declare explicit realizations:
-
-        source = "source.png"
-
-        [parameters]
-        shared_parameter = "value"
-
-        [realizations.small]
-        model = "artwork"
-        variant = "default"
-
-        [realizations.small.parameters]
-        realization_parameter = "value"
-
-    Artifact-scoped configurable values are inherited by every explicit
-    realization. Realization-specific configurable values override
-    inherited artifact values.
-
-    Model and Variant identity may be selected explicitly by the caller.
-    Otherwise, they are obtained from the selected artifact Realization.
-
-    Explicit Variant selection is independent of artifact Realization
-    selection. For example:
-
-        get_resolver(
-            "nydeli",
-            model="shape",
-            variant="ornament",
-        )
-
-    selects the ``shape.ornament`` Variant while retaining the Artifact's
-    implicit ``default`` Realization.
-
-    During initial artifact setup, configuration may not yet contain a
-    Model. In that case setup may supply the selected Model explicitly:
-
-        get_resolver(
-            "nydeli",
-            model="artwork",
-        )
-
-    When no Variant is selected explicitly or configured by the Artifact,
-    the Model's default Variant is used.
+    Historical artifact configuration declaring explicit [realizations]
+    retains its existing behavior. Each named realization may select a Model,
+    select one of that Model's Variants, and provide realization-specific
+    parameter overrides.
 
     Configuration precedence is:
 
@@ -471,10 +433,8 @@ def get_resolver(
             <
         realization
 
-    For legacy artifact configuration, the implicit "default"
-    realization is the artifact configuration itself. It therefore
-    retains the existing artifact-level precedence behavior without
-    introducing a separate realization override scope.
+    For ordinary single-model artifact configuration, artifact-specific
+    parameter values are merged once at artifact scope.
 
     The current working directory is used as the project root unless
     project_root is explicitly supplied.
@@ -498,19 +458,15 @@ def get_resolver(
     colors = _colors_from_document(system_document)
 
     # -----------------------------------------------------
-    # Artifact and realization configuration
-    #
-    # Artifact Realization selection and Model Variant
-    # selection are independent coordinates.
-    #
-    # Legacy artifact configuration is normalized to an
-    # implicit realization named "default".
+    # Artifact configuration and runtime identity
     # -----------------------------------------------------
 
     artifact_document = load_artifact_config(
         artifact_id,
         project_root=root,
     )
+
+    explicit_realizations = "realizations" in artifact_document
 
     realization_name = _resolve_realization_name(
         artifact_document,
@@ -521,8 +477,6 @@ def get_resolver(
         artifact_document,
         realization_name,
     )
-
-    explicit_realizations = "realizations" in artifact_document
 
     configured_model = _artifact_model(
         realization_document,
@@ -538,7 +492,14 @@ def get_resolver(
         realization_document,
     )
 
-    variant_name = variant if variant is not None else configured_variant
+    if variant is not None:
+        variant_name = variant
+    elif configured_variant is not None:
+        variant_name = configured_variant
+    elif realization is not None and not explicit_realizations:
+        variant_name = realization_name
+    else:
+        variant_name = None
 
     # -----------------------------------------------------
     # Model configuration
@@ -565,7 +526,9 @@ def get_resolver(
     # Workspace configuration
     # -----------------------------------------------------
 
-    workspace_document = _load_optional_toml(root / "workspace.toml")
+    workspace_document = _load_optional_toml(
+        root / "workspace.toml",
+    )
 
     workspace_parameters = _parameters_from_document(
         workspace_document,
@@ -574,14 +537,6 @@ def get_resolver(
 
     # -----------------------------------------------------
     # Artifact and realization parameters
-    #
-    # Explicit named realizations inherit configurable values
-    # declared at artifact scope. Their own configurable values
-    # then override those inherited values.
-    #
-    # Legacy configuration already uses the artifact document as
-    # its implicit default realization, so it must be merged only
-    # once.
     # -----------------------------------------------------
 
     artifact_parameters = _artifact_parameters(
@@ -646,14 +601,20 @@ def get_resolver(
         )
 
     # -----------------------------------------------------
-    # Artifact, realization, Model, and Variant identity
+    # Artifact, Model, Variant, and runtime identity
     # -----------------------------------------------------
 
     values["artifact_id"] = artifact_id
     provenance["artifact_id"] = "artifact"
 
     values["realization"] = realization_name
-    provenance["realization"] = "artifact" if explicit_realizations else "implicit default"
+
+    if explicit_realizations:
+        provenance["realization"] = "artifact"
+    elif realization is not None:
+        provenance["realization"] = "selection"
+    else:
+        provenance["realization"] = "implicit default"
 
     values["model"] = model_name
 
@@ -672,6 +633,8 @@ def get_resolver(
         provenance["variant"] = (
             f"realization {realization_name!r}" if explicit_realizations else "artifact"
         )
+    elif realization is not None and not explicit_realizations:
+        provenance["variant"] = "selection"
     else:
         provenance["variant"] = "default"
 
@@ -1388,13 +1351,15 @@ def _resolve_realization_name(
     requested_realization: str | None,
 ) -> str:
     """
-    Resolve the realization selected for an artifact.
+    Resolve the runtime realization/local Variant name for an artifact.
 
-    Artifacts using the legacy single-model configuration implicitly
-    contain exactly one realization named "default".
+    For ordinary single-model artifact configuration, realization is the
+    local-name component of Variant identity. A missing selection therefore
+    selects "default", while an explicit name is preserved for Model-scoped
+    Variant resolution.
 
-    Artifacts declaring [realizations] expose exactly the realization
-    names declared in that table.
+    Artifacts declaring the historical [realizations] form retain their
+    existing artifact-scoped selection behavior.
     """
 
     if requested_realization is not None:
@@ -1406,12 +1371,7 @@ def _resolve_realization_name(
     realizations = artifact_document.get("realizations")
 
     if realizations is None:
-        realization_name = requested_realization if requested_realization is not None else "default"
-
-        if realization_name != "default":
-            raise ConfigError(f"unknown realization {realization_name!r}.")
-
-        return "default"
+        return requested_realization if requested_realization is not None else "default"
 
     if not isinstance(
         realizations,
@@ -1436,21 +1396,18 @@ def _realization_document(
     realization_name: str,
 ) -> Mapping[str, Any]:
     """
-    Return the configuration document for one realization.
+    Return the configuration document associated with runtime selection.
 
-    Legacy artifact configuration is treated as an implicit realization
-    named "default".
+    Ordinary single-model artifact configuration uses the artifact document
+    regardless of the selected local Variant name.
 
-    Explicit realization configuration is read from the artifact's
-    [realizations] table.
+    Historical explicit [realizations] configuration continues to select the
+    corresponding artifact-scoped realization document.
     """
 
     realizations = artifact_document.get("realizations")
 
     if realizations is None:
-        if realization_name != "default":
-            raise ConfigError(f"unknown realization {realization_name!r}.")
-
         return artifact_document
 
     if not isinstance(

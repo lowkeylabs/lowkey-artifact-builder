@@ -496,14 +496,14 @@ def test_variant_selection_is_model_scoped(
         )
 
 
-def test_resolver_may_select_variant_without_artifact_realization(
+def test_resolver_may_select_variant_through_realization_local_name(
     tmp_path: Path,
 ) -> None:
     """
-    Variant selection is independent of artifact Realization selection.
+    Historical realization carries the local-name component of Variant identity.
 
-    A local Variant name may be selected explicitly for an Artifact
-    without requiring an Artifact Realization having the same name.
+    Selecting realization "ornament" for the Shape Model therefore resolves
+    the shape.ornament Variant rather than an independent Artifact Realization.
     """
 
     write_artifact_config(
@@ -517,14 +517,13 @@ def test_resolver_may_select_variant_without_artifact_realization(
     resolver = get_resolver(
         "example",
         model="shape",
-        variant="ornament",
+        realization="ornament",
         project_root=tmp_path,
     )
 
     assert resolver("model") == "shape"
     assert resolver("variant") == "ornament"
+    assert resolver("realization") == "ornament"
 
     assert resolver("shape_outer_ridge_width") == 2.0
     assert resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
-
-    assert resolver("realization") == "default"

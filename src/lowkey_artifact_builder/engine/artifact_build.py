@@ -57,32 +57,35 @@ def create_artifact_build_plans(
     """
     Create the selected BuildPlans for one configured artifact.
 
-    Model, Variant, all-Variant, and Artifact Realization selection remain
-    distinct coordinates.
+    A Variant is identified by its Model and local Variant name. The
+    historical runtime realization coordinate carries that local Variant
+    name.
 
     A caller may select one Variant or all Variants, but not both.
 
     When all_variants is true, every Variant owned by the applicable Model
-    is planned independently. Variant enumeration does not create or select
-    Artifact Realizations.
+    is planned independently using its local name as the runtime realization
+    coordinate.
 
-    Otherwise ordinary build planning preserves explicit Model and Variant
-    selection. An explicit Artifact Realization is preserved; when none is
-    selected, ordinary build planning selects the default Artifact
-    Realization.
+    Otherwise an explicit Variant local name becomes the realization used
+    for planning. When neither Variant nor realization is selected, ordinary
+    build planning selects the default realization.
     """
 
     if variant_name is not None and all_variants:
         raise ValueError("variant_name and all_variants cannot be used together")
+
+    if realization is not None and all_variants:
+        raise ValueError("realization and all_variants cannot be used together")
+
+    if variant_name is not None and realization is not None:
+        raise ValueError("variant_name and realization cannot be used together")
 
     if all_variants:
         resolver_options = {}
 
         if model_name is not None:
             resolver_options["model"] = model_name
-
-        if realization is not None:
-            resolver_options["realization"] = realization
 
         resolver = get_resolver(
             artifact_id,
@@ -104,8 +107,7 @@ def create_artifact_build_plans(
             for plan in create_build_plans(
                 artifact_id,
                 model_name=resolved_model_name,
-                variant_name=variant.name,
-                realization=realization,
+                realization=variant.name,
                 project_root=project_root,
             )
         )
@@ -115,10 +117,13 @@ def create_artifact_build_plans(
     if model_name is not None:
         planning_options["model_name"] = model_name
 
-    if variant_name is not None:
-        planning_options["variant_name"] = variant_name
-
-    planning_options["realization"] = realization if realization is not None else "default"
+    planning_options["realization"] = (
+        variant_name
+        if variant_name is not None
+        else realization
+        if realization is not None
+        else "default"
+    )
 
     return create_build_plans(
         artifact_id,

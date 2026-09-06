@@ -1505,7 +1505,7 @@ def test_build_dry_run_qualified_variant_uses_effective_variant_configuration(
 
     for plan in plans:
         assert plan.model_name == "shape"
-        assert plan.realization_name == "default"
+        assert plan.realization_name == "ornament"
         assert plan.resolver("variant") == "ornament"
         assert plan.resolver("shape_outer_ridge_width") == 2.0
         assert plan.resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
@@ -1648,7 +1648,7 @@ def test_build_all_variants_dry_run_selects_all_model_variants(
         ),
         (
             "shape",
-            "default",
+            "ornament",
             "ornament",
             2.0,
             "variant 'ornament'",
