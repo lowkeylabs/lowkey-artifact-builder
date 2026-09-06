@@ -189,11 +189,16 @@ def run(
 
 def query_all(
     svg: Path,
+    *,
+    millimeters: bool = True,
 ) -> dict[str, dict[str, float]]:
     """
     Return bounding boxes for all objects in an SVG.
 
-    Bounding boxes are returned in millimeters.
+    By default, bounding boxes are returned in millimeters.
+
+    When ``millimeters`` is false, bounding boxes are returned in the
+    SVG/CSS coordinate units reported directly by Inkscape.
     """
 
     stdout = run(
@@ -215,17 +220,22 @@ def query_all(
         object_id, x, y, width, height = fields
 
         try:
-            bounds[object_id] = {
-                "x": px_to_mm(float(x)),
-                "y": px_to_mm(float(y)),
-                "width": px_to_mm(float(width)),
-                "height": px_to_mm(float(height)),
+            values = {
+                "x": float(x),
+                "y": float(y),
+                "width": float(width),
+                "height": float(height),
             }
 
         except ValueError as exc:
             raise InkscapeError(
                 f"Inkscape returned an invalid object bounding box for {object_id!r}: {line}"
             ) from exc
+
+        if millimeters:
+            values = {name: px_to_mm(value) for name, value in values.items()}
+
+        bounds[object_id] = values
 
     return bounds
 

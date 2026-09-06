@@ -592,4 +592,3 @@ The objective is not maximum test coverage or maximum test count.
 The objective is a test suite that gives strong confidence in intended
 behavior while allowing the architecture and Models to evolve without
 unnecessary friction.
-

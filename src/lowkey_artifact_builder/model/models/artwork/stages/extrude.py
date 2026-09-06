@@ -34,6 +34,10 @@ from typing import Any
 from lowkey_artifact_builder.engine import (
     StageContext,
 )
+from lowkey_artifact_builder.tools.inkscape import (
+    InkscapeError,
+    query_all,
+)
 from lowkey_artifact_builder.tools.openscad import (
     OpenSCADError,
     render_stl_source,
@@ -100,10 +104,15 @@ class VectorManifest:
     Registered vector geometry consumed by the extrusion stage.
 
     registered_extent describes the common square coordinate system
-    shared by every vector layer.
+    shared by the envelope and every vector layer.
+
+    envelope identifies the registered occupied Artwork envelope used
+    to dimensionalize standalone Artwork.
     """
 
     registered_extent: int
+
+    envelope: Path
 
     layers: tuple[
         VectorLayer,
@@ -125,12 +134,13 @@ def execute(
     The stage consumes:
 
         vector.manifest
-            Manifest describing the registered vector color layers and
-            their common registered coordinate extent.
+            Manifest describing the registered vector color layers,
+            their common registered coordinate extent, and the registered
+            occupied Artwork envelope.
 
         artwork_size
-            Physical width and height of the dimensionalized artwork in
-            millimeters.
+            Maximum physical X/Y extent of the occupied Artwork envelope
+            in millimeters.
 
         artwork_raise
             Physical extrusion height of the artwork geometry in
@@ -179,6 +189,10 @@ def execute(
             vector_manifest,
         )
 
+        envelope_bounds = _envelope_bounds(
+            vector_products.envelope,
+        )
+
         outputs: list[
             tuple[
                 VectorLayer,
@@ -192,6 +206,7 @@ def execute(
             source = _build_scad(
                 layer.path,
                 registered_extent=vector_products.registered_extent,
+                envelope_bounds=envelope_bounds,
                 artwork_size=artwork_size,
                 artwork_raise=artwork_raise,
             )
@@ -335,7 +350,10 @@ def _load_vector_manifest(
     Load registered vector products from the vector manifest.
 
     registered_extent describes the common square coordinate system
-    shared by every vector layer.
+    shared by the registered envelope and every vector layer.
+
+    envelope identifies the registered occupied Artwork envelope used
+    by standalone extrusion for physical sizing and centering.
 
     Artifact color identity and RGB remain distinct from the physical
     printer identity and RGB assigned during rasterization.
@@ -360,6 +378,27 @@ def _load_vector_manifest(
             "registered_extent",
         ),
     )
+
+    envelope_filename = data.get(
+        "envelope",
+    )
+
+    if (
+        not isinstance(
+            envelope_filename,
+            str,
+        )
+        or not envelope_filename
+    ):
+        raise ExtrudeError("Vector manifest does not contain a valid envelope path.")
+
+    envelope = manifest.parent / envelope_filename
+
+    if not envelope.is_file():
+        raise ExtrudeError(f"Vector envelope does not exist: {envelope}")
+
+    if envelope.suffix.lower() != ".svg":
+        raise ExtrudeError(f"Vector envelope must be an SVG file: {envelope}")
 
     products = data.get(
         "products",
@@ -579,7 +618,60 @@ def _load_vector_manifest(
 
     return VectorManifest(
         registered_extent=registered_extent,
+        envelope=envelope,
         layers=tuple(result),
+    )
+
+
+def _envelope_bounds(
+    envelope: Path,
+) -> tuple[
+    float,
+    float,
+    float,
+    float,
+]:
+    """
+    Return the occupied bounds of a registered Artwork envelope.
+
+    The result is:
+
+        min_x, min_y, max_x, max_y
+
+    Bounds are taken across all geometry in the registered envelope,
+    rather than from the SVG page or registered coordinate extent.
+    """
+
+    try:
+        objects = query_all(
+            envelope,
+            millimeters=False,
+        )
+
+    except InkscapeError as exc:
+        raise ExtrudeError(
+            f"Could not determine registered Artwork envelope bounds: {envelope}"
+        ) from exc
+
+    if not objects:
+        raise ExtrudeError(f"Registered Artwork envelope contains no geometry: {envelope}")
+
+    min_x = min(bounds["x"] for bounds in objects.values())
+
+    min_y = min(bounds["y"] for bounds in objects.values())
+
+    max_x = max(bounds["x"] + bounds["width"] for bounds in objects.values())
+
+    max_y = max(bounds["y"] + bounds["height"] for bounds in objects.values())
+
+    if max_x <= min_x or max_y <= min_y:
+        raise ExtrudeError(f"Registered Artwork envelope has invalid bounds: {envelope}")
+
+    return (
+        min_x,
+        min_y,
+        max_x,
+        max_y,
     )
 
 
@@ -626,6 +718,12 @@ def _build_scad(
     svg: Path,
     *,
     registered_extent: int,
+    envelope_bounds: tuple[
+        float,
+        float,
+        float,
+        float,
+    ],
     artwork_size: float,
     artwork_raise: float,
 ) -> str:
@@ -636,13 +734,10 @@ def _build_scad(
     Their individual geometry bounds intentionally differ and must not
     be fitted or centered independently.
 
-    The common registered coordinate extent is scaled uniformly to the
-    configured physical artwork size. The resulting physical artwork
-    coordinate system is then translated by half the artwork size so
-    that it is centered at the model origin.
-
-    Identical scaling and translation are applied to every color layer,
-    preserving registration between layers.
+    The occupied Artwork envelope determines standalone physical size.
+    One common uniform scale and translation are applied to every color
+    layer so that the maximum physical X/Y extent of the envelope equals
+    artwork_size while preserving registration between layers.
     """
 
     svg = svg.resolve()
@@ -655,8 +750,50 @@ def _build_scad(
         registered_extent,
     )
 
+    (
+        min_x,
+        min_y,
+        max_x,
+        max_y,
+    ) = envelope_bounds
+
+    envelope_width = max_x - min_x
+    envelope_height = max_y - min_y
+
+    envelope_extent = max(
+        envelope_width,
+        envelope_height,
+    )
+
+    if envelope_extent <= 0:
+        raise ExtrudeError("Artwork envelope extent must be greater than zero.")
+
+    envelope_center_x = (min_x + max_x) / 2
+
+    envelope_center_y = (min_y + max_y) / 2
+
     registered_extent_scad = str(
         registered_extent,
+    )
+
+    envelope_width_scad = _scad_number(
+        envelope_width,
+    )
+
+    envelope_height_scad = _scad_number(
+        envelope_height,
+    )
+
+    envelope_extent_scad = _scad_number(
+        envelope_extent,
+    )
+
+    envelope_center_x_scad = _scad_number(
+        envelope_center_x,
+    )
+
+    envelope_center_y_scad = _scad_number(
+        envelope_center_y,
     )
 
     artwork_size_scad = _scad_number(
@@ -678,6 +815,13 @@ def _build_scad(
 //
 
 registered_extent = {registered_extent_scad};
+
+envelope_width = {envelope_width_scad};
+envelope_height = {envelope_height_scad};
+envelope_extent = {envelope_extent_scad};
+envelope_center_x = {envelope_center_x_scad};
+envelope_center_y = {envelope_center_y_scad};
+
 artwork_size = {artwork_size_scad};
 artwork_raise = {artwork_raise_scad};
 
@@ -688,18 +832,18 @@ artwork_svg = {artwork_svg};
 // Artwork solid
 // ---------------------------------------------------------
 
-translate(
+scale(
     [
-        -artwork_size / 2,
-        -artwork_size / 2,
-        0
+        artwork_size / envelope_extent,
+        artwork_size / envelope_extent,
+        1
     ]
 )
-    scale(
+    translate(
         [
-            artwork_size / registered_extent,
-            artwork_size / registered_extent,
-            1
+            -envelope_center_x,
+            -envelope_center_y,
+            0
         ]
     )
         linear_extrude(

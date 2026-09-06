@@ -733,4 +733,3 @@ The guiding principle for this plan is:
 > Preserve the architecture, clarify Model semantics where necessary, correct
 > demonstrated behavior, and extend the system only as much as the requested
 > capabilities require.
-

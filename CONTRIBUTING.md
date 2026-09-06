@@ -106,4 +106,3 @@ Contributors retain copyright in their contributions unless otherwise
 agreed in writing.
 
 See `LICENSE`, `NOTICE`, and `COPYRIGHT` for additional information.
-

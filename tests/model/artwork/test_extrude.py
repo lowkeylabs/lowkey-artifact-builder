@@ -131,6 +131,9 @@ def _write_vector_manifest(
 ) -> None:
     """
     Write a minimal registered vector manifest.
+
+    The registered envelope occupies the complete registered extent unless
+    a test constructs a more specific manifest explicitly.
     """
 
     path.parent.mkdir(
@@ -138,10 +141,30 @@ def _write_vector_manifest(
         exist_ok=True,
     )
 
+    envelope = path.parent / "envelope.svg"
+
+    envelope.write_text(
+        f"""
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 {registered_extent} {registered_extent}"
+        >
+            <rect
+                x="0"
+                y="0"
+                width="{registered_extent}"
+                height="{registered_extent}"
+            />
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
     path.write_text(
         json.dumps(
             {
                 "registered_extent": registered_extent,
+                "envelope": envelope.name,
                 "products": products,
             }
         ),
@@ -599,16 +622,202 @@ def test_extrude_preserves_artifact_and_printer_color_semantics(
 # =========================================================
 
 
-def test_build_scad_fits_registered_geometry_to_physical_size(
+def test_extrude_sizes_offset_occupied_envelope_to_artwork_size(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Standalone extrusion sizes the occupied Artwork envelope rather than
+    the complete registered coordinate extent.
+
+    The occupied envelope may be non-square and offset within the common
+    registered coordinate system. Every color layer receives one common
+    transform that sizes and centers that envelope while preserving layer
+    registration.
+    """
+
+    vector_directory = tmp_path / "vector"
+
+    vector_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    envelope = vector_directory / "envelope.svg"
+
+    envelope.write_text(
+        """
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 100 100"
+        >
+            <rect
+                x="20"
+                y="30"
+                width="40"
+                height="20"
+            />
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    first_svg = vector_directory / "color-1.svg"
+    second_svg = vector_directory / "color-2.svg"
+
+    first_svg.write_text(
+        """
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 100 100"
+        >
+            <rect
+                x="20"
+                y="30"
+                width="20"
+                height="20"
+            />
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    second_svg.write_text(
+        """
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 100 100"
+        >
+            <rect
+                x="40"
+                y="30"
+                width="20"
+                height="20"
+            />
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+
+    vector_manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 100,
+                "envelope": envelope.name,
+                "products": [
+                    _product(
+                        index=1,
+                        path=first_svg.name,
+                        artifact_color_index=1,
+                        artifact_rgb=(
+                            255,
+                            0,
+                            0,
+                        ),
+                        printer_color_name="red",
+                        printer_rgb=(
+                            255,
+                            0,
+                            0,
+                        ),
+                        distance=0.0,
+                    ),
+                    _product(
+                        index=2,
+                        path=second_svg.name,
+                        artifact_color_index=2,
+                        artifact_rgb=(
+                            0,
+                            0,
+                            255,
+                        ),
+                        printer_color_name="blue",
+                        printer_rgb=(
+                            0,
+                            0,
+                            255,
+                        ),
+                        distance=0.0,
+                    ),
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_size": 100.0,
+                "artwork_raise": 1.0,
+            }
+        ),
+    )
+
+    rendered_sources: list[str] = []
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        rendered_sources.append(source)
+
+        _fake_render_stl_source(
+            source,
+            output,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    assert len(rendered_sources) == 2
+
+    for source in rendered_sources:
+        assert "envelope_width = 40;" in source
+        assert "envelope_height = 20;" in source
+        assert "envelope_extent = 40;" in source
+        assert "envelope_center_x = 40;" in source
+        assert "envelope_center_y = 40;" in source
+        assert "artwork_size / envelope_extent" in source
+
+    first_transform = rendered_sources[0].replace(
+        str(first_svg.resolve()),
+        "<artwork-svg>",
+    )
+    second_transform = rendered_sources[1].replace(
+        str(second_svg.resolve()),
+        "<artwork-svg>",
+    )
+
+    assert first_transform == second_transform
+
+
+def test_build_scad_fits_occupied_envelope_to_physical_size(
     tmp_path: Path,
 ) -> None:
     """
-    Extrusion fits registered vector geometry to the configured
+    Extrusion fits the occupied Artwork envelope to the configured
     physical artwork size.
 
-    Registered vector coordinates are dimensionless until extrusion.
-    The consuming extrusion stage therefore scales the common vector
-    coordinate system to artwork_size before creating physical geometry.
+    Registered vector coordinates remain dimensionless until extrusion.
+    The consuming extrusion stage uniformly scales the common coordinate
+    system according to the occupied envelope rather than the complete
+    registered extent.
     """
 
     svg = tmp_path / "layer.svg"
@@ -633,14 +842,24 @@ def test_build_scad_fits_registered_geometry_to_physical_size(
     source = extrude._build_scad(
         svg,
         registered_extent=20,
+        envelope_bounds=(
+            0.0,
+            0.0,
+            20.0,
+            20.0,
+        ),
         artwork_size=150.0,
         artwork_raise=1.0,
     )
 
     assert "registered_extent = 20;" in source
+    assert "envelope_width = 20;" in source
+    assert "envelope_height = 20;" in source
+    assert "envelope_extent = 20;" in source
+    assert "envelope_center_x = 10;" in source
+    assert "envelope_center_y = 10;" in source
     assert "artwork_size = 150;" in source
-    assert "scale(" in source
-    assert "artwork_size / registered_extent" in source
+    assert "artwork_size / envelope_extent" in source
 
 
 def test_build_scad_introduces_physical_z_from_artwork_raise(
@@ -675,6 +894,12 @@ def test_build_scad_introduces_physical_z_from_artwork_raise(
     source = extrude._build_scad(
         svg,
         registered_extent=20,
+        envelope_bounds=(
+            0.0,
+            0.0,
+            20.0,
+            20.0,
+        ),
         artwork_size=150.0,
         artwork_raise=1.25,
     )
@@ -704,6 +929,12 @@ def test_build_scad_applies_one_physical_xy_scale_independent_of_z_raise(
     low = extrude._build_scad(
         svg,
         registered_extent=25,
+        envelope_bounds=(
+            0.0,
+            0.0,
+            25.0,
+            25.0,
+        ),
         artwork_size=100.0,
         artwork_raise=0.5,
     )
@@ -711,12 +942,18 @@ def test_build_scad_applies_one_physical_xy_scale_independent_of_z_raise(
     high = extrude._build_scad(
         svg,
         registered_extent=25,
+        envelope_bounds=(
+            0.0,
+            0.0,
+            25.0,
+            25.0,
+        ),
         artwork_size=100.0,
         artwork_raise=2.0,
     )
 
-    assert "artwork_size / registered_extent" in low
-    assert "artwork_size / registered_extent" in high
+    assert "artwork_size / envelope_extent" in low
+    assert "artwork_size / envelope_extent" in high
 
     assert "artwork_raise = 0.5;" in low
     assert "artwork_raise = 2;" in high
