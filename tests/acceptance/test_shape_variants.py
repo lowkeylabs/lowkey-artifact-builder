@@ -8,6 +8,7 @@ and execution boundaries.
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 
+import shutil
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
@@ -17,7 +18,10 @@ from click.testing import CliRunner
 
 from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.config import write_artifact_config
-from lowkey_artifact_builder.engine import create_build_plans
+from lowkey_artifact_builder.engine import (
+    create_build_plans,
+    execute_dependency_build,
+)
 from lowkey_artifact_builder.formats.threemf import CORE_NS
 
 
@@ -343,3 +347,190 @@ def test_shape_variants_have_distinct_persistent_product_identity(
 
     assert "multi-variant-shape-base-white" in ornament_names
     assert "multi-variant-shape-ridge-white" in ornament_names
+
+
+@pytest.mark.slow
+def test_shape_ornament_variant_reuses_current_artwork_product(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    shape.ornament reuses an already-current registered Artwork Product.
+
+    Switching from the default Shape Variant to the specialized ornament
+    Variant rebuilds Shape manufacturing without reexecuting the registered
+    Artwork stages on which Shape depends.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    # -----------------------------------------------------
+    # Create canonical Artwork input
+    # -----------------------------------------------------
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
+
+    assert fixture_source.is_file()
+
+    artwork_directory = project_root / "artifacts" / "variant-source-artwork"
+
+    artwork_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_input = artwork_directory / "artifact.png"
+
+    shutil.copy2(
+        fixture_source,
+        artwork_input,
+    )
+
+    # -----------------------------------------------------
+    # Configure reusable Artwork producer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "variant-source-artwork",
+        {
+            "model": "artwork",
+            "source": str(
+                artwork_input,
+            ),
+        },
+        project_root=project_root,
+    )
+
+    artwork_dependency = {
+        "manifest": {
+            "model": "artwork",
+            "stage": "vector",
+            "product": "manifest",
+            "artifact": "variant-source-artwork",
+            "realization": "default",
+        },
+    }
+
+    # -----------------------------------------------------
+    # Configure Shape consumer
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "variant-artwork-shape",
+        {
+            "model": "shape",
+            "product_dependencies": artwork_dependency,
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Build default Shape and realize registered Artwork
+    # -----------------------------------------------------
+
+    default_plan = create_build_plans(
+        "variant-artwork-shape",
+        model_name="shape",
+        variant_name="default",
+        project_root=project_root,
+    )[0]
+
+    execute_dependency_build(
+        default_plan,
+    )
+
+    artwork_root = project_root / "artifacts" / "variant-source-artwork" / "artwork" / "default"
+
+    assert (artwork_root / "10-prepare" / "trace.svg").is_file()
+    assert (artwork_root / "20-raster" / "products.json").is_file()
+    assert (artwork_root / "30-vector" / "products.json").is_file()
+
+    # Shape requires only registered Artwork, not standalone
+    # Artwork manufacturing.
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+    # -----------------------------------------------------
+    # Build specialized Shape Variant
+    # -----------------------------------------------------
+
+    events = []
+
+    ornament_plan = create_build_plans(
+        "variant-artwork-shape",
+        model_name="shape",
+        variant_name="ornament",
+        project_root=project_root,
+    )[0]
+
+    assert ornament_plan.resolver("variant") == "ornament"
+    assert ornament_plan.resolver("shape_outer_ridge_width") == 2.0
+    assert ornament_plan.resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
+
+    execute_dependency_build(
+        ornament_plan,
+        event_sink=events.append,
+    )
+
+    # -----------------------------------------------------
+    # Registered Artwork is reused
+    # -----------------------------------------------------
+
+    artwork_started = tuple(
+        event.stage_name
+        for event in events
+        if event.kind == "stage.started"
+        and event.artifact_id == "variant-source-artwork"
+        and event.model_name == "artwork"
+    )
+
+    assert artwork_started == ()
+
+    # -----------------------------------------------------
+    # Specialized Shape manufacturing executes
+    # -----------------------------------------------------
+
+    shape_started = tuple(
+        event.stage_name
+        for event in events
+        if event.kind == "stage.started"
+        and event.artifact_id == "variant-artwork-shape"
+        and event.model_name == "shape"
+    )
+
+    assert shape_started == (
+        "structure",
+        "compose",
+        "extrude",
+        "package",
+    )
+
+    # -----------------------------------------------------
+    # Specialized Variant owns its persistent output
+    # -----------------------------------------------------
+
+    ornament_artifact = (
+        project_root
+        / "artifacts"
+        / "variant-artwork-shape"
+        / "shape"
+        / "ornament"
+        / "40-package"
+        / "artifact.3mf"
+    )
+
+    assert ornament_artifact.is_file()
+    assert ornament_artifact.stat().st_size > 0
+    assert zipfile.is_zipfile(
+        ornament_artifact,
+    )
+
+    # Standalone Artwork manufacturing remains unnecessary.
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
