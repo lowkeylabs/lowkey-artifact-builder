@@ -1891,3 +1891,88 @@ def test_execute_build_does_not_publish_existing_package_when_package_is_not_exe
     assert canonical.read_bytes() == (b"old packaged 3mf")
 
     assert not published.exists()
+
+
+def test_execute_build_publishes_package_using_model_and_variant_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    test_resolver,
+) -> None:
+    """
+    Package publication identifies the Model and Variant in its filename.
+
+    Publication naming is derived from BuildPlan identity rather than from
+    the canonical Stage Product path.
+    """
+
+    artifact_dir = tmp_path / "artifacts" / "example"
+
+    canonical = artifact_dir / "shape" / "ornament" / "40-package" / "artifact.3mf"
+
+    product_spec = ProductSpec(
+        name="artifact",
+        path="artifact.3mf",
+    )
+
+    package_stage = PlannedStage(
+        spec=StageSpec(
+            id=40,
+            name="package",
+            products=(product_spec,),
+        ),
+        inputs=(),
+        products=(
+            PlannedProduct(
+                spec=product_spec,
+                path=canonical,
+            ),
+        ),
+    )
+
+    plan = BuildPlan(
+        artifact_id="example",
+        model=ModelSpec(
+            name="shape",
+            title="Shape",
+            stages=(package_stage.spec,),
+        ),
+        realization_name="ornament",
+        resolver=test_resolver,
+        project_root=tmp_path,
+        artifact_dir=artifact_dir,
+        stages=(package_stage,),
+    )
+
+    def implementation(
+        context: StageContext,
+    ) -> None:
+        context.output(
+            "artifact",
+        ).write_bytes(b"ornament 3mf")
+
+    registry = StageRegistry()
+
+    registry.register(
+        "shape",
+        "package",
+        implementation,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.stage.build_stage_registry",
+        lambda: registry,
+    )
+
+    execute_build(
+        plan,
+    )
+
+    published = artifact_dir / "shape.ornament.3mf"
+
+    assert canonical.is_file()
+
+    assert canonical.read_bytes() == (b"ornament 3mf")
+
+    assert published.is_file()
+
+    assert published.read_bytes() == (b"ornament 3mf")
