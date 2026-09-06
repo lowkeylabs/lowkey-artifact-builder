@@ -109,8 +109,8 @@ def _display_artifact(
 
     The artifact must already be defined.
 
-    Model and Variant may carry the decomposed identity of a selected
-    qualified Variant.
+    A selected Variant is identified by its Model and local Variant name.
+    The historical runtime realization coordinate carries that local name.
     """
 
     try:
@@ -123,7 +123,7 @@ def _display_artifact(
             resolver = get_resolver(
                 artifact_id,
                 model=model_name,
-                variant=variant_name,
+                realization=variant_name,
                 project_root=project_root,
             )
 

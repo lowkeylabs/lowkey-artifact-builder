@@ -1363,8 +1363,9 @@ def test_build_all_variants_dry_run_delegates_selection_to_artifact_planning(
     All-Variant dry-run delegates Variant enumeration to the artifact-level
     engine planning boundary.
 
-    The CLI preserves Model, Variant, and Artifact Realization selection as
-    independent coordinates rather than enumerating Model Variants itself.
+    The CLI does not enumerate Model Variants itself. The artifact-planning
+    boundary owns normalization of each Model-scoped Variant to its runtime
+    local-name identity.
     """
 
     first_plan = object()

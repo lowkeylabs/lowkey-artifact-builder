@@ -725,3 +725,137 @@ def test_explicit_shape_default_variant_preserves_default_manufacturing(
 
     assert "explicit-default-base-white" in explicit_names
     assert "explicit-default-ridge-white" not in explicit_names
+
+
+def test_show_and_build_dry_run_use_same_qualified_variant_configuration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Inspection and build resolve a qualified Variant to the same effective
+    Model-scoped configuration.
+    """
+
+    import lowkey_artifact_builder.cli.cmd_build as cmd_build
+    import lowkey_artifact_builder.cli.cmd_show as cmd_show
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    write_artifact_config(
+        "example",
+        {
+            "model": "shape",
+        },
+        project_root=project_root,
+    )
+
+    shown: list[
+        tuple[
+            str,
+            str,
+            str,
+            float,
+            str,
+        ]
+    ] = []
+
+    built: list[
+        tuple[
+            str,
+            str,
+            str,
+            float,
+            str,
+        ]
+    ] = []
+
+    original_get_resolver = cmd_show.get_resolver
+
+    def capture_show_resolver(*args, **kwargs):
+        resolver = original_get_resolver(
+            *args,
+            **kwargs,
+        )
+
+        shown.append(
+            (
+                resolver("model"),
+                resolver("realization"),
+                resolver("variant"),
+                resolver("shape_outer_ridge_width"),
+                resolver.source("shape_outer_ridge_width"),
+            )
+        )
+
+        return resolver
+
+    monkeypatch.setattr(
+        cmd_show,
+        "get_resolver",
+        capture_show_resolver,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_build_plan",
+        lambda plan: built.append(
+            (
+                plan.model_name,
+                plan.realization_name,
+                plan.resolver("variant"),
+                plan.resolver("shape_outer_ridge_width"),
+                plan.resolver.source("shape_outer_ridge_width"),
+            )
+        ),
+    )
+
+    runner = CliRunner()
+
+    show_result = runner.invoke(
+        cli,
+        [
+            "show",
+            "example",
+            "--variant",
+            "shape.ornament",
+        ],
+    )
+
+    assert show_result.exit_code == 0, (
+        f"Shape ornament show failed:\n{show_result.output}\n{show_result.exception!r}"
+    )
+
+    build_result = runner.invoke(
+        cli,
+        [
+            "build",
+            "example",
+            "--variant",
+            "shape.ornament",
+            "--dry-run",
+        ],
+    )
+
+    assert build_result.exit_code == 0, (
+        f"Shape ornament dry-run failed:\n{build_result.output}\n{build_result.exception!r}"
+    )
+
+    expected = (
+        "shape",
+        "ornament",
+        "ornament",
+        2.0,
+        "variant 'ornament'",
+    )
+
+    assert shown == [
+        expected,
+    ]
+
+    assert built == [
+        expected,
+    ]

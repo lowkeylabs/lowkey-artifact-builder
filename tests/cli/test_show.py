@@ -219,8 +219,11 @@ def test_show_resolves_qualified_variant_configuration(
     tmp_path: Path,
 ) -> None:
     """
-    Artifact inspection resolves a qualified Variant using its Model
-    and local Variant name.
+    Artifact inspection normalizes a qualified Variant to its Model and
+    runtime local-name identity.
+
+    The historical realization coordinate carries the local Variant name;
+    Variant and realization are not independent selection coordinates.
     """
 
     resolved: list[
@@ -302,8 +305,8 @@ def test_show_resolves_qualified_variant_configuration(
         (
             "skippy",
             "shape",
-            "ornament",
             None,
+            "ornament",
             tmp_path,
         )
     ]
