@@ -670,10 +670,11 @@ def get_realization_names(
     project_root: Path | str | None = None,
 ) -> tuple[str, ...]:
     """
-    Return the realizations configured for one artifact.
+    Return the runtime realization names for one artifact.
 
-    Legacy single-realization artifact configuration exposes exactly
-    one implicit realization named "default".
+    For ordinary single-model artifact configuration, the runtime
+    realization name is the configured Variant's local name. When no
+    Variant is configured, the implicit local name is "default".
 
     Artifacts declaring explicit realizations return those realization
     names in artifact.toml declaration order.
@@ -691,7 +692,11 @@ def get_realization_names(
     realizations = artifact_document.get("realizations")
 
     if realizations is None:
-        return ("default",)
+        variant_name = _artifact_variant(
+            artifact_document,
+        )
+
+        return (variant_name if variant_name is not None else "default",)
 
     if not isinstance(
         realizations,

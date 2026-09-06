@@ -141,15 +141,13 @@ def example_model(
 # =========================================================
 
 
-def test_artifact_without_realizations_uses_implicit_default_realization(
+def test_artifact_without_realizations_uses_variant_local_name_as_realization(
     tmp_path: Path,
     example_model: ModelSpec,
 ) -> None:
     """
-    Existing single-model artifact configuration remains valid.
-
-    An artifact without explicit realization configuration represents
-    one realization named "default".
+    Ordinary single-model Artifact configuration uses the configured
+    Variant's local name as its runtime realization identity.
     """
 
     _write_workspace(tmp_path)
@@ -167,12 +165,12 @@ def test_artifact_without_realizations_uses_implicit_default_realization(
 
     resolver = get_resolver(
         "example",
-        realization="default",
         project_root=tmp_path,
     )
 
     assert resolver("model") == example_model.name
     assert resolver("variant") == "ridged"
+    assert resolver("realization") == "ridged"
 
     assert resolver("ridge") is True
     assert resolver("ridge_width") == 4.0
@@ -723,3 +721,26 @@ def test_get_realization_names_returns_implicit_default(
         "example",
         project_root=tmp_path,
     ) == ("default",)
+
+
+def test_get_realization_names_returns_configured_variant_local_name(
+    tmp_path: Path,
+) -> None:
+    """
+    Ordinary Artifact configuration exposes the configured Variant's
+    local name through realization discovery.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "model": "artwork",
+            "variant": "ornament",
+        },
+        project_root=tmp_path,
+    )
+
+    assert get_realization_names(
+        "example",
+        project_root=tmp_path,
+    ) == ("ornament",)
