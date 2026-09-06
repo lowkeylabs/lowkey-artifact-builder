@@ -1,13 +1,16 @@
 """
-Tests for artifact realization configuration.
+Tests for runtime realization configuration compatibility.
 
-A realization is one configured invocation of a model. Realizations are
-artifact-scoped and select a model, a model-scoped variant, and optional
+Ordinary single-Model Artifact configuration uses the selected Variant's
+local name as the historical runtime realization coordinate.
+
+Explicit named realizations remain a supported compatibility form. Their
+artifact-scoped names may remain distinct from the local name of the
+Model-scoped Variant they select, and they may provide additional
 parameter overrides.
 
-These tests establish realization configuration semantics only.
-Planning, filesystem placement, and execution belong to later Phase 5
-changes.
+These tests establish both normalized ordinary Variant identity and the
+explicit historical realization compatibility boundary.
 """
 # File: tests/config/test_realizations.py
 # Copyright 2026 LowKeyLabs LLC

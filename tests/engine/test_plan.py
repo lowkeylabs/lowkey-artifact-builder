@@ -633,11 +633,10 @@ def test_build_plan_has_default_realization(
     artwork_plan,
 ) -> None:
     """
-    A planned artifact has an explicit realization identity.
+    A default Variant has an explicit runtime realization identity.
 
-    Until artifact configuration supports named realizations, the
-    existing single-realization behavior is represented by the
-    realization named "default".
+    Ordinary Model behavior uses the local Variant name "default" as its
+    historical runtime realization coordinate.
     """
 
     plan = artwork_plan(
@@ -656,9 +655,9 @@ def test_default_realization_owns_planned_products(
     """
     Planned products are stored beneath the BuildPlan realization.
 
-    This characterizes the relationship between realization identity
-    and canonical product storage without yet introducing configurable
-    realization names.
+    This characterizes the relationship between the historical runtime
+    realization coordinate and canonical product storage for the default
+    Variant.
     """
 
     plan = artwork_plan(

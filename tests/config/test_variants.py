@@ -5,8 +5,8 @@ Variants are reusable named Model-scoped configurations expressed as
 sparse parameter overrides over Model defaults.
 
 These tests establish how Variant selection participates in configuration
-resolution. Runtime Realization identity, filesystem placement, planning,
-and public Variant selection belong to later phases.
+resolution, including the decomposed runtime realization identity used by
+ordinary single-Model Artifact configuration.
 """
 # File: tests/config/test_variants.py
 # Copyright 2026 LowKeyLabs LLC

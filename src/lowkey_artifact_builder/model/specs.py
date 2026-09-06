@@ -16,7 +16,8 @@ A model consists of:
         An optional capability or behavior supported by a model.
 
     Variant
-        A named, model-scoped parameter preset.
+        A named, Model-scoped sparse parameter override set representing
+        a reusable configuration of that Model.
 
     Stage
         One resumable step in the model workflow.
@@ -59,9 +60,11 @@ model might support features such as:
 A feature may enable a stage, modify the behavior of an existing stage,
 or do both.
 
-Variants describe reusable named parameter presets belonging to a
-model. A variant does not identify a particular artifact realization
-and does not resolve configuration itself.
+Variants describe reusable named Model-scoped configurations expressed
+as sparse parameter overrides over Model defaults. A Variant identifies
+reusable Model configuration; applying that Variant to an Artifact,
+with any Artifact-specific customization, produces a Realization.
+A Variant does not resolve configuration itself.
 
 Execution, artifact configuration, configuration resolution, filesystem
 path resolution, feature interpretation, dependency resolution, stage

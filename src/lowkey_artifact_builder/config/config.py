@@ -10,14 +10,16 @@ Configuration is resolved through increasingly specific scopes:
         Model-specific parameter defaults.
 
     model-defined variant
-        Reusable model-scoped parameter presets.
+        Reusable Model-scoped sparse parameter overrides applied over
+        Model defaults.
 
     workspace.toml
         Optional project-level parameter overrides.
 
-    artifact realization
-        One configured invocation of a model, selecting a model,
-        variant, and optional parameter overrides.
+    artifact configuration
+        Artifact-specific Variant selection and parameter overrides.
+        Historical explicit realizations may additionally provide a
+        distinct artifact-scoped runtime realization name.
 
 Effective configured parameter precedence is:
 
@@ -33,10 +35,12 @@ Effective configured parameter precedence is:
         >
     system
 
-Legacy artifact configuration without explicit realizations is treated
-as a single implicit realization named "default". Its artifact-level
-configuration occupies the realization scope, preserving existing
-configuration behavior.
+Ordinary artifact configuration without explicit realizations uses the
+selected Variant's local name as the historical runtime realization
+coordinate. When no specialized Variant is selected, the Model's
+"default" Variant therefore uses the runtime realization name "default".
+Artifact-level configuration continues to occupy the later customization
+scope, preserving established configuration precedence.
 
 Models may additionally define derived values in derived.py.
 
@@ -57,13 +61,19 @@ Artifact configuration is stored at:
 
     artifacts/<artifact_id>/artifact.toml
 
-An artifact may use the legacy single-realization form or declare
-explicit named realizations. Realization names are artifact-scoped.
-Each realization selects a model, may select one of that model's
-variants, and may provide realization-specific parameter overrides.
+An artifact may use ordinary single-Model configuration or declare
+explicit named realizations. In ordinary configuration, Variant identity
+is represented by the Model and the selected Variant's local name, which
+also serves as the historical runtime realization coordinate.
 
-Artifact TOML files are intentionally sparse. Only artifact-specific
-realization choices and parameter overrides need to be persisted.
+Explicit named realizations remain a supported compatibility form.
+Their names are artifact-scoped and may remain distinct from the local
+name of the Model-scoped Variant they select. They may also provide
+realization-specific parameter overrides.
+
+Artifact TOML files are intentionally sparse. Only Artifact-specific
+Variant selection, compatibility realization choices, and parameter
+overrides need to be persisted.
 
 Artifact TOML files are read and written with tomlkit so that comments,
 ordering, whitespace, and other presentation details survive interactive
