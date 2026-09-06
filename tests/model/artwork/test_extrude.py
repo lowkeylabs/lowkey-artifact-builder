@@ -204,6 +204,64 @@ def _fake_render_stl_source(
     )
 
 
+def _stl_bounds(
+    path: Path,
+) -> tuple[
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+]:
+    """
+    Return physical X/Y/Z bounds from an ASCII STL product.
+    """
+
+    coordinates: list[
+        tuple[
+            float,
+            float,
+            float,
+        ]
+    ] = []
+
+    for line in path.read_text(
+        encoding="utf-8",
+    ).splitlines():
+        stripped = line.strip()
+
+        if not stripped.startswith(
+            "vertex ",
+        ):
+            continue
+
+        _, x, y, z = stripped.split()
+
+        coordinates.append(
+            (
+                float(x),
+                float(y),
+                float(z),
+            )
+        )
+
+    assert coordinates
+
+    xs = [point[0] for point in coordinates]
+    ys = [point[1] for point in coordinates]
+    zs = [point[2] for point in coordinates]
+
+    return (
+        min(xs),
+        max(xs),
+        min(ys),
+        max(ys),
+        min(zs),
+        max(zs),
+    )
+
+
 # =========================================================
 # Storage-boundary tests
 # =========================================================
@@ -622,18 +680,20 @@ def test_extrude_preserves_artifact_and_printer_color_semantics(
 # =========================================================
 
 
-def test_extrude_sizes_offset_occupied_envelope_to_artwork_size(
+def test_extrude_sizes_and_centers_occupied_envelope_in_physical_space(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Standalone extrusion sizes the occupied Artwork envelope rather than
-    the complete registered coordinate extent.
+    Standalone Artwork extrusion dimensionalizes the occupied envelope.
 
-    The occupied envelope may be non-square and offset within the common
-    registered coordinate system. Every color layer receives one common
-    transform that sizes and centers that envelope while preserving layer
-    registration.
+    The registered Artwork may occupy a non-square, offset region of its
+    common coordinate system. Extrusion must uniformly scale that occupied
+    region so its maximum X/Y extent equals artwork_size, center it at the
+    physical origin, and preserve registration between color layers.
+
+    This test intentionally renders real STL products through OpenSCAD.
+    Inspecting generated SCAD alone is insufficient because SVG import unit
+    interpretation is part of the physical dimensionalization boundary.
     """
 
     vector_directory = tmp_path / "vector"
@@ -758,53 +818,88 @@ def test_extrude_sizes_offset_occupied_envelope_to_artwork_size(
         },
         resolver=StubResolver(
             {
-                "artwork_size": 100.0,
+                "artwork_size": 120.0,
                 "artwork_raise": 1.0,
             }
         ),
     )
 
-    rendered_sources: list[str] = []
-
-    def fake_render_stl_source(
-        source: str,
-        output: Path,
-    ) -> None:
-        rendered_sources.append(source)
-
-        _fake_render_stl_source(
-            source,
-            output,
-        )
-
-    monkeypatch.setattr(
-        extrude,
-        "render_stl_source",
-        fake_render_stl_source,
-    )
-
     extrude.execute(context)  # type: ignore[arg-type]
 
-    assert len(rendered_sources) == 2
+    first_stl = extrude_manifest.parent / "color-1.stl"
+    second_stl = extrude_manifest.parent / "color-2.stl"
 
-    for source in rendered_sources:
-        assert "envelope_width = 40;" in source
-        assert "envelope_height = 20;" in source
-        assert "envelope_extent = 40;" in source
-        assert "envelope_center_x = 40;" in source
-        assert "envelope_center_y = 40;" in source
-        assert "artwork_size / envelope_extent" in source
+    first_bounds = _stl_bounds(first_stl)
+    second_bounds = _stl_bounds(second_stl)
 
-    first_transform = rendered_sources[0].replace(
-        str(first_svg.resolve()),
-        "<artwork-svg>",
+    first_min_x, first_max_x, first_min_y, first_max_y, first_min_z, first_max_z = first_bounds
+    (
+        second_min_x,
+        second_max_x,
+        second_min_y,
+        second_max_y,
+        second_min_z,
+        second_max_z,
+    ) = second_bounds
+
+    min_x = min(
+        first_min_x,
+        second_min_x,
     )
-    second_transform = rendered_sources[1].replace(
-        str(second_svg.resolve()),
-        "<artwork-svg>",
+    max_x = max(
+        first_max_x,
+        second_max_x,
+    )
+    min_y = min(
+        first_min_y,
+        second_min_y,
+    )
+    max_y = max(
+        first_max_y,
+        second_max_y,
     )
 
-    assert first_transform == second_transform
+    assert max_x - min_x == pytest.approx(
+        120.0,
+        abs=0.01,
+    )
+
+    assert max_y - min_y == pytest.approx(
+        60.0,
+        abs=0.01,
+    )
+
+    assert (min_x + max_x) / 2.0 == pytest.approx(
+        0.0,
+        abs=0.01,
+    )
+
+    assert (min_y + max_y) / 2.0 == pytest.approx(
+        0.0,
+        abs=0.01,
+    )
+
+    assert first_max_x == pytest.approx(
+        second_min_x,
+        abs=0.01,
+    )
+
+    assert first_min_z == pytest.approx(
+        0.0,
+        abs=0.01,
+    )
+    assert second_min_z == pytest.approx(
+        0.0,
+        abs=0.01,
+    )
+    assert first_max_z == pytest.approx(
+        1.0,
+        abs=0.01,
+    )
+    assert second_max_z == pytest.approx(
+        1.0,
+        abs=0.01,
+    )
 
 
 def test_build_scad_fits_occupied_envelope_to_physical_size(
@@ -857,9 +952,10 @@ def test_build_scad_fits_occupied_envelope_to_physical_size(
     assert "envelope_height = 20;" in source
     assert "envelope_extent = 20;" in source
     assert "envelope_center_x = 10;" in source
-    assert "envelope_center_y = 10;" in source
+    assert "envelope_openscad_center_y = 10;" in source
     assert "artwork_size = 150;" in source
     assert "artwork_size / envelope_extent" in source
+    assert "dpi = 25.4" in source
 
 
 def test_build_scad_introduces_physical_z_from_artwork_raise(

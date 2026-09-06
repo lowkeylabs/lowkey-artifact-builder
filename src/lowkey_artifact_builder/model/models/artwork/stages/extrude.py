@@ -738,6 +738,15 @@ def _build_scad(
     One common uniform scale and translation are applied to every color
     layer so that the maximum physical X/Y extent of the envelope equals
     artwork_size while preserving registration between layers.
+
+    Registered Artwork uses SVG coordinates, where positive Y points
+    downward. OpenSCAD SVG import presents that geometry in an
+    upward-positive coordinate system. The occupied envelope Y center is
+    therefore converted into OpenSCAD coordinates before centering.
+
+    SVG import uses a fixed DPI only to establish the SVG coordinate-unit
+    convention. Physical Artwork size remains determined by artwork_size
+    and the occupied registered envelope.
     """
 
     svg = svg.resolve()
@@ -772,6 +781,8 @@ def _build_scad(
 
     envelope_center_y = (min_y + max_y) / 2
 
+    envelope_openscad_center_y = registered_extent - envelope_center_y
+
     registered_extent_scad = str(
         registered_extent,
     )
@@ -792,8 +803,8 @@ def _build_scad(
         envelope_center_x,
     )
 
-    envelope_center_y_scad = _scad_number(
-        envelope_center_y,
+    envelope_openscad_center_y_scad = _scad_number(
+        envelope_openscad_center_y,
     )
 
     artwork_size_scad = _scad_number(
@@ -820,7 +831,7 @@ envelope_width = {envelope_width_scad};
 envelope_height = {envelope_height_scad};
 envelope_extent = {envelope_extent_scad};
 envelope_center_x = {envelope_center_x_scad};
-envelope_center_y = {envelope_center_y_scad};
+envelope_openscad_center_y = {envelope_openscad_center_y_scad};
 
 artwork_size = {artwork_size_scad};
 artwork_raise = {artwork_raise_scad};
@@ -842,7 +853,7 @@ scale(
     translate(
         [
             -envelope_center_x,
-            -envelope_center_y,
+            -envelope_openscad_center_y,
             0
         ]
     )
@@ -852,7 +863,8 @@ scale(
         )
             import(
                 artwork_svg,
-                center = false
+                center = false,
+                dpi = 25.4
             );
 """
 
