@@ -527,3 +527,63 @@ def test_resolver_may_select_variant_through_realization_local_name(
 
     assert resolver("shape_outer_ridge_width") == 2.0
     assert resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
+
+
+def test_configured_variant_uses_local_name_as_runtime_realization(
+    tmp_path: Path,
+    variant_model: ModelSpec,
+) -> None:
+    """
+    An Artifact-configured Variant uses its local Variant name as the
+    decomposed runtime realization identity.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "model": variant_model.name,
+            "variant": "ridged",
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        project_root=tmp_path,
+    )
+
+    assert resolver("model") == variant_model.name
+    assert resolver("variant") == "ridged"
+    assert resolver("realization") == "ridged"
+
+
+def test_configured_default_variant_uses_default_runtime_realization(
+    tmp_path: Path,
+    variant_model: ModelSpec,
+) -> None:
+    """
+    An explicitly configured default Variant preserves the single
+    decomposed default identity.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "model": variant_model.name,
+            "variant": "default",
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        project_root=tmp_path,
+    )
+
+    assert resolver("model") == variant_model.name
+    assert resolver("variant") == "default"
+    assert resolver("realization") == "default"
