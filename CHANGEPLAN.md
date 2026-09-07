@@ -1,1175 +1,697 @@
 # Change Plan
 
-This change plan captures the remaining Artifact configuration and Model
-capability work.
+This change plan captures the remaining work required to align the repository
+with `ARCHITECTURE.md` and the applicable Model `DEFINITION.md` files.
 
-The intended work is evolutionary.
+The permanent specifications are authoritative.
 
-`ARCHITECTURE.md` and the applicable Model `DEFINITION.md` files are the
-permanent specifications. This change plan is subordinate to those
-specifications. When language or assumptions in this plan conflict with the
-permanent specifications, the permanent specifications rule.
-
-Implementation should follow:
+Implementation follows:
 
 ```text
 prompts/TEST_DRIVEN_DEVELOPMENT.md
 ```
 
-Tests encountered during this work should be curated according to that policy.
-Do not create a separate broad test-cleanup effort.
+The Artifact / Variant / Realization configuration refactor is complete and is
+intentionally omitted from this plan.
+
+The current work extends the Artwork Model with two Model-owned optional
+Features:
+
+```text
+Loop
+Base
+```
+
+These Features are implemented independently before their composition is
+tested.
+
+The guiding architectural rules are:
+
+* a Feature is an optional capability of a Model;
+* intrinsic Model properties are not Features merely because parameters control
+  their behavior;
+* Feature participation is determined by effective Model parameter values;
+* Model-specific Feature semantics remain owned by the Model;
+* derived parameter values may depend on other resolved parameters or
+  Model-owned derived information;
+* a Feature need not participate in every representation produced by its Model;
+* registered Artwork remains reusable and dimensionless;
+* standalone Artwork Features do not become part of registered Artwork merely
+  because another Model consumes that Artwork;
+* arbitrary Realizations may configure Model Features directly without requiring
+  specialized Variants; and
+* generic configuration, planning, and execution infrastructure must not acquire
+  Artwork-specific Feature semantics.
+
+Do not introduce a separate generic Feature-selection mechanism.
 
 ---
 
-# Phase 0 — Clarify the Permanent Architecture
+# Phase 1 — Artwork Loop Feature
 
-Phase 0 establishes the permanent Artifact, Variant, Realization, Stage, and
-Product relationships required by the remaining work.
+Implement the Artwork Loop Feature according to
+`src/lowkey_artifact_builder/model/models/artwork/DEFINITION.md`.
 
-`ARCHITECTURE.md` is authoritative for these semantics.
+Loop is implemented first because it establishes the Artwork-owned
+attachment-color semantics subsequently reused by the Base Feature.
 
-## 0.1 Preserve Model, Feature, and Parameter Semantics
+Implementation should proceed through focused TDD slices. Do not implement the
+entire Feature before establishing its individual behavioral boundaries.
 
-A Model declares:
+## 1.1 Loop Configuration and Participation
 
-* inputs;
-* parameters;
-* Features;
-* Variants;
-* Stages;
-* Products; and
-* dependencies.
-
-A Feature is a Model-owned optional capability or behavior.
-
-Feature participation may be determined by effective parameter values according
-to Model-owned Feature semantics.
-
-Generic configuration, graph, planning, and execution infrastructure must not
-contain Model-specific Feature semantics.
-
-Do not introduce:
-
-* a separate generic Feature-selection mechanism; or
-* a parameter-ownership hierarchy beneath Features.
-
-Parameters remain Model-owned configuration.
-
-## 0.2 Preserve Variant Semantics
-
-A Variant is a named, Model-scoped reusable configuration expressed as sparse
-parameter overrides over Model defaults.
-
-A Variant:
-
-* belongs to exactly one Model;
-* has a local name;
-* has a qualified identity such as `shape.ornament`;
-* may have a description;
-* supplies sparse parameter overrides;
-* does not contain or independently select Features; and
-* does not define the limits of what the Model can construct.
-
-Variants provide convenient starting configurations and representative catalog
-examples of useful things that can be constructed from a Model's capabilities.
-
-The `default` Variant always exists and may contain no parameter overrides
-because Model parameter defaults establish ordinary Model behavior.
-
-A new Variant should not be required merely to use capabilities already
-provided by the Model.
-
-## 0.3 Preserve Artifact Semantics
-
-An Artifact is the durable source and configuration context from which builds
-may be realized.
-
-An Artifact commonly associates an Artifact identifier with source material
-such as a base PNG and with Artifact-specific configuration.
-
-`artifact.toml` is the user/developer-facing durable build manifest for that
-Artifact.
-
-An Artifact is not itself a Stage Product.
-
-The set of Realizations available for an Artifact is not limited to
-Realizations explicitly serialized in `artifact.toml`.
-
-## 0.4 Preserve Realization Semantics
-
-A Realization is a named, Artifact-scoped application of a Variant.
-
-A Realization identifies one concrete configured build of an Artifact.
-
-Each Realization:
-
-* has an Artifact-local name;
-* originates from exactly one qualified Variant;
-* therefore has exactly one Model;
-* may provide sparse Realization-specific parameter overrides;
-* may bind dependencies as required by the dependency architecture;
-* has independently resolved configuration;
-* has independent build state; and
-* has its own Stage Products.
-
-For every Model Variant available to an Artifact, the system provides a
-corresponding default Realization without requiring an explicit Realization
-declaration in `artifact.toml`.
-
-The canonical default Realization name is:
-
-```text
-<model>_<variant-local-name>
-```
-
-For example:
-
-```text
-artwork.default   -> artwork_default
-shape.default     -> shape_default
-shape.ornament    -> shape_ornament
-```
-
-A default Realization applies its Variant without Artifact-specific
-Realization overrides unless the Artifact explicitly customizes that
-Realization.
-
-Artifact configuration may also define additional named Realizations.
-
-Multiple Realizations of the same Artifact may originate from the same Variant
-while differing in configuration.
-
-For example, an Artifact may have:
-
-```text
-shape_ornament
-    Variant: shape.ornament
-    shape_size: Variant value
-
-ornament-120
-    Variant: shape.ornament
-    shape_size: 120
-
-ornament-150
-    Variant: shape.ornament
-    shape_size: 150
-```
-
-The first may be the automatically derived default Realization. The other two
-may be additional Artifact-defined Realizations.
-
-The term Realization reflects the role of realizing or actualizing an Artifact
-through a particular configured application of a Model Variant.
-
-Realization must remain distinct from Variant.
-
-## 0.5 Preserve Effective Realization Discovery
-
-The effective Realization set for an Artifact consists of:
-
-```text
-default Realizations derived from available Variants
-        +
-Artifact customization of those default Realizations
-        +
-additional Artifact-defined Realizations
-```
-
-Omission of a default Realization from `artifact.toml` does not remove it.
-
-A minimal Artifact such as:
-
-```toml
-source = "customer.png"
-```
-
-may therefore have an effective Realization set such as:
-
-```text
-artwork_default
-shape_default
-shape_ornament
-```
-
-when the corresponding Variants are available.
-
-Artifact configuration should not be required merely to restate the Model-owned
-Variant catalog.
-
-## 0.6 Preserve Stage and Product Semantics
-
-A Stage is a unit of build execution.
-
-A Product is a persistent output produced by a Stage.
-
-A Realization's build executes the Stages required by the requested dependency
-closure, and those Stages produce Products.
-
-For example, `artifact.3mf` is a Product. It may be the Product ultimately
-desired from a particular build, but it is not architecturally privileged over
-other Products.
-
-Keep these concepts distinct:
-
-```text
-Feature
-    = Model capability
-
-Parameter
-    = configuration controlling Model behavior and Feature participation
-
-Variant
-    = reusable named Model configuration and catalog starting point
-
-Artifact
-    = durable source and configuration context
-
-Realization
-    = named Artifact-scoped configured application of a Variant
-
-Stage
-    = unit of build execution
-
-Product
-    = persistent output of a Stage
-```
-
-## 0.7 Preserve Configuration Resolution
-
-Preserve the architectural resolution model:
-
-```text
-Model parameter defaults
-        ↓
-Variant parameter overrides
-        ↓
-Realization parameter overrides
-        ↓
-effective Realization configuration
-```
-
-A Realization starts from a Variant but is not constrained to the exact
-configuration represented by that Variant.
-
-For example, an additional Realization may start from `shape.default` and
-override whatever Model parameters are necessary to construct a configuration
-not represented by a named Variant.
-
-If such a configuration later becomes sufficiently useful or common, it may be
-added as another reusable Variant.
-
-The same resolver framework should determine effective configuration regardless
-of whether values originate from Model defaults, Variant overrides, or
-Realization overrides.
-
-## 0.8 Preserve Realization and Product Identity
-
-Persistent build state and Product namespaces are scoped by Realization, not by
-Variant.
-
-For example:
-
-```text
-artifacts/<artifact-id>/shape/shape_ornament/...
-artifacts/<artifact-id>/shape/ornament-120/...
-artifacts/<artifact-id>/shape/ornament-150/...
-```
-
-may represent independent build namespaces even though all three Realizations
-select:
-
-```text
-shape.ornament
-```
-
-Preserve logical Product identity based on:
-
-```text
-Artifact / Model / Realization / Stage / Product
-```
-
-Variant identity provides configuration provenance. It does not replace
-Realization identity in persistent Product namespaces.
-
-## 0.9 Preserve Product Architecture
-
-Preserve the following architectural invariants:
-
-* persistent Stage outputs remain first-class Products;
-* no packaged 3MF becomes an architecturally privileged final Product;
-* logical Product identity remains independent of filesystem location;
-* dependency-driven execution remains authoritative;
-* build only what is required by the requested Product dependency closure; and
-* convenience publication of a Product does not establish another Product
-  identity.
-
-## 0.10 Completion
-
-Phase 0 is complete when `ARCHITECTURE.md` clearly and consistently establishes:
-
-* Artifact as the durable source/configuration context;
-* Variant as reusable Model configuration;
-* Realization as the Artifact-scoped configured application of a Variant;
-* a default Realization for every available Variant;
-* canonical default Realization naming;
-* effective Realization discovery independent of explicit Artifact declarations;
-* the ability to customize a default Realization;
-* the ability to define additional Realizations;
-* the ability for multiple Realizations to select the same Variant;
-* Realization-scoped build and Product identity;
-* Stage and Product semantics;
-* configuration precedence through Model, Variant, and Realization values; and
-* the role of Variants as useful catalog configurations rather than limits on
-  Model capability.
-
-No production implementation is required merely to complete Phase 0.
-
-With the corresponding permanent semantics present in `ARCHITECTURE.md`, this
-phase is complete.
-
----
-
-# Phase 1 — Simplify Artifact Realization Configuration
-
-Establish the effective Realization catalog and a simple, durable
-user/developer-facing `artifact.toml` format.
-
-The common case should require as little Artifact configuration as possible.
-
-A valid Artifact may consist only of:
-
-```toml
-source = "customer.png"
-```
-
-The system must still discover and be capable of building the default
-Realization corresponding to every available Model Variant.
-
-Explicit Artifact configuration exists to customize those default Realizations
-or to define additional Artifact-specific Realizations. It must not be required
-merely to reproduce the Model-owned Variant catalog.
-
-Preserve the existing resolver, planning, Stage, Product, and dependency
-architecture wherever possible.
-
-## 1.1 Derive Default Realizations
-
-Establish the effective default Realization catalog from the registered Model
-Variant catalog.
-
-For every available qualified Variant:
-
-```text
-<model>.<variant-local-name>
-```
-
-derive a default Realization named:
-
-```text
-<model>_<variant-local-name>
-```
-
-For example:
-
-```text
-artwork.default   -> artwork_default
-shape.default     -> shape_default
-shape.ornament    -> shape_ornament
-```
-
-The default Realization:
-
-* exists without an explicit `[realizations.*]` table;
-* selects the Variant from which it was derived;
-* therefore selects that Variant's Model;
-* begins with no Artifact-specific Realization parameter overrides;
-* resolves configuration through ordinary Model and Variant precedence;
-* has its own Realization identity;
-* has independently addressable build state; and
-* participates in ordinary planning and Product resolution.
-
-Do not serialize redundant Realization declarations merely to make the Variant
-catalog discoverable.
-
-Do not treat the absence of a `[realizations]` table as the absence of
-Realizations.
-
-The effective Realization catalog should be derived from authoritative Model
-and Variant registration rather than duplicated in Artifact configuration.
-
-## 1.2 Customize Default Realizations
-
-Allow Artifact configuration to customize a derived default Realization.
-
-For example:
-
-```toml
-source = "customer.png"
-
-[realizations.shape_ornament]
-shape_size = 120
-```
-
-customizes the automatically derived:
-
-```text
-shape_ornament -> shape.ornament
-```
-
-Realization.
-
-The table does not create a second `shape_ornament` Realization.
-
-It applies Artifact-specific Realization configuration to the existing default
-Realization.
-
-The selected Variant is already implied by the canonical default Realization
-identity and therefore need not be redundantly stated.
-
-Effective configuration remains:
-
-```text
-Shape Model defaults
-        ↓
-shape.ornament overrides
-        ↓
-shape_ornament Realization overrides
-        ↓
-effective configuration
-```
-
-A default Realization with no Artifact customization must behave the same
-whether or not an empty customization table is present.
-
-Reserved Realization metadata keys must remain explicit.
-
-Other scalar configuration keys must correspond to parameters recognized by
-the Realization's Model rather than being accepted as arbitrary unvalidated
-data.
-
-## 1.3 Define Additional Named Realizations
-
-Artifact configuration may define additional named Realizations that do not
-correspond to canonical default Realization names.
-
-For example:
-
-```toml
-source = "customer.png"
-
-[realizations.ornament-120]
-variant = "shape.ornament"
-shape_size = 120
-shape_top_text = "Happy Holidays"
-shape_bottom_text = "2026"
-
-[realizations.ornament-150]
-variant = "shape.ornament"
-shape_size = 150
-shape_top_text = "Happy Holidays"
-shape_bottom_text = "2026"
-```
-
-defines two additional Realizations derived from the same Variant.
-
-For an additional Realization, the `variant` value identifies the reusable
-starting configuration:
-
-```text
-shape.ornament
-```
-
-The qualified Variant identity identifies both the Model and the Variant's
-local name.
-
-Do not redundantly require a separate `model` field.
-
-Realization-specific parameter overrides should be represented directly as
-key-value pairs in the Realization table.
-
-Do not require an additional:
-
-```toml
-[realizations.<name>.parameters]
-```
-
-table merely to distinguish parameter overrides.
-
-An additional Realization selects a Variant as its starting configuration. It
-does not modify that Variant.
-
-For example:
-
-```toml
-[realizations.special]
-variant = "shape.default"
-shape_size = 137
-shape_outer_ridge_width = 3
-```
-
-defines:
-
-```text
-Shape Model defaults
-        ↓
-shape.default overrides
-        ↓
-special Realization overrides
-```
-
-It does not define another Shape Variant.
-
-A named specialized Variant is not required to construct a Realization when
-the Model already exposes the necessary capabilities through parameters.
-
-If a useful configuration becomes common or representative enough to deserve a
-reusable name, it may later be added to the Model's Variant catalog.
-
-## 1.4 Establish Canonical artifact.toml I/O
-
-Treat Artifact TOML loading and writing as the public serialization boundary.
-
-The public representation does not need to mirror internal Python object
-structure.
-
-The canonical Artifact grammar should support all of these cases.
-
-Minimal Artifact:
-
-```toml
-source = "customer.png"
-```
-
-Customization of a default Realization:
-
-```toml
-source = "customer.png"
-
-[realizations.shape_ornament]
-shape_size = 120
-```
-
-Additional Realization:
-
-```toml
-source = "customer.png"
-
-[realizations.large-ornament]
-variant = "shape.ornament"
-shape_size = 150
-```
-
-Combined configuration:
-
-```toml
-source = "customer.png"
-
-[realizations.shape_ornament]
-shape_size = 120
-
-[realizations.large-ornament]
-variant = "shape.ornament"
-shape_size = 150
-```
-
-The resulting effective Realization set may include:
-
-```text
-artwork_default
-shape_default
-shape_ornament
-large-ornament
-```
-
-depending on the registered Variant catalog.
-
-Update the existing Artifact TOML loading and writing boundary as necessary so
-it translates between:
-
-```text
-minimal flat user-facing artifact.toml
-        ↕
-effective Model / Variant / Realization configuration
-```
-
-Prefer containing serialization concerns at this boundary.
-
-Do not propagate a new parameter-resolution hierarchy through the resolver,
-planner, or Model implementation merely because the public serialization has
-changed.
-
-Preserve:
-
-```text
-Model defaults
-        ↓
-Variant overrides
-        ↓
-Realization overrides
-        ↓
-effective configuration
-```
-
-Changing `artifact.toml` syntax must not create another parameter-resolution
-mechanism.
-
-When writing canonical Artifact configuration, do not emit derived default
-Realizations that contain no Artifact-specific configuration.
-
-## 1.5 Preserve Realization Identity and Persistent Build State
-
-Ensure that actual Realization identity, rather than Variant local name, flows
-through runtime paths where the distinction matters.
-
-For an Artifact with:
-
-```text
-shape_ornament
-ornament-120
-ornament-150
-```
-
-where all three select:
-
-```text
-shape.ornament
-```
-
-persistent build state must remain independently addressable, for example:
-
-```text
-artifacts/<artifact-id>/shape/shape_ornament/...
-artifacts/<artifact-id>/shape/ornament-120/...
-artifacts/<artifact-id>/shape/ornament-150/...
-```
-
-Each Realization may independently contain Products such as:
-
-```text
-.../shape_ornament/.../artifact.3mf
-.../ornament-120/.../artifact.3mf
-.../ornament-150/.../artifact.3mf
-```
-
-The Variant local name must not be substituted for Realization identity where
-doing so would cause distinct Realizations of the same Variant to share
-configuration, build state, or Product namespaces.
-
-Preserve the existing logical Product identity model based on Artifact, Model,
-Realization, Stage, and Product coordinates.
-
-Do not add Variant as another persistent Product-identity coordinate merely to
-record configuration provenance.
-
-## 1.6 Integrate Effective Realizations with Planning and Build Selection
-
-Default Realizations must be operational Realizations, not merely configuration
-metadata.
-
-Planning and build selection must operate over the effective Realization set.
-
-A source-only Artifact such as:
-
-```toml
-source = "customer.png"
-```
-
-must be capable of building its derived default Realizations without requiring
-the user to add redundant Realization declarations.
-
-Given available Variants such as:
-
-```text
-artwork.default
-shape.default
-shape.ornament
-```
-
-the corresponding effective Realizations:
-
-```text
-artwork_default
-shape_default
-shape_ornament
-```
-
-must be individually addressable by the build/planning architecture.
-
-Operations that intentionally request all applicable Realizations or all
-available Variant-derived constructions must include the derived default
-Realizations.
-
-Preserve dependency-driven planning.
-
-Do not eagerly execute every Realization merely because it is discoverable.
-
-A request for one Realization should still build only the Product dependency
-closure required by that request.
-
-Where one Realization depends on Products from another Model or Realization,
-preserve the existing dependency architecture rather than adding special-case
-execution ordering for default Realizations.
-
-Do not introduce a second build-planning mechanism for implicit Realizations.
-
-## 1.7 Package Publication
-
-Preserve the completed package-publication behavior while ensuring published
-filenames distinguish Realizations rather than merely Variants.
-
-Default and additional Realizations based on the same Variant must be
-publishable independently.
-
-For example:
-
-```text
-shape.shape_ornament.3mf
-shape.ornament-120.3mf
-shape.ornament-150.3mf
-```
-
-may represent convenience copies of corresponding canonical package Products,
-subject to the existing publication naming convention.
-
-Published files remain convenience copies.
-
-They are not:
-
-* additional Products;
-* dependency targets;
-* replacements for canonical Stage Products; or
-* evidence that packaged Products are architecturally privileged.
-
-Publication naming must derive from actual Realization identity and must not
-collide merely because multiple Realizations originate from the same Variant.
-
-Do not change publication naming beyond what is required to preserve
-Realization identity and collision freedom.
-
-## 1.8 Artifact Creation
-
-Update:
-
-```text
-artifact create
-```
-
-to emit canonical Artifact configuration without redundantly serializing the
-derived default Realization catalog.
-
-When no Artifact-specific customization is required, creation should be able to
-produce the minimal form:
-
-```toml
-source = "customer.png"
-```
-
-When a default Realization is customized, creation should serialize only the
-necessary Artifact-specific customization.
-
-When an additional Realization is requested, creation should serialize its
-qualified Variant selection and flat Realization parameter overrides.
-
-Do not redesign interactive or non-interactive Artifact creation beyond what is
-required to emit and consume the canonical configuration.
-
-## 1.9 TDD and Integration
-
-Treat effective Realization discovery and the public Artifact configuration
-grammar as intentional contracts.
-
-Proceed in coherent behavioral slices.
-
-### Slice A — Default Realization Discovery
-
-Tests should first establish that:
-
-* every available Variant contributes one default Realization;
-* the `default` Variant participates exactly like any other Variant;
-* canonical default Realization names follow
-  `<model>_<variant-local-name>`;
-* a source-only Artifact discovers its default Realizations;
-* a default Realization resolves the correct Model;
-* a default Realization resolves the correct Variant;
-* Model parameter defaults are inherited;
-* Variant parameter overrides are inherited; and
-* derived default Realizations do not require explicit Artifact declarations.
-
-Use synthetic Models and Variants where the behavior under test belongs to
-generic infrastructure.
-
-### Slice B — Default Realization Customization
-
-Tests should establish that:
-
-* a canonical default Realization may be explicitly customized;
-* customization does not create a duplicate Realization;
-* the Variant need not be redundantly specified for that customization;
-* direct flat parameter overrides are accepted;
-* Realization overrides take precedence over Variant values;
-* unspecified Variant and Model values continue to be inherited;
-* an unknown parameter is rejected according to existing configuration
-  validation semantics; and
-* configuration does not leak between Realizations.
-
-### Slice C — Additional Realizations
-
-Tests should establish that:
-
-* an additional named Realization may select a qualified Variant;
-* Model identity is implied by that qualified Variant;
-* multiple additional Realizations may select the same Variant;
-* default and additional Realizations may select the same Variant;
-* each retains independent effective configuration; and
-* invalid or unknown Variant selections are rejected.
-
-### Slice D — Serialization
-
-Tests should establish that:
-
-* a source-only Artifact loads correctly;
-* default Realizations need not be serialized;
-* default Realization customizations use the canonical flat form;
-* additional Realizations use qualified Variant identity;
-* a separate redundant `model` field is not required;
-* nested parameter tables are not required;
-* writing omits uncustomized derived default Realizations;
-* canonical writing preserves necessary Artifact-specific configuration; and
-* round-trip loading and writing preserve the durable Artifact configuration
-  semantics where appropriate.
-
-Prefer tests at the Artifact configuration I/O boundary for serialization
-behavior.
-
-### Slice E — Planning, Identity, and Products
-
-Tests should establish that:
-
-* derived default Realizations are individually planable/buildable;
-* planning uses actual Realization identity;
-* multiple Realizations selecting the same Variant have independent
-  Product/filesystem namespaces;
-* default and additional Realizations do not collide;
-* requesting one Realization does not eagerly build unrelated Realizations;
-* dependency-driven execution remains authoritative; and
-* operations requesting the complete applicable Realization set include the
-  derived defaults.
-
-### Slice F — Creation and Publication
-
-Tests should establish that:
-
-* `artifact create` can emit the minimal source-only form;
-* `artifact create` does not enumerate uncustomized default Realizations;
-* customized default Realizations are emitted canonically;
-* additional Realizations are emitted canonically; and
-* packaged Products from multiple Realizations of the same Variant publish
-  without collisions.
-
-Do not duplicate resolver, planner, Product, or Model tests merely because the
-public TOML representation has changed.
-
-Where existing tests encode the accidental conflation of Variant local name and
-Realization identity, replace or correct them according to
-`TEST_DRIVEN_DEVELOPMENT.md`.
-
-Where existing tests assume that Realizations exist only when declared in
-`artifact.toml`, replace or correct those assumptions according to the
-permanent architecture.
-
-## 1.10 Completion
-
-Phase 1 is complete when:
-
-* every available Model Variant contributes a canonical default Realization;
-* a source-only Artifact discovers those default Realizations;
-* the `default` Variant participates in automatic Realization discovery;
-* default Realizations need not be redundantly serialized;
-* Artifact configuration may customize a default Realization;
-* Artifact configuration may define additional named Realizations;
-* additional Realizations select qualified Variants;
-* Realization-specific Model parameter overrides use the canonical flat
-  key-value grammar;
-* Artifact loading and writing translate the public grammar into the existing
-  configuration architecture;
-* effective configuration continues to resolve through Model defaults, Variant
-  overrides, and Realization overrides;
-* default and additional Realizations participate in ordinary planning and
-  dependency-driven builds;
-* multiple Realizations may originate from the same Variant without
-  configuration, filesystem, Product, or publication collisions;
-* `artifact create` does not redundantly reproduce the Model-owned Variant
-  catalog; and
-* no unnecessary new configuration, identity, or planning mechanism has been
-  introduced.
-
----
-
-# Phase 2 — Extend Model Capabilities
-
-Add the desired manufacturing capabilities as Features of the Models that own
-them.
-
-Features belong to Models.
-
-Models declare the parameters used to configure Feature behavior.
-
-Effective parameter values may enable, disable, or otherwise affect Feature
-participation according to Model-owned semantics.
-
-Once a Model capability is exposed through Model parameters, it is immediately
-available to any Realization of that Model.
-
-A specialized Variant is not required merely to expose an existing Feature.
-
-## 2.1 Specify Features Before Implementation
-
-For each new Feature, update the applicable Model `DEFINITION.md` before RED
-tests when the requested behavior introduces new semantic decisions.
-
-The Feature specification should establish only the semantics needed to make
-the capability unambiguous.
-
-Depending on the Feature, this may include:
-
-* applicable Model parameters;
-* parameter defaults;
-* the condition under which the Feature participates;
-* physical dimensions;
-* placement;
-* registration;
-* Z behavior;
-* color or material behavior;
-* interaction with existing Features;
-* Product participation; and
-* whether Feature geometry contributes to the Model's defined physical extent.
-
-Avoid prescribing implementation mechanics unless they are themselves
-architecturally significant.
-
-## 2.2 Loop Feature
-
-Add a loop capability to each Model for which a loop is required.
-
-The conceptual loop is a cylindrical/ring attachment controlled by Model
-parameters including:
+Expose the Artwork parameters required by the Loop Feature:
 
 ```text
 loop_inner_diameter
 loop_width
+loop_position
 loop_raise
+loop_color
 ```
 
-The outer diameter is derived from:
+`loop_outer_diameter` is derived geometry and is not an independent
+configuration parameter.
+
+Tests should establish that:
+
+* all Loop parameters are recognized Artwork parameters;
+* `loop_inner_diameter = 0` disables Loop participation;
+* negative `loop_inner_diameter` is invalid;
+* values greater than zero but less than `0.5 mm` are invalid;
+* a participating Loop requires positive `loop_width`;
+* `loop_position` accepts only the positions defined by the Artwork Model;
+* `loop_raise` may be explicitly configured;
+* `loop_color` may be explicitly configured;
+* explicit parameter values participate in ordinary Model / Variant /
+  Realization resolution; and
+* Loop configuration is available to an ordinary Artwork Realization without
+  requiring a specialized Variant.
+
+Parameter tests should protect configuration, resolution, participation, and
+validation semantics rather than geometry implementation details.
+
+Do not introduce a boolean such as:
 
 ```text
-loop_inner_diameter + 2 * loop_width
+loop_enabled
 ```
 
-`loop_raise` should default according to the total physical raise semantics of
-the owning Model.
+Participation is determined by the effective value of
+`loop_inner_diameter`.
 
-Before implementation, settle in each applicable Model definition:
+## 1.2 Attachment-Color Selection
 
-* how loop participation is determined from effective parameter values;
-* attachment position and orientation;
-* the mechanical overlap required to attach it to the primary geometry;
-* whether the loop extends beyond the size-controlled primary geometry;
-* how `loop_raise` is derived when not overridden;
-* color/material behavior; and
-* interaction with other relevant Features.
+Implement the Artwork-owned attachment-color operation required by Loop.
 
-The same conceptual Feature in Artwork and Shape remains Model-owned in each
-case.
+Given a supported cardinal attachment position, Artwork determines the Artwork
+color at the envelope attachment point.
 
-Similar Model semantics do not require one Model to invoke another Model's
-Feature or Stage implementation.
+If the exact boundary point is color-ambiguous, Artwork selects the nearest
+occupied Artwork color immediately inward from the attachment point along the
+same cardinal axis.
 
-If implementation reveals a genuinely identical Model-independent mechanical
-operation, it may be shared through existing architectural mechanisms. Do not
-create speculative abstraction merely because both Models have a Feature named
-`loop`.
+Tests should establish that:
 
-## 2.3 Additional Features
+* top attachment selects the expected Artwork color;
+* right attachment selects the expected Artwork color;
+* bottom attachment selects the expected Artwork color;
+* left attachment selects the expected Artwork color;
+* boundary ambiguity resolves to the nearest occupied Artwork color inward
+  along the selected axis;
+* the selected color preserves the corresponding physical semantic printer
+  color identity; and
+* selection is deterministic.
 
-Other required Features should follow the same pattern:
+Test the semantic operation independently of Loop geometry where practical.
+
+Attachment-color selection is Artwork-owned Model policy.
+
+If existing geometry or color infrastructure provides suitable
+Model-independent mechanics, reuse those mechanics. Do not move Artwork
+attachment-color semantics into the generic engine.
+
+## 1.3 Loop Geometry
+
+Implement annular Loop geometry according to the Artwork definition.
+
+For a participating Loop:
 
 ```text
-semantic decision
-        ↓
-Model DEFINITION
-        ↓
-focused Feature tests
-        ↓
-implementation
+r_inner = loop_inner_diameter / 2
+
+r_outer = r_inner + loop_width
+
+loop_outer_diameter =
+    loop_inner_diameter + 2 * loop_width
 ```
 
-Do not add unrelated capabilities merely because affected geometry is already
-being modified.
+Tests should establish that the Loop:
 
-A Feature is complete only when its Model parameters are sufficient for an
-ordinary Realization to configure and use it without requiring a specialized
-Variant.
+* is annular;
+* has the configured inner diameter;
+* has the configured radial width;
+* therefore has the defined derived outer diameter;
+* is centered on the cardinal axis selected by `loop_position`;
+* uses the dimensionalized Artwork envelope to locate the attachment boundary;
+* places the inward-facing point of its inner circle at the Artwork-envelope
+  boundary along the selected cardinal axis;
+* overlaps the Artwork inward by exactly `loop_width`; and
+* remains registered with the dimensionalized Artwork.
 
-For example, after a loop Feature exists, configuration such as:
+Exercise all four supported positions sufficiently to establish the defined
+rotational semantics without duplicating equivalent implementation tests.
 
-```toml
-[realizations.custom]
-variant = "shape.default"
-shape_size = 100
-loop_inner_diameter = 5
-loop_width = 2
-loop_raise = 4
+## 1.4 Loop Physical Extent
+
+Protect the distinction between Artwork size and total manufactured-object
+extent.
+
+Tests should establish that:
+
+* `artwork_size` continues to control the maximum physical X/Y extent of the
+  Artwork envelope itself;
+* Loop geometry extends outside that size-controlled envelope;
+* enabling Loop does not cause the Artwork proper to be rescaled smaller merely
+  to keep the total object within `artwork_size`; and
+* total standalone manufactured extent therefore increases when Loop extends
+  beyond the Artwork envelope.
+
+Do not redefine `artwork_size` as total packaged-object size.
+
+## 1.5 Loop Raise
+
+Implement Loop physical Z semantics.
+
+Tests should establish that:
+
+* explicit `loop_raise` determines Loop physical height;
+* when `loop_raise` is not explicitly configured, its effective value derives
+  from `artwork_raise`;
+* changing `artwork_raise` changes the derived Loop raise when no explicit
+  `loop_raise` exists;
+* explicit `loop_raise` overrides the derived value; and
+* without Base participation, Loop and Artwork proper begin at the same
+  supporting Z plane.
+
+The derivation rule belongs to Artwork Model semantics. Generic configuration
+infrastructure may support derived values but must not contain knowledge of
+`loop_raise` or `artwork_raise`.
+
+## 1.6 Loop Color
+
+Implement Loop color semantics.
+
+Tests should establish that:
+
+* explicit `loop_color` is authoritative;
+* when `loop_color` is not explicitly configured, its effective value is
+  derived using attachment-color selection at the effective `loop_position`;
+* changing `loop_position` may therefore change the derived Loop color;
+* an explicit `loop_color` overrides attachment-derived color; and
+* the complete Loop uses the resolved semantic physical color identity.
+
+Do not reduce the resolved semantic color to RGB merely for convenience if the
+existing manufacturing pipeline preserves semantic color identity.
+
+## 1.7 Loop Product Boundary
+
+Integrate Loop with standalone Artwork dimensionalization and packaging.
+
+Tests should establish that:
+
+* disabled Loop configuration produces no Loop component;
+* enabled Loop geometry participates in standalone Artwork extrusion;
+* enabled Loop geometry participates in standalone Artwork packaging;
+* the packaged Loop remains independently printable with its resolved semantic
+  color identity;
+* Loop geometry is not added to prepared Artwork;
+* Loop geometry is not added to registered raster Artwork;
+* Loop geometry is not added to registered vector Artwork;
+* consuming registered Artwork does not require standalone Loop
+  dimensionalization; and
+* enabling Loop does not disturb dependency-driven reuse of registered Artwork.
+
+Loop is a standalone physical Artwork Feature. It is not part of the reusable
+registered Artwork representation.
+
+## 1.8 Loop Acceptance
+
+Add only the user-visible acceptance coverage necessary to prove the Feature
+works through the ordinary Artifact / Variant / Realization architecture.
+
+At minimum establish that:
+
+* an ordinary Artwork Realization can enable Loop through parameter overrides;
+* no specialized Variant is required;
+* standalone Artwork builds successfully with Loop enabled;
+* the resulting package contains the expected Loop component and semantic
+  physical color identity; and
+* ordinary Artwork with Loop disabled retains existing behavior.
+
+Do not add `artwork.charm`, `artwork.ear_rings`, or another specialized Variant
+merely to exercise Loop.
+
+## 1.9 Loop Completion
+
+The Loop Feature is complete when:
+
+* its parameters and validation conform to the Artwork definition;
+* participation is determined by `loop_inner_diameter`;
+* attachment-color selection is implemented;
+* geometry and cardinal placement conform to the definition;
+* Artwork-size semantics remain unchanged;
+* derived and explicit raise behavior conforms to the definition;
+* derived and explicit color behavior conforms to the definition;
+* Loop participates in standalone extrusion and packaging;
+* registered Artwork remains free of Loop geometry;
+* an arbitrary Artwork Realization may use Loop without a specialized Variant;
+  and
+* focused and broader regression suites pass.
+
+Commit the completed Loop Feature before beginning Base.
+
+---
+
+# Phase 2 — Artwork Base Feature
+
+Implement the Artwork Base Feature according to
+`src/lowkey_artifact_builder/model/models/artwork/DEFINITION.md`.
+
+Base is implemented after Loop so that it can reuse the already-established
+Artwork attachment-color operation and resolved Loop color semantics.
+
+Do not redesign Loop while implementing Base unless a demonstrated defect in
+the permanent definitions requires a specification change first.
+
+## 2.1 Base Configuration and Participation
+
+Expose the Artwork parameters required by the Base Feature:
+
+```text
+artwork_base_raise
+artwork_base_color
 ```
 
-should be sufficient to use the capability according to the Shape Model's
-defined semantics.
+Tests should establish that:
 
-## 2.4 Variants as Reusable Catalog Configurations
+* both Base parameters are recognized Artwork parameters;
+* `artwork_base_raise = 0` disables Base participation;
+* positive `artwork_base_raise` enables Base participation;
+* negative `artwork_base_raise` is invalid;
+* `artwork_base_color` may be explicitly configured;
+* explicit parameter values participate in ordinary Model / Variant /
+  Realization resolution; and
+* Base configuration is available to an ordinary Artwork Realization without
+  requiring a specialized Variant.
 
-After the underlying Model capabilities exist, useful named Variants may be
-added as reusable and representative configurations.
+Do not introduce a boolean such as:
 
-Examples may include:
+```text
+artwork_base_enabled
+```
+
+Participation is determined by the effective value of
+`artwork_base_raise`.
+
+## 2.2 Base Geometry
+
+Implement Base planar geometry according to the Artwork definition.
+
+Tests should establish that a participating Base:
+
+* conforms in X/Y to the dimensionalized Artwork envelope;
+* uses the same dimensional transformation as the standalone Artwork envelope;
+* does not independently fit or scale individual Artwork color layers;
+* does not enlarge the size-controlled Artwork envelope;
+* does not shrink the Artwork proper; and
+* remains registered with the dimensionalized Artwork.
+
+The Base is derived from the Artwork envelope, not from independent bounding
+boxes of individual color layers.
+
+## 2.3 Base Z Placement
+
+Implement Base physical Z semantics.
+
+When Base participates:
+
+```text
+Base:
+    Z = 0 .. artwork_base_raise
+
+Artwork proper:
+    Z = artwork_base_raise
+        ..
+        artwork_base_raise + artwork_raise
+```
+
+When Base does not participate:
+
+```text
+Artwork proper:
+    Z = 0 .. artwork_raise
+```
+
+Tests should establish that:
+
+* Base begins at `Z = 0`;
+* Base has physical height `artwork_base_raise`;
+* Artwork proper rests on top of Base;
+* every Artwork color component receives the same Z translation;
+* Artwork color-layer registration is preserved;
+* total physical raise becomes the Base raise plus Artwork raise when Base
+  participates; and
+* disabling Base restores ordinary standalone Artwork Z placement.
+
+## 2.4 Base Color
+
+Implement Base color semantics by reusing the Artwork-owned attachment-color
+operation established for Loop.
+
+Tests should establish that:
+
+* explicit `artwork_base_color` is authoritative;
+* when no explicit Base color exists and Loop participates, Base uses the
+  resolved `loop_color`;
+* this includes a `loop_color` that was explicitly configured;
+* when Loop participates with a derived color, Base uses that resolved derived
+  Loop color;
+* when Loop does not participate, Base derives its color using the same
+  attachment-color semantics as a hypothetical Loop at:
+
+```text
+loop_position = 0
+```
+
+* Base color derivation is deterministic; and
+* the complete Base uses the resolved semantic physical color identity.
+
+Do not duplicate the attachment-color algorithm inside Base.
+
+Base consumes the Artwork-owned semantic operation established in Phase 1.
+
+## 2.5 Base Product Boundary
+
+Integrate Base with standalone Artwork dimensionalization and packaging.
+
+Tests should establish that:
+
+* disabled Base configuration produces no Base component;
+* enabled Base geometry participates in standalone Artwork extrusion;
+* enabled Base geometry participates in standalone Artwork packaging;
+* the packaged Base remains independently printable with its resolved semantic
+  color identity;
+* Base geometry is not added to prepared Artwork;
+* Base geometry is not added to registered raster Artwork;
+* Base geometry is not added to registered vector Artwork;
+* consuming registered Artwork does not require standalone Base
+  dimensionalization; and
+* enabling Base does not disturb dependency-driven reuse of registered Artwork.
+
+When registered Artwork is consumed by Shape or another Model, the consuming
+Model remains responsible for its own supporting physical geometry.
+
+Do not make Shape disable or override the Artwork Base parameter merely because
+Shape consumes registered Artwork. The Base is absent because standalone
+Artwork Feature geometry does not belong to the registered representation.
+
+## 2.6 Base Acceptance
+
+Add only the user-visible acceptance coverage necessary to prove the Feature
+works through the ordinary Artifact / Variant / Realization architecture.
+
+At minimum establish that:
+
+* an ordinary Artwork Realization can enable Base through parameter overrides;
+* no specialized Variant is required;
+* standalone Artwork builds successfully with Base enabled;
+* Artwork proper is physically positioned above the Base;
+* the resulting package contains the expected Base component and semantic
+  physical color identity; and
+* ordinary Artwork with Base disabled retains existing behavior.
+
+Do not introduce a specialized Variant merely to exercise Base.
+
+## 2.7 Base Completion
+
+The Base Feature is complete when:
+
+* its parameters and validation conform to the Artwork definition;
+* participation is determined by `artwork_base_raise`;
+* Base geometry conforms to the dimensionalized Artwork envelope;
+* Base and Artwork Z placement conform to the definition;
+* explicit and derived Base color behavior conforms to the definition;
+* Base reuses the Artwork attachment-color semantics established for Loop;
+* Base participates in standalone extrusion and packaging;
+* registered Artwork remains free of Base geometry;
+* an arbitrary Artwork Realization may use Base without a specialized Variant;
+  and
+* focused and broader regression suites pass.
+
+Commit the completed Base Feature before beginning Feature-composition work.
+
+---
+
+# Phase 3 — Artwork Feature Composition and Integration
+
+After Loop and Base are independently complete, protect their defined
+composition.
+
+This phase should contain only behavior that requires the Features to coexist.
+
+Do not repeat tests already sufficient to establish individual Base or Loop
+semantics.
+
+## 3.1 Base and Loop Z Composition
+
+Tests should establish that when both Features participate:
+
+* Base begins at `Z = 0`;
+* Artwork proper begins at `Z = artwork_base_raise`;
+* Loop begins at the same supporting Z plane as the Artwork proper;
+* Loop therefore rests on top of Base;
+* Loop physical height remains the effective `loop_raise`;
+* Artwork physical height remains `artwork_raise`; and
+* differing `loop_raise` and `artwork_raise` values do not disturb the common
+  supporting plane.
+
+## 3.2 Base and Loop Color Composition
+
+Tests should establish that when both Features participate:
+
+* explicit `artwork_base_color` remains authoritative;
+* otherwise Base uses the resolved `loop_color`;
+* a derived Loop color therefore becomes the derived Base color;
+* an explicitly configured Loop color therefore becomes the derived Base color;
+* explicit Base color may differ from Loop color; and
+* the independently printable Base and Loop components preserve their resolved
+  semantic physical color identities.
+
+## 3.3 Feature Independence
+
+Tests should establish all four participation combinations:
+
+```text
+Base disabled    Loop disabled
+Base enabled     Loop disabled
+Base disabled    Loop enabled
+Base enabled     Loop enabled
+```
+
+Each combination should produce only the physical components implied by its
+effective Feature parameters.
+
+In particular:
+
+* Loop does not require Base;
+* Base does not require Loop;
+* enabling one Feature does not implicitly enable the other; and
+* disabling one Feature does not prevent the other from participating.
+
+Avoid testing every geometry detail again for every combination.
+
+## 3.4 Registered Artwork Isolation
+
+Protect the representation boundary with both Features enabled.
+
+Tests should establish that:
+
+* registered Artwork is identical in Feature participation semantics whether
+  Base and Loop are enabled or disabled;
+* neither Feature becomes part of registered vector Artwork;
+* another Model may consume registered Artwork without realizing either
+  standalone Feature;
+* standalone Feature parameters do not introduce unnecessary producer stages
+  into a dependency plan that requires only registered Artwork; and
+* the consumer remains responsible for its own physical dimensionalization and
+  supporting geometry.
+
+This behavior should follow ordinary dependency-driven planning rather than
+special-case suppression of Base or Loop.
+
+## 3.5 End-to-End Feature Composition
+
+Add a small acceptance test exercising standalone Artwork with both Features
+enabled.
+
+The test should establish the meaningful user-visible integration:
+
+* ordinary Realization parameter overrides enable both Features;
+* no specialized Variant is required;
+* the build succeeds through the ordinary planning and execution path;
+* the package contains Artwork, Base, and Loop physical components as required;
+* Z relationships conform to the Artwork definition;
+* semantic physical colors are preserved; and
+* the final 3MF remains a valid independently printable multicomponent package.
+
+Do not use acceptance tests to repeat low-level geometry assertions already
+protected by focused Model tests.
+
+---
+
+# Phase 4 — Optional Reusable Variants
+
+This phase is optional and should begin only if useful reusable Artwork
+configurations are desired after the underlying Features are complete.
+
+Possible examples include:
 
 ```text
 artwork.charm
 artwork.ear_rings
 ```
 
-or other Artwork or Shape configurations that represent useful constructions
-from already-supported Model capabilities.
+A new Variant is a reusable sparse configuration of already-supported Model
+behavior.
 
-Adding such a Variant should ordinarily require only:
+A Variant must not introduce new Feature semantics.
+
+Adding a Variant should ordinarily require only:
 
 * Variant registration;
 * a name and description as appropriate; and
 * sparse parameter overrides.
 
-A Variant must not introduce new Feature semantics.
+Tests for a Variant should establish only:
 
-If a proposed Variant requires behavior the Model does not yet support, extend
-the applicable Model Feature first.
-
-Variants collectively provide a useful catalog of representative constructions,
-but that catalog does not define the limits of the Model.
-
-Every new Variant also becomes eligible for the corresponding automatically
-derived default Realization according to the permanent architecture.
-
-A Realization may always start from the closest available Variant, including
-`default`, and supply additional parameter overrides.
-
-## 2.5 TDD
-
-Feature tests should protect the semantics of the Feature itself.
-
-They should not assert:
-
-* the complete Feature inventory of the Model;
-* unrelated Variant definitions;
-* unrelated repository defaults; or
-* implementation details not required by the Feature contract.
-
-Adding a Feature should not require unrelated tests to enumerate or approve the
-new Feature merely because the Model has grown.
-
-Tests for a new Variant should be inexpensive and should primarily establish:
-
-* Variant registration/discovery;
+* Variant registration and discovery;
 * intended sparse parameter overrides;
 * inheritance of unspecified Model parameter defaults;
 * qualified Variant identity; and
-* availability through the generic default-Realization discovery behavior
-  without requiring Variant-specific realization plumbing.
+* availability of the automatically derived default Realization through the
+  generic Variant / Realization architecture.
 
-Do not repeat Feature geometry tests for every Variant.
+Do not repeat Loop or Base geometry tests for a Variant.
 
-Do not add one-off Realization registration code merely because a Variant was
-added. Generic Variant discovery should make its default Realization available.
+Do not add one-off Realization registration or engine behavior for a Variant.
 
-Add acceptance coverage only where a Feature or Variant establishes a
-meaningful user-visible integration not already protected at a lower boundary.
+If a proposed Variant requires behavior not already supported by Artwork,
+update the permanent Artwork `DEFINITION.md` and implement the required
+Model-owned capability before defining the Variant.
 
-## 2.6 Completion
+Completion of this optional phase is not required for completion of the Base
+and Loop Feature work.
 
-Phase 2 is complete when:
+---
 
-* the required Model-owned Features are specified and tested;
-* their behavior is configurable through Model parameters;
-* arbitrary Realizations can use those capabilities without requiring new
-  Variants;
-* useful reusable configurations may be added as lightweight Model Variants;
-* newly registered Variants automatically participate in default Realization
-  discovery; and
-* no Feature semantics have been moved into Variant or generic engine
-  infrastructure.
+# Test Curation
+
+Tests encountered during this work should be curated according to
+`prompts/TEST_DRIVEN_DEVELOPMENT.md`.
+
+In particular:
+
+* resolve semantic questions in the permanent Model definition before writing
+  RED tests;
+* write focused tests at the smallest boundary that owns the behavior;
+* use Model tests for Artwork-specific Feature semantics;
+* use generic engine tests only for genuinely Model-independent behavior;
+* avoid tests that enumerate the complete Feature inventory of Artwork;
+* avoid tests that require unrelated code to be updated merely because a new
+  Feature exists;
+* avoid duplicating geometry tests across Variants;
+* preserve acceptance tests for meaningful user-visible integration; and
+* remove or revise obsolete tests whose expectations contradict the permanent
+  specifications.
+
+A Feature test should protect the contract, not the incidental implementation.
 
 ---
 
 # Completion Criteria
 
-This change plan is complete when:
+The required change plan is complete when:
 
-1. `ARCHITECTURE.md` clearly establishes the Artifact, Variant, Realization,
-   Stage, and Product relationships required by the system;
+1. Artwork Loop parameters are recognized, resolved, and validated according to
+   the Artwork definition;
 
-2. every available Model Variant contributes a canonical default Realization
-   for an Artifact without requiring an explicit `artifact.toml` declaration;
+2. Loop participation is determined by the effective
+   `loop_inner_diameter`;
 
-3. the simplest useful Artifact may contain only its source configuration while
-   still exposing its derived default Realizations;
+3. Artwork attachment-color selection is implemented according to the Artwork
+   definition;
 
-4. default Realizations follow the canonical
-   `<model>_<variant-local-name>` identity;
+4. Loop geometry, placement, overlap, extent, raise, and color conform to the
+   Artwork definition;
 
-5. `artifact.toml` may customize a derived default Realization without
-   redundantly selecting its Variant;
+5. Loop participates in standalone Artwork dimensionalization and packaging
+   without becoming part of registered Artwork;
 
-6. `artifact.toml` may define additional named Realizations that select
-   qualified Variants and directly override Model parameters;
+6. Artwork Base parameters are recognized, resolved, and validated according to
+   the Artwork definition;
 
-7. the Artifact TOML reader and writer translate the public flat grammar without
-   introducing another internal parameter-resolution mechanism;
+7. Base participation is determined by the effective
+   `artwork_base_raise`;
 
-8. uncustomized default Realizations need not be serialized merely to make them
-   discoverable or buildable;
+8. Base geometry conforms to the dimensionalized Artwork envelope;
 
-9. multiple Realizations may originate from the same Variant while retaining
-   independent configuration, build state, Products, filesystem namespaces,
-   and published package filenames;
+9. Base and Artwork Z placement conform to the Artwork definition;
 
-10. configuration continues to resolve through Model defaults, Variant
-    overrides, and Realization overrides;
+10. explicit and derived Base color behavior conforms to the Artwork
+    definition and reuses the Artwork attachment-color semantics;
 
-11. derived default Realizations participate in ordinary dependency-driven
-    planning and build execution rather than requiring a separate build
-    mechanism;
+11. Base participates in standalone Artwork dimensionalization and packaging
+    without becoming part of registered Artwork;
 
-12. adding a Model Variant automatically makes its corresponding default
-    Realization available without requiring Artifact configuration or
-    Variant-specific engine changes;
+12. Base and Loop compose according to their defined Z, color, and participation
+    semantics;
 
-13. the required Model-owned Features are implemented according to their Model
-    definitions;
+13. all four Base / Loop participation combinations behave independently;
 
-14. new Model capabilities become immediately available to Realizations through
+14. registered Artwork remains reusable, dimensionless, and free of standalone
+    Artwork Feature geometry;
+
+15. another Model may consume registered Artwork without requiring standalone
+    Base or Loop realization;
+
+16. arbitrary Artwork Realizations can configure Base and Loop directly through
     Model parameters without requiring specialized Variants;
 
-15. useful Variants remain lightweight reusable/catalog configurations of
-    already-supported Model behavior;
+17. derived parameter behavior remains Model-owned and does not introduce
+    Artwork-specific semantics into generic configuration infrastructure;
 
-16. tests encountered during the work are curated according to
-    `TEST_DRIVEN_DEVELOPMENT.md`;
+18. generic planning and execution remain dependency-driven and do not contain
+    Base- or Loop-specific behavior;
 
-17. focused and broader regression suites pass; and
+19. Product identity, Realization identity, Variant inheritance, and ordinary
+    Artifact configuration behavior remain unchanged;
 
-18. no unnecessary large-scale redesign has been introduced.
+20. source-only/default Artwork behavior remains unchanged when Base and Loop
+    are disabled;
+
+21. focused and broader regression suites pass; and
+
+22. no unnecessary large-scale redesign has been introduced.
+
+Optional reusable Variants such as `artwork.charm` or `artwork.ear_rings` may
+be added afterward as lightweight configurations of the completed Features.
+They are not required to complete the underlying Feature implementation.
 
 The guiding principle for this plan is:
 
-> Models provide capabilities. Variants provide reusable starting
-> configurations. Artifacts provide source and durable build context.
-> Every available Variant provides a default Artifact-scoped Realization.
-> Artifact configuration customizes those defaults or adds additional
-> Realizations. Stages produce the Products required to realize them.
+> Models provide capabilities. Features are optional Model-owned capabilities.
+> Variants provide reusable starting configurations. Realizations apply those
+> configurations to Artifacts. Registered Artwork remains reusable and
+> dimensionless, while standalone Artwork Features participate only at the
+> physical representation boundaries defined by the Artwork Model.
