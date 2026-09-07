@@ -357,15 +357,16 @@ def test_artifact_build_selects_local_variant_as_realization_name(
     assert requested == [("ornament",)]
 
 
-def test_artifact_build_all_variants_plans_each_model_variant(
+def test_artifact_build_all_variants_plans_each_default_realization(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    All-Variant execution plans every Variant owned by the artifact's Model.
+    All-Variant execution selects the canonical default Realization
+    corresponding to every Variant owned by the Artifact's Model.
 
-    Each Variant is normalized to its Model plus realization/local Variant
-    name before entering ordinary build planning.
+    Variant discovery determines which reusable configurations are available,
+    but planning operates on their Artifact-scoped Realization identities.
     """
 
     write_artifact_config(
@@ -421,13 +422,13 @@ def test_artifact_build_all_variants_plans_each_model_variant(
         (
             "example",
             "shape",
-            "default",
+            "shape_default",
             tmp_path,
         ),
         (
             "example",
             "shape",
-            "ornament",
+            "shape_ornament",
             tmp_path,
         ),
     ]

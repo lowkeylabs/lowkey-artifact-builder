@@ -107,7 +107,7 @@ def create_artifact_build_plans(
             for plan in create_build_plans(
                 artifact_id,
                 model_name=resolved_model_name,
-                realization=variant.name,
+                realization=f"{resolved_model_name}_{variant.name}",
                 project_root=project_root,
             )
         )

@@ -1591,7 +1591,7 @@ def test_build_dry_run_omitted_variant_matches_explicit_default(
         assert ridge_source == "model"
 
 
-def test_build_all_variants_dry_run_selects_all_model_variants(
+def test_build_all_variants_dry_run_selects_all_default_realizations(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1642,14 +1642,14 @@ def test_build_all_variants_dry_run_selects_all_model_variants(
     assert displayed == [
         (
             "shape",
-            "default",
+            "shape_default",
             "default",
             0.0,
             "model",
         ),
         (
             "shape",
-            "ornament",
+            "shape_ornament",
             "ornament",
             2.0,
             "variant 'ornament'",
