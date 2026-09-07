@@ -1615,6 +1615,29 @@ Explicit ProductRefs remain available for advanced composition and
 
 producer selection.
 
+### Build selection
+
+Discovering the Realizations available to an Artifact does not by itself
+request execution of those Realizations.
+
+An unqualified Artifact build request performs discovery only. It exposes
+the Variants available to the Artifact without selecting one for execution.
+
+Execution requires an explicit build scope:
+
+- selecting a specific Variant requests the corresponding Realization;
+- requesting all Variants requests the corresponding Realizations for all
+  Variants available to the Artifact.
+
+No Variant is implicitly selected merely because it is named `default`,
+because its Model consumes the Artifact's source material, or because it
+would otherwise be a reasonable ordinary build target.
+
+The command-line syntax used to express these selections is presentation
+policy. The architectural requirement is that discovery and execution
+selection remain distinct.
+
+
 ------------------------------------------------------------------------
 
 # 19. Realization Graph
@@ -2300,13 +2323,19 @@ catalog.
 
 Every Model Variant available to an Artifact has a corresponding default Realization. Artifact configuration need not enumerate these Realizations merely to make the Model's Variant catalog buildable.
 
-## Invariant 31 --- Observable, presentation-independent execution
+## Invariant 31 — Discovery does not imply execution
+
+Discovering a Variant or its corresponding default Realization does not
+request execution. Execution requires an explicit build scope selecting
+one or more Realizations.
+
+## Invariant 32 --- Observable, presentation-independent execution
 
 Execution semantics must not depend upon presentation or observer
 
 policy.
 
-## Invariant 32 --- Validation follows required execution
+## Invariant 33 --- Validation follows required execution
 
 Configuration validation applies to Stages required by the Execution
 

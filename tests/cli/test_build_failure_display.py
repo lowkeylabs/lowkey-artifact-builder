@@ -27,6 +27,8 @@ from lowkey_artifact_builder.engine import (
 def _emit_failed_build(
     artifact_id: str,
     *,
+    model_name: str | None = None,
+    variant_name: str | None = None,
     realization: str | None = None,
     project_root: Path,
     event_sink=None,
@@ -36,6 +38,8 @@ def _emit_failed_build(
     """
 
     assert artifact_id == "skippy"
+    assert model_name == "artwork"
+    assert variant_name == "default"
     assert event_sink is not None
 
     event_sink(
@@ -83,7 +87,7 @@ def _invoke_failed_build(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """
-    Invoke one CLI build whose artifact execution fails.
+    Invoke one explicitly selected CLI build whose execution fails.
     """
 
     monkeypatch.setattr(
@@ -97,6 +101,8 @@ def _invoke_failed_build(
         [
             "build",
             "skippy",
+            "--variant",
+            "artwork.default",
         ],
     )
 

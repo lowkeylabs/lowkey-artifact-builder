@@ -542,16 +542,14 @@ def test_artwork_envelope_mode_is_a_model_default(
     assert resolver.source("artwork_envelope_mode") == "model"
 
 
-def test_artwork_size_has_no_default(
+def test_artwork_size_is_a_model_default(
     tmp_path: Path,
 ) -> None:
     """
-    Artwork size must be supplied by workspace or artifact
-    configuration.
+    Artwork physical size has a model-owned default.
 
-    There is intentionally no model default because artwork size is a
-    significant physical artifact dimension that setup should request
-    when it is otherwise unresolved.
+    The default Variant must be independently realizable from Model defaults
+    without requiring Artifact-specific setup configuration.
     """
 
     resolver = get_resolver(
@@ -560,13 +558,8 @@ def test_artwork_size_has_no_default(
         project_root=tmp_path,
     )
 
-    assert not resolver.has("artwork_size")
-
-    with pytest.raises(
-        ConfigError,
-        match="Unknown configuration value 'artwork_size'",
-    ):
-        resolver("artwork_size")
+    assert resolver("artwork_size") == 100.0
+    assert resolver.source("artwork_size") == "model"
 
 
 def test_workspace_can_supply_artwork_size(

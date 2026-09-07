@@ -66,7 +66,7 @@ def _configure_artifact(
             "create",
             "nydeli",
         ],
-        input=("1\n1\n70\n"),
+        input="1\n",
     )
 
     assert create_result.exit_code == 0, (
@@ -83,6 +83,7 @@ def _create_plan(
 
     plans = create_build_plans(
         "nydeli",
+        realization="artwork_default",
         project_root=project_root,
     )
 
@@ -92,7 +93,7 @@ def _create_plan(
 
     assert plan.artifact_id == "nydeli"
     assert plan.model_name == "artwork"
-    assert plan.realization_name == "default"
+    assert plan.realization_name == "artwork_default"
 
     return plan
 
@@ -137,6 +138,8 @@ def test_incremental_build_produces_complete_3mf(
     plan = _create_plan(
         project_root,
     )
+
+    assert plan.resolver("model") == "artwork"
 
     execution_plan = execute_incremental_artifact_build(
         plan,

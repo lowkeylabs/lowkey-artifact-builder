@@ -21,13 +21,13 @@ from pathlib import Path
 import click
 
 from lowkey_artifact_builder.cli.display import (
-    display_artifact_config,
+    display_artifact_definition,
     display_model_workplans,
     display_models,
 )
 from lowkey_artifact_builder.config import (
     ConfigError,
-    get_resolver,
+    get_realization_names,
     load_artifact_config,
 )
 from lowkey_artifact_builder.model import (
@@ -148,9 +148,10 @@ def _display_artifact(
     project_root: Path,
 ) -> None:
     """
-    Display an artifact's resolved configuration.
+    Display an Artifact's authored configuration and effective
+    Realization catalog.
 
-    The artifact must already be defined.
+    The Artifact must already be defined.
     """
 
     existing = load_artifact_config(
@@ -162,28 +163,17 @@ def _display_artifact(
         raise click.ClickException(f"Artifact {artifact_id!r} is not defined.")
 
     try:
-        resolver = get_resolver(
+        realizations = get_realization_names(
             artifact_id,
             project_root=project_root,
         )
-
-        model_name = resolver("model")
-
-        registry = build_model_registry()
-        model = registry.get_model(
-            model_name,
-        )
-
-    except (
-        ConfigError,
-        KeyError,
-    ) as exc:
+    except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    display_artifact_config(
+    display_artifact_definition(
         artifact_id,
-        model,
-        resolver,
+        existing,
+        realizations,
     )
 
 

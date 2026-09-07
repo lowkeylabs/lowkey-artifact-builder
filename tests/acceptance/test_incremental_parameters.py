@@ -68,7 +68,7 @@ def _configure_artifact(
             "create",
             "nydeli",
         ],
-        input=("1\n1\n70\n"),
+        input="1\n",
     )
 
     assert config_result.exit_code == 0, (
@@ -85,6 +85,7 @@ def _create_plan(
 
     plans = create_build_plans(
         "nydeli",
+        realization="artwork_default",
         project_root=project_root,
     )
 
@@ -94,7 +95,7 @@ def _create_plan(
 
     assert plan.artifact_id == "nydeli"
     assert plan.model_name == "artwork"
-    assert plan.realization_name == "default"
+    assert plan.realization_name == "artwork_default"
 
     return plan
 
@@ -161,11 +162,12 @@ def _change_artwork_size(
     project_root: Path,
 ) -> BuildPlan:
     """
-    Change artwork_size through artifact configuration and return a new plan.
+    Override artwork_size through Artifact configuration and return a new plan.
 
-    The original acceptance configuration uses 70 mm. This helper changes
-    that configured value directly in artifact.toml so the subsequent
-    BuildPlan resolves a different build context.
+    The default Artwork Realization receives artwork_size from the Artwork
+    Model defaults. This helper adds an Artifact-specific override to the
+    canonical default Realization so the subsequent BuildPlan resolves a
+    different build context.
     """
 
     artifact_toml = project_root / "artifacts" / "nydeli" / "artifact.toml"
@@ -176,24 +178,26 @@ def _change_artwork_size(
         encoding="utf-8",
     )
 
-    assert "70" in original
-
-    changed = original.replace(
-        "70",
-        "75",
-        1,
-    )
-
-    assert changed != original
+    assert "[realizations.artwork_default]" not in original
 
     artifact_toml.write_text(
-        changed,
+        original.rstrip()
+        + """
+
+[realizations.artwork_default]
+artwork_size = 75.0
+""",
         encoding="utf-8",
     )
 
-    return _create_plan(
+    changed_plan = _create_plan(
         project_root,
     )
+
+    assert changed_plan.resolver("artwork_size") == 75.0
+    assert changed_plan.resolver.source("artwork_size") == "realization 'artwork_default'"
+
+    return changed_plan
 
 
 # =========================================================

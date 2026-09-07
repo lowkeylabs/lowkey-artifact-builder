@@ -542,10 +542,11 @@ def test_explicit_shape_default_variant_preserves_default_manufacturing(
     monkeypatch,
 ) -> None:
     """
-    Explicit shape.default preserves ordinary Shape manufacturing.
+    Explicit shape.default preserves default Shape manufacturing.
 
-    Selecting the default Variant explicitly produces the same Model-owned
-    manufacturing behavior as an ordinary build with no Variant selection.
+    Selecting shape.default explicitly applies the Model-owned default
+    manufacturing configuration without enabling specialized ornament
+    behavior.
     """
 
     project_root = tmp_path
@@ -557,174 +558,116 @@ def test_explicit_shape_default_variant_preserves_default_manufacturing(
     runner = CliRunner()
 
     # -----------------------------------------------------
-    # Configure equivalent Shape Artifacts
+    # Configure Shape Artifact
     # -----------------------------------------------------
 
     write_artifact_config(
-        "implicit-default",
+        "default-shape",
         {
             "model": "shape",
         },
         project_root=project_root,
-    )
-
-    write_artifact_config(
-        "explicit-default",
-        {
-            "model": "shape",
-        },
-        project_root=project_root,
-    )
-
-    # -----------------------------------------------------
-    # Build ordinary/default behavior
-    # -----------------------------------------------------
-
-    implicit_result = runner.invoke(
-        cli,
-        [
-            "build",
-            "implicit-default",
-        ],
-    )
-
-    assert implicit_result.exit_code == 0, (
-        "Implicit default Shape build failed:\n"
-        f"{implicit_result.output}\n"
-        f"{implicit_result.exception!r}"
     )
 
     # -----------------------------------------------------
     # Build explicit shape.default
     # -----------------------------------------------------
 
-    explicit_result = runner.invoke(
+    build_result = runner.invoke(
         cli,
         [
             "build",
-            "explicit-default",
+            "default-shape",
             "--variant",
             "shape.default",
         ],
     )
 
-    assert explicit_result.exit_code == 0, (
-        "Explicit default Shape build failed:\n"
-        f"{explicit_result.output}\n"
-        f"{explicit_result.exception!r}"
+    assert build_result.exit_code == 0, (
+        f"Explicit default Shape build failed:\n{build_result.output}\n{build_result.exception!r}"
     )
 
     # -----------------------------------------------------
-    # Verify equivalent resolved configuration
+    # Verify resolved default Variant configuration
     # -----------------------------------------------------
 
-    implicit_plan = create_build_plans(
-        "implicit-default",
-        project_root=project_root,
-    )[0]
-
-    explicit_plan = create_build_plans(
-        "explicit-default",
+    plans = create_build_plans(
+        "default-shape",
         model_name="shape",
         variant_name="default",
         project_root=project_root,
-    )[0]
+    )
 
-    assert implicit_plan.model_name == "shape"
-    assert explicit_plan.model_name == "shape"
+    assert len(plans) == 1
 
-    assert implicit_plan.resolver("variant") == "default"
-    assert explicit_plan.resolver("variant") == "default"
+    plan = plans[0]
 
-    assert implicit_plan.resolver("shape_outer_ridge_width") == 0.0
-    assert explicit_plan.resolver("shape_outer_ridge_width") == 0.0
+    assert plan.model_name == "shape"
+    assert plan.realization_name == "default"
 
-    assert implicit_plan.resolver.source("shape_outer_ridge_width") == "model"
-    assert explicit_plan.resolver.source("shape_outer_ridge_width") == "model"
+    assert plan.resolver("variant") == "default"
+
+    assert plan.resolver("shape_outer_ridge_width") == 0.0
+    assert (
+        plan.resolver.source(
+            "shape_outer_ridge_width",
+        )
+        == "model"
+    )
 
     # -----------------------------------------------------
-    # Verify canonical persistent identity
+    # Verify persistent product identity
     # -----------------------------------------------------
 
-    implicit_artifact = (
+    artifact = (
         project_root
         / "artifacts"
-        / "implicit-default"
+        / "default-shape"
         / "shape"
         / "default"
         / "40-package"
         / "artifact.3mf"
     )
 
-    explicit_artifact = (
-        project_root
-        / "artifacts"
-        / "explicit-default"
-        / "shape"
-        / "default"
-        / "40-package"
-        / "artifact.3mf"
-    )
-
-    assert implicit_artifact.is_file()
-    assert explicit_artifact.is_file()
-
-    assert implicit_artifact.stat().st_size > 0
-    assert explicit_artifact.stat().st_size > 0
+    assert artifact.is_file()
+    assert artifact.stat().st_size > 0
 
     assert zipfile.is_zipfile(
-        implicit_artifact,
-    )
-    assert zipfile.is_zipfile(
-        explicit_artifact,
+        artifact,
     )
 
     # -----------------------------------------------------
     # Inspect manufactured 3MF semantics
     # -----------------------------------------------------
 
-    def object_names(
-        artifact: Path,
-    ) -> set[str | None]:
-        with zipfile.ZipFile(
-            artifact,
-        ) as archive:
-            model_name = next(
-                name
-                for name in archive.namelist()
-                if name.startswith("3D/") and name.endswith(".model")
-            )
+    with zipfile.ZipFile(
+        artifact,
+    ) as archive:
+        model_name = next(
+            name
+            for name in archive.namelist()
+            if name.startswith("3D/") and name.endswith(".model")
+        )
 
-            model = ET.fromstring(
-                archive.read(
-                    model_name,
-                ),
-            )
+        model = ET.fromstring(
+            archive.read(
+                model_name,
+            ),
+        )
 
-        return {
-            object_.get("name")
-            for object_ in model.findall(
-                f".//{{{CORE_NS}}}object",
-            )
-        }
-
-    implicit_names = object_names(
-        implicit_artifact,
-    )
-
-    explicit_names = object_names(
-        explicit_artifact,
-    )
+    object_names = {
+        object_.get("name")
+        for object_ in model.findall(
+            f".//{{{CORE_NS}}}object",
+        )
+    }
 
     # -----------------------------------------------------
-    # Verify equivalent default manufacturing behavior
+    # Verify default manufacturing behavior
     # -----------------------------------------------------
 
-    assert "implicit-default-base-white" in implicit_names
-    assert "implicit-default-ridge-white" not in implicit_names
-
-    assert "explicit-default-base-white" in explicit_names
-    assert "explicit-default-ridge-white" not in explicit_names
+    assert "default-shape-base-white" in object_names
+    assert "default-shape-ridge-white" not in object_names
 
 
 def test_show_and_build_dry_run_use_same_qualified_variant_configuration(

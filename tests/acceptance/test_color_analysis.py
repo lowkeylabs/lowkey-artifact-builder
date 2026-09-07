@@ -70,7 +70,7 @@ def test_colors_realizes_never_built_registered_artwork_without_standalone_build
             "create",
             "nydeli",
         ],
-        input="1\n1\n70\n",
+        input="1\n",
     )
 
     assert config_result.exit_code == 0, (
@@ -83,6 +83,7 @@ def test_colors_realizes_never_built_registered_artwork_without_standalone_build
 
     plans = create_build_plans(
         "nydeli",
+        realization="artwork_default",
         project_root=project_root,
     )
 
@@ -207,7 +208,7 @@ def test_colors_rebuilds_stale_registered_artwork_without_standalone_build(
             "create",
             "nydeli",
         ],
-        input="1\n1\n70\n",
+        input="1\n",
     )
 
     assert config_result.exit_code == 0, (
@@ -220,6 +221,7 @@ def test_colors_rebuilds_stale_registered_artwork_without_standalone_build(
 
     plans = create_build_plans(
         "nydeli",
+        realization="artwork_default",
         project_root=project_root,
     )
 

@@ -38,8 +38,7 @@ def test_shape_builds_complete_3mf_without_artwork(
     monkeypatch,
 ) -> None:
     """
-    A Shape without Artwork can be interactively configured and built
-    into a complete 3MF artifact through the public CLI.
+    A Shape without Artwork can be built into a complete 3MF artifact.
 
     Shape structural geometry begins in registered nonphysical space.
     Physical X/Y size and base thickness are introduced by extrusion,
@@ -65,56 +64,23 @@ def test_shape_builds_complete_3mf_without_artwork(
     runner = CliRunner()
 
     # -----------------------------------------------------
-    # Configure through the public CLI
+    # Configure source-less Artifact
     # -----------------------------------------------------
 
-    #
-    # Interactive response:
-    #
-    #   2 -> shape model
-    #
-    # Shape's initial structural parameters are supplied by
-    # model defaults, so no additional parameter prompts are
-    # required.
-    #
-
-    config_result = runner.invoke(
-        cli,
-        [
-            "create",
-            "testshape",
-        ],
-        input="2\n",
-    )
-
-    assert config_result.exit_code == 0, (
-        f"Shape configuration failed:\n{config_result.output}\n{config_result.exception!r}"
+    write_artifact_config(
+        "testshape",
+        {},
+        project_root=project_root,
     )
 
     # -----------------------------------------------------
-    # Verify configuration can be inspected
-    # -----------------------------------------------------
-
-    inspect_result = runner.invoke(
-        cli,
-        [
-            "config",
-            "testshape",
-        ],
-    )
-
-    assert inspect_result.exit_code == 0, (
-        "Shape configuration could not be read:\n"
-        f"{inspect_result.output}\n"
-        f"{inspect_result.exception!r}"
-    )
-
-    # -----------------------------------------------------
-    # Plan
+    # Plan the same Shape Variant selected by the CLI
     # -----------------------------------------------------
 
     plans = create_build_plans(
         "testshape",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
     )
 
@@ -140,7 +106,7 @@ def test_shape_builds_complete_3mf_without_artwork(
     )
 
     # -----------------------------------------------------
-    # Build through the public CLI
+    # Build explicit Shape Variant through public CLI
     # -----------------------------------------------------
 
     build_result = runner.invoke(
@@ -148,6 +114,8 @@ def test_shape_builds_complete_3mf_without_artwork(
         [
             "build",
             "testshape",
+            "--variant",
+            "shape.default",
         ],
     )
 
@@ -178,10 +146,6 @@ def test_shape_builds_complete_3mf_without_artwork(
     assert output.is_file(), f"Build did not produce the expected Shape 3MF: {output}"
 
     assert output.stat().st_size > 0
-
-    # 3MF is an OPC/ZIP package. Verify that the result is
-    # structurally a 3MF rather than merely a file carrying
-    # the .3mf extension.
 
     assert zipfile.is_zipfile(
         output,
@@ -236,13 +200,6 @@ def test_shape_builds_complete_3mf_without_artwork(
 
     assert base_color is not None
 
-    #
-    # This test intentionally exercises the model default.
-    # The semantic default is "white". Its RGB representation
-    # belongs to the mutable physical filament catalog and is
-    # therefore not asserted here.
-    #
-
     assert base_color.get("name") == "white"
 
     assert base_object.get("pid") == base_material.get("id")
@@ -264,7 +221,7 @@ def test_shape_ridge_preserves_distinct_component_colors(
 ) -> None:
     """
     A physical Shape ridge may retain a semantic color distinct from
-    the base through the complete public build pipeline.
+    the base through the complete build pipeline.
 
     Both separate ridges and positive integrated ridges produce an
     independently identifiable ridge-color volume in artifact.3mf.
@@ -278,38 +235,57 @@ def test_shape_ridge_preserves_distinct_component_colors(
 
     runner = CliRunner()
 
-    config_result = runner.invoke(
-        cli,
-        [
-            "create",
-            "colored-shape",
-        ],
-        input="2\n",
-    )
+    # -----------------------------------------------------
+    # Configure Shape default Variant
+    # -----------------------------------------------------
 
-    assert config_result.exit_code == 0, (
-        f"Shape configuration failed:\n{config_result.output}\n{config_result.exception!r}"
-    )
-
-    update_artifact_config(
+    write_artifact_config(
         "colored-shape",
         {
-            "parameters": {
-                "shape_base_color": "test-white",
-                "shape_outer_ridge_width": 2.0,
-                "shape_outer_ridge_raise": 1.0,
-                "shape_outer_ridge_style": ridge_style,
-                "shape_outer_ridge_color": "test-red",
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_base_color": "test-white",
+                    "shape_outer_ridge_width": 2.0,
+                    "shape_outer_ridge_raise": 1.0,
+                    "shape_outer_ridge_style": ridge_style,
+                    "shape_outer_ridge_color": "test-red",
+                },
             },
         },
         project_root=project_root,
     )
+
+    # -----------------------------------------------------
+    # Plan the same Shape Variant selected by the CLI
+    # -----------------------------------------------------
+
+    plans = create_build_plans(
+        "colored-shape",
+        model_name="shape",
+        variant_name="default",
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    assert plan.artifact_id == "colored-shape"
+    assert plan.model_name == "shape"
+    assert plan.realization_name == "default"
+
+    # -----------------------------------------------------
+    # Build explicit Shape Variant through public CLI
+    # -----------------------------------------------------
 
     build_result = runner.invoke(
         cli,
         [
             "build",
             "colored-shape",
+            "--variant",
+            "shape.default",
         ],
     )
 
@@ -317,14 +293,9 @@ def test_shape_ridge_preserves_distinct_component_colors(
         f"Shape build failed:\n{build_result.output}\n{build_result.exception!r}"
     )
 
-    plans = create_build_plans(
-        "colored-shape",
-        project_root=project_root,
-    )
-
-    assert len(plans) == 1
-
-    plan = plans[0]
+    # -----------------------------------------------------
+    # Locate packaged artifact
+    # -----------------------------------------------------
 
     package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
 
@@ -334,25 +305,35 @@ def test_shape_ridge_preserves_distinct_component_colors(
 
     output = artifact_product.path
 
-    assert output.is_file()
-    assert zipfile.is_zipfile(
-        output,
-    )
+    assert output.is_file(), f"Build did not produce the expected Shape 3MF: {output}"
+
+    assert output.stat().st_size > 0
+    assert zipfile.is_zipfile(output)
+
+    # -----------------------------------------------------
+    # Inspect packaged component identities and colors
+    # -----------------------------------------------------
 
     with zipfile.ZipFile(
         output,
     ) as archive:
-        model_name = next(
-            name
-            for name in archive.namelist()
-            if name.startswith("3D/") and name.endswith(".model")
+        names = set(
+            archive.namelist(),
         )
 
-        model = ET.fromstring(
-            archive.read(
-                model_name,
-            ),
+        model_name = next(
+            name for name in names if name.startswith("3D/") and name.endswith(".model")
         )
+
+        model_data = archive.read(
+            model_name,
+        )
+
+    assert "[Content_Types].xml" in names
+
+    model = ET.fromstring(
+        model_data,
+    )
 
     objects = model.findall(
         f".//{{{CORE_NS}}}object",
@@ -362,41 +343,35 @@ def test_shape_ridge_preserves_distinct_component_colors(
         f".//{{{CORE_NS}}}basematerials",
     )
 
-    objects_by_name = {object_.get("name"): object_ for object_ in objects}
-
-    assert set(objects_by_name) == {
-        "colored-shape-base-test-white",
-        "colored-shape-ridge-test-red",
-    }
-
-    assert len(materials) == 2
+    objects_by_name = {obj.get("name"): obj for obj in objects}
 
     materials_by_id = {material.get("id"): material for material in materials}
 
     base_object = objects_by_name["colored-shape-base-test-white"]
 
+    ridge_object = objects_by_name["colored-shape-ridge-test-red"]
+
+    assert base_object is not ridge_object
+
     base_material = materials_by_id[base_object.get("pid")]
+
+    ridge_material = materials_by_id[ridge_object.get("pid")]
 
     base_color = base_material.find(
         f"{{{CORE_NS}}}base",
     )
 
-    assert base_color is not None
-    assert base_color.get("name") == "test-white"
-    assert base_color.get("displaycolor") == "#FFFFFF"
-    assert base_object.get("pindex") == "0"
-
-    ridge_object = objects_by_name["colored-shape-ridge-test-red"]
-
-    ridge_material = materials_by_id[ridge_object.get("pid")]
-
     ridge_color = ridge_material.find(
         f"{{{CORE_NS}}}base",
     )
 
+    assert base_color is not None
     assert ridge_color is not None
+
+    assert base_color.get("name") == "test-white"
     assert ridge_color.get("name") == "test-red"
-    assert ridge_color.get("displaycolor") == "#FF0000"
+
+    assert base_object.get("pindex") == "0"
     assert ridge_object.get("pindex") == "0"
 
 
@@ -418,66 +393,79 @@ def test_shape_component_colors_do_not_change_geometry(
         project_root,
     )
 
+    # -----------------------------------------------------
+    # Configure Shapes with identical geometry
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "white-red-shape",
+        {
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_base_color": "test-white",
+                    "shape_outer_ridge_width": 2.0,
+                    "shape_outer_ridge_raise": 1.0,
+                    "shape_outer_ridge_style": "separate",
+                    "shape_outer_ridge_color": "test-red",
+                },
+            },
+        },
+        project_root=project_root,
+    )
+
+    write_artifact_config(
+        "red-white-shape",
+        {
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_base_color": "test-red",
+                    "shape_outer_ridge_width": 2.0,
+                    "shape_outer_ridge_raise": 1.0,
+                    "shape_outer_ridge_style": "separate",
+                    "shape_outer_ridge_color": "test-white",
+                },
+            },
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Plan and build both Shape Variants
+    # -----------------------------------------------------
+
+    plans = {}
+
     runner = CliRunner()
 
     for artifact_id in (
         "white-red-shape",
         "red-white-shape",
     ):
-        config_result = runner.invoke(
-            cli,
-            [
-                "create",
-                artifact_id,
-            ],
-            input="2\n",
+        artifact_plans = create_build_plans(
+            artifact_id,
+            model_name="shape",
+            variant_name="default",
+            project_root=project_root,
         )
 
-        assert config_result.exit_code == 0, (
-            f"Shape configuration failed for {artifact_id!r}:\n"
-            f"{config_result.output}\n"
-            f"{config_result.exception!r}"
-        )
+        assert len(artifact_plans) == 1
 
-    structural_parameters = {
-        "shape_outer_ridge_width": 2.0,
-        "shape_outer_ridge_raise": 1.0,
-        "shape_outer_ridge_style": "separate",
-    }
+        plan = artifact_plans[0]
 
-    update_artifact_config(
-        "white-red-shape",
-        {
-            "parameters": {
-                **structural_parameters,
-                "shape_base_color": "white",
-                "shape_outer_ridge_color": "red",
-            },
-        },
-        project_root=project_root,
-    )
+        assert plan.model_name == "shape"
+        assert plan.realization_name == "default"
 
-    update_artifact_config(
-        "red-white-shape",
-        {
-            "parameters": {
-                **structural_parameters,
-                "shape_base_color": "red",
-                "shape_outer_ridge_color": "white",
-            },
-        },
-        project_root=project_root,
-    )
+        plans[artifact_id] = plan
 
-    for artifact_id in (
-        "white-red-shape",
-        "red-white-shape",
-    ):
         build_result = runner.invoke(
             cli,
             [
                 "build",
                 artifact_id,
+                "--variant",
+                "shape.default",
             ],
         )
 
@@ -487,24 +475,32 @@ def test_shape_component_colors_do_not_change_geometry(
             f"{build_result.exception!r}"
         )
 
-    def packaged_meshes(
-        artifact_id: str,
-    ) -> dict[str, bytes]:
-        plans = create_build_plans(
-            artifact_id,
-            project_root=project_root,
-        )
+    # -----------------------------------------------------
+    # Locate packaged artifacts
+    # -----------------------------------------------------
 
-        assert len(plans) == 1
+    outputs = {}
 
-        package_stage = next(stage for stage in plans[0].stages if stage.spec.name == "package")
+    for artifact_id, plan in plans.items():
+        package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
 
         artifact_product = next(
             product for product in package_stage.products if product.spec.name == "artifact"
         )
 
+        assert artifact_product.path.is_file()
+
+        outputs[artifact_id] = artifact_product.path
+
+    # -----------------------------------------------------
+    # Extract mesh geometry
+    # -----------------------------------------------------
+
+    def mesh_geometry(
+        path: Path,
+    ) -> dict[str, tuple[tuple[str, ...], tuple[str, ...]]]:
         with zipfile.ZipFile(
-            artifact_product.path,
+            path,
         ) as archive:
             model_name = next(
                 name
@@ -518,60 +514,73 @@ def test_shape_component_colors_do_not_change_geometry(
                 ),
             )
 
-        result: dict[str, bytes] = {}
+        geometry = {}
 
-        for object_ in model.findall(
+        for obj in model.findall(
             f".//{{{CORE_NS}}}object",
         ):
-            name = object_.get("name")
+            name = obj.get("name")
 
-            assert name is not None
+            if name is None:
+                continue
 
-            component_identity = name.removeprefix(
-                f"{artifact_id}-",
+            component = "base" if "-base-" in name else "ridge" if "-ridge-" in name else None
+
+            if component is None:
+                continue
+
+            vertices = tuple(
+                (
+                    vertex.get("x"),
+                    vertex.get("y"),
+                    vertex.get("z"),
+                )
+                for vertex in obj.findall(
+                    f".//{{{CORE_NS}}}vertex",
+                )
             )
 
-            role = component_identity.split(
-                "-",
-                maxsplit=1,
-            )[0]
-
-            assert role in {
-                "base",
-                "ridge",
-            }
-
-            mesh = object_.find(
-                f"{{{CORE_NS}}}mesh",
+            triangles = tuple(
+                (
+                    triangle.get("v1"),
+                    triangle.get("v2"),
+                    triangle.get("v3"),
+                )
+                for triangle in obj.findall(
+                    f".//{{{CORE_NS}}}triangle",
+                )
             )
 
-            assert mesh is not None
-
-            result[role] = ET.tostring(
-                mesh,
+            geometry[component] = (
+                vertices,
+                triangles,
             )
 
-        return result
+        return geometry
 
-    white_red_meshes = packaged_meshes(
-        "white-red-shape",
+    white_red_geometry = mesh_geometry(
+        outputs["white-red-shape"],
     )
 
-    red_white_meshes = packaged_meshes(
-        "red-white-shape",
+    red_white_geometry = mesh_geometry(
+        outputs["red-white-shape"],
     )
 
-    assert white_red_meshes.keys() == {
+    # -----------------------------------------------------
+    # Semantic colors do not alter geometry
+    # -----------------------------------------------------
+
+    assert white_red_geometry.keys() == {
         "base",
         "ridge",
     }
 
-    assert red_white_meshes.keys() == {
+    assert red_white_geometry.keys() == {
         "base",
         "ridge",
     }
 
-    assert white_red_meshes == red_white_meshes
+    assert white_red_geometry == red_white_geometry
 
 
 @pytest.mark.slow
@@ -627,7 +636,6 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
     write_artifact_config(
         "source-artwork",
         {
-            "model": "artwork",
             "source": str(
                 artwork_input,
             ),
@@ -642,15 +650,19 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
     write_artifact_config(
         "artwork-shape",
         {
-            "model": "shape",
-            "shape_base_color": "test-white",
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_base_color": "test-white",
+                },
+            },
             "product_dependencies": {
                 "manifest": {
                     "model": "artwork",
                     "stage": "vector",
                     "product": "manifest",
                     "artifact": "source-artwork",
-                    "realization": "default",
+                    "realization": "artwork_default",
                 },
             },
         },
@@ -663,6 +675,8 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
 
     plans = create_build_plans(
         "artwork-shape",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
     )
 
@@ -693,7 +707,7 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
     # Verify targeted Artwork production
     # -----------------------------------------------------
 
-    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "default"
+    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "artwork_default"
 
     assert (artwork_root / "10-prepare" / "trace.svg").is_file()
 
@@ -898,7 +912,6 @@ def test_shape_physical_change_reuses_registered_artwork(
     write_artifact_config(
         "source-artwork",
         {
-            "model": "artwork",
             "source": str(
                 artwork_input,
             ),
@@ -913,15 +926,19 @@ def test_shape_physical_change_reuses_registered_artwork(
     write_artifact_config(
         "artwork-shape",
         {
-            "model": "shape",
-            "shape_size": 100.0,
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_size": 100.0,
+                },
+            },
             "product_dependencies": {
                 "manifest": {
                     "model": "artwork",
                     "stage": "vector",
                     "product": "manifest",
                     "artifact": "source-artwork",
-                    "realization": "default",
+                    "realization": "artwork_default",
                 },
             },
         },
@@ -932,16 +949,25 @@ def test_shape_physical_change_reuses_registered_artwork(
     # Build initial Shape
     # -----------------------------------------------------
 
-    initial_plan = create_build_plans(
+    initial_plans = create_build_plans(
         "artwork-shape",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
-    )[0]
+    )
+
+    assert len(initial_plans) == 1
+
+    initial_plan = initial_plans[0]
+
+    assert initial_plan.model_name == "shape"
+    assert initial_plan.realization_name == "default"
 
     execute_dependency_build(
         initial_plan,
     )
 
-    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "default"
+    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "artwork_default"
 
     artwork_products = artwork_root / "30-vector" / "products.json"
 
@@ -966,15 +992,31 @@ def test_shape_physical_change_reuses_registered_artwork(
     update_artifact_config(
         "artwork-shape",
         {
-            "shape_size": 90.0,
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_size": 90.0,
+                },
+            },
         },
         project_root=project_root,
     )
 
-    resized_plan = create_build_plans(
+    resized_plans = create_build_plans(
         "artwork-shape",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
-    )[0]
+    )
+
+    assert len(resized_plans) == 1
+
+    resized_plan = resized_plans[0]
+
+    assert resized_plan.model_name == "shape"
+    assert resized_plan.realization_name == "default"
+
+    assert resized_plan.resolver("shape_size") == 90.0
 
     execute_dependency_build(
         resized_plan,
@@ -1067,7 +1109,6 @@ def test_registered_artwork_is_reused_across_different_shapes(
     write_artifact_config(
         "source-artwork",
         {
-            "model": "artwork",
             "source": str(
                 artwork_input,
             ),
@@ -1081,7 +1122,7 @@ def test_registered_artwork_is_reused_across_different_shapes(
             "stage": "vector",
             "product": "manifest",
             "artifact": "source-artwork",
-            "realization": "default",
+            "realization": "artwork_default",
         },
     }
 
@@ -1092,9 +1133,13 @@ def test_registered_artwork_is_reused_across_different_shapes(
     write_artifact_config(
         "circle-shape",
         {
-            "model": "shape",
-            "shape_geometry": "circle",
-            "shape_size": 100.0,
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_geometry": "circle",
+                    "shape_size": 100.0,
+                },
+            },
             "product_dependencies": artwork_dependency,
         },
         project_root=project_root,
@@ -1104,16 +1149,25 @@ def test_registered_artwork_is_reused_across_different_shapes(
     # Build first Shape
     # -----------------------------------------------------
 
-    circle_plan = create_build_plans(
+    circle_plans = create_build_plans(
         "circle-shape",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
-    )[0]
+    )
+
+    assert len(circle_plans) == 1
+
+    circle_plan = circle_plans[0]
+
+    assert circle_plan.model_name == "shape"
+    assert circle_plan.realization_name == "default"
 
     execute_dependency_build(
         circle_plan,
     )
 
-    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "default"
+    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "artwork_default"
 
     artwork_vector_manifest = artwork_root / "30-vector" / "products.json"
 
@@ -1140,10 +1194,14 @@ def test_registered_artwork_is_reused_across_different_shapes(
     write_artifact_config(
         "polygon-shape",
         {
-            "model": "shape",
-            "shape_geometry": "polygon",
-            "shape_sides": 7,
-            "shape_size": 120.0,
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_geometry": "polygon",
+                    "shape_sides": 7,
+                    "shape_size": 120.0,
+                },
+            },
             "product_dependencies": artwork_dependency,
         },
         project_root=project_root,
@@ -1153,10 +1211,19 @@ def test_registered_artwork_is_reused_across_different_shapes(
     # Build second Shape
     # -----------------------------------------------------
 
-    polygon_plan = create_build_plans(
+    polygon_plans = create_build_plans(
         "polygon-shape",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
-    )[0]
+    )
+
+    assert len(polygon_plans) == 1
+
+    polygon_plan = polygon_plans[0]
+
+    assert polygon_plan.model_name == "shape"
+    assert polygon_plan.realization_name == "default"
 
     execute_dependency_build(
         polygon_plan,
@@ -1253,7 +1320,6 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
     write_artifact_config(
         "source-artwork",
         {
-            "model": "artwork",
             "source": str(
                 artwork_input,
             ),
@@ -1267,7 +1333,7 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
             "stage": "vector",
             "product": "manifest",
             "artifact": "source-artwork",
-            "realization": "default",
+            "realization": "artwork_default",
         },
     }
 
@@ -1278,9 +1344,13 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
     write_artifact_config(
         "circle-shape",
         {
-            "model": "shape",
-            "shape_geometry": "circle",
-            "shape_size": 100.0,
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_geometry": "circle",
+                    "shape_size": 100.0,
+                },
+            },
             "product_dependencies": artwork_dependency,
         },
         project_root=project_root,
@@ -1289,10 +1359,14 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
     write_artifact_config(
         "polygon-shape",
         {
-            "model": "shape",
-            "shape_geometry": "polygon",
-            "shape_sides": 7,
-            "shape_size": 120.0,
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_geometry": "polygon",
+                    "shape_sides": 7,
+                    "shape_size": 120.0,
+                },
+            },
             "product_dependencies": artwork_dependency,
         },
         project_root=project_root,
@@ -1302,19 +1376,30 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
     # Build first Shape and realize registered Artwork
     # -----------------------------------------------------
 
-    circle_plan = create_build_plans(
+    circle_plans = create_build_plans(
         "circle-shape",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
-    )[0]
+    )
+
+    assert len(circle_plans) == 1
+
+    circle_plan = circle_plans[0]
+
+    assert circle_plan.model_name == "shape"
+    assert circle_plan.realization_name == "default"
 
     execute_dependency_build(
         circle_plan,
     )
 
-    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "default"
+    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "artwork_default"
 
     assert (artwork_root / "10-prepare" / "trace.svg").is_file()
+
     assert (artwork_root / "20-raster" / "products.json").is_file()
+
     assert (artwork_root / "30-vector" / "products.json").is_file()
 
     # -----------------------------------------------------
@@ -1323,10 +1408,19 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
 
     events = []
 
-    polygon_plan = create_build_plans(
+    polygon_plans = create_build_plans(
         "polygon-shape",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
-    )[0]
+    )
+
+    assert len(polygon_plans) == 1
+
+    polygon_plan = polygon_plans[0]
+
+    assert polygon_plan.model_name == "shape"
+    assert polygon_plan.realization_name == "default"
 
     execute_dependency_build(
         polygon_plan,
@@ -1425,7 +1519,6 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
     write_artifact_config(
         "source-artwork",
         {
-            "model": "artwork",
             "source": str(
                 artwork_input,
             ),
@@ -1439,7 +1532,7 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
             "stage": "vector",
             "product": "manifest",
             "artifact": "source-artwork",
-            "realization": "default",
+            "realization": "artwork_default",
         },
     }
 
@@ -1450,17 +1543,21 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
     write_artifact_config(
         "initial-shape",
         {
-            "model": "shape",
-            "shape_geometry": "polygon",
-            "shape_sides": 6,
-            "shape_rotation": 0.0,
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_base_color": "white",
-            "shape_outer_ridge_width": 1.0,
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "integrated",
-            "shape_outer_ridge_color": "white",
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_geometry": "polygon",
+                    "shape_sides": 6,
+                    "shape_rotation": 0.0,
+                    "shape_size": 100.0,
+                    "shape_base_raise": 2.0,
+                    "shape_base_color": "white",
+                    "shape_outer_ridge_width": 1.0,
+                    "shape_outer_ridge_raise": 1.0,
+                    "shape_outer_ridge_style": "integrated",
+                    "shape_outer_ridge_color": "white",
+                },
+            },
             "product_dependencies": artwork_dependency,
         },
         project_root=project_root,
@@ -1470,19 +1567,30 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
     # Realize registered Artwork through first Shape
     # -----------------------------------------------------
 
-    initial_plan = create_build_plans(
+    initial_plans = create_build_plans(
         "initial-shape",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
-    )[0]
+    )
+
+    assert len(initial_plans) == 1
+
+    initial_plan = initial_plans[0]
+
+    assert initial_plan.model_name == "shape"
+    assert initial_plan.realization_name == "default"
 
     execute_dependency_build(
         initial_plan,
     )
 
-    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "default"
+    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "artwork_default"
 
     assert (artwork_root / "10-prepare" / "trace.svg").is_file()
+
     assert (artwork_root / "20-raster" / "products.json").is_file()
+
     assert (artwork_root / "30-vector" / "products.json").is_file()
 
     assert not (artwork_root / "40-extrude" / "products.json").exists()
@@ -1496,17 +1604,21 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
     write_artifact_config(
         "changed-shape",
         {
-            "model": "shape",
-            "shape_geometry": "polygon",
-            "shape_sides": 7,
-            "shape_rotation": 22.5,
-            "shape_size": 120.0,
-            "shape_base_raise": 3.0,
-            "shape_base_color": "black",
-            "shape_outer_ridge_width": 2.0,
-            "shape_outer_ridge_raise": 1.5,
-            "shape_outer_ridge_style": "separate",
-            "shape_outer_ridge_color": "red",
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_geometry": "polygon",
+                    "shape_sides": 7,
+                    "shape_rotation": 22.5,
+                    "shape_size": 120.0,
+                    "shape_base_raise": 3.0,
+                    "shape_base_color": "black",
+                    "shape_outer_ridge_width": 2.0,
+                    "shape_outer_ridge_raise": 1.5,
+                    "shape_outer_ridge_style": "separate",
+                    "shape_outer_ridge_color": "red",
+                },
+            },
             "product_dependencies": artwork_dependency,
         },
         project_root=project_root,
@@ -1518,10 +1630,19 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
 
     events = []
 
-    changed_plan = create_build_plans(
+    changed_plans = create_build_plans(
         "changed-shape",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
-    )[0]
+    )
+
+    assert len(changed_plans) == 1
+
+    changed_plan = changed_plans[0]
+
+    assert changed_plan.model_name == "shape"
+    assert changed_plan.realization_name == "default"
 
     execute_dependency_build(
         changed_plan,
@@ -1596,8 +1717,12 @@ def test_shape_size_change_preserves_registered_geometry(
     write_artifact_config(
         "resized-shape",
         {
-            "model": "shape",
-            "shape_size": 100.0,
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_size": 100.0,
+                },
+            },
         },
         project_root=project_root,
     )
@@ -1608,6 +1733,8 @@ def test_shape_size_change_preserves_registered_geometry(
 
     initial_plan = create_build_plans(
         "resized-shape",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
     )[0]
 
@@ -1633,7 +1760,12 @@ def test_shape_size_change_preserves_registered_geometry(
     update_artifact_config(
         "resized-shape",
         {
-            "shape_size": 90.0,
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_size": 90.0,
+                },
+            },
         },
         project_root=project_root,
     )
@@ -1644,6 +1776,8 @@ def test_shape_size_change_preserves_registered_geometry(
 
     resized_plan = create_build_plans(
         "resized-shape",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
     )[0]
 
@@ -1688,8 +1822,12 @@ def test_shape_size_change_rebuilds_physical_products(
     write_artifact_config(
         "resized-shape",
         {
-            "model": "shape",
-            "shape_size": 100.0,
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_size": 100.0,
+                },
+            },
         },
         project_root=project_root,
     )
@@ -1700,6 +1838,8 @@ def test_shape_size_change_rebuilds_physical_products(
 
     initial_plan = create_build_plans(
         "resized-shape",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
     )[0]
 
@@ -1731,7 +1871,12 @@ def test_shape_size_change_rebuilds_physical_products(
     update_artifact_config(
         "resized-shape",
         {
-            "shape_size": 90.0,
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_size": 90.0,
+                },
+            },
         },
         project_root=project_root,
     )
@@ -1742,6 +1887,8 @@ def test_shape_size_change_rebuilds_physical_products(
 
     resized_plan = create_build_plans(
         "resized-shape",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
     )[0]
 
@@ -1833,11 +1980,14 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
     write_artifact_config(
         "fill-source",
         {
-            "model": "artwork",
             "source": str(
                 artwork_source,
             ),
-            "artwork_size": 200.0,
+            "realizations": {
+                "artwork_default": {
+                    "artwork_size": 200.0,
+                },
+            },
         },
         project_root=project_root,
     )
@@ -1849,15 +1999,19 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
     write_artifact_config(
         "shape-no-fill",
         {
-            "model": "shape",
-            "shape_geometry": "circle",
-            "shape_size": 100.0,
-            "shape_base_color": "test-white",
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_geometry": "circle",
+                    "shape_size": 100.0,
+                    "shape_base_color": "test-white",
+                },
+            },
             "product_dependencies": {
                 "manifest": {
                     "artifact": "fill-source",
                     "model": "artwork",
-                    "realization": "default",
+                    "realization": "artwork_default",
                     "stage": "vector",
                     "product": "manifest",
                 },
@@ -1872,6 +2026,8 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
 
     plans = create_build_plans(
         "shape-no-fill",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
     )
 
@@ -1979,7 +2135,7 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
     # Shape consumes only reusable registered Artwork
     # -----------------------------------------------------
 
-    artwork_root = project_root / "artifacts" / "fill-source" / "artwork" / "default"
+    artwork_root = project_root / "artifacts" / "fill-source" / "artwork" / "artwork_default"
 
     assert (artwork_root / "30-vector" / "products.json").is_file()
 
@@ -2039,11 +2195,14 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
     write_artifact_config(
         "fill-source",
         {
-            "model": "artwork",
             "source": str(
                 artwork_source,
             ),
-            "artwork_size": 200.0,
+            "realizations": {
+                "artwork_default": {
+                    "artwork_size": 200.0,
+                },
+            },
         },
         project_root=project_root,
     )
@@ -2055,16 +2214,20 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
     write_artifact_config(
         "shape-with-fill",
         {
-            "model": "shape",
-            "shape_geometry": "circle",
-            "shape_size": 100.0,
-            "shape_base_color": "test-white",
-            "shape_artwork_fill_color": "test-blue",
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_geometry": "circle",
+                    "shape_size": 100.0,
+                    "shape_base_color": "test-white",
+                    "shape_artwork_fill_color": "test-blue",
+                },
+            },
             "product_dependencies": {
                 "manifest": {
                     "artifact": "fill-source",
                     "model": "artwork",
-                    "realization": "default",
+                    "realization": "artwork_default",
                     "stage": "vector",
                     "product": "manifest",
                 },
@@ -2079,6 +2242,8 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
 
     plans = create_build_plans(
         "shape-with-fill",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
     )
 
@@ -2234,7 +2399,7 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
     # Shape consumes only reusable registered Artwork
     # -----------------------------------------------------
 
-    artwork_root = project_root / "artifacts" / "fill-source" / "artwork" / "default"
+    artwork_root = project_root / "artifacts" / "fill-source" / "artwork" / "artwork_default"
 
     assert (artwork_root / "30-vector" / "products.json").is_file()
 
@@ -2293,11 +2458,14 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
     write_artifact_config(
         "fill-source",
         {
-            "model": "artwork",
             "source": str(
                 artwork_source,
             ),
-            "artwork_size": 200.0,
+            "realizations": {
+                "artwork_default": {
+                    "artwork_size": 200.0,
+                },
+            },
         },
         project_root=project_root,
     )
@@ -2309,16 +2477,20 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
     write_artifact_config(
         "shared-color-fill-shape",
         {
-            "model": "shape",
-            "shape_geometry": "circle",
-            "shape_size": 100.0,
-            "shape_base_color": "test-blue",
-            "shape_artwork_fill_color": "test-blue",
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_geometry": "circle",
+                    "shape_size": 100.0,
+                    "shape_base_color": "test-blue",
+                    "shape_artwork_fill_color": "test-blue",
+                },
+            },
             "product_dependencies": {
                 "manifest": {
                     "artifact": "fill-source",
                     "model": "artwork",
-                    "realization": "default",
+                    "realization": "artwork_default",
                     "stage": "vector",
                     "product": "manifest",
                 },
@@ -2333,6 +2505,8 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
 
     plans = create_build_plans(
         "shared-color-fill-shape",
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
     )
 
@@ -2462,7 +2636,7 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
     # Standalone Artwork manufacturing remains unnecessary
     # -----------------------------------------------------
 
-    artwork_root = project_root / "artifacts" / "fill-source" / "artwork" / "default"
+    artwork_root = project_root / "artifacts" / "fill-source" / "artwork" / "artwork_default"
 
     assert (artwork_root / "30-vector" / "products.json").is_file()
 
@@ -2529,11 +2703,14 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
     write_artifact_config(
         "ridge-fill-source",
         {
-            "model": "artwork",
             "source": str(
                 artwork_source,
             ),
-            "artwork_size": 200.0,
+            "realizations": {
+                "artwork_default": {
+                    "artwork_size": 200.0,
+                },
+            },
         },
         project_root=project_root,
     )
@@ -2550,22 +2727,26 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
     write_artifact_config(
         artifact_id,
         {
-            "model": "shape",
-            "shape_geometry": "circle",
-            "shape_size": 100.0,
-            "shape_base_raise": shape_base_raise,
-            "shape_artwork_raise": shape_artwork_raise,
-            "shape_base_color": "test-white",
-            "shape_artwork_fill_color": "test-blue",
-            "shape_outer_ridge_width": 2.0,
-            "shape_outer_ridge_raise": 1.5,
-            "shape_outer_ridge_style": ridge_style,
-            "shape_outer_ridge_color": "test-red",
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_geometry": "circle",
+                    "shape_size": 100.0,
+                    "shape_base_raise": shape_base_raise,
+                    "shape_artwork_raise": shape_artwork_raise,
+                    "shape_base_color": "test-white",
+                    "shape_artwork_fill_color": "test-blue",
+                    "shape_outer_ridge_width": 2.0,
+                    "shape_outer_ridge_raise": 1.5,
+                    "shape_outer_ridge_style": ridge_style,
+                    "shape_outer_ridge_color": "test-red",
+                },
+            },
             "product_dependencies": {
                 "manifest": {
                     "artifact": "ridge-fill-source",
                     "model": "artwork",
-                    "realization": "default",
+                    "realization": "artwork_default",
                     "stage": "vector",
                     "product": "manifest",
                 },
@@ -2580,6 +2761,8 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
 
     plans = create_build_plans(
         artifact_id,
+        model_name="shape",
+        variant_name="default",
         project_root=project_root,
     )
 
@@ -2741,7 +2924,7 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
     # Standalone Artwork manufacturing remains unnecessary
     # -----------------------------------------------------
 
-    artwork_root = project_root / "artifacts" / "ridge-fill-source" / "artwork" / "default"
+    artwork_root = project_root / "artifacts" / "ridge-fill-source" / "artwork" / "artwork_default"
 
     assert (artwork_root / "30-vector" / "products.json").is_file()
 

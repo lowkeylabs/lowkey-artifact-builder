@@ -7,6 +7,7 @@ Tests for the artifact config command.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from click.testing import CliRunner
@@ -85,7 +86,7 @@ def test_config_displays_existing_artifact(
         cmd_config,
         "load_artifact_config",
         lambda *args, **kwargs: {
-            "model": "artwork",
+            "source": "skippy.png",
         },
     )
 
@@ -103,6 +104,76 @@ def test_config_displays_existing_artifact(
 
     assert result.exit_code == 0
     assert displayed == ["skippy"]
+
+
+def test_config_displays_source_only_artifact_without_singular_model(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact configuration inspection does not require the Artifact to
+    select one Model.
+
+    Effective Realizations are derived from the registered Model Variant
+    catalog.
+    """
+
+    displayed: list[
+        tuple[
+            str,
+            dict[str, str],
+            tuple[str, ...],
+        ]
+    ] = []
+
+    artifact = {
+        "source": "skippy.png",
+    }
+
+    monkeypatch.setattr(
+        cmd_config,
+        "load_artifact_config",
+        lambda *args, **kwargs: artifact,
+    )
+
+    monkeypatch.setattr(
+        cmd_config,
+        "get_realization_names",
+        lambda *args, **kwargs: (
+            "artwork_default",
+            "shape_default",
+            "shape_ornament",
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_config,
+        "display_artifact_definition",
+        lambda artifact_id, configuration, realizations: displayed.append(
+            (
+                artifact_id,
+                configuration,
+                realizations,
+            )
+        ),
+    )
+
+    cmd_config._display_artifact(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert displayed == [
+        (
+            "skippy",
+            artifact,
+            (
+                "artwork_default",
+                "shape_default",
+                "shape_ornament",
+            ),
+        )
+    ]
 
 
 # =========================================================

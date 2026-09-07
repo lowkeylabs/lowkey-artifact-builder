@@ -11,6 +11,7 @@ from unittest.mock import Mock
 
 from lowkey_artifact_builder.cli.display.config import (
     display_artifact_config,
+    display_artifact_definition,
 )
 from lowkey_artifact_builder.model import ModelSpec, StageSpec
 
@@ -66,3 +67,33 @@ def test_artifact_config_display_contains_only_resolved_configuration(
     assert "artifact_color_count" in captured.out
     assert "printer_colors" in captured.out
     assert "Artwork colors" not in captured.out
+
+
+def test_artifact_definition_display_contains_authored_configuration_and_realizations(
+    capsys: object,
+) -> None:
+    """
+    Artifact definition display shows authored Artifact configuration and
+    the effective Realization catalog.
+    """
+
+    display_artifact_definition(
+        "skippy",
+        {
+            "source": "skippy.png",
+        },
+        (
+            "artwork_default",
+            "shape_default",
+            "shape_ornament",
+        ),
+    )
+
+    captured = capsys.readouterr()  # type: ignore[attr-defined]
+
+    assert "skippy" in captured.out
+    assert "source" in captured.out
+    assert "skippy.png" in captured.out
+    assert "artwork_default" in captured.out
+    assert "shape_default" in captured.out
+    assert "shape_ornament" in captured.out

@@ -72,7 +72,7 @@ def _configure_artifact(
             "create",
             "nydeli",
         ],
-        input=("1\n1\n70\n"),
+        input="1\n",
     )
 
     assert config_result.exit_code == 0, (
@@ -89,6 +89,7 @@ def _create_plan(
 
     plans = create_build_plans(
         "nydeli",
+        realization="artwork_default",
         project_root=project_root,
     )
 
@@ -98,7 +99,7 @@ def _create_plan(
 
     assert plan.artifact_id == "nydeli"
     assert plan.model_name == "artwork"
-    assert plan.realization_name == "default"
+    assert plan.realization_name == "artwork_default"
 
     return plan
 

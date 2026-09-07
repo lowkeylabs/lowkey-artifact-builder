@@ -76,7 +76,7 @@ def test_png_builds_complete_3mf(
             "create",
             "nydeli",
         ],
-        input="1\n1\n70\n",
+        input="1\n",
     )
 
     assert config_result.exit_code == 0, (
@@ -102,11 +102,13 @@ def test_png_builds_complete_3mf(
     )
 
     # -----------------------------------------------------
-    # Plan
+    # Plan explicit artwork.default Variant
     # -----------------------------------------------------
 
     plans = create_build_plans(
         "nydeli",
+        model_name="artwork",
+        variant_name="default",
         project_root=project_root,
     )
 
@@ -136,7 +138,7 @@ def test_png_builds_complete_3mf(
     )
 
     # -----------------------------------------------------
-    # Build through the public CLI
+    # Build explicit artwork.default through public CLI
     # -----------------------------------------------------
 
     build_result = runner.invoke(
@@ -144,6 +146,8 @@ def test_png_builds_complete_3mf(
         [
             "build",
             "nydeli",
+            "--variant",
+            "artwork.default",
         ],
     )
 

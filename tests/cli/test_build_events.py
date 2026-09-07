@@ -1,10 +1,10 @@
 """
 Tests for build-command execution observation.
 
-Normal graph-driven CLI builds delegate artifact orchestration to the
+Explicit graph-driven CLI builds delegate artifact orchestration to the
 artifact-level engine boundary and supply its semantic execution-event
-observer. Dry-run prepares and validates planned execution without entering
-artifact execution.
+observer. Dry-run prepares and validates explicitly selected execution
+without entering artifact execution.
 """
 # File: tests/cli/test_build_events.py
 # Copyright 2026 LowKeyLabs LLC
@@ -52,10 +52,14 @@ def _install_plans(
     def create_artifact_build_plans(
         artifact_id: str,
         *,
+        model_name: str | None = None,
+        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path,
     ):
         assert artifact_id == "example"
+        assert model_name == "artwork"
+        assert variant_name == "default"
 
         return plans
 
@@ -76,7 +80,7 @@ def test_build_command_delegates_artifact_execution_to_engine(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Normal CLI builds delegate artifact orchestration to the engine.
+    Explicit CLI builds delegate artifact orchestration to the engine.
     """
 
     monkeypatch.chdir(
@@ -88,10 +92,15 @@ def test_build_command_delegates_artifact_execution_to_engine(
     def execute_artifact_build(
         artifact_id: str,
         *,
+        model_name: str | None = None,
+        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path,
         event_sink=None,
     ):
+        assert model_name == "artwork"
+        assert variant_name == "default"
+
         executed.append(
             artifact_id,
         )
@@ -107,6 +116,8 @@ def test_build_command_delegates_artifact_execution_to_engine(
         [
             "build",
             "example",
+            "--variant",
+            "artwork.default",
         ],
     )
 
@@ -138,7 +149,7 @@ def test_build_command_supplies_event_sink_to_artifact_execution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Artifact execution receives the CLI execution-event observer.
+    Explicit artifact execution receives the CLI execution-event observer.
     """
 
     monkeypatch.chdir(
@@ -150,6 +161,8 @@ def test_build_command_supplies_event_sink_to_artifact_execution(
     def execute_artifact_build(
         artifact_id: str,
         *,
+        model_name: str | None = None,
+        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path,
         event_sink=None,
@@ -157,6 +170,8 @@ def test_build_command_supplies_event_sink_to_artifact_execution(
         nonlocal observed_sink
 
         assert artifact_id == "example"
+        assert model_name == "artwork"
+        assert variant_name == "default"
         assert project_root == tmp_path
 
         observed_sink = event_sink
@@ -172,6 +187,8 @@ def test_build_command_supplies_event_sink_to_artifact_execution(
         [
             "build",
             "example",
+            "--variant",
+            "artwork.default",
         ],
     )
 
@@ -190,7 +207,7 @@ def test_dry_run_prepares_build_without_executing_artifact_build(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Dry-run prepares the realized build without entering artifact execution.
+    Explicit dry-run prepares the realized build without executing it.
     """
 
     monkeypatch.chdir(
@@ -225,6 +242,8 @@ def test_dry_run_prepares_build_without_executing_artifact_build(
     def execute_artifact_build(
         artifact_id: str,
         *,
+        model_name: str | None = None,
+        variant_name: str | None = None,
         realization: str | None = None,
         project_root: Path,
         event_sink=None,
@@ -250,6 +269,8 @@ def test_dry_run_prepares_build_without_executing_artifact_build(
         [
             "build",
             "example",
+            "--variant",
+            "artwork.default",
             "--dry-run",
         ],
     )

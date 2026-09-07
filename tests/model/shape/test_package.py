@@ -2063,7 +2063,7 @@ def test_real_clean_bg_house_end_to_end_shape_compose_contains_registered_artwor
     tmp_path: Path,
 ) -> None:
     """
-    A normal Shape build persists its bound registered Artwork in composition.
+    A Shape default Realization persists its bound registered Artwork in composition.
 
     The configured Shape consumes the real clean_bg_house Artwork vector manifest.
     Normal dependency planning and execution must therefore carry that
@@ -2095,9 +2095,12 @@ artwork_island_connectivity = 8
     write_artifact_config(
         "clean_bg_house",
         {
-            "model": "artwork",
             "source": "clean_bg_house.png",
-            "artwork_size": 200.0,
+            "realizations": {
+                "artwork_default": {
+                    "artwork_size": 200.0,
+                },
+            },
         },
         project_root=tmp_path,
     )
@@ -2105,19 +2108,23 @@ artwork_island_connectivity = 8
     write_artifact_config(
         "clean_bg_house_shape",
         {
-            "model": "shape",
-            "shape_geometry": "polygon",
-            "shape_sides": 7,
-            "shape_size": 120.0,
-            "shape_base_color": "white",
-            "shape_outer_ridge_width": 2.0,
             "product_dependencies": {
                 "manifest": {
                     "artifact": "clean_bg_house",
                     "model": "artwork",
-                    "realization": "default",
+                    "realization": "artwork_default",
                     "stage": "vector",
                     "product": "manifest",
+                },
+            },
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_geometry": "polygon",
+                    "shape_sides": 7,
+                    "shape_size": 120.0,
+                    "shape_base_color": "white",
+                    "shape_outer_ridge_width": 2.0,
                 },
             },
         },
@@ -2126,6 +2133,8 @@ artwork_island_connectivity = 8
 
     plans = create_build_plans(
         "clean_bg_house_shape",
+        model_name="shape",
+        variant_name="default",
         project_root=tmp_path,
     )
 
@@ -2154,9 +2163,7 @@ artwork_island_connectivity = 8
     artwork = data["artwork"]
 
     assert artwork is not None
-
     assert artwork["components"]
-
     assert artwork["registered_extent"]["width"] > 0.0
     assert artwork["registered_extent"]["height"] > 0.0
 
@@ -2170,7 +2177,7 @@ def test_real_clean_bg_house_end_to_end_shape_extrude_contains_artwork_component
     tmp_path: Path,
 ) -> None:
     """
-    A normal Shape build propagates incorporated Artwork into extrusion.
+    A Shape default Realization propagates incorporated Artwork into extrusion.
 
     The configured Shape consumes the real clean_bg_house registered Artwork
     manifest. Normal dependency planning and execution must therefore produce
@@ -2203,9 +2210,12 @@ artwork_island_connectivity = 8
     write_artifact_config(
         "clean_bg_house",
         {
-            "model": "artwork",
             "source": "clean_bg_house.png",
-            "artwork_size": 200.0,
+            "realizations": {
+                "artwork_default": {
+                    "artwork_size": 200.0,
+                },
+            },
         },
         project_root=tmp_path,
     )
@@ -2213,19 +2223,23 @@ artwork_island_connectivity = 8
     write_artifact_config(
         "clean_bg_house_shape",
         {
-            "model": "shape",
-            "shape_geometry": "polygon",
-            "shape_sides": 7,
-            "shape_size": 120.0,
-            "shape_base_color": "white",
-            "shape_outer_ridge_width": 2.0,
             "product_dependencies": {
                 "manifest": {
                     "artifact": "clean_bg_house",
                     "model": "artwork",
-                    "realization": "default",
+                    "realization": "artwork_default",
                     "stage": "vector",
                     "product": "manifest",
+                },
+            },
+            "realizations": {
+                "default": {
+                    "variant": "shape.default",
+                    "shape_geometry": "polygon",
+                    "shape_sides": 7,
+                    "shape_size": 120.0,
+                    "shape_base_color": "white",
+                    "shape_outer_ridge_width": 2.0,
                 },
             },
         },
@@ -2234,6 +2248,8 @@ artwork_island_connectivity = 8
 
     plans = create_build_plans(
         "clean_bg_house_shape",
+        model_name="shape",
+        variant_name="default",
         project_root=tmp_path,
     )
 

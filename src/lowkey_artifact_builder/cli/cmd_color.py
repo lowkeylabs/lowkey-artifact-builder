@@ -16,9 +16,6 @@ import click
 from lowkey_artifact_builder.cli.display import (
     display_color_analysis,
 )
-from lowkey_artifact_builder.config import (
-    get_resolver,
-)
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     create_build_plan,
@@ -43,30 +40,18 @@ def analyze_artifact_colors(
     """
     Analyze physical color assignments for one configured artifact.
 
-    Analysis targets the registered Artwork manifest and realizes the
-    required products through normal dependency-aware build orchestration
-    before consuming the manifest.
+    Analysis targets the canonical default Artwork Realization's registered
+    manifest and realizes the required products through normal dependency-aware
+    build orchestration before consuming the manifest.
     """
 
     project_root = Path.cwd()
 
-    resolver = get_resolver(
-        artifact_id,
-        project_root=project_root,
-    )
-
-    model = resolver("model")
-    realization = resolver("realization")
-
-    if not isinstance(model, str):
-        raise RuntimeError("Artifact model must resolve to a string.")
-
-    if not isinstance(realization, str):
-        raise RuntimeError("Artifact realization must resolve to a string.")
+    realization = "artwork_default"
 
     target = ProductRef(
         artifact=artifact_id,
-        model=model,
+        model="artwork",
         realization=realization,
         stage="vector",
         product="manifest",

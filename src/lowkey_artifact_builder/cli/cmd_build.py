@@ -1,12 +1,15 @@
 """
 Build command.
 
-Builds configured artifacts from their declared model workflows.
+Builds explicitly selected artifact Variants from their declared model
+workflows. An unqualified build request discovers and displays the
+Variants available to the Artifact without requesting execution.
 
 A configured artifact may also execute exactly one declared stage
 independently, with optional explicit input, parameter, and output
 bindings.
 """
+
 # File: src/lowkey_artifact_builder/cli/cmd_build.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
@@ -23,6 +26,7 @@ from lowkey_artifact_builder.cli.bindings import (
     parse_path_bindings,
 )
 from lowkey_artifact_builder.cli.display import (
+    display_available_variants,
     display_build_plan,
 )
 from lowkey_artifact_builder.cli.variants import (
@@ -37,6 +41,9 @@ from lowkey_artifact_builder.engine import (
     execute_artifact_build,
     execute_artifact_stage,
     prepare_incremental_build,
+)
+from lowkey_artifact_builder.model import (
+    build_model_registry,
 )
 
 # =========================================================
@@ -114,10 +121,10 @@ def cli(
 
     Positional arguments are artifact IDs.
 
-    Without --stage, the complete configured artifact workflow is
-    planned and executed incrementally. An optional --variant selects
-    one Variant; --all-variants selects all applicable Variants.
-    Otherwise the default Variant is built.
+    Without --stage, --variant selects one Variant for incremental
+    execution and --all-variants selects all applicable Variants.
+    When neither selection is supplied, the command displays the
+    available Variants without requesting execution.
 
     With --stage, exactly one declared stage is executed independently.
     An optional --realization selects the Artifact Realization for that
@@ -155,6 +162,12 @@ def cli(
     if variant is not None and all_variants:
         raise click.UsageError("--variant and --all-variants cannot be used together.")
 
+    if variant is None and not all_variants:
+        _display_available_variants(
+            artifact_ids,
+        )
+        return
+
     model_name: str | None = None
     variant_name: str | None = None
 
@@ -170,6 +183,65 @@ def cli(
         all_variants=all_variants,
         dry_run=dry_run,
     )
+
+
+# =========================================================
+# Variant discovery
+# =========================================================
+
+
+def get_available_variant_names(
+    artifact_id: str,
+    *,
+    project_root: Path,
+) -> tuple[str, ...]:
+    """
+    Return the qualified Model Variants available to an Artifact.
+
+    Variant availability is Model-owned. Artifact configuration need
+    not enumerate the registered Variant catalog merely to make those
+    Variants discoverable.
+
+    The Artifact and project-root arguments establish an Artifact-level
+    discovery boundary even though the current Variant catalog is
+    entirely Model-owned.
+    """
+
+    del artifact_id
+    del project_root
+
+    registry = build_model_registry()
+
+    return tuple(
+        f"{model.name}.{variant.name}"
+        for model in registry.all_models()
+        for variant in model.variants
+    )
+
+
+def _display_available_variants(
+    artifact_ids: tuple[str, ...],
+) -> None:
+    """
+    Discover and display available Variants without requesting execution.
+    """
+
+    project_root = Path.cwd()
+
+    for artifact_id in artifact_ids:
+        try:
+            variants = get_available_variant_names(
+                artifact_id,
+                project_root=project_root,
+            )
+
+            display_available_variants(
+                artifact_id,
+                variants,
+            )
+
+        except ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
 
 
 # =========================================================
@@ -230,12 +302,15 @@ def _execute_build(
     dry_run: bool,
 ) -> None:
     """
-    Execute normal graph-driven artifact builds.
+    Execute explicitly selected graph-driven artifact builds.
 
     Normal execution delegates artifact orchestration to the engine.
     Model and Variant selection are normal-build selection coordinates.
-    When no Variant selection is explicit, configuration resolution
-    selects the Model's default Variant.
+
+    This boundary is entered only after execution has been explicitly
+    requested through one-Variant or all-Variant selection. Unqualified
+    Artifact build requests are handled as discovery before reaching
+    this boundary.
 
     Artifact Realization selection is reserved for independent Stage
     execution and is not a normal-build selection coordinate.

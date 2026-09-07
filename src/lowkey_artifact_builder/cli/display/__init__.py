@@ -26,6 +26,8 @@ from lowkey_artifact_builder.cli.display.common import (
 )
 from lowkey_artifact_builder.cli.display.config import (
     display_artifact_config,
+    display_artifact_definition,
+    display_available_variants,
 )
 from lowkey_artifact_builder.cli.display.models import (
     display_model,
@@ -38,11 +40,13 @@ __all__ = [
     "console",
     "create_table",
     "display_artifact_config",
+    "display_artifact_definition",
     "display_build_plan",
     "display_color_analysis",
     "display_model",
     "display_model_workplan",
     "display_model_workplans",
     "display_models",
+    "display_available_variants",
     "format_value",
 ]

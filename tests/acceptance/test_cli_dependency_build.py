@@ -2,8 +2,9 @@
 Acceptance tests for artifact builds through the public CLI.
 
 The CLI is intentionally thin. A caller identifies the configured artifact
-to build; the engine owns planning, dependency resolution, incremental
-execution, and production of the requested artifact.
+and explicitly selects the Variant to build; the engine owns planning,
+dependency resolution, incremental execution, and production of the
+requested artifact.
 """
 # File: tests/acceptance/test_cli_dependency_build.py
 # Copyright 2026 LowKeyLabs LLC
@@ -35,14 +36,14 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    The public CLI builds a configured artifact with external dependencies.
+    The public CLI builds an explicitly selected consumer Variant.
 
-    The caller requests only the consumer artifact. The CLI does not require
-    the producer to be built separately and does not require the caller to
-    select an execution strategy.
+    The caller requests only the consumer Variant. The CLI does not require
+    the producer to be built separately or require the caller to select an
+    execution strategy.
 
-    The engine must satisfy the configured artifact graph and produce the
-    requested artifact.
+    The engine must satisfy the configured cross-Artifact dependency graph
+    and produce the requested consumer artifact.
     """
 
     project_root = tmp_path
@@ -78,13 +79,12 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
     )
 
     # -----------------------------------------------------
-    # Configure producer artifact
+    # Configure producer Artifact
     # -----------------------------------------------------
 
     write_artifact_config(
         "source-artwork",
         {
-            "model": "artwork",
             "source": str(
                 artwork_input,
             ),
@@ -93,20 +93,19 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
     )
 
     # -----------------------------------------------------
-    # Configure consumer artifact
+    # Configure consumer Artifact
     # -----------------------------------------------------
 
     write_artifact_config(
         "artwork-shape",
         {
-            "model": "shape",
             "product_dependencies": {
                 "manifest": {
                     "model": "artwork",
                     "stage": "vector",
                     "product": "manifest",
                     "artifact": "source-artwork",
-                    "realization": "default",
+                    "realization": "artwork_default",
                 },
             },
         },
@@ -117,7 +116,7 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
     # Verify nothing has been built
     # -----------------------------------------------------
 
-    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "default"
+    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "artwork_default"
 
     shape_root = project_root / "artifacts" / "artwork-shape" / "shape" / "default"
 
@@ -133,6 +132,8 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
         [
             "build",
             "artwork-shape",
+            "--variant",
+            "shape.default",
         ],
     )
 

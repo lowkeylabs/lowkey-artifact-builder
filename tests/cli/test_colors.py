@@ -19,38 +19,6 @@ from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.model import ProductRef
 
 # =========================================================
-# Test support
-# =========================================================
-
-
-def _patch_artwork_identity_resolver(
-    monkeypatch,
-) -> None:
-    """
-    Resolve the configured Artwork identity used by color-analysis tests.
-    """
-
-    def fake_get_resolver(
-        artifact_id: str,
-        *,
-        project_root,
-    ):
-        assert artifact_id == "nydeli"
-
-        values = {
-            "model": "artwork",
-            "realization": "default",
-        }
-
-        return values.__getitem__
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.cli.cmd_color.get_resolver",
-        fake_get_resolver,
-    )
-
-
-# =========================================================
 # CLI
 # =========================================================
 
@@ -138,7 +106,7 @@ def test_analyze_artifact_colors_targets_registered_artwork_manifest(
     tmp_path,
 ) -> None:
     """
-    Color analysis plans only the registered Artwork manifest it requires.
+    Color analysis plans only the canonical default Artwork manifest it requires.
     """
 
     from lowkey_artifact_builder.cli.cmd_color import (
@@ -197,10 +165,6 @@ def test_analyze_artifact_colors_targets_registered_artwork_manifest(
         )
         return plan
 
-    _patch_artwork_identity_resolver(
-        monkeypatch,
-    )
-
     monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
         fake_create_build_plan,
@@ -227,7 +191,7 @@ def test_analyze_artifact_colors_targets_registered_artwork_manifest(
     artifact_id, realization, targets, project_root = planned[0]
 
     assert artifact_id == "nydeli"
-    assert realization == "default"
+    assert realization == "artwork_default"
     assert project_root == tmp_path
 
     assert len(targets) == 1
@@ -236,7 +200,7 @@ def test_analyze_artifact_colors_targets_registered_artwork_manifest(
 
     assert target.artifact == "nydeli"
     assert target.model == "artwork"
-    assert target.realization == "default"
+    assert target.realization == "artwork_default"
     assert target.stage == "vector"
     assert target.product == "manifest"
 
@@ -284,10 +248,6 @@ def test_analyze_artifact_colors_realizes_target_before_analysis(
     )
 
     actions: list[tuple[str, object]] = []
-
-    _patch_artwork_identity_resolver(
-        monkeypatch,
-    )
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
@@ -403,10 +363,6 @@ def test_analyze_artifact_colors_reuses_current_registered_artwork(
     executed: list[object] = []
     analyzed: list[tuple[Path, object]] = []
 
-    _patch_artwork_identity_resolver(
-        monkeypatch,
-    )
-
     monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
         lambda artifact_id, *, realization, targets, project_root: plan,
@@ -496,10 +452,6 @@ def test_analyze_artifact_colors_does_not_modify_configuration(
                 ),
             ),
         ),
-    )
-
-    _patch_artwork_identity_resolver(
-        monkeypatch,
     )
 
     monkeypatch.setattr(
@@ -597,7 +549,7 @@ def test_analyze_artifact_colors_does_not_require_standalone_artwork_stages(
         project_root: Path,
     ) -> object:
         assert artifact_id == "nydeli"
-        assert realization == "default"
+        assert realization == "artwork_default"
         assert project_root == tmp_path
 
         if targets is None:
@@ -626,10 +578,6 @@ def test_analyze_artifact_colors_does_not_require_standalone_artwork_stages(
         )
 
         return object()
-
-    _patch_artwork_identity_resolver(
-        monkeypatch,
-    )
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
@@ -672,19 +620,6 @@ def test_analyze_artifact_colors_propagates_realization_failure(
 
     resolver = Mock()
 
-    resolver.side_effect = lambda name: {
-        "model": "artwork",
-        "realization": "default",
-    }[name]
-
-    monkeypatch.setattr(
-        cmd_color,
-        "get_resolver",
-        Mock(
-            return_value=resolver,
-        ),
-    )
-
     manifest = tmp_path / "registered" / "products.json"
 
     plan = Mock()
@@ -701,12 +636,14 @@ def test_analyze_artifact_colors_propagates_realization_failure(
         ),
     )
 
+    create_plan = Mock(
+        return_value=plan,
+    )
+
     monkeypatch.setattr(
         cmd_color,
         "create_build_plan",
-        Mock(
-            return_value=plan,
-        ),
+        create_plan,
     )
 
     realization_error = RuntimeError("registered Artwork realization failed")
@@ -736,6 +673,26 @@ def test_analyze_artifact_colors_propagates_realization_failure(
         cmd_color.analyze_artifact_colors(
             "nydeli",
         )
+
+    create_plan.assert_called_once()
+
+    call = create_plan.call_args
+
+    assert call.args == ("nydeli",)
+    assert call.kwargs["realization"] == "artwork_default"
+    assert call.kwargs["project_root"] == tmp_path
+
+    targets = call.kwargs["targets"]
+
+    assert targets == (
+        ProductRef(
+            artifact="nydeli",
+            model="artwork",
+            realization="artwork_default",
+            stage="vector",
+            product="manifest",
+        ),
+    )
 
     execute.assert_called_once_with(
         plan,

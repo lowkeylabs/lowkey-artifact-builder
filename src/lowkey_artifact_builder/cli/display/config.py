@@ -1,8 +1,8 @@
 """
 Artifact configuration display.
 
-This module contains CLI presentation for resolved artifact
-configuration.
+This module contains CLI presentation for authored Artifact definitions
+and resolved artifact configuration.
 """
 # File: src/lowkey_artifact_builder/cli/display/config.py
 # Copyright 2026 LowKeyLabs LLC
@@ -10,6 +10,7 @@ configuration.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from lowkey_artifact_builder.cli.display.common import (
@@ -25,7 +26,86 @@ from lowkey_artifact_builder.model import (
 )
 
 # =========================================================
-# Artifact configuration
+# Artifact definition
+# =========================================================
+
+
+def display_artifact_definition(
+    artifact_id: str,
+    configuration: Mapping[str, object],
+    realizations: Sequence[str],
+) -> None:
+    """
+    Display an Artifact's authored configuration and effective
+    Realization catalog.
+    """
+
+    console.print(f"[bold]{artifact_id} Configuration[/bold]")
+
+    console.print()
+
+    summary = create_table(
+        show_header=False,
+    )
+
+    summary.add_column(
+        "Field",
+        style="bold",
+    )
+
+    summary.add_column(
+        "Value",
+    )
+
+    summary.add_row(
+        "Artifact ID",
+        artifact_id,
+    )
+
+    console.print(summary)
+
+    console.print()
+    console.print("[bold]Artifact configuration[/bold]")
+    console.print()
+
+    configuration_table = create_table()
+
+    configuration_table.add_column(
+        "Parameter",
+    )
+
+    configuration_table.add_column(
+        "Value",
+    )
+
+    for name, value in configuration.items():
+        configuration_table.add_row(
+            name,
+            _format_parameter_value(value),
+        )
+
+    console.print(configuration_table)
+
+    console.print()
+    console.print("[bold]Realizations[/bold]")
+    console.print()
+
+    realization_table = create_table()
+
+    realization_table.add_column(
+        "Realization",
+    )
+
+    for realization in realizations:
+        realization_table.add_row(
+            realization,
+        )
+
+    console.print(realization_table)
+
+
+# =========================================================
+# Resolved artifact configuration
 # =========================================================
 
 
@@ -33,7 +113,7 @@ def _format_parameter_value(
     value: object,
 ) -> str:
     """
-    Format a resolved parameter value for display.
+    Format a configuration value for display.
 
     Paths are displayed relative to the current working directory when
     possible. Other values use the standard CLI value formatting.
@@ -159,6 +239,42 @@ def _display_artifact_parameters(
     console.print(table)
 
 
+# =========================================================
+# Available Variants
+# =========================================================
+
+
+def display_available_variants(
+    artifact_id: str,
+    variants: Sequence[str],
+) -> None:
+    """
+    Display the qualified Variants available to an Artifact.
+    """
+
+    console.print(f"[bold]{artifact_id} Available Variants[/bold]")
+    console.print()
+
+    table = create_table()
+
+    table.add_column(
+        "Variant",
+    )
+
+    for variant in variants:
+        table.add_row(
+            variant,
+        )
+
+    console.print(table)
+
+    console.print()
+    console.print(f"Build one with [bold]artifact build {artifact_id} --variant <variant>[/bold]")
+    console.print(f"Build all with [bold]artifact build {artifact_id} --all-variants[/bold]")
+
+
 __all__ = [
     "display_artifact_config",
+    "display_artifact_definition",
+    "display_available_variants",
 ]

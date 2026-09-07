@@ -1,5 +1,6 @@
 [parameters]
 
+artwork_size = 100
 artwork_pixels = 1024
 artwork_raise = 1.0
 

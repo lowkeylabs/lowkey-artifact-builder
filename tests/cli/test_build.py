@@ -1,6 +1,7 @@
 """
 Tests for the artifact build command.
 """
+
 # File: tests/cli/test_build.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
@@ -40,16 +41,251 @@ def _invoke(
 
 
 # =========================================================
+# Build discovery
+# =========================================================
+
+
+def test_build_without_variant_discovers_available_variants(
+    monkeypatch,
+) -> None:
+    """
+    An unqualified Artifact build displays every available qualified Variant.
+
+    Discovery does not imply execution.
+    """
+
+    discovered: list[str] = []
+    displayed: list[
+        tuple[
+            str,
+            tuple[str, ...],
+        ]
+    ] = []
+    executed: list[str] = []
+
+    variants = (
+        "artwork.default",
+        "shape.default",
+        "shape.ornament",
+    )
+
+    def get_available_variants(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> tuple[str, ...]:
+        discovered.append(artifact_id)
+        return variants
+
+    def display_available_variants(
+        artifact_id: str,
+        available_variants: tuple[str, ...],
+    ) -> None:
+        displayed.append(
+            (
+                artifact_id,
+                available_variants,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_available_variant_names",
+        get_available_variants,
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_available_variants",
+        display_available_variants,
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        lambda artifact_id, **kwargs: executed.append(artifact_id),
+    )
+
+    result = _invoke(
+        "skippy",
+    )
+
+    assert result.exit_code == 0
+    assert discovered == ["skippy"]
+    assert displayed == [
+        (
+            "skippy",
+            variants,
+        )
+    ]
+    assert executed == []
+
+
+def test_build_without_variant_discovers_each_artifact_in_argument_order(
+    monkeypatch,
+) -> None:
+    """
+    Unqualified multi-Artifact builds perform discovery in argument order.
+    """
+
+    variants_by_artifact = {
+        "skippy": (
+            "artwork.default",
+            "shape.default",
+            "shape.ornament",
+        ),
+        "scooby": (
+            "artwork.default",
+            "shape.default",
+            "shape.ornament",
+        ),
+    }
+
+    displayed: list[
+        tuple[
+            str,
+            tuple[str, ...],
+        ]
+    ] = []
+    executed: list[str] = []
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_available_variant_names",
+        lambda artifact_id, *, project_root: variants_by_artifact[artifact_id],
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_available_variants",
+        lambda artifact_id, variants: displayed.append(
+            (
+                artifact_id,
+                variants,
+            )
+        ),
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        lambda artifact_id, **kwargs: executed.append(artifact_id),
+    )
+
+    result = _invoke(
+        "skippy",
+        "scooby",
+    )
+
+    assert result.exit_code == 0
+    assert displayed == [
+        (
+            "skippy",
+            variants_by_artifact["skippy"],
+        ),
+        (
+            "scooby",
+            variants_by_artifact["scooby"],
+        ),
+    ]
+    assert executed == []
+
+
+def test_build_dry_run_without_variant_is_discovery_only(
+    monkeypatch,
+) -> None:
+    """
+    An unqualified dry-run remains discovery-only.
+
+    Discovery does not manufacture BuildPlans or prepare execution state.
+    """
+
+    variants = (
+        "artwork.default",
+        "shape.default",
+        "shape.ornament",
+    )
+
+    displayed_variants: list[
+        tuple[
+            str,
+            tuple[str, ...],
+        ]
+    ] = []
+    planned: list[str] = []
+    prepared: list[object] = []
+    displayed_plans: list[object] = []
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_available_variant_names",
+        lambda artifact_id, *, project_root: variants,
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_available_variants",
+        lambda artifact_id, available_variants: displayed_variants.append(
+            (
+                artifact_id,
+                available_variants,
+            )
+        ),
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "create_artifact_build_plans",
+        lambda artifact_id, **kwargs: planned.append(artifact_id) or (),
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        lambda plan: prepared.append(plan),
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_build_plan",
+        displayed_plans.append,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--dry-run",
+    )
+
+    assert result.exit_code == 0
+    assert displayed_variants == [
+        (
+            "skippy",
+            variants,
+        )
+    ]
+    assert planned == []
+    assert prepared == []
+    assert displayed_plans == []
+
+
+# =========================================================
 # Build execution
 # =========================================================
 
 
-def test_build_without_variant_leaves_variant_selection_implicit(
+def test_build_does_not_create_artifact_build_plans(
     monkeypatch,
 ) -> None:
     """
-    A normal build with no Variant option leaves Variant selection
-    implicit so configuration resolution may select the default Variant.
+    Explicit normal execution leaves artifact BuildPlan creation to the
+    engine execution boundary.
     """
 
     executed: list[
@@ -60,51 +296,6 @@ def test_build_without_variant_leaves_variant_selection_implicit(
         ]
     ] = []
 
-    def execute_artifact(
-        artifact_id: str,
-        *,
-        variant_name: str | None = None,
-        realization: str | None = None,
-        project_root: Path,
-        event_sink=None,
-    ) -> None:
-        executed.append(
-            (
-                artifact_id,
-                variant_name,
-                realization,
-            )
-        )
-
-    monkeypatch.setattr(
-        cmd_build,
-        "execute_artifact_build",
-        execute_artifact,
-    )
-
-    result = _invoke(
-        "skippy",
-    )
-
-    assert result.exit_code == 0
-
-    assert executed == [
-        (
-            "skippy",
-            None,
-            None,
-        ),
-    ]
-
-
-def test_build_does_not_create_artifact_build_plans(
-    monkeypatch,
-) -> None:
-    """
-    Normal execution leaves artifact build-plan creation to the engine
-    execution boundary.
-    """
-
     def unexpected_planning(
         artifact_id: str,
         *,
@@ -112,6 +303,23 @@ def test_build_does_not_create_artifact_build_plans(
         **kwargs,
     ):
         raise AssertionError("normal CLI execution created artifact build plans")
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        model_name: str | None = None,
+        variant_name: str | None = None,
+        project_root: Path,
+        event_sink=None,
+        **kwargs,
+    ) -> None:
+        executed.append(
+            (
+                artifact_id,
+                model_name,
+                variant_name,
+            )
+        )
 
     monkeypatch.setattr(
         cmd_build,
@@ -122,14 +330,23 @@ def test_build_does_not_create_artifact_build_plans(
     monkeypatch.setattr(
         cmd_build,
         "execute_artifact_build",
-        lambda artifact_id, *, realization=None, project_root, event_sink=None: None,
+        execute_artifact,
     )
 
     result = _invoke(
         "skippy",
+        "--variant",
+        "shape.ornament",
     )
 
     assert result.exit_code == 0
+    assert executed == [
+        (
+            "skippy",
+            "shape",
+            "ornament",
+        )
+    ]
 
 
 def test_build_passes_project_root(
@@ -137,7 +354,7 @@ def test_build_passes_project_root(
     tmp_path: Path,
 ) -> None:
     """
-    Artifact execution receives the current project root.
+    Explicit Artifact execution receives the current project root.
     """
 
     roots: list[Path] = []
@@ -145,9 +362,11 @@ def test_build_passes_project_root(
     def execute_artifact(
         artifact_id: str,
         *,
-        realization: str | None = None,
+        model_name: str | None = None,
+        variant_name: str | None = None,
         project_root: Path,
         event_sink=None,
+        **kwargs,
     ) -> None:
         roots.append(project_root)
 
@@ -161,6 +380,8 @@ def test_build_passes_project_root(
 
     result = _invoke(
         "skippy",
+        "--variant",
+        "shape.ornament",
     )
 
     assert result.exit_code == 0
@@ -172,81 +393,12 @@ def test_build_passes_project_root(
 # =========================================================
 
 
-def test_build_dry_run_without_variant_leaves_variant_selection_implicit(
-    monkeypatch,
-) -> None:
-    """
-    A normal dry run with no Variant option leaves Variant selection
-    implicit so configuration resolution may select the default Variant.
-    """
-
-    plan = object()
-
-    selections: list[
-        tuple[
-            str | None,
-            str | None,
-        ]
-    ] = []
-    prepared: list[object] = []
-    displayed: list[object] = []
-
-    def create_plans(
-        artifact_id: str,
-        *,
-        variant_name: str | None = None,
-        realization: str | None = None,
-        project_root: Path,
-    ):
-        selections.append(
-            (
-                variant_name,
-                realization,
-            )
-        )
-
-        return (plan,)
-
-    monkeypatch.setattr(
-        cmd_build,
-        "create_artifact_build_plans",
-        create_plans,
-    )
-
-    monkeypatch.setattr(
-        cmd_build,
-        "prepare_incremental_build",
-        lambda candidate: prepared.append(candidate),
-        raising=False,
-    )
-
-    monkeypatch.setattr(
-        cmd_build,
-        "display_build_plan",
-        displayed.append,
-    )
-
-    result = _invoke(
-        "skippy",
-        "--dry-run",
-    )
-
-    assert result.exit_code == 0
-    assert selections == [
-        (
-            None,
-            None,
-        )
-    ]
-    assert prepared == [plan]
-    assert displayed == [plan]
-
-
 def test_build_dry_run_prepares_plan_before_display(
     monkeypatch,
 ) -> None:
     """
-    A dry run validates persistent execution state before displaying a plan.
+    An explicitly selected dry run validates persistent execution state
+    before displaying a plan.
     """
 
     plan = object()
@@ -256,7 +408,7 @@ def test_build_dry_run_prepares_plan_before_display(
     monkeypatch.setattr(
         cmd_build,
         "create_artifact_build_plans",
-        lambda artifact_id, *, realization=None, project_root: (plan,),
+        lambda artifact_id, *, model_name=None, variant_name=None, project_root: (plan,),
     )
 
     def prepare(
@@ -296,6 +448,8 @@ def test_build_dry_run_prepares_plan_before_display(
 
     result = _invoke(
         "skippy",
+        "--variant",
+        "shape.ornament",
         "--dry-run",
     )
 
@@ -317,7 +471,8 @@ def test_build_dry_run_does_not_execute(
     monkeypatch,
 ) -> None:
     """
-    A dry run performs validated preparation and display but no execution.
+    An explicitly selected dry run performs validated preparation and
+    display but no execution.
     """
 
     plans = (
@@ -330,7 +485,7 @@ def test_build_dry_run_does_not_execute(
     monkeypatch.setattr(
         cmd_build,
         "create_artifact_build_plans",
-        lambda artifact_id, *, realization=None, project_root: plans,
+        lambda artifact_id, *, model_name=None, variant_name=None, project_root: plans,
     )
 
     monkeypatch.setattr(
@@ -349,9 +504,9 @@ def test_build_dry_run_does_not_execute(
     def execute_artifact(
         artifact_id: str,
         *,
-        realization: str | None = None,
         project_root: Path,
         event_sink=None,
+        **kwargs,
     ) -> None:
         executed.append(artifact_id)
 
@@ -363,6 +518,8 @@ def test_build_dry_run_does_not_execute(
 
     result = _invoke(
         "skippy",
+        "--variant",
+        "shape.ornament",
         "--dry-run",
     )
 
@@ -379,7 +536,8 @@ def test_build_multiple_artifacts_in_argument_order(
     monkeypatch,
 ) -> None:
     """
-    Multiple artifact IDs are delegated to the engine in argument order.
+    Explicit multi-Artifact execution is delegated to the engine in
+    argument order.
     """
 
     executed: list[str] = []
@@ -387,9 +545,9 @@ def test_build_multiple_artifacts_in_argument_order(
     def execute_artifact(
         artifact_id: str,
         *,
-        realization: str | None = None,
         project_root: Path,
         event_sink=None,
+        **kwargs,
     ) -> None:
         executed.append(artifact_id)
 
@@ -402,6 +560,8 @@ def test_build_multiple_artifacts_in_argument_order(
     result = _invoke(
         "skippy",
         "scooby",
+        "--variant",
+        "shape.ornament",
     )
 
     assert result.exit_code == 0
@@ -416,7 +576,8 @@ def test_build_multiple_artifacts_dry_run_in_argument_order(
     monkeypatch,
 ) -> None:
     """
-    Dry-run plans are prepared and displayed artifact-by-artifact in order.
+    Explicit multi-Artifact dry-run plans are prepared and displayed
+    artifact-by-artifact in order.
     """
 
     skippy_first = object()
@@ -436,7 +597,9 @@ def test_build_multiple_artifacts_dry_run_in_argument_order(
     monkeypatch.setattr(
         cmd_build,
         "create_artifact_build_plans",
-        lambda artifact_id, *, realization=None, project_root: plans_by_artifact[artifact_id],
+        lambda artifact_id, *, model_name=None, variant_name=None, project_root: plans_by_artifact[
+            artifact_id
+        ],
     )
 
     def prepare(
@@ -477,6 +640,8 @@ def test_build_multiple_artifacts_dry_run_in_argument_order(
     result = _invoke(
         "skippy",
         "scooby",
+        "--variant",
+        "shape.ornament",
         "--dry-run",
     )
 
@@ -519,13 +684,14 @@ def test_build_plan_error_is_reported(
     monkeypatch,
 ) -> None:
     """
-    Dry-run build-plan errors are presented as Click command errors.
+    Explicit dry-run BuildPlan errors are presented as Click command errors.
     """
 
     def create_plans(
         artifact_id: str,
         *,
-        realization: str | None = None,
+        model_name: str | None = None,
+        variant_name: str | None = None,
         project_root: Path,
     ):
         raise cmd_build.BuildPlanError("cannot create build plan")
@@ -538,6 +704,8 @@ def test_build_plan_error_is_reported(
 
     result = _invoke(
         "skippy",
+        "--variant",
+        "shape.ornament",
         "--dry-run",
     )
 
@@ -549,8 +717,8 @@ def test_build_dry_run_configuration_error_is_reported_before_display(
     monkeypatch,
 ) -> None:
     """
-    Dry-run configuration validation failures are presented as Click command
-    errors before the invalid plan is displayed.
+    Explicit dry-run configuration validation failures are presented as
+    Click command errors before the invalid plan is displayed.
     """
 
     plan = object()
@@ -558,7 +726,7 @@ def test_build_dry_run_configuration_error_is_reported_before_display(
     monkeypatch.setattr(
         cmd_build,
         "create_artifact_build_plans",
-        lambda artifact_id, *, realization=None, project_root: (plan,),
+        lambda artifact_id, *, model_name=None, variant_name=None, project_root: (plan,),
     )
 
     def prepare(
@@ -587,6 +755,8 @@ def test_build_dry_run_configuration_error_is_reported_before_display(
 
     result = _invoke(
         "skippy",
+        "--variant",
+        "shape.ornament",
         "--dry-run",
     )
 
@@ -599,15 +769,15 @@ def test_build_execution_error_is_reported(
     monkeypatch,
 ) -> None:
     """
-    Artifact build errors are presented as Click command errors.
+    Explicit Artifact build errors are presented as Click command errors.
     """
 
     def execute_artifact(
         artifact_id: str,
         *,
-        realization: str | None = None,
         project_root: Path,
         event_sink=None,
+        **kwargs,
     ) -> None:
         raise cmd_build.BuildError("cannot execute build")
 
@@ -619,6 +789,8 @@ def test_build_execution_error_is_reported(
 
     result = _invoke(
         "skippy",
+        "--variant",
+        "shape.ornament",
     )
 
     assert result.exit_code != 0
@@ -660,6 +832,11 @@ def test_build_rejects_realization_for_normal_build(
     assert result.exit_code != 0
     assert "--realization requires --stage" in result.output
     assert executed == []
+
+
+# =========================================================
+# Independent stage execution
+# =========================================================
 
 
 def test_build_stage_accepts_selected_realization(
@@ -712,6 +889,11 @@ def test_build_stage_accepts_selected_realization(
             "alternate",
         )
     ]
+
+
+# =========================================================
+# Explicit Variant selection
+# =========================================================
 
 
 def test_build_explicit_default_variant_selects_default(
@@ -986,8 +1168,8 @@ def test_build_qualified_variant_selects_model_and_local_variant(
     monkeypatch,
 ) -> None:
     """
-    A qualified Variant selects its Model and local Variant name for execution
-    without selecting an Artifact Realization.
+    A qualified Variant selects its Model and local Variant name for
+    execution without selecting an Artifact Realization.
     """
 
     executed: list[
@@ -1100,6 +1282,11 @@ def test_build_dry_run_qualified_variant_selects_model_and_local_variant(
             None,
         )
     ]
+
+
+# =========================================================
+# All-Variant selection
+# =========================================================
 
 
 def test_build_rejects_variant_with_all_variants(
@@ -1261,7 +1448,7 @@ def test_build_all_variants_delegates_all_variants_to_artifact_build(
 ) -> None:
     """
     Normal all-Variant execution delegates Variant enumeration to the
-    artifact-build engine boundary.
+    Artifact-build engine boundary.
     """
 
     requested: list[
@@ -1317,55 +1504,15 @@ def test_build_all_variants_delegates_all_variants_to_artifact_build(
     ]
 
 
-def test_build_without_all_variants_preserves_existing_execution_call_shape(
-    monkeypatch,
-) -> None:
-    """
-    Ordinary execution does not add an all-Variant selection argument.
-
-    The existing artifact-build call shape remains unchanged when
-    all-Variant selection was not requested.
-    """
-
-    executed: list[str] = []
-
-    def execute_artifact(
-        artifact_id: str,
-        *,
-        project_root: Path,
-        event_sink=None,
-    ) -> None:
-        executed.append(
-            artifact_id,
-        )
-
-    monkeypatch.setattr(
-        cmd_build,
-        "execute_artifact_build",
-        execute_artifact,
-    )
-
-    result = _invoke(
-        "skippy",
-    )
-
-    assert result.exit_code == 0
-    assert executed == [
-        "skippy",
-    ]
-
-
 def test_build_all_variants_dry_run_delegates_selection_to_artifact_planning(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    All-Variant dry-run delegates Variant enumeration to the artifact-level
+    All-Variant dry-run delegates Variant enumeration to the Artifact-level
     engine planning boundary.
 
-    The CLI does not enumerate Model Variants itself. The artifact-planning
-    boundary owns normalization of each Model-scoped Variant to its runtime
-    local-name identity.
+    The CLI does not enumerate Model Variants itself.
     """
 
     first_plan = object()
@@ -1462,6 +1609,11 @@ def test_build_all_variants_dry_run_delegates_selection_to_artifact_planning(
     ]
 
 
+# =========================================================
+# Planning integration
+# =========================================================
+
+
 def test_build_dry_run_qualified_variant_uses_effective_variant_configuration(
     tmp_path: Path,
     monkeypatch,
@@ -1512,92 +1664,13 @@ def test_build_dry_run_qualified_variant_uses_effective_variant_configuration(
         assert plan.resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
 
 
-def test_build_dry_run_omitted_variant_matches_explicit_default(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    """
-    Omitted Variant and explicit default Variant produce the same
-    effective default configuration through normal CLI planning.
-    """
-
-    from lowkey_artifact_builder.config import write_artifact_config
-
-    write_artifact_config(
-        "example",
-        {
-            "model": "shape",
-        },
-        project_root=tmp_path,
-    )
-
-    displayed = []
-
-    def display(plan) -> None:
-        displayed.append(
-            (
-                plan.model_name,
-                plan.realization_name,
-                plan.resolver("variant"),
-                plan.resolver("shape_outer_ridge_width"),
-                plan.resolver.source("shape_outer_ridge_width"),
-            )
-        )
-
-    monkeypatch.chdir(tmp_path)
-
-    monkeypatch.setattr(
-        cmd_build,
-        "display_build_plan",
-        display,
-    )
-
-    omitted = _invoke(
-        "example",
-        "--dry-run",
-    )
-
-    assert omitted.exit_code == 0, omitted.output
-    assert displayed
-
-    omitted_plans = tuple(displayed)
-    displayed.clear()
-
-    explicit = _invoke(
-        "example",
-        "--variant",
-        "default",
-        "--dry-run",
-    )
-
-    assert explicit.exit_code == 0, explicit.output
-    assert displayed
-
-    explicit_plans = tuple(displayed)
-
-    assert omitted_plans == explicit_plans
-
-    for (
-        model_name,
-        realization_name,
-        variant_name,
-        ridge_width,
-        ridge_source,
-    ) in omitted_plans:
-        assert model_name == "shape"
-        assert realization_name == "default"
-        assert variant_name == "default"
-        assert ridge_width == 0.0
-        assert ridge_source == "model"
-
-
 def test_build_all_variants_dry_run_selects_all_default_realizations(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     """
     All-Variant dry-run plans every Variant owned by the Artifact's Model
-    through the real artifact-planning boundary.
+    through the real Artifact-planning boundary.
     """
 
     from lowkey_artifact_builder.config import write_artifact_config
