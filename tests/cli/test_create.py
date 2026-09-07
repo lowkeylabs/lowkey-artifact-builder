@@ -14,6 +14,9 @@ from click.testing import CliRunner
 
 import lowkey_artifact_builder.cli.cmd_create as cmd_create
 from lowkey_artifact_builder.cli._main import cli
+from lowkey_artifact_builder.config import (
+    load_artifact_config,
+)
 
 
 def _invoke(
@@ -297,3 +300,40 @@ def test_create_does_not_expose_general_parameter_configuration() -> None:
 
     assert "--source" in result.output
     assert "--param" not in result.output
+
+
+def test_create_persists_source_only_artifact_definition(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Creating an Artifact persists only its Artifact-owned source.
+
+    Ingesting artwork does not select a Model or serialize derived default
+    Realizations. Model and Variant configuration remain registered reusable
+    configuration.
+    """
+
+    source = tmp_path / "skippy.png"
+    source.write_bytes(b"artwork")
+
+    monkeypatch.chdir(tmp_path)
+
+    result = _invoke(
+        "skippy",
+        "--source",
+        "skippy.png",
+    )
+
+    assert result.exit_code == 0
+
+    artifact_dir = tmp_path / "artifacts" / "skippy"
+
+    assert (artifact_dir / "artifact.png").read_bytes() == b"artwork"
+
+    assert load_artifact_config(
+        "skippy",
+        project_root=tmp_path,
+    ) == {
+        "source": str((artifact_dir / "artifact.png").resolve()),
+    }

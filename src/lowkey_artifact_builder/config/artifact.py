@@ -34,7 +34,6 @@ from .config import (
 
 
 _ARTWORK_INPUT = "artwork"
-_ARTWORK_MODEL = "artwork"
 _ARTWORK_FILENAME = "artifact.png"
 
 
@@ -66,11 +65,6 @@ def configure_artifact(
 
     Supplying artwork persists the artifact-owned artwork location as
     the ``source`` configuration value.
-
-    For legacy artifact definitions without explicit realizations,
-    supplying artwork also selects the ``artwork`` model. Explicit
-    realization definitions retain their realization-scoped model
-    identity.
 
     Values omitted from this call remain unchanged and continue to
     resolve through the normal configuration stack.
@@ -218,11 +212,10 @@ def _configure_artwork_input(
     project_root: Path,
 ) -> None:
     """
-    Ingest artwork and add its required configuration values.
+    Ingest artwork and persist its Artifact-owned source location.
 
-    Artwork selects the legacy artifact-level Artwork model only when
-    the update does not already define explicit realizations. Explicit
-    realizations own their model identity independently.
+    Artwork is an Artifact input. It does not select a Model, Variant,
+    or Realization.
     """
 
     destination = _artifact_input_path(
@@ -236,9 +229,6 @@ def _configure_artwork_input(
         destination,
         input_name=_ARTWORK_INPUT,
     )
-
-    if "realizations" not in updates:
-        updates["model"] = _ARTWORK_MODEL
 
     updates["source"] = str(destination.resolve())
 
