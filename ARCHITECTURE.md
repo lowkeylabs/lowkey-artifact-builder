@@ -606,9 +606,9 @@ Model-independent mechanics.
 
 ## 4.5 Feature
 
-A Feature is an optional composable capability or behavior supported by
+A Feature is an optional composable capability or behavior supported by a Model.
 
-a Model.
+A Feature is optional by definition. A property, product, or behavior required by every use of a Model is part of the Model's intrinsic semantics rather than a Feature. A parameter may control how intrinsic Model behavior is performed without making that behavior a Feature.
 
 Features are Model-scoped.
 
@@ -641,9 +641,9 @@ A Feature may:
 
 \-   affect dependencies.
 
-Features describe Model capabilities. They are not independently
+A Feature need not participate in every representation produced by its Model. Model-owned Feature semantics determine the representation or dimensionalization boundary at which the Feature participates. Enabling a Feature does not imply that the Feature becomes part of every upstream or reusable Product produced by the Model.
 
-constructible catalog offerings and do not identify Realizations.
+Features describe Model capabilities. They are not independently constructible catalog offerings and do not identify Realizations.
 
 Variants configure Model behavior by overriding parameters. Those
 parameter
@@ -772,6 +772,12 @@ Artifact-specific overrides
         ↓
 effective Realization configuration
 ```
+
+A Model parameter need not have a constant default. A Model may define an effective parameter value that is derived from other resolved parameters or from Model-owned derived information.
+
+Such derivation is Model semantics. Generic configuration infrastructure may provide the mechanism for resolving derived values and their dependencies, but it must not contain the Model-specific derivation rule.
+
+An explicit value supplied by an applicable configuration layer takes precedence over a derived default unless the Model's normative definition explicitly specifies otherwise.
 
 Variant definitions are intentionally sparse. A Variant need specify
 only parameters whose values differ from the Model defaults. The Model
