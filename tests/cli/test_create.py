@@ -278,3 +278,22 @@ def test_create_rejects_non_png_source(
 
     assert result.exit_code != 0
     assert "png" in result.output.lower()
+
+
+def test_create_does_not_expose_general_parameter_configuration() -> None:
+    """
+    Artifact creation accepts source artwork, not arbitrary configuration.
+
+    Model defaults and Variant parameter assignments own reusable
+    configuration; Artifact creation does not reproduce that configuration
+    through generic parameter bindings.
+    """
+
+    result = _invoke(
+        "--help",
+    )
+
+    assert result.exit_code == 0
+
+    assert "--source" in result.output
+    assert "--param" not in result.output
