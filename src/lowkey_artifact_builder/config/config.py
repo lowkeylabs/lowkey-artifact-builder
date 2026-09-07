@@ -616,6 +616,13 @@ def get_resolver(
         realization_parameters = _artifact_parameters(
             realization_document,
         )
+
+        _validate_realization_parameters(
+            realization_name,
+            realization_parameters,
+            model_parameters=model_parameters,
+            model_spec=model_spec,
+        )
     else:
         realization_parameters = {}
 
@@ -1917,6 +1924,44 @@ def _colors_from_document(
         raise ConfigError("The [colors] section in system configuration must be a TOML table.")
 
     return dict(colors)
+
+
+def _validate_realization_parameters(
+    realization_name: str,
+    parameters: Mapping[str, Any],
+    *,
+    model_parameters: Mapping[str, Any],
+    model_spec,
+) -> None:
+    """
+    Validate Model parameter overrides supplied by a Realization.
+
+    Reserved Artifact/Realization configuration is not part of the Model
+    parameter vocabulary.
+    """
+
+    recognized = set(model_parameters)
+    recognized.update(model_spec.parameters)
+
+    for variant in model_spec.variants:
+        recognized.update(variant.parameters)
+
+    reserved = {
+        "source",
+    }
+
+    unknown = tuple(name for name in parameters if name not in recognized and name not in reserved)
+
+    if not unknown:
+        return
+
+    names = ", ".join(repr(name) for name in unknown)
+
+    raise ConfigError(
+        f"Realization {realization_name!r} configures "
+        f"unknown parameter(s) for model {model_spec.name!r}: "
+        f"{names}."
+    )
 
 
 def _artifact_parameters(

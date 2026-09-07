@@ -1079,3 +1079,80 @@ def test_additional_realization_direct_parameters_override_variant(
     assert resolver.source("ridge") == "variant 'ridged'"
     assert resolver.source("ridge_width") == "realization 'large'"
     assert resolver.source("ridge_raise") == "variant 'ridged'"
+
+
+def test_customized_default_realization_rejects_unknown_model_parameter(
+    tmp_path: Path,
+    example_model: ModelSpec,
+) -> None:
+    """
+    Direct configuration in a default Realization customization must name
+    parameters recognized by the Realization's Model.
+
+    Artifact configuration cannot silently introduce arbitrary resolved
+    parameter names.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "example-model_ridged": {
+                    "not_a_model_parameter": 7.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="not_a_model_parameter",
+    ):
+        get_resolver(
+            "example",
+            realization="example-model_ridged",
+            project_root=tmp_path,
+        )
+
+
+def test_additional_realization_rejects_unknown_model_parameter(
+    tmp_path: Path,
+    example_model: ModelSpec,
+) -> None:
+    """
+    Direct configuration in an additional named Realization must name
+    parameters recognized by its selected Model.
+
+    The qualified Variant first establishes the Model; that Model then
+    determines the valid Realization parameter vocabulary.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "large": {
+                    "variant": f"{example_model.name}.ridged",
+                    "not_a_model_parameter": 7.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="not_a_model_parameter",
+    ):
+        get_resolver(
+            "example",
+            realization="large",
+            project_root=tmp_path,
+        )
