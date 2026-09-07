@@ -26,6 +26,7 @@ from lowkey_artifact_builder.config import (
     ConfigError,
     get_realization_names,
     get_resolver,
+    load_artifact_config,
     write_artifact_config,
 )
 from lowkey_artifact_builder.model import (
@@ -1222,3 +1223,160 @@ def test_additional_realization_rejects_unknown_model_parameter(
             realization="large",
             project_root=tmp_path,
         )
+
+
+def test_canonical_minimal_artifact_does_not_serialize_default_realizations(
+    tmp_path: Path,
+    example_model: ModelSpec,
+) -> None:
+    """
+    Writing a minimal Artifact does not serialize the default Realizations
+    derived from the registered Model/Variant catalog.
+
+    Default Realizations are effective configuration, not redundant
+    Artifact-specific persistence.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+        },
+        project_root=tmp_path,
+    )
+
+    document = load_artifact_config(
+        "example",
+        project_root=tmp_path,
+    )
+
+    assert document == {
+        "source": "source.png",
+    }
+
+    assert get_realization_names(
+        "example",
+        project_root=tmp_path,
+    ) == (
+        "example-model_default",
+        "example-model_ridged",
+    )
+
+
+def test_canonical_realization_tables_round_trip_without_internal_structure(
+    tmp_path: Path,
+    example_model: ModelSpec,
+) -> None:
+    """
+    Canonical Artifact serialization preserves flat Realization configuration.
+
+    A customized default Realization does not redundantly serialize its
+    originating Model or Variant. An additional Realization identifies its
+    starting configuration with one qualified Variant identity and stores
+    parameter overrides directly in its table.
+    """
+
+    _write_workspace(tmp_path)
+
+    expected = {
+        "source": "source.png",
+        "realizations": {
+            "example-model_ridged": {
+                "ridge_width": 4.0,
+            },
+            "large": {
+                "variant": f"{example_model.name}.ridged",
+                "ridge_width": 8.0,
+            },
+        },
+    }
+
+    write_artifact_config(
+        "example",
+        expected,
+        project_root=tmp_path,
+    )
+
+    document = load_artifact_config(
+        "example",
+        project_root=tmp_path,
+    )
+
+    assert document == expected
+
+    default = document["realizations"]["example-model_ridged"]
+
+    assert "model" not in default
+    assert "variant" not in default
+    assert "parameters" not in default
+
+    additional = document["realizations"]["large"]
+
+    assert additional["variant"] == f"{example_model.name}.ridged"
+    assert "model" not in additional
+    assert "parameters" not in additional
+
+
+def test_canonical_combined_artifact_round_trip_preserves_only_explicit_configuration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Canonical Artifact serialization contains only Artifact-authored
+    configuration even when the effective Realization catalog is larger.
+
+    Derived uncustomized default Realizations remain implicit while a
+    customized default and an additional named Realization remain explicit.
+    """
+
+    _write_workspace(tmp_path)
+
+    primary = _example_model()
+    secondary = _secondary_model()
+
+    _install_models(
+        monkeypatch,
+        primary,
+        secondary,
+    )
+
+    expected = {
+        "source": "source.png",
+        "realizations": {
+            "example-model_ridged": {
+                "ridge_width": 4.0,
+            },
+            "large": {
+                "variant": f"{primary.name}.ridged",
+                "ridge_width": 8.0,
+            },
+        },
+    }
+
+    write_artifact_config(
+        "example",
+        expected,
+        project_root=tmp_path,
+    )
+
+    document = load_artifact_config(
+        "example",
+        project_root=tmp_path,
+    )
+
+    assert document == expected
+
+    assert "example-model_default" not in document["realizations"]
+    assert "secondary-model_default" not in document["realizations"]
+
+    assert get_realization_names(
+        "example",
+        project_root=tmp_path,
+    ) == (
+        "example-model_default",
+        "example-model_ridged",
+        "secondary-model_default",
+        "large",
+    )
