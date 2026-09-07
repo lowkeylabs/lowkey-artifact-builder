@@ -985,3 +985,97 @@ def test_customized_default_realization_overrides_variant_configuration(
     assert resolver.source("ridge") == "variant 'ridged'"
     assert resolver.source("ridge_width") == ("realization 'example-model_ridged'")
     assert resolver.source("ridge_raise") == "variant 'ridged'"
+
+
+# =========================================================
+# Additional named realizations
+# =========================================================
+
+
+def test_additional_realization_selects_qualified_variant(
+    tmp_path: Path,
+    example_model: ModelSpec,
+) -> None:
+    """
+    An additional Artifact-defined Realization selects its Model and
+    Model-scoped Variant through one qualified Variant identity.
+
+    The Artifact does not need to redundantly state the Model separately.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "large": {
+                    "variant": f"{example_model.name}.ridged",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        realization="large",
+        project_root=tmp_path,
+    )
+
+    assert resolver("artifact_id") == "example"
+    assert resolver("realization") == "large"
+
+    assert resolver("model") == example_model.name
+    assert resolver("variant") == "ridged"
+
+    assert resolver("ridge") is True
+    assert resolver("ridge_width") == 3.0
+    assert resolver("ridge_raise") == 1.0
+
+
+def test_additional_realization_direct_parameters_override_variant(
+    tmp_path: Path,
+    example_model: ModelSpec,
+) -> None:
+    """
+    Additional Realization parameter overrides are direct scalar entries
+    in the Realization table.
+
+    They override the selected Variant without requiring a nested
+    [realizations.<name>.parameters] table.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "large": {
+                    "variant": f"{example_model.name}.ridged",
+                    "ridge_width": 7.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        realization="large",
+        project_root=tmp_path,
+    )
+
+    assert resolver("model") == example_model.name
+    assert resolver("variant") == "ridged"
+
+    assert resolver("ridge") is True
+    assert resolver("ridge_width") == 7.0
+    assert resolver("ridge_raise") == 1.0
+
+    assert resolver.source("ridge") == "variant 'ridged'"
+    assert resolver.source("ridge_width") == "realization 'large'"
+    assert resolver.source("ridge_raise") == "variant 'ridged'"

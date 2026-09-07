@@ -417,10 +417,14 @@ def get_resolver(
     Selecting such a Realization identifies both its originating Model and
     Variant without requiring either identity to be repeated in artifact.toml.
 
+    An additional named Realization may select a qualified Variant:
+
+        <model>.<variant-local-name>
+
+    The qualified Variant identifies both its Model and Model-scoped Variant.
+
     Historical artifact configuration declaring explicit [realizations]
-    retains its existing behavior. Each named realization may select a Model,
-    select one of that Model's Variants, and provide realization-specific
-    parameter overrides.
+    remains supported.
 
     Configuration precedence is:
 
@@ -520,6 +524,32 @@ def get_resolver(
 
     if default_selection is not None:
         configured_model, configured_variant = default_selection
+
+    # -----------------------------------------------------
+    # Qualified Variant identity
+    # -----------------------------------------------------
+
+    qualified_variant_selection = None
+
+    if configured_variant is not None:
+        qualified_variant_selection = _qualified_variant_selection(
+            configured_variant,
+            registry,
+        )
+
+    if qualified_variant_selection is not None:
+        qualified_model, local_variant = qualified_variant_selection
+
+        if configured_model is not None and configured_model != qualified_model:
+            raise ConfigError(
+                f"Realization {realization_name!r} declares model "
+                f"{configured_model!r}, but qualified variant "
+                f"{configured_variant!r} selects model "
+                f"{qualified_model!r}."
+            )
+
+        configured_model = qualified_model
+        configured_variant = local_variant
 
     # -----------------------------------------------------
     # Model and Variant selection
@@ -661,6 +691,8 @@ def get_resolver(
 
     if default_selection is not None:
         provenance["model"] = f"realization {realization_name!r}"
+    elif qualified_variant_selection is not None:
+        provenance["model"] = f"realization {realization_name!r}"
     elif configured_model is not None:
         provenance["model"] = (
             f"realization {realization_name!r}" if explicit_realizations else "artifact"
@@ -671,6 +703,8 @@ def get_resolver(
     values["variant"] = resolved_variant.name
 
     if default_selection is not None:
+        provenance["variant"] = f"realization {realization_name!r}"
+    elif qualified_variant_selection is not None:
         provenance["variant"] = f"realization {realization_name!r}"
     elif variant is not None:
         provenance["variant"] = "selection"
@@ -1605,6 +1639,32 @@ def _artifact_variant(
         raise ConfigError("Artifact variant cannot be empty.")
 
     return value
+
+
+def _qualified_variant_selection(
+    variant_name: str,
+    registry,
+) -> tuple[str, str] | None:
+    """
+    Return the Model and local Variant selected by a qualified Variant.
+
+    Qualified Variant identity has the form:
+
+        <model>.<variant-local-name>
+
+    Identity is resolved against the authoritative registered Model/Variant
+    catalog rather than inferred solely by splitting the supplied string.
+
+    Returns None when the supplied value is not the qualified identity of a
+    registered Variant.
+    """
+
+    for model in registry.all_models():
+        for variant in model.variants:
+            if variant_name == f"{model.name}.{variant.name}":
+                return model.name, variant.name
+
+    return None
 
 
 def _resolve_variant(
