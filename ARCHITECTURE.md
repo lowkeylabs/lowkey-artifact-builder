@@ -841,6 +841,19 @@ A Realization is concrete and Artifact-specific. A Variant is reusable
 
 and Model-owned.
 
+For each Model Variant available to an Artifact, the system provides a corresponding default Realization without requiring an explicit Realization declaration in Artifact configuration. The default Realization applies the Variant without Artifact-specific customization. Artifact configuration may customize that Realization or define additional Realizations of the same or another Variant.
+
+A default Realization has the canonical name <model>_<variant-local-name>. For example:
+
+```text
+artwork.default  -> artwork_default
+shape.default    -> shape_default
+shape.ornament   -> shape_ornament
+```
+
+This name identifies the Artifact-scoped Realization. It does not create another Variant identity.
+
+
 A Realization does not independently select a Model and a Variant. Its
 
 Model is determined by its originating Variant.
@@ -889,19 +902,21 @@ both originate from `shape.ornament`.
 
 \-   Every Realization originates from exactly one Variant.
 
+
+\-   Every Variant available to an Artifact has a corresponding 
+default Realization, whether or not that Realization is explicitly declared in Artifact configuration.
+
+\-   Artifact configuration may customize a default Realization or define additional Realizations; omission from artifact.toml does not remove the default Realization.
+
 \-   A Realization is produced by applying that Variant to an Artifact.
 
 \-   Artifact-specific customizations may modify effective configuration
 
     without changing the originating Variant.
 
-\-   Model and Variant are not independent selections within a
+\-   Model and Variant are not independent selections within a Realization.
 
-    Realization.
-
-\-   Realization is not a second reusable configuration or
-
-    catalog-definition mechanism.
+\-   Realization is not a second reusable configuration or catalog-definition mechanism.
 
 \-   Distinct reusable catalog offerings are represented by distinct
 
@@ -1572,9 +1587,18 @@ Shape Variants:
     keychain
 ```
 
-may produce four Realizations without requiring four independently named
+produces the corresponding default Realizations:
 
-Realization definitions in `artifact.toml`.
+```text
+shape_ornament
+shape_ornament-large
+shape_coaster
+shape_keychain
+```
+
+without requiring Realization definitions in artifact.toml.
+
+The effective Realization set consists of the default Realizations derived from available Variants, modified or supplemented by explicit Artifact Realization configuration.
 
 Artifact configuration may customize a Variant application. The exact
 
@@ -2272,13 +2296,17 @@ routine dependency wiring or redundantly enumerate the Model's Variant
 
 catalog.
 
-## Invariant 30 --- Observable, presentation-independent execution
+## Invariant 30 — Default Realizations are discoverable
+
+Every Model Variant available to an Artifact has a corresponding default Realization. Artifact configuration need not enumerate these Realizations merely to make the Model's Variant catalog buildable.
+
+## Invariant 31 --- Observable, presentation-independent execution
 
 Execution semantics must not depend upon presentation or observer
 
 policy.
 
-## Invariant 31 --- Validation follows required execution
+## Invariant 32 --- Validation follows required execution
 
 Configuration validation applies to Stages required by the Execution
 
@@ -2345,8 +2373,18 @@ shape.coaster
 shape.keychain
 ```
 
-without requiring `artifact.toml` to redefine each Variant's parameter
+without requiring `artifact.toml` to declare those realizations or redefine their Variant parameter
 overrides.
+
+Specifically:
+
+```text
+shape.ornament       -> shape_ornament
+shape.ornament-large -> shape_ornament-large
+shape.coaster        -> shape_coaster
+shape.keychain       -> shape_keychain
+```
+
 
 ### Case F --- Customized Variant application
 
