@@ -992,6 +992,72 @@ def test_customized_default_realization_overrides_variant_configuration(
 # =========================================================
 
 
+def test_additional_realizations_selecting_same_variant_remain_independent(
+    tmp_path: Path,
+    example_model: ModelSpec,
+) -> None:
+    """
+    Multiple additional Realizations may select the same qualified Variant
+    while applying independent Artifact-specific configuration.
+
+    Realization configuration changes neither the shared Variant nor another
+    Realization derived from that Variant.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "small": {
+                    "variant": f"{example_model.name}.ridged",
+                    "ridge_width": 4.0,
+                },
+                "large": {
+                    "variant": f"{example_model.name}.ridged",
+                    "ridge_width": 8.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    small = get_resolver(
+        "example",
+        realization="small",
+        project_root=tmp_path,
+    )
+
+    large = get_resolver(
+        "example",
+        realization="large",
+        project_root=tmp_path,
+    )
+
+    assert small("model") == example_model.name
+    assert large("model") == example_model.name
+
+    assert small("variant") == "ridged"
+    assert large("variant") == "ridged"
+
+    assert small("realization") == "small"
+    assert large("realization") == "large"
+
+    assert small("ridge_width") == 4.0
+    assert large("ridge_width") == 8.0
+
+    assert small("ridge_raise") == 1.0
+    assert large("ridge_raise") == 1.0
+
+    assert small.source("ridge_width") == "realization 'small'"
+    assert large.source("ridge_width") == "realization 'large'"
+
+    assert small.source("ridge_raise") == "variant 'ridged'"
+    assert large.source("ridge_raise") == "variant 'ridged'"
+
+
 def test_additional_realization_selects_qualified_variant(
     tmp_path: Path,
     example_model: ModelSpec,
