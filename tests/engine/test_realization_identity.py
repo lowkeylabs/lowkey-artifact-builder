@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import lowkey_artifact_builder.engine.plan as plan_module
 from lowkey_artifact_builder.config import write_artifact_config
 from lowkey_artifact_builder.engine import (
     ProductFingerprint,
@@ -24,6 +25,7 @@ from lowkey_artifact_builder.engine import (
     create_product_state_resolver,
     write_stage_completion,
 )
+from lowkey_artifact_builder.engine.specs import ProductRef
 
 
 def _write_workspace(
@@ -269,3 +271,80 @@ def test_persistent_state_for_same_variant_is_isolated_by_realization(
         )
         is ProductState.ABSENT
     )
+
+
+def test_targeted_planning_selects_only_requested_effective_realization(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Targeted planning discovers the effective Realization set but plans only
+    the Realization named by the requested Product.
+
+    Other derived defaults and additional named Realizations remain
+    discoverable without being eagerly planned.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "large": {
+                    "variant": "shape.ornament",
+                    "shape_size": 150.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    requested: list[str] = []
+
+    real_create_build_plan = plan_module.create_build_plan
+
+    def recording_create_build_plan(
+        artifact_id: str,
+        *,
+        model_name: str | None = None,
+        realization: str | None = None,
+        targets=None,
+        project_root: Path | None = None,
+    ):
+        assert realization is not None
+        requested.append(realization)
+
+        return real_create_build_plan(
+            artifact_id,
+            model_name=model_name,
+            realization=realization,
+            targets=targets,
+            project_root=project_root,
+        )
+
+    monkeypatch.setattr(
+        plan_module,
+        "create_build_plan",
+        recording_create_build_plan,
+    )
+
+    target = ProductRef(
+        artifact="example",
+        model="shape",
+        realization="large",
+        stage="package",
+        product="artifact",
+    )
+
+    plans = plan_module.create_build_plans(
+        "example",
+        targets=(target,),
+        project_root=tmp_path,
+    )
+
+    assert requested == ["large"]
+
+    assert len(plans) == 1
+    assert plans[0].realization_name == "large"
+    assert plans[0].resolver("variant") == "ornament"
+    assert plans[0].resolver("shape_size") == 150.0
