@@ -1,16 +1,16 @@
 """
-Tests for runtime realization configuration compatibility.
+Tests for Artifact-scoped Realization configuration.
 
-Ordinary single-Model Artifact configuration uses the selected Variant's
-local name as the historical runtime realization coordinate.
+Every Model Variant available to an Artifact provides a corresponding
+default Realization. Default Realizations exist independently of whether
+they are explicitly declared in artifact.toml.
 
-Explicit named realizations remain a supported compatibility form. Their
-artifact-scoped names may remain distinct from the local name of the
-Model-scoped Variant they select, and they may provide additional
-parameter overrides.
+Artifacts may additionally customize Realizations or declare additional
+Artifact-scoped Realizations selecting Model Variants.
 
-These tests establish both normalized ordinary Variant identity and the
-explicit historical realization compatibility boundary.
+These tests establish Realization discovery, resolution, configuration
+precedence, isolation, and compatibility behavior while the canonical
+Artifact configuration grammar is introduced incrementally.
 """
 # File: tests/config/test_realizations.py
 # Copyright 2026 LowKeyLabs LLC
@@ -80,12 +80,31 @@ def _write_workspace(
     )
 
 
-def _install_model(
+def _secondary_model() -> ModelSpec:
+    """
+    Return a second deterministic model for realization discovery tests.
+    """
+
+    return ModelSpec(
+        name="secondary-model",
+        title="Secondary Model",
+        variants=(
+            VariantSpec(
+                name="default",
+                parameters={
+                    "mode": "ordinary",
+                },
+            ),
+        ),
+    )
+
+
+def _install_models(
     monkeypatch: pytest.MonkeyPatch,
-    model: ModelSpec,
+    *models: ModelSpec,
 ) -> None:
     """
-    Install one deterministic model for configuration tests.
+    Install deterministic models for configuration tests.
 
     These tests isolate model package discovery because realization
     configuration is the behavior under test.
@@ -93,14 +112,22 @@ def _install_model(
 
     import lowkey_artifact_builder.config.config as config_module
 
+    model_by_name = {model.name: model for model in models}
+
     class StubRegistry:
         def get_model(
             self,
             name: str,
         ) -> ModelSpec:
-            assert name == model.name
+            return model_by_name[name]
 
-            return model
+        def all_models(
+            self,
+        ) -> list[ModelSpec]:
+            return sorted(
+                model_by_name.values(),
+                key=lambda model: model.name,
+            )
 
     monkeypatch.setattr(
         config_module,
@@ -121,6 +148,20 @@ def _install_model(
     )
 
 
+def _install_model(
+    monkeypatch: pytest.MonkeyPatch,
+    model: ModelSpec,
+) -> None:
+    """
+    Install one deterministic model for configuration tests.
+    """
+
+    _install_models(
+        monkeypatch,
+        model,
+    )
+
+
 @pytest.fixture
 def example_model(
     monkeypatch: pytest.MonkeyPatch,
@@ -137,47 +178,6 @@ def example_model(
     )
 
     return model
-
-
-# =========================================================
-# Backward-compatible default realization
-# =========================================================
-
-
-def test_artifact_without_realizations_uses_variant_local_name_as_realization(
-    tmp_path: Path,
-    example_model: ModelSpec,
-) -> None:
-    """
-    Ordinary single-model Artifact configuration uses the configured
-    Variant's local name as its runtime realization identity.
-    """
-
-    _write_workspace(tmp_path)
-
-    write_artifact_config(
-        "example",
-        {
-            "model": example_model.name,
-            "variant": "ridged",
-            "ridge_width": 4.0,
-            "ridge_raise": 1.25,
-        },
-        project_root=tmp_path,
-    )
-
-    resolver = get_resolver(
-        "example",
-        project_root=tmp_path,
-    )
-
-    assert resolver("model") == example_model.name
-    assert resolver("variant") == "ridged"
-    assert resolver("realization") == "ridged"
-
-    assert resolver("ridge") is True
-    assert resolver("ridge_width") == 4.0
-    assert resolver("ridge_raise") == 1.25
 
 
 # =========================================================
@@ -704,51 +704,6 @@ def test_get_realization_names_preserves_declaration_order(
     )
 
 
-def test_get_realization_names_returns_implicit_default(
-    tmp_path: Path,
-) -> None:
-    """
-    Legacy artifact configuration exposes its implicit default
-    realization through realization discovery.
-    """
-
-    write_artifact_config(
-        "example",
-        {
-            "model": "artwork",
-        },
-        project_root=tmp_path,
-    )
-
-    assert get_realization_names(
-        "example",
-        project_root=tmp_path,
-    ) == ("default",)
-
-
-def test_get_realization_names_returns_configured_variant_local_name(
-    tmp_path: Path,
-) -> None:
-    """
-    Ordinary Artifact configuration exposes the configured Variant's
-    local name through realization discovery.
-    """
-
-    write_artifact_config(
-        "example",
-        {
-            "model": "artwork",
-            "variant": "ornament",
-        },
-        project_root=tmp_path,
-    )
-
-    assert get_realization_names(
-        "example",
-        project_root=tmp_path,
-    ) == ("ornament",)
-
-
 def test_direct_variant_selection_preserves_explicit_named_realization(
     tmp_path: Path,
     example_model: ModelSpec,
@@ -786,3 +741,111 @@ def test_direct_variant_selection_preserves_explicit_named_realization(
 
     assert resolver.source("realization") == "artifact"
     assert resolver.source("variant") == "selection"
+
+
+# =========================================================
+# Default realization discovery
+# =========================================================
+
+
+def test_artifact_without_realizations_discovers_default_realization_for_each_variant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Every registered Model Variant contributes one default Realization.
+
+    Artifact configuration does not need to enumerate the Model-owned
+    Variant catalog merely to make those Realizations available.
+    """
+
+    _write_workspace(tmp_path)
+
+    primary = _example_model()
+    secondary = _secondary_model()
+
+    _install_models(
+        monkeypatch,
+        primary,
+        secondary,
+    )
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+        },
+        project_root=tmp_path,
+    )
+
+    realization_names = get_realization_names(
+        "example",
+        project_root=tmp_path,
+    )
+
+    assert realization_names == (
+        "example-model_default",
+        "example-model_ridged",
+        "secondary-model_default",
+    )
+
+
+def test_default_realization_resolves_its_originating_model_and_variant(
+    tmp_path: Path,
+    example_model: ModelSpec,
+) -> None:
+    """
+    A canonical default Realization identifies the Model Variant from
+    which that Realization is derived.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        realization="example-model_ridged",
+        project_root=tmp_path,
+    )
+
+    assert resolver("artifact_id") == "example"
+    assert resolver("realization") == "example-model_ridged"
+    assert resolver("model") == example_model.name
+    assert resolver("variant") == "ridged"
+
+
+def test_default_realization_inherits_variant_configuration(
+    tmp_path: Path,
+    example_model: ModelSpec,
+) -> None:
+    """
+    A derived default Realization uses ordinary Variant configuration
+    resolution without requiring Artifact-specific customization.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        realization="example-model_ridged",
+        project_root=tmp_path,
+    )
+
+    assert resolver("ridge") is True
+    assert resolver("ridge_width") == 3.0
+    assert resolver("ridge_raise") == 1.0

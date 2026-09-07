@@ -903,7 +903,7 @@ both originate from `shape.ornament`.
 \-   Every Realization originates from exactly one Variant.
 
 
-\-   Every Variant available to an Artifact has a corresponding 
+\-   Every Variant available to an Artifact has a corresponding
 default Realization, whether or not that Realization is explicitly declared in Artifact configuration.
 
 \-   Artifact configuration may customize a default Realization or define additional Realizations; omission from artifact.toml does not remove the default Realization.

@@ -409,20 +409,13 @@ def get_resolver(
     """
     Construct the resolver for one artifact configuration.
 
-    A Variant is identified by its Model and local Variant name. For ordinary
-    single-model artifact configuration, the historical runtime realization
-    coordinate carries that local Variant name.
+    Every registered Model Variant provides a canonical default
+    Realization named:
 
-    An artifact using ordinary configuration therefore behaves as though:
+        <model>_<variant-local-name>
 
-        model = "shape"
-        realization = "ornament"
-
-    selects the ``shape.ornament`` Variant.
-
-    When neither Variant nor realization is selected explicitly or configured
-    by the Artifact, the Model's default Variant is used and the runtime
-    realization name is "default".
+    Selecting such a Realization identifies both its originating Model and
+    Variant without requiring either identity to be repeated in artifact.toml.
 
     Historical artifact configuration declaring explicit [realizations]
     retains its existing behavior. Each named realization may select a Model,
@@ -442,9 +435,6 @@ def get_resolver(
         artifact
             <
         realization
-
-    For ordinary single-model artifact configuration, artifact-specific
-    parameter values are merged once at artifact scope.
 
     The current working directory is used as the project root unless
     project_root is explicitly supplied.
@@ -507,14 +497,32 @@ def get_resolver(
         realization_document,
     )
 
+    configured_variant = _artifact_variant(
+        realization_document,
+    )
+
+    # -----------------------------------------------------
+    # Default Realization identity
+    # -----------------------------------------------------
+
+    registry = build_model_registry()
+
+    default_selection = _default_realization_selection(
+        realization_name,
+        registry,
+    )
+
+    if default_selection is not None:
+        configured_model, configured_variant = default_selection
+
+    # -----------------------------------------------------
+    # Model and Variant selection
+    # -----------------------------------------------------
+
     model_name = _resolve_model_name(
         artifact_id,
         configured_model=configured_model,
         requested_model=model,
-    )
-
-    configured_variant = _artifact_variant(
-        realization_document,
     )
 
     if variant is not None:
@@ -538,7 +546,7 @@ def get_resolver(
         model_name,
     )
 
-    model_spec = build_model_registry().get_model(
+    model_spec = registry.get_model(
         model_name,
     )
 
@@ -645,7 +653,9 @@ def get_resolver(
 
     values["model"] = model_name
 
-    if configured_model is not None:
+    if default_selection is not None:
+        provenance["model"] = f"realization {realization_name!r}"
+    elif configured_model is not None:
         provenance["model"] = (
             f"realization {realization_name!r}" if explicit_realizations else "artifact"
         )
@@ -654,7 +664,9 @@ def get_resolver(
 
     values["variant"] = resolved_variant.name
 
-    if variant is not None:
+    if default_selection is not None:
+        provenance["variant"] = f"realization {realization_name!r}"
+    elif variant is not None:
         provenance["variant"] = "selection"
     elif configured_variant is not None:
         provenance["variant"] = (
@@ -701,11 +713,13 @@ def get_realization_names(
     realizations = artifact_document.get("realizations")
 
     if realizations is None:
-        variant_name = _artifact_variant(
-            artifact_document,
-        )
+        registry = build_model_registry()
 
-        return (variant_name if variant_name is not None else "default",)
+        return tuple(
+            f"{model.name}_{variant.name}"
+            for model in registry.all_models()
+            for variant in model.variants
+        )
 
     if not isinstance(
         realizations,
@@ -1376,6 +1390,29 @@ def _write_artifact_document_atomic(
 # =========================================================
 # Realization resolution
 # =========================================================
+
+
+def _default_realization_selection(
+    realization_name: str,
+    registry,
+) -> tuple[str, str] | None:
+    """
+    Return the Model and Variant selected by a default Realization.
+
+    Default Realization identity is derived from the authoritative
+    registered Model/Variant catalog rather than parsed from the
+    realization name.
+
+    Returns None when the supplied name is not the canonical default
+    Realization name of any registered Variant.
+    """
+
+    for model in registry.all_models():
+        for variant in model.variants:
+            if realization_name == f"{model.name}_{variant.name}":
+                return model.name, variant.name
+
+    return None
 
 
 def _resolve_realization_name(

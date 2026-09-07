@@ -270,8 +270,8 @@ def _configure_project(
     do not have installed model implementation packages. Their parameter and
     derivation configuration is empty.
 
-    The consumer binds its declarative geometry dependency to the concrete
-    producer artifact and realization.
+    The consumer binds its declarative geometry dependency to the producer's
+    canonical default Realization.
     """
 
     registry = _model_registry()
@@ -325,7 +325,7 @@ def _configure_project(
                     "stage": "transform",
                     "product": "geometry",
                     "artifact": "producer-artifact",
-                    "realization": "default",
+                    "realization": "producer_default",
                 },
             },
         },
@@ -337,7 +337,7 @@ def _consumer_plan(
     project_root: Path,
 ) -> BuildPlan:
     """
-    Return the configured consumer BuildPlan targeted to its artifact product.
+    Return the canonical consumer default Realization targeted to its product.
 
     Targeted planning constructs the realization graph and therefore includes
     the declarative cross-artifact product dependencies required by the target
@@ -347,7 +347,7 @@ def _consumer_plan(
     target = ProductRef(
         artifact="consumer-artifact",
         model="consumer",
-        realization="default",
+        realization="consumer_default",
         stage="consume",
         product="artifact",
     )
@@ -364,7 +364,7 @@ def _consumer_plan(
 
     assert plan.artifact_id == "consumer-artifact"
     assert plan.model_name == "consumer"
-    assert plan.realization_name == "default"
+    assert plan.realization_name == "consumer_default"
 
     return plan
 
@@ -481,9 +481,11 @@ def test_dependency_build_targets_only_required_producer_product(
         project_root=project_root,
     )
 
-    assert len(producer_plans) == 1
-
-    producer = producer_plans[0]
+    producer = next(
+        plan
+        for plan in producer_plans
+        if (plan.model_name == "producer" and plan.realization_name == "producer_default")
+    )
 
     prepared = _product_path(
         producer,

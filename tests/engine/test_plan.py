@@ -1253,12 +1253,15 @@ artwork_raise = 1.0
     assert plans[1].resolver("artwork_size") == 90.0
 
 
-def test_create_build_plans_preserves_implicit_default_realization(
+def test_create_build_plans_plans_default_realization_for_each_variant(
     tmp_path: Path,
 ) -> None:
     """
-    Legacy single-realization artifacts produce exactly one default
-    BuildPlan through artifact-level planning.
+    Artifact-level planning exposes the default Realization of every
+    registered Model Variant.
+
+    Default Realizations exist independently of artifact.toml declarations
+    and use the canonical <model>_<variant-local-name> identity.
     """
 
     (tmp_path / "workspace.toml").write_text(
@@ -1273,7 +1276,6 @@ artwork_raise = 1.0
     write_artifact_config(
         "example",
         {
-            "model": "artwork",
             "source": "source.png",
         },
         project_root=tmp_path,
@@ -1284,15 +1286,32 @@ artwork_raise = 1.0
         project_root=tmp_path,
     )
 
-    assert len(plans) == 1
+    assert tuple(
+        (
+            plan.model_name,
+            plan.realization_name,
+            plan.resolver("variant"),
+        )
+        for plan in plans
+    ) == (
+        (
+            "artwork",
+            "artwork_default",
+            "default",
+        ),
+        (
+            "shape",
+            "shape_default",
+            "default",
+        ),
+        (
+            "shape",
+            "shape_ornament",
+            "ornament",
+        ),
+    )
 
-    plan = plans[0]
-
-    assert plan.artifact_id == "example"
-    assert plan.model_name == "artwork"
-    assert plan.realization_name == "default"
-
-    assert plan.resolver("source") == "source.png"
+    assert all(plan.artifact_id == "example" for plan in plans)
 
 
 # =========================================================
@@ -2721,11 +2740,12 @@ def test_create_build_plans_preserves_shape_bound_registered_artwork(
     tmp_path: Path,
 ) -> None:
     """
-    Artifact-level Shape planning preserves its bound registered Artwork.
+    Planning a canonical default Shape Realization preserves its bound Artwork.
 
-    Planning an implicit-default Shape through create_build_plans must retain
-    the same declarative dependency, concrete producer binding, and planned
-    producer product as planning that realization directly.
+    Artifact-level planning may expose default Realizations for multiple Models.
+    Selecting shape_default identifies the Shape default Realization explicitly,
+    and that Realization retains its declarative Artwork dependency, concrete
+    producer binding, and planned producer product.
     """
 
     write_artifact_config(
@@ -2756,6 +2776,7 @@ def test_create_build_plans_preserves_shape_bound_registered_artwork(
 
     plans = create_build_plans(
         "shape-example",
+        realization="shape_default",
         project_root=tmp_path,
     )
 
@@ -2765,7 +2786,8 @@ def test_create_build_plans_preserves_shape_bound_registered_artwork(
 
     assert plan.artifact_id == "shape-example"
     assert plan.model_name == "shape"
-    assert plan.realization_name == "default"
+    assert plan.realization_name == "shape_default"
+    assert plan.resolver("variant") == "default"
 
     dependency = ProductDependencySpec(
         model="artwork",
@@ -2775,12 +2797,7 @@ def test_create_build_plans_preserves_shape_bound_registered_artwork(
 
     assert plan.product_dependencies == (dependency,)
 
-    assert (
-        len(
-            plan.product_dependency_bindings,
-        )
-        == 1
-    )
+    assert len(plan.product_dependency_bindings) == 1
 
     binding = plan.product_dependency_bindings[0]
 
@@ -2790,12 +2807,7 @@ def test_create_build_plans_preserves_shape_bound_registered_artwork(
         realization="default",
     )
 
-    assert (
-        len(
-            plan.planned_product_dependencies,
-        )
-        == 1
-    )
+    assert len(plan.planned_product_dependencies) == 1
 
     planned_dependency = plan.planned_product_dependencies[0]
 

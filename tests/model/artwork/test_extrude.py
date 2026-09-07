@@ -267,6 +267,7 @@ def _stl_bounds(
 # =========================================================
 
 
+@pytest.mark.slow
 def test_extrude_uses_declared_vector_manifest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -355,6 +356,7 @@ def test_extrude_uses_declared_vector_manifest(
     assert extrude_manifest.is_file()
 
 
+@pytest.mark.slow
 def test_extrude_places_dynamic_stls_beside_declared_manifest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -469,6 +471,7 @@ def test_extrude_places_dynamic_stls_beside_declared_manifest(
     assert all(path.is_file() for path in rendered_outputs)
 
 
+@pytest.mark.slow
 def test_extrude_manifest_describes_stage_local_products(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -576,6 +579,7 @@ def test_extrude_manifest_describes_stage_local_products(
 # =========================================================
 
 
+@pytest.mark.slow
 def test_extrude_preserves_artifact_and_printer_color_semantics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -680,6 +684,7 @@ def test_extrude_preserves_artifact_and_printer_color_semantics(
 # =========================================================
 
 
+@pytest.mark.slow
 def test_extrude_sizes_and_centers_occupied_envelope_in_physical_space(
     tmp_path: Path,
 ) -> None:

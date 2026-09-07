@@ -119,6 +119,13 @@ def _install_models(
             except KeyError as exc:
                 raise AssertionError(f"unexpected model lookup: {name!r}") from exc
 
+        def all_models(self) -> list[ModelSpec]:
+            """
+            Return all registered Models in deterministic name order.
+            """
+
+            return [models[name] for name in sorted(models)]
+
     monkeypatch.setattr(
         config_module,
         "build_model_registry",

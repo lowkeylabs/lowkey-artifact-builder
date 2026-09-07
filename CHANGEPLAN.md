@@ -1173,4 +1173,3 @@ The guiding principle for this plan is:
 > Every available Variant provides a default Artifact-scoped Realization.
 > Artifact configuration customizes those defaults or adds additional
 > Realizations. Stages produce the Products required to realize them.
-
