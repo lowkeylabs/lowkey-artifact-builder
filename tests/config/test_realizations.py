@@ -668,12 +668,16 @@ def test_realization_configuration_overrides_artifact_configuration(
     assert resolver.source("artwork_size") == "realization 'ornament'"
 
 
-def test_get_realization_names_preserves_declaration_order(
+def test_get_realization_names_appends_additional_realizations_in_declaration_order(
     tmp_path: Path,
+    example_model: ModelSpec,
 ) -> None:
     """
-    Explicit realization names are returned in artifact.toml
-    declaration order.
+    Additional Artifact-defined Realizations follow the derived default
+    Realization catalog in artifact.toml declaration order.
+
+    Explicit Realizations augment rather than replace the default
+    Realizations derived from registered Model Variants.
     """
 
     write_artifact_config(
@@ -681,13 +685,13 @@ def test_get_realization_names_preserves_declaration_order(
         {
             "realizations": {
                 "ornament": {
-                    "model": "artwork",
+                    "model": example_model.name,
                 },
                 "coaster": {
-                    "model": "artwork",
+                    "model": example_model.name,
                 },
                 "keychain": {
-                    "model": "artwork",
+                    "model": example_model.name,
                 },
             },
         },
@@ -698,6 +702,8 @@ def test_get_realization_names_preserves_declaration_order(
         "example",
         project_root=tmp_path,
     ) == (
+        "example-model_default",
+        "example-model_ridged",
         "ornament",
         "coaster",
         "keychain",
@@ -849,3 +855,133 @@ def test_default_realization_inherits_variant_configuration(
     assert resolver("ridge") is True
     assert resolver("ridge_width") == 3.0
     assert resolver("ridge_raise") == 1.0
+
+
+# =========================================================
+# Default realization customization
+# =========================================================
+
+
+def test_customized_default_realization_remains_single_effective_realization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Customizing a derived default Realization does not replace the default
+    catalog or create a second Realization with the same identity.
+
+    Effective Realization discovery remains the union of the registered
+    Model Variant defaults and Artifact-specific Realization configuration.
+    """
+
+    _write_workspace(tmp_path)
+
+    primary = _example_model()
+    secondary = _secondary_model()
+
+    _install_models(
+        monkeypatch,
+        primary,
+        secondary,
+    )
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "example-model_ridged": {
+                    "ridge_width": 7.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    assert get_realization_names(
+        "example",
+        project_root=tmp_path,
+    ) == (
+        "example-model_default",
+        "example-model_ridged",
+        "secondary-model_default",
+    )
+
+
+def test_customized_default_realization_implies_model_and_variant(
+    tmp_path: Path,
+    example_model: ModelSpec,
+) -> None:
+    """
+    A canonical default Realization customization need not restate its
+    originating Model or Variant.
+
+    Canonical Realization identity continues to select both.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "example-model_ridged": {
+                    "ridge_width": 7.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        realization="example-model_ridged",
+        project_root=tmp_path,
+    )
+
+    assert resolver("artifact_id") == "example"
+    assert resolver("realization") == "example-model_ridged"
+    assert resolver("model") == example_model.name
+    assert resolver("variant") == "ridged"
+
+
+def test_customized_default_realization_overrides_variant_configuration(
+    tmp_path: Path,
+    example_model: ModelSpec,
+) -> None:
+    """
+    Artifact customization of a default Realization has higher precedence
+    than the configuration supplied by its originating Variant.
+
+    Values not customized by the Artifact continue to come from the Variant.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "example-model_ridged": {
+                    "ridge_width": 7.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        realization="example-model_ridged",
+        project_root=tmp_path,
+    )
+
+    assert resolver("ridge") is True
+    assert resolver("ridge_width") == 7.0
+    assert resolver("ridge_raise") == 1.0
+
+    assert resolver.source("ridge") == "variant 'ridged'"
+    assert resolver.source("ridge_width") == ("realization 'example-model_ridged'")
+    assert resolver.source("ridge_raise") == "variant 'ridged'"

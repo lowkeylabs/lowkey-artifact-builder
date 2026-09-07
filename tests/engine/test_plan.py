@@ -1192,17 +1192,21 @@ artwork_raise = 1.0
     assert ornament_products.isdisjoint(coaster_products)
 
 
-def test_create_build_plans_plans_all_named_realizations(
+def test_create_build_plans_combines_default_and_additional_realizations(
     tmp_path: Path,
 ) -> None:
     """
-    Artifact-level planning produces one BuildPlan for every explicitly
-    configured realization.
+    Artifact-level planning includes both canonical default Realizations and
+    additional Artifact-defined Realizations.
+
+    Declaring additional Realizations does not suppress the defaults derived
+    from the registered Model/Variant catalog.
     """
 
     (tmp_path / "workspace.toml").write_text(
         """
 [parameters]
+artwork_size = 80.0
 artwork_raise = 1.0
 """.lstrip(),
         encoding="utf-8",
@@ -1237,20 +1241,48 @@ artwork_raise = 1.0
         project_root=tmp_path,
     )
 
-    assert tuple(plan.realization_name for plan in plans) == (
-        "ornament",
-        "coaster",
+    assert tuple(
+        (
+            plan.model_name,
+            plan.realization_name,
+            plan.resolver("variant"),
+        )
+        for plan in plans
+    ) == (
+        (
+            "artwork",
+            "artwork_default",
+            "default",
+        ),
+        (
+            "shape",
+            "shape_default",
+            "default",
+        ),
+        (
+            "shape",
+            "shape_ornament",
+            "ornament",
+        ),
+        (
+            "artwork",
+            "ornament",
+            "default",
+        ),
+        (
+            "artwork",
+            "coaster",
+            "default",
+        ),
     )
 
-    assert all(plan.artifact_id == "example" for plan in plans)
+    plans_by_realization = {plan.realization_name: plan for plan in plans}
 
-    assert all(plan.model_name == "artwork" for plan in plans)
+    assert plans_by_realization["artwork_default"].resolver("artwork_size") == 80.0
 
-    assert plans[0].resolver("source") == "source.png"
-    assert plans[1].resolver("source") == "source.png"
+    assert plans_by_realization["ornament"].resolver("artwork_size") == 100.0
 
-    assert plans[0].resolver("artwork_size") == 100.0
-    assert plans[1].resolver("artwork_size") == 90.0
+    assert plans_by_realization["coaster"].resolver("artwork_size") == 90.0
 
 
 def test_create_build_plans_plans_default_realization_for_each_variant(

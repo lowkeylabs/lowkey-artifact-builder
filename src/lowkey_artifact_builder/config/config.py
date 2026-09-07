@@ -458,13 +458,19 @@ def get_resolver(
     colors = _colors_from_document(system_document)
 
     # -----------------------------------------------------
-    # Artifact configuration and runtime identity
+    # Artifact configuration and Model registry
     # -----------------------------------------------------
 
     artifact_document = load_artifact_config(
         artifact_id,
         project_root=root,
     )
+
+    registry = build_model_registry()
+
+    # -----------------------------------------------------
+    # Runtime Realization identity
+    # -----------------------------------------------------
 
     explicit_realizations = "realizations" in artifact_document
 
@@ -486,11 +492,13 @@ def get_resolver(
     realization_name = _resolve_realization_name(
         artifact_document,
         requested_realization,
+        registry,
     )
 
     realization_document = _realization_document(
         artifact_document,
         realization_name,
+        registry,
     )
 
     configured_model = _artifact_model(
@@ -504,8 +512,6 @@ def get_resolver(
     # -----------------------------------------------------
     # Default Realization identity
     # -----------------------------------------------------
-
-    registry = build_model_registry()
 
     default_selection = _default_realization_selection(
         realization_name,
@@ -569,7 +575,7 @@ def get_resolver(
     )
 
     # -----------------------------------------------------
-    # Artifact and realization parameters
+    # Artifact and Realization parameters
     # -----------------------------------------------------
 
     artifact_parameters = _artifact_parameters(
@@ -691,14 +697,21 @@ def get_realization_names(
     project_root: Path | str | None = None,
 ) -> tuple[str, ...]:
     """
-    Return the runtime realization names for one artifact.
+    Return the effective Realization names for one Artifact.
 
-    For ordinary single-model artifact configuration, the runtime
-    realization name is the configured Variant's local name. When no
-    Variant is configured, the implicit local name is "default".
+    Every registered Model Variant contributes one canonical default
+    Realization named:
 
-    Artifacts declaring explicit realizations return those realization
-    names in artifact.toml declaration order.
+        <model>_<variant-local-name>
+
+    Artifact-declared Realizations augment that default catalog.
+
+    When an Artifact declares a Realization having the same name as a
+    canonical default Realization, the declaration customizes that existing
+    Realization rather than creating a second Realization.
+
+    Additional Artifact-defined Realizations are appended in artifact.toml
+    declaration order.
     """
 
     _validate_artifact_id(artifact_id)
@@ -710,16 +723,18 @@ def get_realization_names(
         project_root=root,
     )
 
+    registry = build_model_registry()
+
+    default_names = tuple(
+        f"{model.name}_{variant.name}"
+        for model in registry.all_models()
+        for variant in model.variants
+    )
+
     realizations = artifact_document.get("realizations")
 
     if realizations is None:
-        registry = build_model_registry()
-
-        return tuple(
-            f"{model.name}_{variant.name}"
-            for model in registry.all_models()
-            for variant in model.variants
-        )
+        return default_names
 
     if not isinstance(
         realizations,
@@ -727,7 +742,11 @@ def get_realization_names(
     ):
         raise ConfigError("The [realizations] section in artifact.toml must be a TOML table.")
 
-    return tuple(realizations)
+    default_name_set = set(default_names)
+
+    additional_names = tuple(name for name in realizations if name not in default_name_set)
+
+    return default_names + additional_names
 
 
 def has_product_dependency_binding(
@@ -1418,17 +1437,17 @@ def _default_realization_selection(
 def _resolve_realization_name(
     artifact_document: Mapping[str, Any],
     requested_realization: str | None,
+    registry,
 ) -> str:
     """
-    Resolve the runtime realization/local Variant name for an artifact.
+    Resolve the runtime Realization name for an Artifact.
 
-    For ordinary single-model artifact configuration, realization is the
-    local-name component of Variant identity. A missing selection therefore
-    selects "default", while an explicit name is preserved for Model-scoped
-    Variant resolution.
+    Ordinary single-Model Artifact configuration retains its historical
+    local-Variant-name behavior.
 
-    Artifacts declaring the historical [realizations] form retain their
-    existing artifact-scoped selection behavior.
+    When [realizations] is present, explicitly declared Realizations and
+    canonical default Realizations derived from the registered Model/Variant
+    catalog are both valid selections.
     """
 
     if requested_realization is not None:
@@ -1454,24 +1473,38 @@ def _resolve_realization_name(
 
         raise ConfigError("Artifact defines explicit realizations; a realization must be selected.")
 
-    if requested_realization not in realizations:
-        raise ConfigError(f"unknown realization {requested_realization!r}.")
+    if requested_realization in realizations:
+        return requested_realization
 
-    return requested_realization
+    if (
+        _default_realization_selection(
+            requested_realization,
+            registry,
+        )
+        is not None
+    ):
+        return requested_realization
+
+    raise ConfigError(f"unknown realization {requested_realization!r}.")
 
 
 def _realization_document(
     artifact_document: Mapping[str, Any],
     realization_name: str,
+    registry,
 ) -> Mapping[str, Any]:
     """
     Return the configuration document associated with runtime selection.
 
-    Ordinary single-model artifact configuration uses the artifact document
+    Ordinary single-Model Artifact configuration uses the Artifact document
     regardless of the selected local Variant name.
 
-    Historical explicit [realizations] configuration continues to select the
-    corresponding artifact-scoped realization document.
+    An explicitly declared Realization contributes its Artifact-specific
+    configuration.
+
+    A canonical default Realization exists independently of artifact.toml.
+    When it has no corresponding [realizations.<name>] table, it contributes
+    no Realization-specific configuration.
     """
 
     realizations = artifact_document.get("realizations")
@@ -1487,16 +1520,25 @@ def _realization_document(
 
     realization = realizations.get(realization_name)
 
-    if realization is None:
-        raise ConfigError(f"unknown realization {realization_name!r}.")
+    if realization is not None:
+        if not isinstance(
+            realization,
+            Mapping,
+        ):
+            raise ConfigError(f"Realization {realization_name!r} must be a TOML table.")
 
-    if not isinstance(
-        realization,
-        Mapping,
+        return realization
+
+    if (
+        _default_realization_selection(
+            realization_name,
+            registry,
+        )
+        is not None
     ):
-        raise ConfigError(f"Realization {realization_name!r} must be a TOML table.")
+        return {}
 
-    return realization
+    raise ConfigError(f"unknown realization {realization_name!r}.")
 
 
 # =========================================================
