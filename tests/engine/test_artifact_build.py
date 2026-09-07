@@ -666,3 +666,100 @@ def test_artifact_build_omitted_variant_matches_explicit_default_variant(
     assert implicit("realization") == explicit("realization") == "default"
 
     assert implicit("shape_outer_ridge_width") == explicit("shape_outer_ridge_width") == 0.0
+
+
+def test_artifact_build_plans_selected_canonical_default_realization(
+    tmp_path: Path,
+) -> None:
+    """
+    A derived default Realization is individually addressable through the
+    public artifact-build planning boundary.
+
+    The Artifact need not serialize the Realization merely to select and
+    plan it.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+        },
+        project_root=tmp_path,
+    )
+
+    plans = artifact_build.create_artifact_build_plans(
+        "example",
+        realization="shape_ornament",
+        project_root=tmp_path,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    assert plan.model_name == "shape"
+    assert plan.realization_name == "shape_ornament"
+
+    assert plan.resolver("model") == "shape"
+    assert plan.resolver("variant") == "ornament"
+
+    assert plan.resolver("shape_outer_ridge_width") == 2.0
+    assert plan.resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
+
+
+def test_artifact_build_executes_only_selected_canonical_default_realization(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Building one canonical default Realization does not eagerly execute the
+    other default Realizations discoverable for the Artifact.
+
+    Realization discovery establishes what may be built; explicit selection
+    determines which dependency closure is executed.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+        },
+        project_root=tmp_path,
+    )
+
+    executed = []
+
+    def fake_execute_dependency_build(
+        plan,
+        *,
+        event_sink=None,
+    ):
+        executed.append(
+            (
+                plan.model_name,
+                plan.realization_name,
+                plan.resolver("variant"),
+            )
+        )
+
+        return plan
+
+    monkeypatch.setattr(
+        artifact_build,
+        "execute_dependency_build",
+        fake_execute_dependency_build,
+    )
+
+    execute_artifact_build(
+        "example",
+        realization="shape_ornament",
+        project_root=tmp_path,
+    )
+
+    assert executed == [
+        (
+            "shape",
+            "shape_ornament",
+            "ornament",
+        ),
+    ]
