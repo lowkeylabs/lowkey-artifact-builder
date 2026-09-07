@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import lowkey_artifact_builder.engine.build as build_module
 import lowkey_artifact_builder.engine.plan as plan_module
 from lowkey_artifact_builder.config import write_artifact_config
 from lowkey_artifact_builder.engine import (
@@ -348,3 +349,87 @@ def test_targeted_planning_selects_only_requested_effective_realization(
     assert plans[0].realization_name == "large"
     assert plans[0].resolver("variant") == "ornament"
     assert plans[0].resolver("shape_size") == 150.0
+
+
+def test_realizations_of_same_variant_publish_without_collisions(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Distinct Realizations selecting the same Variant publish independently.
+
+    Publication naming uses actual Realization identity rather than Variant
+    identity, so convenience copies cannot collide merely because their
+    Realizations share a Variant.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "small": {
+                    "variant": "shape.ornament",
+                    "shape_size": 100.0,
+                },
+                "large": {
+                    "variant": "shape.ornament",
+                    "shape_size": 150.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    small_plan = plan_module.create_build_plan(
+        "example",
+        realization="small",
+        project_root=tmp_path,
+    )
+
+    large_plan = plan_module.create_build_plan(
+        "example",
+        realization="large",
+        project_root=tmp_path,
+    )
+
+    assert small_plan.resolver("variant") == "ornament"
+    assert large_plan.resolver("variant") == "ornament"
+
+    small_package_stage = next(stage for stage in small_plan.stages if stage.name == "package")
+    large_package_stage = next(stage for stage in large_plan.stages if stage.name == "package")
+
+    small_package = small_package_stage.products[0]
+    large_package = large_package_stage.products[0]
+
+    small_package.path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    large_package.path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    small_package.path.write_bytes(b"small")
+    large_package.path.write_bytes(b"large")
+
+    build_module._publish_package(
+        small_plan,
+        small_package_stage,
+    )
+    build_module._publish_package(
+        large_plan,
+        large_package_stage,
+    )
+
+    small_published = small_plan.artifact_dir / "shape.small.3mf"
+    large_published = large_plan.artifact_dir / "shape.large.3mf"
+
+    assert small_published != large_published
+
+    assert small_published.read_bytes() == b"small"
+    assert large_published.read_bytes() == b"large"
+
+    assert small_package.path.read_bytes() == b"small"
+    assert large_package.path.read_bytes() == b"large"

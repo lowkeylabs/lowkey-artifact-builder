@@ -96,7 +96,7 @@ def execute_build(
     delegated to the common independent stage execution boundary.
 
     A successfully executed package stage publishes its first declared
-    Product as a Variant-qualified convenience copy in the Artifact
+    Product as a Realization-qualified convenience copy in the Artifact
     directory. The canonical Stage Product remains authoritative.
 
     Failure to realize a required product dependency, prepare the
@@ -201,7 +201,7 @@ def _publish_package(
     """
     Publish the first Product of a successfully executed package stage.
 
-    Publication creates a Variant-qualified convenience copy in the
+    Publication creates a Realization-qualified convenience copy in the
     Artifact directory. The canonical Stage Product remains unchanged
     and remains the persistent Product authority.
     """
