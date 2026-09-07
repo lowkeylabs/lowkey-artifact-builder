@@ -1,11 +1,11 @@
 """
 Artifact creation command.
 
-Creates a new persistent artifact definition.
+Creates a new persistent artifact definition from source artwork.
 
-Artifact creation is distinct from configuration of an existing
-artifact. Command-line configuration supplies initial setup values, and
-interactive setup collects only configuration that remains unresolved.
+Model defaults and Variant configuration are registered reusable
+configuration. Artifact creation therefore collects only the source PNG
+required to define the Artifact.
 """
 # File: src/lowkey_artifact_builder/cli/cmd_create.py
 # Copyright 2026 LowKeyLabs LLC
@@ -14,28 +14,16 @@ interactive setup collects only configuration that remains unresolved.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import click
 
-from lowkey_artifact_builder.cli.bindings import (
-    BindingError,
-    parse_parameter_bindings,
-)
 from lowkey_artifact_builder.cli.display import (
-    display_artifact_config,
-)
-from lowkey_artifact_builder.cli.setup import (
-    setup_artifact,
+    console,
 )
 from lowkey_artifact_builder.config import (
     ConfigError,
     configure_artifact,
-    get_resolver,
     load_artifact_config,
-)
-from lowkey_artifact_builder.model import (
-    build_model_registry,
 )
 
 # =========================================================
@@ -49,15 +37,13 @@ from lowkey_artifact_builder.model import (
     nargs=-1,
 )
 @click.option(
-    "--param",
-    "parameter_bindings",
-    metavar="NAME=VALUE",
-    multiple=True,
-    help="Supply an initial artifact configuration value.",
+    "--source",
+    type=str,
+    help="Use the specified PNG as the Artifact source.",
 )
 def cli(
     artifact_ids: tuple[str, ...],
-    parameter_bindings: tuple[str, ...],
+    source: str | None,
 ) -> None:
     """
     Create a new artifact.
@@ -85,40 +71,12 @@ def cli(
         raise click.ClickException(f"Artifact {artifact_id!r} is already defined.")
 
     # =====================================================
-    # Initial configuration
+    # Source
     # =====================================================
 
-    try:
-        initial_values = parse_parameter_bindings(
-            parameter_bindings,
-        )
-
-    except BindingError as exc:
-        raise click.ClickException(str(exc)) from exc
-
-    # =====================================================
-    # Setup completion
-    # =====================================================
-
-    registry = build_model_registry()
-
-    setup = setup_artifact(
-        artifact_id,
-        registry,
-        values=initial_values,
+    source_path = _resolve_source(
+        source,
         project_root=project_root,
-    )
-
-    setup_values = dict(setup.values)
-
-    input_files = _extract_input_files(
-        setup_values,
-        project_root=project_root,
-    )
-
-    values = _default_realization_values(
-        setup.model,
-        setup_values,
     )
 
     # =====================================================
@@ -128,8 +86,10 @@ def cli(
     try:
         configure_artifact(
             artifact_id,
-            values=values,
-            input_files=input_files,
+            values={},
+            input_files={
+                "artwork": source_path,
+            },
             project_root=project_root,
         )
 
@@ -147,77 +107,70 @@ def cli(
 
 
 # =========================================================
-# Setup translation
+# Source
 # =========================================================
 
 
-def _extract_input_files(
-    values: dict[str, Any],
+def _resolve_source(
+    source: str | None,
     *,
     project_root: Path,
-) -> dict[str, Path]:
+) -> Path:
     """
-    Extract external inputs collected during artifact setup.
+    Resolve the PNG source selected for a new Artifact.
 
-    External source parameters are translated into semantic input roles
-    understood by the high-level artifact configuration API.
-
-    Extracted source parameters are removed from values so external
-    filesystem paths are not persisted directly as configuration.
+    An explicitly supplied source is validated directly. Otherwise the user
+    selects from PNG files present in the project root.
     """
-
-    input_files: dict[str, Path] = {}
-
-    source = values.pop(
-        "source",
-        None,
-    )
 
     if source is not None:
-        if not isinstance(
-            source,
-            str,
-        ):
-            raise click.ClickException("Artifact source must be a path string.")
+        return _validate_source(
+            project_root / source,
+        )
 
-        input_files["artwork"] = project_root / source
-
-    return input_files
-
-
-def _default_realization_values(
-    model: str,
-    values: dict[str, Any],
-) -> dict[str, Any]:
-    """
-    Translate completed setup values into persistent realization structure.
-
-    Newly created artifacts explicitly define an ordinary realization
-    named default. Model identity belongs to that realization, and
-    completed model configuration is persisted as its parameters.
-
-    The setup model value is structural identity rather than a model
-    parameter and is therefore not duplicated beneath parameters.
-    """
-
-    parameters = dict(values)
-    parameters.pop(
-        "model",
-        None,
+    sources = sorted(
+        path for path in project_root.iterdir() if path.is_file() and path.suffix.lower() == ".png"
     )
 
-    default: dict[str, Any] = {
-        "model": model,
-    }
+    if not sources:
+        raise click.ClickException(f"No PNG source files were found in {project_root}.")
 
-    if parameters:
-        default["parameters"] = parameters
+    console.print()
+    console.print("[bold]Available PNG sources[/bold]")
 
-    return {
-        "realizations": {
-            "default": default,
-        },
-    }
+    for index, candidate in enumerate(
+        sources,
+        start=1,
+    ):
+        console.print(f"  {index}. {candidate.name}")
+
+    console.print()
+
+    choice = click.prompt(
+        "Source",
+        type=click.IntRange(
+            1,
+            len(sources),
+        ),
+    )
+
+    return sources[choice - 1]
+
+
+def _validate_source(
+    source: Path,
+) -> Path:
+    """
+    Validate an explicitly selected Artifact source.
+    """
+
+    if source.suffix.lower() != ".png":
+        raise click.ClickException("Artifact source must be a PNG file.")
+
+    if not source.is_file():
+        raise click.ClickException(f"Artifact source PNG {source.name!r} does not exist.")
+
+    return source
 
 
 # =========================================================
@@ -231,7 +184,7 @@ def _display_artifact(
     project_root: Path,
 ) -> None:
     """
-    Display the newly created artifact's resolved configuration.
+    Display the newly created Artifact definition.
     """
 
     existing = load_artifact_config(
@@ -242,28 +195,8 @@ def _display_artifact(
     if not existing:
         raise click.ClickException(f"Artifact {artifact_id!r} is not defined.")
 
-    try:
-        resolver = get_resolver(
-            artifact_id,
-            project_root=project_root,
-        )
-
-        model_name = resolver("model")
-
-        registry = build_model_registry()
-        model = registry.get_model(model_name)
-
-    except (
-        ConfigError,
-        KeyError,
-    ) as exc:
-        raise click.ClickException(str(exc)) from exc
-
-    display_artifact_config(
-        artifact_id,
-        model,
-        resolver,
-    )
+    console.print()
+    console.print(f"[bold]Created artifact:[/bold] {artifact_id}")
 
 
 if __name__ == "__main__":
