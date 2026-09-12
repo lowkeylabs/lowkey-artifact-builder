@@ -26,6 +26,21 @@ if TYPE_CHECKING:
 # =========================================================
 
 
+def derive_loop_raise(
+    resolver: Resolver,
+) -> float:
+    """
+    Derive Loop physical raise from the effective Artwork raise.
+
+    An explicitly configured loop_raise overrides this derivation through
+    normal configuration resolution.
+    """
+
+    return resolver(
+        "artwork_raise",
+    )
+
+
 def derive_artifact_color_count(
     resolver: Resolver,
 ) -> int:
@@ -81,8 +96,8 @@ def derive_artifact_color_count(
 
 DERIVED = {
     "artifact_color_count": derive_artifact_color_count,
+    "loop_raise": derive_loop_raise,
 }
-
 
 # =========================================================
 # Exports
@@ -92,4 +107,5 @@ DERIVED = {
 __all__ = [
     "DERIVED",
     "derive_artifact_color_count",
+    "derive_loop_raise",
 ]

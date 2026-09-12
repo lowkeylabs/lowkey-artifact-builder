@@ -621,6 +621,7 @@ def get_resolver(
             realization_name,
             realization_parameters,
             model_parameters=model_parameters,
+            model_derivations=derivations,
             model_spec=model_spec,
         )
     else:
@@ -1931,16 +1932,21 @@ def _validate_realization_parameters(
     parameters: Mapping[str, Any],
     *,
     model_parameters: Mapping[str, Any],
+    model_derivations: Mapping[str, Derivation],
     model_spec,
 ) -> None:
     """
     Validate Model parameter overrides supplied by a Realization.
+
+    Model-defined derived values are part of the Model parameter vocabulary
+    because an explicitly configured value may override a derivation.
 
     Reserved Artifact/Realization configuration is not part of the Model
     parameter vocabulary.
     """
 
     recognized = set(model_parameters)
+    recognized.update(model_derivations)
     recognized.update(model_spec.parameters)
 
     for variant in model_spec.variants:
