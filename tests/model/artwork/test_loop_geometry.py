@@ -195,3 +195,104 @@ def test_loop_geometry_remains_in_artwork_coordinate_system() -> None:
     assert geometry.center_x == pytest.approx(134.0)
     assert geometry.center_y == pytest.approx(36.0)
     assert geometry.inner_attachment_point == pytest.approx((137.0, 36.0))
+
+
+# =========================================================
+# Physical extent
+# =========================================================
+
+
+@pytest.mark.parametrize(
+    ("position", "expected_bounds"),
+    [
+        (0, (0.0, -2.0, 100.0, 100.0)),
+        (90, (0.0, 0.0, 102.0, 100.0)),
+        (180, (0.0, 0.0, 100.0, 102.0)),
+        (-90, (-2.0, 0.0, 100.0, 100.0)),
+    ],
+)
+def test_loop_extends_beyond_artwork_envelope(
+    position: int,
+    expected_bounds: tuple[float, float, float, float],
+) -> None:
+    """
+    Loop increases manufactured-object extent outside the Artwork envelope.
+
+    artwork_size controls the Artwork envelope itself, not the combined
+    Artwork-plus-Loop object.
+    """
+
+    envelope = loop.Bounds(
+        min_x=0.0,
+        min_y=0.0,
+        max_x=100.0,
+        max_y=100.0,
+    )
+
+    geometry = loop.create_loop_geometry(
+        envelope_bounds=envelope,
+        inner_diameter=6.0,
+        width=2.0,
+        position=position,
+    )
+
+    assert geometry.manufactured_bounds == loop.Bounds(
+        min_x=expected_bounds[0],
+        min_y=expected_bounds[1],
+        max_x=expected_bounds[2],
+        max_y=expected_bounds[3],
+    )
+
+
+def test_loop_does_not_change_artwork_envelope_extent() -> None:
+    """
+    Enabling Loop does not shrink the Artwork proper to preserve total extent.
+    """
+
+    envelope = loop.Bounds(
+        min_x=0.0,
+        min_y=0.0,
+        max_x=100.0,
+        max_y=100.0,
+    )
+
+    geometry = loop.create_loop_geometry(
+        envelope_bounds=envelope,
+        inner_diameter=6.0,
+        width=2.0,
+        position=0,
+    )
+
+    assert geometry.envelope_bounds == envelope
+    assert geometry.envelope_bounds.max_x - geometry.envelope_bounds.min_x == (pytest.approx(100.0))
+    assert geometry.envelope_bounds.max_y - geometry.envelope_bounds.min_y == (pytest.approx(100.0))
+
+
+def test_total_manufactured_extent_increases_when_loop_participates() -> None:
+    """
+    Total standalone manufactured extent includes Loop outside Artwork.
+    """
+
+    envelope = loop.Bounds(
+        min_x=0.0,
+        min_y=0.0,
+        max_x=100.0,
+        max_y=100.0,
+    )
+
+    geometry = loop.create_loop_geometry(
+        envelope_bounds=envelope,
+        inner_diameter=6.0,
+        width=2.0,
+        position=0,
+    )
+
+    artwork_width = envelope.max_x - envelope.min_x
+    artwork_height = envelope.max_y - envelope.min_y
+
+    manufactured_width = geometry.manufactured_bounds.max_x - geometry.manufactured_bounds.min_x
+    manufactured_height = geometry.manufactured_bounds.max_y - geometry.manufactured_bounds.min_y
+
+    assert manufactured_width == pytest.approx(artwork_width)
+    assert manufactured_height > artwork_height
+    assert manufactured_height == pytest.approx(102.0)

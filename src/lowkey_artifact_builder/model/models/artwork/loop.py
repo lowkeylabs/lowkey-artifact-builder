@@ -83,8 +83,12 @@ class LoopGeometry:
     ``inner_attachment_point`` is the inward-facing point of the inner circle.
     By definition that point lies on the selected cardinal boundary of the
     dimensionalized Artwork envelope.
+
+    ``envelope_bounds`` preserves the physical extent of the Artwork proper.
+    ``manufactured_bounds`` includes both the Artwork envelope and Loop.
     """
 
+    envelope_bounds: Bounds
     center_x: float
     center_y: float
     inner_radius: float
@@ -131,10 +135,46 @@ class LoopGeometry:
 
         The inner circle touches the Artwork boundary. The annulus extends
         outward from that inner circle by its radial width, so the annulus
-        overlaps the Artwork inward by exactly that width.
+        overlaps the Artwork envelope inward by exactly that width.
         """
 
         return self.width
+
+    @property
+    def manufactured_bounds(
+        self,
+    ) -> Bounds:
+        """
+        Return the combined planar extent of Artwork and Loop.
+
+        The Artwork envelope retains its original physical extent. The
+        manufactured bounds expand only where Loop geometry extends beyond
+        that envelope.
+        """
+
+        loop_min_x = self.center_x - self.outer_radius
+        loop_min_y = self.center_y - self.outer_radius
+        loop_max_x = self.center_x + self.outer_radius
+        loop_max_y = self.center_y + self.outer_radius
+
+        return Bounds(
+            min_x=min(
+                self.envelope_bounds.min_x,
+                loop_min_x,
+            ),
+            min_y=min(
+                self.envelope_bounds.min_y,
+                loop_min_y,
+            ),
+            max_x=max(
+                self.envelope_bounds.max_x,
+                loop_max_x,
+            ),
+            max_y=max(
+                self.envelope_bounds.max_y,
+                loop_max_y,
+            ),
+        )
 
 
 # =========================================================
@@ -219,6 +259,7 @@ def create_loop_geometry(
         attachment_y = envelope_bounds.center_y
 
     return LoopGeometry(
+        envelope_bounds=envelope_bounds,
         center_x=center_x,
         center_y=center_y,
         inner_radius=inner_radius,
