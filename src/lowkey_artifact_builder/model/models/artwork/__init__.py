@@ -150,6 +150,10 @@ STAGES = (
         parameters=(
             "artwork_size",
             "artwork_raise",
+            "loop_inner_diameter",
+            "loop_width",
+            "loop_position",
+            "loop_raise",
             "loop_color",
         ),
         products=(

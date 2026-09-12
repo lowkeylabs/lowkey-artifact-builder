@@ -31,6 +31,10 @@ def test_resolver() -> Resolver:
     The resolver represents legacy single-realization artifact
     configuration, which resolves to the implicit realization named
     "default".
+
+    Model defaults and derived values required by the realized Artwork
+    stages are represented explicitly because this fixture constructs a
+    Resolver directly rather than through model configuration resolution.
     """
 
     return Resolver(
@@ -49,6 +53,10 @@ def test_resolver() -> Resolver:
             "artwork_island_connectivity": 8,
             "artwork_size": 150.0,
             "artwork_raise": 1.0,
+            "loop_inner_diameter": 0.0,
+            "loop_width": 1.0,
+            "loop_position": 0,
+            "loop_raise": 1.0,
         },
         provenance={
             "model": "test",
@@ -62,6 +70,10 @@ def test_resolver() -> Resolver:
             "artwork_island_connectivity": "test",
             "artwork_size": "test",
             "artwork_raise": "test",
+            "loop_inner_diameter": "test",
+            "loop_width": "test",
+            "loop_position": "test",
+            "loop_raise": "test",
         },
         colors={
             "cold-white": {},

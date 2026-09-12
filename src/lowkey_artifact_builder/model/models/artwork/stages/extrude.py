@@ -34,6 +34,11 @@ from typing import Any
 from lowkey_artifact_builder.engine import (
     StageContext,
 )
+from lowkey_artifact_builder.model.models.artwork.loop import (
+    Bounds,
+    LoopGeometry,
+    create_loop_geometry,
+)
 from lowkey_artifact_builder.tools.inkscape import (
     InkscapeError,
     query_all,
@@ -146,12 +151,28 @@ def execute(
             Physical extrusion height of the artwork geometry in
             millimeters.
 
+        loop_inner_diameter
+            Inner diameter of the optional Artwork Loop. A value greater
+            than zero causes the Loop to participate.
+
+        loop_width
+            Radial width of a participating Loop.
+
+        loop_position
+            Cardinal attachment position of a participating Loop.
+
+        loop_raise
+            Physical extrusion height of a participating Loop.
+
     The stage produces:
 
         manifest
-            Manifest describing the dynamically generated STL
+            Manifest describing the dynamically generated Artwork STL
             components while preserving Artifact color information and
             physical printer assignments from Registered Artwork.
+
+        loop.stl
+            Independently printable Loop component when Loop participates.
     """
 
     vector_manifest = context.input(
@@ -174,6 +195,12 @@ def execute(
         context.resolver(
             "artwork_raise",
         ),
+    )
+
+    loop_inner_diameter = float(
+        context.resolver(
+            "loop_inner_diameter",
+        )
     )
 
     if not vector_manifest.is_file():
@@ -227,6 +254,56 @@ def execute(
                     output,
                 )
             )
+
+        if loop_inner_diameter > 0.0:
+            loop_width = _positive_number(
+                "loop_width",
+                context.resolver(
+                    "loop_width",
+                ),
+            )
+
+            loop_position = int(
+                context.resolver(
+                    "loop_position",
+                )
+            )
+
+            loop_raise = _positive_number(
+                "loop_raise",
+                context.resolver(
+                    "loop_raise",
+                ),
+            )
+
+            physical_envelope_bounds = _physical_envelope_bounds(
+                envelope_bounds,
+                artwork_size=artwork_size,
+            )
+
+            loop_geometry = create_loop_geometry(
+                envelope_bounds=physical_envelope_bounds,
+                inner_diameter=loop_inner_diameter,
+                width=loop_width,
+                position=loop_position,
+            )
+
+            loop_output = extrude_manifest.parent / "loop.stl"
+
+            loop_source = _build_loop_scad(
+                loop_geometry,
+                loop_raise=loop_raise,
+            )
+
+            render_stl_source(
+                loop_source,
+                loop_output,
+            )
+
+            if not loop_output.is_file():
+                raise ExtrudeError(
+                    f"OpenSCAD completed without creating the expected Loop STL: {loop_output}"
+                )
 
         _write_manifest(
             extrude_manifest,
@@ -675,6 +752,58 @@ def _envelope_bounds(
     )
 
 
+def _physical_envelope_bounds(
+    envelope_bounds: tuple[
+        float,
+        float,
+        float,
+        float,
+    ],
+    *,
+    artwork_size: float,
+) -> Bounds:
+    """
+    Return the dimensionalized Artwork envelope bounds in physical space.
+
+    Standalone Artwork uniformly scales its occupied registered envelope so
+    that the maximum X/Y extent equals artwork_size and centers that envelope
+    about the physical origin.
+
+    The resulting Bounds use the same physical coordinate system consumed by
+    Artwork Loop geometry.
+    """
+
+    (
+        min_x,
+        min_y,
+        max_x,
+        max_y,
+    ) = envelope_bounds
+
+    envelope_width = max_x - min_x
+    envelope_height = max_y - min_y
+
+    envelope_extent = max(
+        envelope_width,
+        envelope_height,
+    )
+
+    if envelope_extent <= 0.0:
+        raise ExtrudeError("Artwork envelope extent must be greater than zero.")
+
+    scale = artwork_size / envelope_extent
+
+    physical_width = envelope_width * scale
+    physical_height = envelope_height * scale
+
+    return Bounds(
+        min_x=-physical_width / 2.0,
+        min_y=-physical_height / 2.0,
+        max_x=physical_width / 2.0,
+        max_y=physical_height / 2.0,
+    )
+
+
 # =========================================================
 # OpenSCAD source
 # =========================================================
@@ -712,6 +841,84 @@ def _scad_string(
     )
 
     return f'"{escaped}"'
+
+
+def _build_loop_scad(
+    geometry: LoopGeometry,
+    *,
+    loop_raise: float,
+) -> str:
+    """
+    Return OpenSCAD source for one physical Artwork Loop.
+
+    LoopGeometry owns the Artwork-specific planar geometry and placement.
+    This function translates that resolved physical geometry into an
+    extruded printable solid.
+    """
+
+    loop_center_x = _scad_number(
+        geometry.center_x,
+    )
+
+    loop_center_y = _scad_number(
+        geometry.center_y,
+    )
+
+    loop_inner_radius = _scad_number(
+        geometry.inner_radius,
+    )
+
+    loop_outer_radius = _scad_number(
+        geometry.outer_radius,
+    )
+
+    loop_raise_scad = _scad_number(
+        loop_raise,
+    )
+
+    return f"""//
+// Generated Artwork Loop.
+//
+// DO NOT EDIT THIS FILE.
+//
+
+loop_center_x = {loop_center_x};
+loop_center_y = {loop_center_y};
+
+loop_inner_radius = {loop_inner_radius};
+loop_outer_radius = {loop_outer_radius};
+
+loop_raise = {loop_raise_scad};
+
+
+// ---------------------------------------------------------
+// Loop solid
+// ---------------------------------------------------------
+
+translate(
+    [
+        loop_center_x,
+        loop_center_y,
+        0
+    ]
+)
+    linear_extrude(
+        height = loop_raise,
+        convexity = 10
+    )
+        difference()
+        {{
+            circle(
+                r = loop_outer_radius,
+                $fn = 128
+            );
+
+            circle(
+                r = loop_inner_radius,
+                $fn = 128
+            );
+        }}
+"""
 
 
 def _build_scad(

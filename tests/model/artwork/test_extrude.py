@@ -574,6 +574,104 @@ def test_extrude_manifest_describes_stage_local_products(
     }
 
 
+@pytest.mark.slow
+def test_participating_loop_produces_stage_local_stl_component(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A participating Loop becomes an independently printable stage-local
+    extrusion product.
+    """
+
+    vector_directory = tmp_path / "vector"
+
+    svg = vector_directory / "layer.svg"
+
+    vector_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    svg.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path=svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    250,
+                    250,
+                    250,
+                ),
+                printer_color_name="white",
+                printer_rgb=(
+                    255,
+                    255,
+                    255,
+                ),
+                distance=0.0,
+            )
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_size": 100.0,
+                "artwork_raise": 1.0,
+                "loop_inner_diameter": 6.0,
+                "loop_width": 2.0,
+                "loop_position": 0,
+                "loop_raise": 1.5,
+                "loop_color": "black",
+            }
+        ),
+    )
+
+    rendered_outputs: list[Path] = []
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        rendered_outputs.append(
+            output,
+        )
+
+        _fake_render_stl_source(
+            source,
+            output,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    assert extrude_manifest.parent / "loop.stl" in rendered_outputs
+    assert (extrude_manifest.parent / "loop.stl").is_file()
+
+
 # =========================================================
 # Color-semantic tests
 # =========================================================
