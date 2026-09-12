@@ -572,6 +572,28 @@ Test helpers should make the behavior under test clearer. They should not hide
 important setup or create broad fixtures whose unrelated defaults become
 implicit test dependencies.
 
+# Commit Messages
+
+Use Conventional Commit-style subjects for new commits:
+
+```text
+<type>: <imperative description>
+```
+
+Use `feat`, `fix`, `refactor`, `test`, `docs`, or `chore` as appropriate.
+
+Examples:
+
+```text
+feat: add artwork loop configuration and validation
+fix: preserve realization product namespace
+refactor: normalize variant selection
+test: verify loop participation semantics
+docs: define artwork loop feature
+```
+
+Keep the subject concise and describe the coherent change being committed. Do not rewrite existing history solely to conform to this convention.
+
 # Completion
 
 A TDD slice is complete when:
