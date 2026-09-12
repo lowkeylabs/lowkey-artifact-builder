@@ -8,3 +8,12 @@ artwork_envelope_mode = "shrink-wrap"
 
 artwork_min_island_area = 34
 artwork_island_connectivity = 8
+
+# Optional standalone Loop Feature.
+# loop_inner_diameter == 0 disables Loop participation.
+
+loop_inner_diameter = 0.0
+loop_width = 1.0
+loop_position = 0
+loop_raise = 1.0
+loop_color = "white"

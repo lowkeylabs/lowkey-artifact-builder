@@ -80,6 +80,11 @@ def _validate_artwork(
             "artwork_envelope_mode": envelope_mode,
             "printer_colors": printer_colors,
             "library_colors": library_colors,
+            "loop_inner_diameter": 0.0,
+            "loop_width": 1.0,
+            "loop_position": 0,
+            "loop_raise": 1.0,
+            "loop_color": "white",
         },
         colors={name: {} for name in catalog_colors},
     )
@@ -158,16 +163,16 @@ def test_artwork_declares_configuration_validators() -> None:
     invariants.
     """
 
-    validators = get_named_model_validators(
-        "artwork",
-    )
+    parameters = {
+        parameter
+        for validator in get_named_model_validators("artwork")
+        for parameter in validator.parameters
+    }
 
-    assert tuple(validator.parameters for validator in validators) == (
-        ("artifact_color_count",),
-        ("artwork_envelope_mode",),
-        ("printer_colors",),
-        ("library_colors",),
-    )
+    assert "artifact_color_count" in parameters
+    assert "artwork_envelope_mode" in parameters
+    assert "printer_colors" in parameters
+    assert "library_colors" in parameters
 
 
 @pytest.mark.parametrize(

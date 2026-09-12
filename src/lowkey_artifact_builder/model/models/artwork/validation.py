@@ -182,6 +182,115 @@ def _validate_library_colors(
         )
 
 
+def _validate_loop_inner_diameter(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require Loop inner diameter to be disabled or physically usable.
+
+    Zero disables Loop participation. A participating Loop requires an
+    inner diameter of at least 0.5 mm.
+    """
+
+    inner_diameter = resolver(
+        "loop_inner_diameter",
+    )
+
+    if not isinstance(
+        inner_diameter,
+        int | float,
+    ) or isinstance(
+        inner_diameter,
+        bool,
+    ):
+        raise ConfigError(
+            "loop_inner_diameter must be a number.",
+        )
+
+    if inner_diameter < 0:
+        raise ConfigError(
+            "loop_inner_diameter cannot be negative.",
+        )
+
+    if 0 < inner_diameter < 0.5:
+        raise ConfigError(
+            "loop_inner_diameter must be zero or at least 0.5 mm.",
+        )
+
+
+def _validate_loop_width(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require positive radial material width for a participating Loop.
+    """
+
+    inner_diameter = resolver(
+        "loop_inner_diameter",
+    )
+    width = resolver(
+        "loop_width",
+    )
+
+    if inner_diameter == 0:
+        return
+
+    if (
+        not isinstance(
+            width,
+            int | float,
+        )
+        or isinstance(
+            width,
+            bool,
+        )
+        or width <= 0
+    ):
+        raise ConfigError(
+            "loop_width must be positive when Loop participates.",
+        )
+
+
+def _validate_loop_position(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require Loop attachment at one of Artwork's cardinal positions.
+    """
+
+    inner_diameter = resolver(
+        "loop_inner_diameter",
+    )
+
+    if inner_diameter == 0:
+        return
+
+    position = resolver(
+        "loop_position",
+    )
+
+    if (
+        not isinstance(
+            position,
+            int,
+        )
+        or isinstance(
+            position,
+            bool,
+        )
+        or position
+        not in (
+            0,
+            90,
+            180,
+            -90,
+        )
+    ):
+        raise ConfigError(
+            "loop_position must be one of 0, 90, 180, or -90.",
+        )
+
+
 VALIDATORS = (
     ConfigurationValidator(
         parameters=("artifact_color_count",),
@@ -198,6 +307,24 @@ VALIDATORS = (
     ConfigurationValidator(
         parameters=("library_colors",),
         validate=_validate_library_colors,
+    ),
+    ConfigurationValidator(
+        parameters=("loop_inner_diameter",),
+        validate=_validate_loop_inner_diameter,
+    ),
+    ConfigurationValidator(
+        parameters=(
+            "loop_inner_diameter",
+            "loop_width",
+        ),
+        validate=_validate_loop_width,
+    ),
+    ConfigurationValidator(
+        parameters=(
+            "loop_inner_diameter",
+            "loop_position",
+        ),
+        validate=_validate_loop_position,
     ),
 )
 
