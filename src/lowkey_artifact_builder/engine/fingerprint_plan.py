@@ -6,8 +6,8 @@ realized stage from its operation identity, resolved parameter values,
 external input contents, cross-artifact product dependency contents, and
 the required fingerprints of its realized dependency stages.
 
-Stage parameters are declared by StageSpec and resolved through the
-BuildPlan's authoritative realization Resolver.
+Stage parameters are declared by StageSpec. Parameters having Resolver-owned
+values are resolved through the BuildPlan's authoritative realization Resolver.
 
 External filesystem inputs and cross-artifact product dependencies
 contribute content fingerprints rather than filesystem paths or timestamps,
@@ -234,11 +234,16 @@ def _resolve_stage_parameters(
     stage: PlannedStage,
 ) -> dict[str, object]:
     """
-    Resolve values of parameters declared by one realized stage.
+    Resolve available values of parameters declared by one realized stage.
 
     Only parameters explicitly declared by StageSpec participate in the
-    stage fingerprint. Unrelated realization configuration therefore
-    cannot invalidate the stage.
+    stage fingerprint. A declared parameter without a Resolver-owned value
+    does not participate directly; its effective value may instead depend
+    on stage inputs or dependency products whose fingerprints independently
+    participate in provenance.
+
+    Unrelated realization configuration therefore cannot invalidate the
+    stage.
     """
 
     return {
@@ -246,6 +251,9 @@ def _resolve_stage_parameters(
             parameter,
         )
         for parameter in stage.spec.parameters
+        if build_plan.resolver.has(
+            parameter,
+        )
     }
 
 

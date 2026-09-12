@@ -6,8 +6,8 @@ realized stage from that stage's operation identity, resolved parameters,
 external input contents, and required fingerprints of its realized
 dependency stages.
 
-Stage parameters are declared by StageSpec and resolved through the
-BuildPlan's authoritative realization Resolver.
+Stage parameters are declared by StageSpec. Parameters having Resolver-owned
+values are resolved through the BuildPlan's authoritative realization Resolver.
 
 Tests focused on parameter and dependency provenance materialize stable
 external input content so external-input provenance remains constant while
@@ -44,6 +44,44 @@ type ArtworkPlanFactory = Callable[..., BuildPlan]
 # =========================================================
 # Helpers
 # =========================================================
+
+
+class _ChangedResolver:
+    """
+    Resolver proxy overriding one resolved value.
+
+    Capability queries continue to use the authoritative underlying Resolver.
+    """
+
+    def __init__(
+        self,
+        resolver,
+        *,
+        parameter: str,
+        value: object,
+    ) -> None:
+        self._resolver = resolver
+        self._parameter = parameter
+        self._value = value
+
+    def __call__(
+        self,
+        name: str,
+    ):
+        if name == self._parameter:
+            return self._value
+
+        return self._resolver(
+            name,
+        )
+
+    def has(
+        self,
+        name: str,
+    ) -> bool:
+        return self._resolver.has(
+            name,
+        )
 
 
 def _fingerprint_values(
@@ -342,23 +380,17 @@ def test_stage_fingerprint_depends_on_declared_resolved_parameters(
         build_plan,
     )
 
-    def changed_resolver(
-        name: str,
-    ):
-        if name == parameter:
-            return {
-                "original": original_value,
-                "changed": True,
-            }
-
-        return original_resolver(
-            name,
-        )
-
     object.__setattr__(
         build_plan,
         "resolver",
-        changed_resolver,
+        _ChangedResolver(
+            original_resolver,
+            parameter=parameter,
+            value={
+                "original": original_value,
+                "changed": True,
+            },
+        ),
     )
 
     second = create_required_fingerprints(
@@ -366,6 +398,48 @@ def test_stage_fingerprint_depends_on_declared_resolved_parameters(
     )
 
     assert first[stage.name] != second[stage.name]
+
+
+def test_stage_fingerprint_ignores_declared_parameter_without_resolved_value(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    A declared stage parameter without a Resolver-owned value does not
+    prevent fingerprint construction.
+    """
+
+    stage_spec = StageSpec(
+        id=10,
+        name="consume",
+        parameters=("__unresolved_test_parameter__",),
+    )
+
+    stage = PlannedStage(
+        spec=stage_spec,
+    )
+
+    build_plan = BuildPlan(
+        artifact_id="example",
+        model=ModelSpec(
+            name="example",
+            title="Example",
+            stages=(stage_spec,),
+        ),
+        realization_name="default",
+        resolver=test_resolver,
+        project_root=tmp_path,
+        artifact_dir=tmp_path / "artifacts" / "example",
+        stages=(stage,),
+    )
+
+    fingerprints = create_required_fingerprints(
+        build_plan,
+    )
+
+    assert tuple(
+        fingerprints,
+    ) == ("consume",)
 
 
 def test_stage_fingerprint_ignores_undeclared_parameter(
@@ -396,20 +470,14 @@ def test_stage_fingerprint_ignores_undeclared_parameter(
         build_plan,
     )
 
-    def changed_resolver(
-        name: str,
-    ):
-        if name == "__undeclared_test_parameter__":
-            return "changed"
-
-        return original_resolver(
-            name,
-        )
-
     object.__setattr__(
         build_plan,
         "resolver",
-        changed_resolver,
+        _ChangedResolver(
+            original_resolver,
+            parameter="__undeclared_test_parameter__",
+            value="changed",
+        ),
     )
 
     second = create_required_fingerprints(
@@ -494,23 +562,17 @@ def test_changed_stage_parameter_propagates_to_descendants(
         build_plan,
     )
 
-    def changed_resolver(
-        name: str,
-    ):
-        if name == parameter:
-            return {
-                "original": original_value,
-                "changed": True,
-            }
-
-        return original_resolver(
-            name,
-        )
-
     object.__setattr__(
         build_plan,
         "resolver",
-        changed_resolver,
+        _ChangedResolver(
+            original_resolver,
+            parameter=parameter,
+            value={
+                "original": original_value,
+                "changed": True,
+            },
+        ),
     )
 
     second = create_required_fingerprints(

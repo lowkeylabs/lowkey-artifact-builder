@@ -56,6 +56,48 @@ type ArtworkPlanFactory = Callable[..., BuildPlan]
 # =========================================================
 
 
+class _ChangedResolver:
+    """
+    Resolver proxy overriding one resolved value and optionally its
+    availability.
+    """
+
+    def __init__(
+        self,
+        resolver,
+        *,
+        parameter: str,
+        value: object,
+        available: bool | None = None,
+    ) -> None:
+        self._resolver = resolver
+        self._parameter = parameter
+        self._value = value
+        self._available = available
+
+    def __call__(
+        self,
+        name: str,
+    ) -> object:
+        if name == self._parameter:
+            return self._value
+
+        return self._resolver(
+            name,
+        )
+
+    def has(
+        self,
+        name: str,
+    ) -> bool:
+        if name == self._parameter and self._available is not None:
+            return self._available
+
+        return self._resolver.has(
+            name,
+        )
+
+
 def _materialize_external_inputs(
     build_plan: BuildPlan,
     *,
@@ -733,23 +775,17 @@ def test_changed_declared_parameter_invalidates_stage_and_descendants(
         parameter,
     )
 
-    def changed_resolver(
-        name: str,
-    ) -> object:
-        if name == parameter:
-            return {
-                "original": original_value,
-                "changed": True,
-            }
-
-        return original_resolver(
-            name,
-        )
-
     object.__setattr__(
         build_plan,
         "resolver",
-        changed_resolver,
+        _ChangedResolver(
+            original_resolver,
+            parameter=parameter,
+            value={
+                "original": original_value,
+                "changed": True,
+            },
+        ),
     )
 
     execution_plan = plan_incremental_execution(
@@ -1202,20 +1238,15 @@ def test_product_dependency_fingerprint_includes_upstream_context(
 
     original_resolver = producer_plan.resolver
 
-    def changed_resolver(
-        name: str,
-    ) -> object:
-        if name == "changed_parameter":
-            return "changed"
-
-        return original_resolver(
-            name,
-        )
-
     object.__setattr__(
         producer_plan,
         "resolver",
-        changed_resolver,
+        _ChangedResolver(
+            original_resolver,
+            parameter="changed_parameter",
+            value="changed",
+            available=True,
+        ),
     )
 
     second = create_product_dependency_fingerprint_resolver(

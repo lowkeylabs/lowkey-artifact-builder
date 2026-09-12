@@ -15,5 +15,6 @@ artwork_island_connectivity = 8
 loop_inner_diameter = 0.0
 loop_width = 1.0
 loop_position = 0
+
 # loop_raise = 1.0  # defaults to artwork_raise
-loop_color = "white"
+# loop_color = "white" # defaults to outer_ridge color, or color at point of attachment

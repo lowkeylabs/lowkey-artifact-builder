@@ -1228,23 +1228,27 @@ the Base Feature for its derived color.
 
 #### Color
 
-`loop_color` may explicitly select the Loop's physical semantic color.
+`loop_color` defines the Loop's physical semantic color.
 
-When `loop_color` is explicitly configured, that color is authoritative.
+When `loop_color` is explicitly configured, that value is authoritative.
 
-Otherwise, when the Artwork Outer Edge Feature participates, Loop uses the
-resolved Outer Edge semantic physical color.
+When `loop_color` is not explicitly configured, its default value is
+determined by Artwork.
 
-Otherwise, Loop color is derived from the Artwork color at the envelope
-attachment point corresponding to the effective `loop_position`.
+If the Artwork Outer Edge Feature participates, the default is the resolved
+Outer Edge semantic physical color.
 
-Loop color resolution therefore has the following precedence:
+Otherwise, the default is the Artwork attachment color selected at the
+effective `loop_position`.
+
+The effective `loop_color` therefore has the following precedence:
 
 1. explicitly configured `loop_color`;
 2. resolved participating Outer Edge color;
 3. Artwork attachment color at `loop_position`.
 
-The complete Loop uses the resulting semantic physical color identity.
+The complete Loop is manufactured using the effective `loop_color`, preserving
+its semantic physical color identity.
 
 #### Interaction With Base
 

@@ -128,6 +128,7 @@ def test_artwork_extrude_introduces_physical_dimensions() -> None:
     assert stages["extrude"].parameters == (
         "artwork_size",
         "artwork_raise",
+        "loop_color",
     )
 
 
@@ -157,8 +158,8 @@ def test_artwork_stage_products() -> None:
 
 def test_artwork_model_parameters() -> None:
     """
-    Artwork model parameters contain configuration actually required by
-    its declared stages and external inputs.
+    Artwork model parameters contain configuration consumed by its declared
+    stages and external inputs.
 
     Derived Artifact colors are product information rather than model
     configuration.
@@ -174,4 +175,5 @@ def test_artwork_model_parameters() -> None:
         "artwork_island_connectivity",
         "artwork_size",
         "artwork_raise",
+        "loop_color",
     )

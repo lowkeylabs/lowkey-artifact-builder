@@ -150,6 +150,7 @@ STAGES = (
         parameters=(
             "artwork_size",
             "artwork_raise",
+            "loop_color",
         ),
         products=(
             ProductSpec(

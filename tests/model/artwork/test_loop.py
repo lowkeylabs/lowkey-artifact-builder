@@ -87,11 +87,11 @@ def test_loop_parameters_are_artwork_parameters(
     tmp_path: Path,
 ) -> None:
     """
-    Artwork provides ordinary resolved configuration for every Loop
-    parameter.
+    Loop configuration uses ordinary Artwork parameters.
 
-    Loop does not require a specialized Variant or a separate Feature
-    selection mechanism.
+    Parameters having configuration-only defaults or derivations are
+    available directly from the Resolver. Loop color may instead be
+    supplied explicitly or resolved later from Registered Artwork.
     """
 
     resolver = get_resolver(
@@ -104,7 +104,7 @@ def test_loop_parameters_are_artwork_parameters(
     assert resolver("loop_width") is not None
     assert resolver("loop_position") is not None
     assert resolver("loop_raise") is not None
-    assert resolver("loop_color") is not None
+    assert not resolver.has("loop_color")
 
 
 def test_loop_is_disabled_by_default(
