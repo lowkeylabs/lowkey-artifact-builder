@@ -44,6 +44,17 @@ class StubResolver:
     ) -> Any:
         return self._values[name]
 
+    def configured_names(
+        self,
+    ) -> frozenset[str]:
+        """
+        Return configuration names explicitly supplied to this resolver.
+        """
+
+        return frozenset(
+            self._values,
+        )
+
 
 class StubContext:
     """
@@ -1159,3 +1170,93 @@ def test_build_scad_applies_one_physical_xy_scale_independent_of_z_raise(
 
     assert "height = artwork_raise" in low
     assert "height = artwork_raise" in high
+
+
+@pytest.mark.slow
+def test_participating_loop_is_declared_as_semantic_color_product(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A participating Loop is declared as an independently printable extrusion
+    product with its resolved semantic physical color identity.
+    """
+
+    vector_directory = tmp_path / "vector"
+
+    svg = vector_directory / "layer-white.svg"
+
+    vector_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    svg.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path=svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    255,
+                    255,
+                    255,
+                ),
+                printer_color_name="white",
+                printer_rgb=(
+                    255,
+                    255,
+                    255,
+                ),
+                distance=0.0,
+            )
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_size": 100.0,
+                "artwork_raise": 1.0,
+                "loop_inner_diameter": 6.0,
+                "loop_width": 2.0,
+                "loop_position": 0,
+                "loop_raise": 1.5,
+                "loop_color": "black",
+            }
+        ),
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        _fake_render_stl_source,
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    loop_product = next(product for product in data["products"] if product["path"] == "loop.stl")
+
+    assert loop_product["printer_color"]["name"] == "black"

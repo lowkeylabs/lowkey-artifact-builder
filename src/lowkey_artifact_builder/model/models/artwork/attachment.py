@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
+from lowkey_artifact_builder.model.models.artwork.vector_manifest import (
     VectorLayer,
     VectorManifest,
 )

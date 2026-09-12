@@ -18,7 +18,7 @@ from lowkey_artifact_builder.config import Resolver
 from lowkey_artifact_builder.model.models.artwork.attachment import (
     select_attachment_color,
 )
-from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
+from lowkey_artifact_builder.model.models.artwork.vector_manifest import (
     VectorManifest,
 )
 

@@ -27,7 +27,6 @@ only the paths and values supplied through StageContext.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +37,13 @@ from lowkey_artifact_builder.model.models.artwork.loop import (
     Bounds,
     LoopGeometry,
     create_loop_geometry,
+)
+from lowkey_artifact_builder.model.models.artwork.loop_color import (
+    resolve_loop_color,
+)
+from lowkey_artifact_builder.model.models.artwork.vector_manifest import (
+    VectorLayer,
+    VectorManifest,
 )
 from lowkey_artifact_builder.tools.inkscape import (
     InkscapeError,
@@ -57,72 +63,6 @@ class ExtrudeError(RuntimeError):
     """
     Raised when artwork extrusion cannot be completed.
     """
-
-
-# =========================================================
-# Specifications
-# =========================================================
-
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class VectorLayer:
-    """
-    One registered vector color layer.
-
-    Artifact color identity and RGB describe the color discovered from
-    the Artwork. Printer color identity and RGB describe the physical
-    assignment established during rasterization.
-    """
-
-    index: int
-
-    path: Path
-
-    artifact_color_index: int
-
-    artifact_color: tuple[
-        int,
-        int,
-        int,
-    ]
-
-    printer_color_name: str
-
-    printer_color: tuple[
-        int,
-        int,
-        int,
-    ]
-
-    distance: float
-
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class VectorManifest:
-    """
-    Registered vector geometry consumed by the extrusion stage.
-
-    registered_extent describes the common square coordinate system
-    shared by the envelope and every vector layer.
-
-    envelope identifies the registered occupied Artwork envelope used
-    to dimensionalize standalone Artwork.
-    """
-
-    registered_extent: int
-
-    envelope: Path
-
-    layers: tuple[
-        VectorLayer,
-        ...,
-    ]
 
 
 # =========================================================
@@ -164,12 +104,17 @@ def execute(
         loop_raise
             Physical extrusion height of a participating Loop.
 
+        loop_color
+            Physical semantic color of a participating Loop. When not
+            explicitly configured, Artwork resolves the effective color
+            from the registered Artwork at the attachment position.
+
     The stage produces:
 
         manifest
             Manifest describing the dynamically generated Artwork STL
-            components while preserving Artifact color information and
-            physical printer assignments from Registered Artwork.
+            components while preserving their physical printer color
+            identities.
 
         loop.stl
             Independently printable Loop component when Loop participates.
@@ -255,6 +200,8 @@ def execute(
                 )
             )
 
+        loop_product: tuple[Path, str] | None = None
+
         if loop_inner_diameter > 0.0:
             loop_width = _positive_number(
                 "loop_width",
@@ -305,10 +252,21 @@ def execute(
                     f"OpenSCAD completed without creating the expected Loop STL: {loop_output}"
                 )
 
+            loop_color = resolve_loop_color(
+                vector_products,
+                resolver=context.resolver,
+            )
+
+            loop_product = (
+                loop_output,
+                loop_color,
+            )
+
         _write_manifest(
             extrude_manifest,
             outputs,
             artwork_raise=artwork_raise,
+            loop_product=loop_product,
         )
 
     except ExtrudeError:
@@ -1091,12 +1049,18 @@ def _write_manifest(
     ],
     *,
     artwork_raise: float,
+    loop_product: tuple[Path, str] | None = None,
 ) -> None:
     """
     Write the extrusion product manifest.
 
-    Artifact color information and physical printer assignments are
-    propagated unchanged from Registered Artwork.
+    Registered Artwork products preserve their Artifact color information
+    and physical printer assignments unchanged.
+
+    A participating Loop is recorded as an independently printable physical
+    component with its resolved semantic printer color identity. The Loop is
+    not Registered Artwork and therefore does not acquire synthetic Artifact
+    color or color-assignment metadata.
     """
 
     products = [
@@ -1123,6 +1087,18 @@ def _write_manifest(
         }
         for vector, stl in layers
     ]
+
+    if loop_product is not None:
+        loop_stl, loop_color = loop_product
+
+        products.append(
+            {
+                "path": loop_stl.name,
+                "printer_color": {
+                    "name": loop_color,
+                },
+            }
+        )
 
     data = {
         "artwork_raise": artwork_raise,
