@@ -716,3 +716,128 @@ def test_package_does_not_require_canonical_artifact_directories(
     package.execute(context)  # type: ignore[arg-type]
 
     assert artifact.is_file()
+
+
+def test_package_includes_participating_loop_as_independent_component(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A participating Loop declared by extrusion is packaged as an
+    independently printable 3MF component.
+    """
+
+    extrude_directory = tmp_path / "extrude"
+
+    artwork_stl = extrude_directory / "color-1.stl"
+    loop_stl = extrude_directory / "loop.stl"
+
+    extrude_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_stl.write_text(
+        "artwork",
+        encoding="utf-8",
+    )
+
+    loop_stl.write_text(
+        "loop",
+        encoding="utf-8",
+    )
+
+    manifest = extrude_directory / "products.json"
+
+    _write_extrude_manifest(
+        manifest,
+        [
+            _product(
+                index=1,
+                path=artwork_stl.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    255,
+                    255,
+                    255,
+                ),
+                printer_color_name="white",
+                printer_rgb=(
+                    255,
+                    255,
+                    255,
+                ),
+                distance=0.0,
+            ),
+            {
+                "path": loop_stl.name,
+                "printer_color": {
+                    "name": "black",
+                    "rgb": {
+                        "red": 0,
+                        "green": 0,
+                        "blue": 0,
+                    },
+                },
+            },
+        ],
+    )
+
+    artifact = tmp_path / "artifact.3mf"
+
+    context = StubContext(
+        artifact_id="ornament",
+        inputs={
+            "extrude.manifest": manifest,
+        },
+        outputs={
+            "artifact": artifact,
+        },
+    )
+
+    loaded_paths: list[Path] = []
+
+    def fake_load_stl(
+        path: Path,
+    ) -> Mesh:
+        loaded_paths.append(
+            path,
+        )
+
+        return _mesh()
+
+    monkeypatch.setattr(
+        package,
+        "load_stl",
+        fake_load_stl,
+        raising=False,
+    )
+
+    def fake_write(
+        components,
+        output: Path,
+    ) -> None:
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_bytes(
+            b"3mf",
+        )
+
+    monkeypatch.setattr(
+        package,
+        "write",
+        fake_write,
+        raising=False,
+    )
+
+    package.execute(context)  # type: ignore[arg-type]
+
+    assert loaded_paths == [
+        artwork_stl,
+        loop_stl,
+    ]
+
+    assert artifact.is_file()

@@ -33,6 +33,9 @@ from typing import Any
 from lowkey_artifact_builder.engine import (
     StageContext,
 )
+from lowkey_artifact_builder.model.models.artwork.attachment import (
+    select_attachment_layer,
+)
 from lowkey_artifact_builder.model.models.artwork.loop import (
     Bounds,
     LoopGeometry,
@@ -200,7 +203,14 @@ def execute(
                 )
             )
 
-        loop_product: tuple[Path, str] | None = None
+        loop_product: (
+            tuple[
+                Path,
+                str,
+                tuple[int, int, int] | None,
+            ]
+            | None
+        ) = None
 
         if loop_inner_diameter > 0.0:
             loop_width = _positive_number(
@@ -257,9 +267,20 @@ def execute(
                 resolver=context.resolver,
             )
 
+            loop_printer_color: tuple[int, int, int] | None = None
+
+            if "loop_color" not in context.resolver.configured_names():
+                attachment_layer = select_attachment_layer(
+                    vector_products,
+                    position=loop_position,
+                )
+
+                loop_printer_color = attachment_layer.printer_color
+
             loop_product = (
                 loop_output,
                 loop_color,
+                loop_printer_color,
             )
 
         _write_manifest(
@@ -1049,7 +1070,12 @@ def _write_manifest(
     ],
     *,
     artwork_raise: float,
-    loop_product: tuple[Path, str] | None = None,
+    loop_product: tuple[
+        Path,
+        str,
+        tuple[int, int, int] | None,
+    ]
+    | None = None,
 ) -> None:
     """
     Write the extrusion product manifest.
@@ -1058,9 +1084,12 @@ def _write_manifest(
     and physical printer assignments unchanged.
 
     A participating Loop is recorded as an independently printable physical
-    component with its resolved semantic printer color identity. The Loop is
-    not Registered Artwork and therefore does not acquire synthetic Artifact
-    color or color-assignment metadata.
+    component with its resolved semantic printer color identity. When that
+    color is inherited from the registered Artwork attachment, its physical
+    printer RGB assignment is preserved as well.
+
+    The Loop is not Registered Artwork and therefore does not acquire
+    synthetic Artifact color or color-assignment metadata.
     """
 
     products = [
@@ -1089,14 +1118,27 @@ def _write_manifest(
     ]
 
     if loop_product is not None:
-        loop_stl, loop_color = loop_product
+        (
+            loop_stl,
+            loop_color,
+            loop_printer_color,
+        ) = loop_product
+
+        printer_color: dict[str, Any] = {
+            "name": loop_color,
+        }
+
+        if loop_printer_color is not None:
+            printer_color["rgb"] = {
+                "red": loop_printer_color[0],
+                "green": loop_printer_color[1],
+                "blue": loop_printer_color[2],
+            }
 
         products.append(
             {
                 "path": loop_stl.name,
-                "printer_color": {
-                    "name": loop_color,
-                },
+                "printer_color": printer_color,
             }
         )
 

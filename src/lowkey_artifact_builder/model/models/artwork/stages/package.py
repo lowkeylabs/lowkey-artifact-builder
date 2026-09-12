@@ -59,9 +59,13 @@ class ExtrudedComponent:
     The extrusion manifest establishes component order, path, and physical
     printer color assignment. Packaging preserves that assignment while
     constructing the final 3MF.
+
+    Registered Artwork color-layer components carry positive integer indexes.
+    Standalone physical Feature components need not carry a registered Artwork
+    color-layer index.
     """
 
-    index: int
+    index: int | None
 
     path: Path
 
@@ -208,7 +212,7 @@ def _load_extrude_manifest(
         for product in products
     ]
 
-    indexes = [component.index for component in result]
+    indexes = [component.index for component in result if component.index is not None]
 
     if len(indexes) != len(set(indexes)):
         raise PackageError("Extrusion product indexes must be unique.")
@@ -219,7 +223,10 @@ def _load_extrude_manifest(
         raise PackageError("Extrusion product printer color names must be unique.")
 
     result.sort(
-        key=lambda component: component.index,
+        key=lambda component: (
+            component.index is None,
+            component.index or 0,
+        ),
     )
 
     return result
@@ -234,6 +241,10 @@ def _load_component(
 
     The physical 3MF component color is determined exclusively by the
     printer assignment preserved in the extrusion manifest.
+
+    Registered Artwork color-layer products carry positive integer indexes.
+    Standalone physical Feature products may omit that registered-layer
+    identity.
     """
 
     if not isinstance(
@@ -254,7 +265,7 @@ def _load_component(
         "printer_color",
     )
 
-    if (
+    if index is not None and (
         isinstance(
             index,
             bool,
@@ -351,7 +362,7 @@ def _load_component(
 def _color_component(
     color: dict[str, Any],
     name: str,
-    index: int,
+    index: int | None,
 ) -> int:
     """
     Return one validated RGB component.

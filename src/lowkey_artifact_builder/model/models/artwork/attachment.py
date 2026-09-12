@@ -86,13 +86,13 @@ class Bounds:
 # =========================================================
 
 
-def select_attachment_color(
+def select_attachment_layer(
     artwork: VectorManifest,
     *,
     position: int,
-) -> str:
+) -> VectorLayer:
     """
-    Return the semantic printer color at one cardinal Artwork attachment.
+    Return the registered Artwork color layer at one cardinal attachment.
 
     Supported positions are:
 
@@ -107,6 +107,10 @@ def select_attachment_color(
     If no color layer occupies the exact boundary point, the nearest
     occupied color encountered inward along the same cardinal axis is
     selected.
+
+    The complete VectorLayer is returned so consumers that require the
+    physical printer assignment can preserve both its semantic color name
+    and RGB value.
     """
 
     if position not in {
@@ -175,7 +179,26 @@ def select_attachment_color(
         ),
     )
 
-    return selected.printer_color_name
+    return selected
+
+
+def select_attachment_color(
+    artwork: VectorManifest,
+    *,
+    position: int,
+) -> str:
+    """
+    Return the semantic printer color at one cardinal Artwork attachment.
+
+    Attachment selection is performed by select_attachment_layer(). This
+    convenience interface exposes only the semantic physical printer color
+    for consumers that do not require the complete physical color assignment.
+    """
+
+    return select_attachment_layer(
+        artwork,
+        position=position,
+    ).printer_color_name
 
 
 # =========================================================

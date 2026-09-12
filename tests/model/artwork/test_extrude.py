@@ -186,12 +186,16 @@ def _write_vector_manifest(
 def _resolver() -> StubResolver:
     """
     Return the standard extrusion-stage configuration.
+
+    Optional standalone Artwork features use their non-participating
+    defaults unless a test explicitly enables them.
     """
 
     return StubResolver(
         {
             "artwork_size": 150.0,
             "artwork_raise": 1.0,
+            "loop_inner_diameter": 0.0,
         }
     )
 
@@ -934,6 +938,7 @@ def test_extrude_sizes_and_centers_occupied_envelope_in_physical_space(
             {
                 "artwork_size": 120.0,
                 "artwork_raise": 1.0,
+                "loop_inner_diameter": 0.0,
             }
         ),
     )
@@ -1260,3 +1265,214 @@ def test_participating_loop_is_declared_as_semantic_color_product(
     loop_product = next(product for product in data["products"] if product["path"] == "loop.stl")
 
     assert loop_product["printer_color"]["name"] == "black"
+
+
+@pytest.mark.slow
+def test_participating_loop_manifest_uses_attachment_derived_color(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Without an explicit loop_color, a participating Loop preserves the
+    semantic physical color selected from Registered Artwork at its
+    attachment position.
+    """
+
+    vector_directory = tmp_path / "vector"
+
+    svg = vector_directory / "layer-red.svg"
+
+    vector_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    svg.write_text(
+        """
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+        >
+            <rect
+                x="0"
+                y="0"
+                width="20"
+                height="20"
+            />
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path=svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    250,
+                    0,
+                    0,
+                ),
+                printer_color_name="red",
+                printer_rgb=(
+                    255,
+                    0,
+                    0,
+                ),
+                distance=0.0,
+            )
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_size": 100.0,
+                "artwork_raise": 1.0,
+                "loop_inner_diameter": 6.0,
+                "loop_width": 2.0,
+                "loop_position": 0,
+                "loop_raise": 1.5,
+            }
+        ),
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        _fake_render_stl_source,
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    loop_product = next(product for product in data["products"] if product["path"] == "loop.stl")
+
+    assert loop_product["printer_color"]["name"] == "red"
+
+
+@pytest.mark.slow
+def test_participating_loop_manifest_preserves_attachment_printer_rgb(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A participating Loop whose color is derived from its Artwork attachment
+    preserves the complete physical printer color assignment through
+    extrusion.
+    """
+
+    vector_directory = tmp_path / "vector"
+
+    svg = vector_directory / "layer-red.svg"
+
+    vector_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    svg.write_text(
+        """
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+        >
+            <rect
+                x="0"
+                y="0"
+                width="20"
+                height="20"
+            />
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path=svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    250,
+                    0,
+                    0,
+                ),
+                printer_color_name="red",
+                printer_rgb=(
+                    255,
+                    0,
+                    0,
+                ),
+                distance=0.0,
+            )
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_size": 100.0,
+                "artwork_raise": 1.0,
+                "loop_inner_diameter": 6.0,
+                "loop_width": 2.0,
+                "loop_position": 0,
+                "loop_raise": 1.5,
+            }
+        ),
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        _fake_render_stl_source,
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    loop_product = next(product for product in data["products"] if product["path"] == "loop.stl")
+
+    assert loop_product["printer_color"] == {
+        "name": "red",
+        "rgb": {
+            "red": 255,
+            "green": 0,
+            "blue": 0,
+        },
+    }
