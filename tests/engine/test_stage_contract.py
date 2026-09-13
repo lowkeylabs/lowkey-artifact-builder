@@ -476,7 +476,7 @@ def test_independent_execution_uses_explicit_dependency_input(
         resolver=test_resolver,
     )
 
-    prepare_dir = tmp_path / "artifacts" / "example" / "artwork" / "default" / "10-prepare"
+    prepare_dir = tmp_path / "artifacts" / "example" / "artwork" / "artwork_default" / "10-prepare"
 
     prepare_dir.mkdir(
         parents=True,

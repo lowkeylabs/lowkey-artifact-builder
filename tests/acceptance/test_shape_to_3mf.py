@@ -90,7 +90,7 @@ def test_shape_builds_complete_3mf_without_artwork(
 
     assert plan.artifact_id == "testshape"
     assert plan.model_name == "shape"
-    assert plan.realization_name == "default"
+    assert plan.realization_name == "shape_default"
 
     assert plan.artifact_dir.is_relative_to(
         project_root,
@@ -243,8 +243,7 @@ def test_shape_ridge_preserves_distinct_component_colors(
         "colored-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_base_color": "test-white",
                     "shape_outer_ridge_width": 2.0,
                     "shape_outer_ridge_raise": 1.0,
@@ -273,7 +272,7 @@ def test_shape_ridge_preserves_distinct_component_colors(
 
     assert plan.artifact_id == "colored-shape"
     assert plan.model_name == "shape"
-    assert plan.realization_name == "default"
+    assert plan.realization_name == "shape_default"
 
     # -----------------------------------------------------
     # Build explicit Shape Variant through public CLI
@@ -401,8 +400,7 @@ def test_shape_component_colors_do_not_change_geometry(
         "white-red-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_base_color": "test-white",
                     "shape_outer_ridge_width": 2.0,
                     "shape_outer_ridge_raise": 1.0,
@@ -418,8 +416,7 @@ def test_shape_component_colors_do_not_change_geometry(
         "red-white-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_base_color": "test-red",
                     "shape_outer_ridge_width": 2.0,
                     "shape_outer_ridge_raise": 1.0,
@@ -455,7 +452,7 @@ def test_shape_component_colors_do_not_change_geometry(
         plan = artifact_plans[0]
 
         assert plan.model_name == "shape"
-        assert plan.realization_name == "default"
+        assert plan.realization_name == "shape_default"
 
         plans[artifact_id] = plan
 
@@ -651,8 +648,7 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
         "artwork-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_base_color": "test-white",
                 },
             },
@@ -686,7 +682,7 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
 
     assert plan.artifact_id == "artwork-shape"
     assert plan.model_name == "shape"
-    assert plan.realization_name == "default"
+    assert plan.realization_name == "shape_default"
 
     assert tuple(stage.spec.name for stage in plan.stages) == (
         "structure",
@@ -927,8 +923,7 @@ def test_shape_physical_change_reuses_registered_artwork(
         "artwork-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_size": 100.0,
                 },
             },
@@ -961,7 +956,7 @@ def test_shape_physical_change_reuses_registered_artwork(
     initial_plan = initial_plans[0]
 
     assert initial_plan.model_name == "shape"
-    assert initial_plan.realization_name == "default"
+    assert initial_plan.realization_name == "shape_default"
 
     execute_dependency_build(
         initial_plan,
@@ -993,8 +988,7 @@ def test_shape_physical_change_reuses_registered_artwork(
         "artwork-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_size": 90.0,
                 },
             },
@@ -1014,7 +1008,7 @@ def test_shape_physical_change_reuses_registered_artwork(
     resized_plan = resized_plans[0]
 
     assert resized_plan.model_name == "shape"
-    assert resized_plan.realization_name == "default"
+    assert resized_plan.realization_name == "shape_default"
 
     assert resized_plan.resolver("shape_size") == 90.0
 
@@ -1134,8 +1128,7 @@ def test_registered_artwork_is_reused_across_different_shapes(
         "circle-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_geometry": "circle",
                     "shape_size": 100.0,
                 },
@@ -1161,7 +1154,7 @@ def test_registered_artwork_is_reused_across_different_shapes(
     circle_plan = circle_plans[0]
 
     assert circle_plan.model_name == "shape"
-    assert circle_plan.realization_name == "default"
+    assert circle_plan.realization_name == "shape_default"
 
     execute_dependency_build(
         circle_plan,
@@ -1195,8 +1188,7 @@ def test_registered_artwork_is_reused_across_different_shapes(
         "polygon-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_geometry": "polygon",
                     "shape_sides": 7,
                     "shape_size": 120.0,
@@ -1223,7 +1215,7 @@ def test_registered_artwork_is_reused_across_different_shapes(
     polygon_plan = polygon_plans[0]
 
     assert polygon_plan.model_name == "shape"
-    assert polygon_plan.realization_name == "default"
+    assert polygon_plan.realization_name == "shape_default"
 
     execute_dependency_build(
         polygon_plan,
@@ -1345,8 +1337,7 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
         "circle-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_geometry": "circle",
                     "shape_size": 100.0,
                 },
@@ -1360,8 +1351,7 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
         "polygon-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_geometry": "polygon",
                     "shape_sides": 7,
                     "shape_size": 120.0,
@@ -1388,7 +1378,7 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
     circle_plan = circle_plans[0]
 
     assert circle_plan.model_name == "shape"
-    assert circle_plan.realization_name == "default"
+    assert circle_plan.realization_name == "shape_default"
 
     execute_dependency_build(
         circle_plan,
@@ -1420,7 +1410,7 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
     polygon_plan = polygon_plans[0]
 
     assert polygon_plan.model_name == "shape"
-    assert polygon_plan.realization_name == "default"
+    assert polygon_plan.realization_name == "shape_default"
 
     execute_dependency_build(
         polygon_plan,
@@ -1544,8 +1534,7 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
         "initial-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_geometry": "polygon",
                     "shape_sides": 6,
                     "shape_rotation": 0.0,
@@ -1579,7 +1568,7 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
     initial_plan = initial_plans[0]
 
     assert initial_plan.model_name == "shape"
-    assert initial_plan.realization_name == "default"
+    assert initial_plan.realization_name == "shape_default"
 
     execute_dependency_build(
         initial_plan,
@@ -1605,8 +1594,7 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
         "changed-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_geometry": "polygon",
                     "shape_sides": 7,
                     "shape_rotation": 22.5,
@@ -1642,7 +1630,7 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
     changed_plan = changed_plans[0]
 
     assert changed_plan.model_name == "shape"
-    assert changed_plan.realization_name == "default"
+    assert changed_plan.realization_name == "shape_default"
 
     execute_dependency_build(
         changed_plan,
@@ -1718,8 +1706,7 @@ def test_shape_size_change_preserves_registered_geometry(
         "resized-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_size": 100.0,
                 },
             },
@@ -1742,7 +1729,7 @@ def test_shape_size_change_preserves_registered_geometry(
         initial_plan,
     )
 
-    shape_root = project_root / "artifacts" / "resized-shape" / "shape" / "default"
+    shape_root = project_root / "artifacts" / "resized-shape" / "shape" / "shape_default"
 
     structure = shape_root / "10-structure" / "structure.svg"
     composition = shape_root / "20-compose" / "composition.svg"
@@ -1761,8 +1748,7 @@ def test_shape_size_change_preserves_registered_geometry(
         "resized-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_size": 90.0,
                 },
             },
@@ -1823,8 +1809,7 @@ def test_shape_size_change_rebuilds_physical_products(
         "resized-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_size": 100.0,
                 },
             },
@@ -1847,7 +1832,7 @@ def test_shape_size_change_rebuilds_physical_products(
         initial_plan,
     )
 
-    shape_root = project_root / "artifacts" / "resized-shape" / "shape" / "default"
+    shape_root = project_root / "artifacts" / "resized-shape" / "shape" / "shape_default"
 
     base = shape_root / "30-extrude" / "base.stl"
     artifact = shape_root / "40-package" / "artifact.3mf"
@@ -1872,8 +1857,7 @@ def test_shape_size_change_rebuilds_physical_products(
         "resized-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_size": 90.0,
                 },
             },
@@ -2000,8 +1984,7 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
         "shape-no-fill",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_geometry": "circle",
                     "shape_size": 100.0,
                     "shape_base_color": "test-white",
@@ -2037,7 +2020,7 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
         plans[0],
     )
 
-    shape_root = project_root / "artifacts" / "shape-no-fill" / "shape" / "default"
+    shape_root = project_root / "artifacts" / "shape-no-fill" / "shape" / "shape_default"
 
     compose_manifest = shape_root / "20-compose" / "products.json"
 
@@ -2215,8 +2198,7 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
         "shape-with-fill",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_geometry": "circle",
                     "shape_size": 100.0,
                     "shape_base_color": "test-white",
@@ -2253,7 +2235,7 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
         plans[0],
     )
 
-    shape_root = project_root / "artifacts" / "shape-with-fill" / "shape" / "default"
+    shape_root = project_root / "artifacts" / "shape-with-fill" / "shape" / "shape_default"
 
     compose_manifest = shape_root / "20-compose" / "products.json"
 
@@ -2478,8 +2460,7 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
         "shared-color-fill-shape",
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_geometry": "circle",
                     "shape_size": 100.0,
                     "shape_base_color": "test-blue",
@@ -2516,7 +2497,7 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
         plans[0],
     )
 
-    shape_root = project_root / "artifacts" / "shared-color-fill-shape" / "shape" / "default"
+    shape_root = project_root / "artifacts" / "shared-color-fill-shape" / "shape" / "shape_default"
 
     extrude_manifest = shape_root / "30-extrude" / "products.json"
 
@@ -2728,8 +2709,7 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
         artifact_id,
         {
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_geometry": "circle",
                     "shape_size": 100.0,
                     "shape_base_raise": shape_base_raise,
@@ -2772,7 +2752,7 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
         plans[0],
     )
 
-    shape_root = project_root / "artifacts" / artifact_id / "shape" / "default"
+    shape_root = project_root / "artifacts" / artifact_id / "shape" / "shape_default"
 
     extrude_root = shape_root / "30-extrude"
 

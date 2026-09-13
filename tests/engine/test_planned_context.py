@@ -504,7 +504,7 @@ def test_shape_compose_context_receives_only_structural_input(
             / "artifacts"
             / "shape-example"
             / "shape"
-            / "default"
+            / "shape_default"
             / "10-structure"
             / "structure.svg"
         ),
@@ -858,7 +858,7 @@ def test_shape_compose_context_receives_bound_registered_artwork(
             / "artifacts"
             / "shape-example"
             / "shape"
-            / "default"
+            / "shape_default"
             / "10-structure"
             / "structure.svg"
         ),

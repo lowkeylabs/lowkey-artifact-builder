@@ -87,7 +87,7 @@ artwork_island_connectivity = 8
         / "artifacts"
         / "clean_bg_house"
         / "artwork"
-        / "default"
+        / "artwork_default"
         / "30-vector"
         / "products.json"
     )

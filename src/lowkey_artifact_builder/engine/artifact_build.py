@@ -57,19 +57,24 @@ def create_artifact_build_plans(
     """
     Create the selected BuildPlans for one configured artifact.
 
-    A Variant is identified by its Model and local Variant name. The
-    historical runtime realization coordinate carries that local Variant
-    name.
+    Variant and Realization are distinct selection coordinates.
 
-    A caller may select one Variant or all Variants, but not both.
+    A Variant is identified by its Model and local Variant name. Artifact
+    planning resolves that Variant selection to the Artifact Realization that
+    applies it.
 
-    When all_variants is true, every Variant owned by the applicable Model
-    is planned independently using its local name as the runtime realization
-    coordinate.
+    A caller may select one Variant, one Realization, or all Variants, but those
+    selection modes are mutually exclusive.
 
-    Otherwise an explicit Variant local name becomes the realization used
-    for planning. When neither Variant nor realization is selected, ordinary
-    build planning selects the default realization.
+    When all_variants is true, every Variant owned by the applicable Model is
+    planned through its canonical Artifact Realization.
+
+    When neither Variant nor Realization is explicitly selected, the Artifact's
+    effective Model is resolved and that Model's default Variant is selected.
+    Planning resolves that Variant to its canonical Artifact Realization.
+
+    When a local Variant name is supplied without a Model, the Artifact's
+    effective Model supplies the Model coordinate for that Variant selection.
     """
 
     if variant_name is not None and all_variants:
@@ -82,16 +87,17 @@ def create_artifact_build_plans(
         raise ValueError("variant_name and realization cannot be used together")
 
     if all_variants:
-        resolver_options = {}
-
-        if model_name is not None:
-            resolver_options["model"] = model_name
-
-        resolver = get_resolver(
-            artifact_id,
-            project_root=project_root,
-            **resolver_options,
-        )
+        if model_name is None:
+            resolver = get_resolver(
+                artifact_id,
+                project_root=project_root,
+            )
+        else:
+            resolver = get_resolver(
+                artifact_id,
+                model=model_name,
+                project_root=project_root,
+            )
 
         resolved_model_name = resolver("model")
 
@@ -107,28 +113,35 @@ def create_artifact_build_plans(
             for plan in create_build_plans(
                 artifact_id,
                 model_name=resolved_model_name,
-                realization=f"{resolved_model_name}_{variant.name}",
+                variant_name=variant.name,
                 project_root=project_root,
             )
         )
 
-    planning_options = {}
+    if realization is not None:
+        return create_build_plans(
+            artifact_id,
+            model_name=model_name,
+            realization=realization,
+            project_root=project_root,
+        )
 
-    if model_name is not None:
-        planning_options["model_name"] = model_name
+    if model_name is None:
+        resolver = get_resolver(
+            artifact_id,
+            project_root=project_root,
+        )
 
-    planning_options["realization"] = (
-        variant_name
-        if variant_name is not None
-        else realization
-        if realization is not None
-        else "default"
-    )
+        model_name = resolver("model")
+
+    if variant_name is None:
+        variant_name = "default"
 
     return create_build_plans(
         artifact_id,
+        model_name=model_name,
+        variant_name=variant_name,
         project_root=project_root,
-        **planning_options,
     )
 
 
@@ -153,24 +166,13 @@ def execute_artifact_build(
     planning order.
     """
 
-    planning_options = {}
-
-    if model_name is not None:
-        planning_options["model_name"] = model_name
-
-    if variant_name is not None:
-        planning_options["variant_name"] = variant_name
-
-    if realization is not None:
-        planning_options["realization"] = realization
-
-    if all_variants:
-        planning_options["all_variants"] = True
-
     plans = create_artifact_build_plans(
         artifact_id,
+        model_name=model_name,
+        variant_name=variant_name,
+        realization=realization,
+        all_variants=all_variants,
         project_root=project_root,
-        **planning_options,
     )
 
     return tuple(

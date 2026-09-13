@@ -82,6 +82,71 @@ class BuildPlanError(RuntimeError):
 # =========================================================
 
 
+def _resolve_variant_realization(
+    artifact_id: str,
+    *,
+    model_name: str | None,
+    variant_name: str,
+    project_root: Path,
+) -> str:
+    """
+    Resolve one Variant selection to its Artifact Realization.
+
+    Variant identifies reusable Model configuration. Realization identifies
+    that Variant's application to one Artifact.
+
+    Artifact configuration owns the realization catalog, including synthesized
+    default realizations. Planning therefore discovers realizations through
+    configuration and selects the one whose resolved Model and local Variant
+    match the requested Variant.
+    """
+
+    matches: list[str] = []
+
+    for realization_name in get_realization_names(
+        artifact_id,
+        project_root=project_root,
+    ):
+        resolver = get_resolver(
+            artifact_id,
+            realization=realization_name,
+            project_root=project_root,
+        )
+
+        resolved_model = resolver("model")
+        resolved_variant = resolver("variant")
+
+        if model_name is not None and resolved_model != model_name:
+            continue
+
+        if resolved_variant != variant_name:
+            continue
+
+        matches.append(
+            realization_name,
+        )
+
+    if not matches:
+        qualified_variant = (
+            f"{model_name}.{variant_name}" if model_name is not None else variant_name
+        )
+
+        raise BuildPlanError(f"No artifact realization applies Variant {qualified_variant!r}.")
+
+    if len(matches) > 1:
+        qualified_variant = (
+            f"{model_name}.{variant_name}" if model_name is not None else variant_name
+        )
+
+        names = ", ".join(repr(name) for name in matches)
+
+        raise BuildPlanError(
+            f"Variant {qualified_variant!r} is applied by multiple artifact realizations: {names}."
+        )
+
+    return matches[0]
+
+
 def create_build_plan(
     artifact_id: str,
     *,
@@ -92,29 +157,32 @@ def create_build_plan(
     project_root: Path | None = None,
 ) -> BuildPlan:
     """
-    Construct the build plan for one configured artifact realization.
+    Construct the build plan for one configured Artifact Realization.
 
-    Configuration is resolved once for the selected Model and local Variant
-    name. The historical runtime realization coordinate carries that local
-    Variant name. The resulting Resolver is retained by the BuildPlan and
-    later supplied unchanged to every StageContext created during execution.
+    Variant and Realization are distinct coordinates.
 
-    variant_name is a compatibility input for the local Variant name. It is
-    normalized immediately to the runtime realization coordinate and cannot
-    be supplied together with realization.
+    variant_name selects reusable Model configuration. Planning resolves that
+    Variant selection to the Artifact Realization that applies it.
 
-    When neither variant_name nor realization is supplied, configuration
-    resolution determines the local Variant name. Ordinary single-Variant
-    artifact configuration resolves to "default".
+    realization directly selects an Artifact Realization. variant_name and
+    realization therefore cannot be supplied together.
 
-    When targets are supplied, only stages required to produce those
-    products and their transitive dependencies are planned. Declarative
-    product dependencies discovered by the selected Realization Graph
-    are preserved by the BuildPlan and resolved to their configured
-    producer artifact and realization bindings.
+    When neither variant_name nor realization is supplied, planning selects
+    the "default" Variant of the Artifact's effective Model and resolves that
+    Variant to its canonical Artifact Realization.
 
-    When targets are omitted, every participating model stage is
-    planned, preserving complete-artifact build behavior.
+    The resulting realization-specific Resolver is retained by the BuildPlan
+    and later supplied unchanged to every StageContext created during
+    execution.
+
+    When targets are supplied, only stages required to produce those products
+    and their transitive dependencies are planned. Declarative product
+    dependencies discovered by the selected Realization Graph are preserved by
+    the BuildPlan and resolved to their configured producer artifact and
+    realization bindings.
+
+    When targets are omitted, every participating model stage is planned,
+    preserving complete-artifact build behavior.
     """
 
     if targets == ():
@@ -123,23 +191,43 @@ def create_build_plan(
     if variant_name is not None and realization is not None:
         raise BuildPlanError("variant_name and realization cannot be used together")
 
-    if variant_name is not None:
-        realization = variant_name
-
     root = project_root if project_root is not None else Path.cwd()
 
-    resolver_options = {}
+    # A direct Realization selection is already a complete Artifact execution
+    # identity. Otherwise planning is Variant-driven. Omitted selection means
+    # the default Variant of the Artifact's effective Model.
+    if realization is None:
+        if model_name is None:
+            artifact_resolver = get_resolver(
+                artifact_id,
+                project_root=root,
+            )
 
-    if model_name is not None:
-        resolver_options["model"] = model_name
+            resolved_model_name = artifact_resolver("model")
 
-    if realization is not None:
-        resolver_options["realization"] = realization
+            if not isinstance(
+                resolved_model_name,
+                str,
+            ):
+                raise BuildPlanError("Artifact model must resolve to a string.")
+
+            model_name = resolved_model_name
+
+        if variant_name is None:
+            variant_name = "default"
+
+        realization = _resolve_variant_realization(
+            artifact_id,
+            model_name=model_name,
+            variant_name=variant_name,
+            project_root=root,
+        )
 
     resolver = get_resolver(
         artifact_id,
+        model=model_name,
+        realization=realization,
         project_root=root,
-        **resolver_options,
     )
 
     resolved_model_name = resolver("model")
@@ -267,10 +355,6 @@ def create_build_plans(
     """
     Construct build plans for one or more realizations of one artifact.
 
-    The historical runtime realization coordinate carries the local Variant
-    name. variant_name is a compatibility input for that local name and is
-    normalized before realization discovery or lower-level planning.
-
     variant_name and realization therefore cannot be supplied together as
     independent selectors.
 
@@ -293,10 +377,15 @@ def create_build_plans(
     if variant_name is not None and realization is not None:
         raise BuildPlanError("variant_name and realization cannot be used together")
 
-    if variant_name is not None:
-        realization = variant_name
-
     root = project_root if project_root is not None else Path.cwd()
+
+    if variant_name is not None:
+        realization = _resolve_variant_realization(
+            artifact_id,
+            model_name=model_name,
+            variant_name=variant_name,
+            project_root=root,
+        )
 
     if targets is None and realization is not None:
         return (

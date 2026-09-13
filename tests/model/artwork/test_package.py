@@ -374,13 +374,17 @@ def test_package_resolves_dynamic_stls_relative_to_manifest(
     ]
 
 
-def test_package_uses_printer_assignment_for_component_metadata(
+def test_package_preserves_component_identity_and_printer_assignment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Packaging uses the physical printer assignment for 3MF component
-    identity and RGB.
+    Packaging preserves extrusion-product identity and physical printer
+    assignment as distinct component properties.
+
+    The extrusion product identifies the independently printable 3MF
+    component. The printer assignment supplies its semantic physical color
+    and RGB.
 
     Artifact RGB remains distinct input information and must not replace
     the printer RGB selected during rasterization.
@@ -496,8 +500,8 @@ def test_package_uses_printer_assignment_for_component_metadata(
     assert captured_components is not None
 
     assert tuple(component.name for component in captured_components) == (
-        "portrait-physical-blue",
-        "portrait-physical-red",
+        "portrait-color-1",
+        "portrait-color-2",
     )
 
     assert tuple(component.color for component in captured_components) == (
@@ -725,6 +729,10 @@ def test_package_includes_participating_loop_as_independent_component(
     """
     A participating Loop declared by extrusion is packaged as an
     independently printable 3MF component.
+
+    Physical component identity is independent of printer-color identity.
+    A Loop may therefore use the same semantic printer color as an Artwork
+    color layer while remaining a distinct printable component.
     """
 
     extrude_directory = tmp_path / "extrude"
@@ -772,11 +780,11 @@ def test_package_includes_participating_loop_as_independent_component(
             {
                 "path": loop_stl.name,
                 "printer_color": {
-                    "name": "black",
+                    "name": "white",
                     "rgb": {
-                        "red": 0,
-                        "green": 0,
-                        "blue": 0,
+                        "red": 255,
+                        "green": 255,
+                        "blue": 255,
                     },
                 },
             },
@@ -813,10 +821,18 @@ def test_package_includes_participating_loop_as_independent_component(
         raising=False,
     )
 
+    captured_components: tuple[Component, ...] | None = None
+
     def fake_write(
         components,
         output: Path,
     ) -> None:
+        nonlocal captured_components
+
+        captured_components = tuple(
+            components,
+        )
+
         output.parent.mkdir(
             parents=True,
             exist_ok=True,
@@ -839,5 +855,28 @@ def test_package_includes_participating_loop_as_independent_component(
         artwork_stl,
         loop_stl,
     ]
+
+    assert captured_components is not None
+    assert len(captured_components) == 2
+
+    assert captured_components[0].color == PaletteColor(
+        name="white",
+        rgb=(
+            255,
+            255,
+            255,
+        ),
+    )
+
+    assert captured_components[1].color == PaletteColor(
+        name="white",
+        rgb=(
+            255,
+            255,
+            255,
+        ),
+    )
+
+    assert captured_components[0].name != captured_components[1].name
 
     assert artifact.is_file()

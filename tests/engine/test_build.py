@@ -64,12 +64,12 @@ def test_execute_build_creates_declared_workspace(
     expected = {
         plan.artifact_dir,
         plan.artifact_dir / "artwork",
-        plan.artifact_dir / "artwork" / "default",
-        plan.artifact_dir / "artwork" / "default" / "10-prepare",
-        plan.artifact_dir / "artwork" / "default" / "20-raster",
-        plan.artifact_dir / "artwork" / "default" / "30-vector",
-        plan.artifact_dir / "artwork" / "default" / "40-extrude",
-        plan.artifact_dir / "artwork" / "default" / "50-package",
+        plan.artifact_dir / "artwork" / "artwork_default",
+        plan.artifact_dir / "artwork" / "artwork_default" / "10-prepare",
+        plan.artifact_dir / "artwork" / "artwork_default" / "20-raster",
+        plan.artifact_dir / "artwork" / "artwork_default" / "30-vector",
+        plan.artifact_dir / "artwork" / "artwork_default" / "40-extrude",
+        plan.artifact_dir / "artwork" / "artwork_default" / "50-package",
     }
 
     observed: set[Path] = set()
@@ -287,7 +287,7 @@ def test_execute_build_runs_only_target_dependency_closure(
     target = ProductRef(
         artifact="example",
         model="artwork",
-        realization="default",
+        realization="artwork_default",
         stage="vector",
         product="manifest",
     )
@@ -344,7 +344,7 @@ def test_execute_build_target_does_not_create_downstream_workspace(
     target = ProductRef(
         artifact="example",
         model="artwork",
-        realization="default",
+        realization="artwork_default",
         stage="vector",
         product="manifest",
     )
@@ -371,7 +371,7 @@ def test_execute_build_target_does_not_create_downstream_workspace(
         plan,
     )
 
-    realization_dir = plan.artifact_dir / "artwork" / "default"
+    realization_dir = plan.artifact_dir / "artwork" / "artwork_default"
 
     assert (realization_dir / "10-prepare").is_dir()
 
@@ -401,7 +401,7 @@ def test_execute_build_target_creates_target_and_dependency_products(
     target = ProductRef(
         artifact="example",
         model="artwork",
-        realization="default",
+        realization="artwork_default",
         stage="vector",
         product="manifest",
     )
@@ -428,7 +428,7 @@ def test_execute_build_target_creates_target_and_dependency_products(
         plan,
     )
 
-    realization_dir = plan.artifact_dir / "artwork" / "default"
+    realization_dir = plan.artifact_dir / "artwork" / "artwork_default"
 
     assert (realization_dir / "10-prepare" / "trace.svg").is_file()
 
@@ -460,7 +460,7 @@ def test_execute_build_realizes_product_dependency_before_consumer(
     producer_target = ProductRef(
         artifact="example",
         model="artwork",
-        realization="default",
+        realization="artwork_default",
         stage="vector",
         product="manifest",
     )
@@ -480,11 +480,11 @@ def test_execute_build_realizes_product_dependency_before_consumer(
     binding = ProductDependencyBinding(
         dependency=dependency,
         artifact="example",
-        realization="default",
+        realization="artwork_default",
     )
 
     dependency_path = (
-        producer_plan.artifact_dir / "artwork" / "default" / "30-vector" / "products.json"
+        producer_plan.artifact_dir / "artwork" / "artwork_default" / "30-vector" / "products.json"
     )
 
     planned_dependency = PlannedProductDependency(
@@ -537,9 +537,9 @@ def test_execute_build_realizes_product_dependency_before_consumer(
 
     assert dependency_path.is_file()
 
-    assert not (producer_plan.artifact_dir / "artwork" / "default" / "40-extrude").exists()
+    assert not (producer_plan.artifact_dir / "artwork" / "artwork_default" / "40-extrude").exists()
 
-    assert not (producer_plan.artifact_dir / "artwork" / "default" / "50-package").exists()
+    assert not (producer_plan.artifact_dir / "artwork" / "artwork_default" / "50-package").exists()
 
 
 def test_execute_build_exposes_product_dependency_to_consumer_stage(
@@ -560,7 +560,7 @@ def test_execute_build_exposes_product_dependency_to_consumer_stage(
     producer_target = ProductRef(
         artifact="example",
         model="artwork",
-        realization="default",
+        realization="artwork_default",
         stage="vector",
         product="manifest",
     )
@@ -580,11 +580,11 @@ def test_execute_build_exposes_product_dependency_to_consumer_stage(
     binding = ProductDependencyBinding(
         dependency=dependency,
         artifact="example",
-        realization="default",
+        realization="artwork_default",
     )
 
     dependency_path = (
-        producer_plan.artifact_dir / "artwork" / "default" / "30-vector" / "products.json"
+        producer_plan.artifact_dir / "artwork" / "artwork_default" / "30-vector" / "products.json"
     )
 
     planned_dependency = PlannedProductDependency(
@@ -720,7 +720,7 @@ def test_execute_build_reuses_existing_product_dependency(
     producer_target = ProductRef(
         artifact="example",
         model="artwork",
-        realization="default",
+        realization="artwork_default",
         stage="vector",
         product="manifest",
     )
@@ -740,11 +740,11 @@ def test_execute_build_reuses_existing_product_dependency(
     binding = ProductDependencyBinding(
         dependency=dependency,
         artifact="example",
-        realization="default",
+        realization="artwork_default",
     )
 
     dependency_path = (
-        producer_plan.artifact_dir / "artwork" / "default" / "30-vector" / "products.json"
+        producer_plan.artifact_dir / "artwork" / "artwork_default" / "30-vector" / "products.json"
     )
 
     dependency_path.parent.mkdir(
@@ -859,11 +859,11 @@ def test_execute_build_sets_stage_working_directory(
     execute_build(plan)
 
     assert observed == {
-        "prepare": (plan.artifact_dir / "artwork" / "default" / "10-prepare"),
-        "raster": (plan.artifact_dir / "artwork" / "default" / "20-raster"),
-        "vector": (plan.artifact_dir / "artwork" / "default" / "30-vector"),
-        "extrude": (plan.artifact_dir / "artwork" / "default" / "40-extrude"),
-        "package": (plan.artifact_dir / "artwork" / "default" / "50-package"),
+        "prepare": (plan.artifact_dir / "artwork" / "artwork_default" / "10-prepare"),
+        "raster": (plan.artifact_dir / "artwork" / "artwork_default" / "20-raster"),
+        "vector": (plan.artifact_dir / "artwork" / "artwork_default" / "30-vector"),
+        "extrude": (plan.artifact_dir / "artwork" / "artwork_default" / "40-extrude"),
+        "package": (plan.artifact_dir / "artwork" / "artwork_default" / "50-package"),
     }
 
 
@@ -1122,31 +1122,35 @@ def test_execute_build_context_contains_dependency_products(
     }
 
     assert observed["raster"] == {
-        "prepare.trace": (plan.artifact_dir / "artwork" / "default" / "10-prepare" / "trace.svg"),
+        "prepare.trace": (
+            plan.artifact_dir / "artwork" / "artwork_default" / "10-prepare" / "trace.svg"
+        ),
         "prepare.envelope": (
-            plan.artifact_dir / "artwork" / "default" / "10-prepare" / "envelope.svg"
+            plan.artifact_dir / "artwork" / "artwork_default" / "10-prepare" / "envelope.svg"
         ),
     }
 
     assert observed["vector"] == {
-        "prepare.trace": (plan.artifact_dir / "artwork" / "default" / "10-prepare" / "trace.svg"),
+        "prepare.trace": (
+            plan.artifact_dir / "artwork" / "artwork_default" / "10-prepare" / "trace.svg"
+        ),
         "prepare.envelope": (
-            plan.artifact_dir / "artwork" / "default" / "10-prepare" / "envelope.svg"
+            plan.artifact_dir / "artwork" / "artwork_default" / "10-prepare" / "envelope.svg"
         ),
         "raster.manifest": (
-            plan.artifact_dir / "artwork" / "default" / "20-raster" / "products.json"
+            plan.artifact_dir / "artwork" / "artwork_default" / "20-raster" / "products.json"
         ),
     }
 
     assert observed["extrude"] == {
         "vector.manifest": (
-            plan.artifact_dir / "artwork" / "default" / "30-vector" / "products.json"
+            plan.artifact_dir / "artwork" / "artwork_default" / "30-vector" / "products.json"
         ),
     }
 
     assert observed["package"] == {
         "extrude.manifest": (
-            plan.artifact_dir / "artwork" / "default" / "40-extrude" / "products.json"
+            plan.artifact_dir / "artwork" / "artwork_default" / "40-extrude" / "products.json"
         ),
     }
 
@@ -1193,24 +1197,34 @@ def test_execute_build_context_contains_declared_outputs(
     execute_build(plan)
 
     assert observed["prepare"] == {
-        "trace": (plan.artifact_dir / "artwork" / "default" / "10-prepare" / "trace.svg"),
-        "envelope": (plan.artifact_dir / "artwork" / "default" / "10-prepare" / "envelope.svg"),
+        "trace": (plan.artifact_dir / "artwork" / "artwork_default" / "10-prepare" / "trace.svg"),
+        "envelope": (
+            plan.artifact_dir / "artwork" / "artwork_default" / "10-prepare" / "envelope.svg"
+        ),
     }
 
     assert observed["raster"] == {
-        "manifest": (plan.artifact_dir / "artwork" / "default" / "20-raster" / "products.json"),
+        "manifest": (
+            plan.artifact_dir / "artwork" / "artwork_default" / "20-raster" / "products.json"
+        ),
     }
 
     assert observed["vector"] == {
-        "manifest": (plan.artifact_dir / "artwork" / "default" / "30-vector" / "products.json"),
+        "manifest": (
+            plan.artifact_dir / "artwork" / "artwork_default" / "30-vector" / "products.json"
+        ),
     }
 
     assert observed["extrude"] == {
-        "manifest": (plan.artifact_dir / "artwork" / "default" / "40-extrude" / "products.json"),
+        "manifest": (
+            plan.artifact_dir / "artwork" / "artwork_default" / "40-extrude" / "products.json"
+        ),
     }
 
     assert observed["package"] == {
-        "artifact": (plan.artifact_dir / "artwork" / "default" / "50-package" / "artifact.3mf"),
+        "artifact": (
+            plan.artifact_dir / "artwork" / "artwork_default" / "50-package" / "artifact.3mf"
+        ),
     }
 
 
@@ -1726,7 +1740,7 @@ def test_execute_targeted_artwork_vector_build_stops_before_physical_stages(
     target = ProductRef(
         artifact="example",
         model="artwork",
-        realization="default",
+        realization="artwork_default",
         stage="vector",
         product="manifest",
     )
@@ -1759,7 +1773,7 @@ def test_execute_targeted_artwork_vector_build_stops_before_physical_stages(
         "vector",
     ]
 
-    realization = plan.artifact_dir / "artwork" / "default"
+    realization = plan.artifact_dir / "artwork" / "artwork_default"
 
     assert (realization / "30-vector" / "products.json").is_file()
 
@@ -1778,7 +1792,7 @@ def test_execute_build_publishes_packaged_3mf(
 
     Publication is a convenience copy of the canonical package Product.
     The canonical Product remains unchanged at its planned Stage location,
-    while the published filename identifies the fully qualified Variant.
+    while the published filename identifies the Realization.
     """
 
     _create_source(tmp_path)
@@ -1788,9 +1802,9 @@ def test_execute_build_publishes_packaged_3mf(
         monkeypatch,
     )
 
-    canonical = plan.artifact_dir / "artwork" / "default" / "50-package" / "artifact.3mf"
+    canonical = plan.artifact_dir / "artwork" / "artwork_default" / "50-package" / "artifact.3mf"
 
-    published = plan.artifact_dir / "artwork.default.3mf"
+    published = plan.artifact_dir / "artwork.artwork_default.3mf"
 
     def implementation(
         context: StageContext,
@@ -1813,11 +1827,11 @@ def test_execute_build_publishes_packaged_3mf(
 
     assert canonical.is_file()
 
-    assert canonical.read_bytes() == (b"packaged 3mf")
+    assert canonical.read_bytes() == b"packaged 3mf"
 
     assert published.is_file()
 
-    assert published.read_bytes() == (b"packaged 3mf")
+    assert published.read_bytes() == b"packaged 3mf"
 
 
 def test_execute_build_does_not_publish_existing_package_when_package_is_not_executed(
@@ -1842,16 +1856,16 @@ def test_execute_build_does_not_publish_existing_package_when_package_is_not_exe
             ProductRef(
                 artifact="example",
                 model="artwork",
-                realization="default",
+                realization="artwork_default",
                 stage="vector",
                 product="manifest",
             ),
         ),
     )
 
-    canonical = plan.artifact_dir / "artwork" / "default" / "50-package" / "artifact.3mf"
+    canonical = plan.artifact_dir / "artwork" / "artwork_default" / "50-package" / "artifact.3mf"
 
-    published = plan.artifact_dir / "artwork.default.3mf"
+    published = plan.artifact_dir / "artwork.artwork_default.3mf"
 
     canonical.parent.mkdir(
         parents=True,
@@ -1888,18 +1902,18 @@ def test_execute_build_does_not_publish_existing_package_when_package_is_not_exe
         "vector",
     ]
 
-    assert canonical.read_bytes() == (b"old packaged 3mf")
+    assert canonical.read_bytes() == b"old packaged 3mf"
 
     assert not published.exists()
 
 
-def test_execute_build_publishes_package_using_model_and_variant_name(
+def test_execute_build_publishes_package_using_model_and_realization_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     test_resolver,
 ) -> None:
     """
-    Package publication identifies the Model and Variant in its filename.
+    Package publication identifies the Model and Realization in its filename.
 
     Publication naming is derived from BuildPlan identity rather than from
     the canonical Stage Product path.
@@ -1907,7 +1921,7 @@ def test_execute_build_publishes_package_using_model_and_variant_name(
 
     artifact_dir = tmp_path / "artifacts" / "example"
 
-    canonical = artifact_dir / "shape" / "ornament" / "40-package" / "artifact.3mf"
+    canonical = artifact_dir / "shape" / "shape_ornament" / "40-package" / "artifact.3mf"
 
     product_spec = ProductSpec(
         name="artifact",
@@ -1936,7 +1950,7 @@ def test_execute_build_publishes_package_using_model_and_variant_name(
             title="Shape",
             stages=(package_stage.spec,),
         ),
-        realization_name="ornament",
+        realization_name="shape_ornament",
         resolver=test_resolver,
         project_root=tmp_path,
         artifact_dir=artifact_dir,
@@ -1967,12 +1981,12 @@ def test_execute_build_publishes_package_using_model_and_variant_name(
         plan,
     )
 
-    published = artifact_dir / "shape.ornament.3mf"
+    published = artifact_dir / "shape.shape_ornament.3mf"
 
     assert canonical.is_file()
 
-    assert canonical.read_bytes() == (b"ornament 3mf")
+    assert canonical.read_bytes() == b"ornament 3mf"
 
     assert published.is_file()
 
-    assert published.read_bytes() == (b"ornament 3mf")
+    assert published.read_bytes() == b"ornament 3mf"

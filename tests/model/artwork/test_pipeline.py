@@ -98,7 +98,7 @@ artwork_island_connectivity = 8
         plan,
     )
 
-    return project_root / "artifacts" / "clean_bg_house" / "artwork" / "default"
+    return project_root / "artifacts" / "clean_bg_house" / "artwork" / "artwork_default"
 
 
 def _svg_occupied_bounds(
@@ -440,7 +440,7 @@ def _build_artwork(
 
     execute_build(plan)
 
-    return project_root / "artifacts" / "example" / "artwork" / "default"
+    return project_root / "artifacts" / "example" / "artwork" / "artwork_default"
 
 
 def _manifest_products(
@@ -855,7 +855,9 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
     assert len(objects) == len(extrude_products)
     assert len(build_items) == len(extrude_products)
 
-    expected_component_names = {f"example-{name}" for name in expected_printer_colors}
+    expected_component_names = {
+        f"example-{Path(product['path']).stem}" for product in extrude_products
+    }
 
     assert {object_element.get("name") for object_element in objects} == expected_component_names
 
@@ -1170,3 +1172,33 @@ def test_clean_bg_house_registered_envelope_and_components_share_occupied_center
         envelope_center_y,
         abs=0.5,
     )
+
+
+def test_create_build_plan_without_selection_uses_canonical_default_realization(
+    tmp_path: Path,
+) -> None:
+    """
+    Omitted selection means the effective Model's default Variant.
+
+    Planning resolves that Variant through the Artifact realization catalog,
+    so the resulting execution identity is the canonical default Realization.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "model": "artwork",
+            "source": "source.png",
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        "example",
+        project_root=tmp_path,
+    )
+
+    assert plan.model_name == "artwork"
+    assert plan.realization_name == "artwork_default"
+    assert plan.resolver("variant") == "default"
+    assert plan.resolver("realization") == "artwork_default"

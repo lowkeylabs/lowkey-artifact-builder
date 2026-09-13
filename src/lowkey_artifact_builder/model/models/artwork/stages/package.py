@@ -217,11 +217,6 @@ def _load_extrude_manifest(
     if len(indexes) != len(set(indexes)):
         raise PackageError("Extrusion product indexes must be unique.")
 
-    names = [component.color.name for component in result]
-
-    if len(names) != len(set(names)):
-        raise PackageError("Extrusion product printer color names must be unique.")
-
     result.sort(
         key=lambda component: (
             component.index is None,
@@ -401,18 +396,21 @@ def _component_name(
     """
     Return the semantic 3MF object name for one Artwork component.
 
-    Independently printable components are identified by their assigned
-    physical printer color. Object names therefore combine artifact identity
-    with the printer color identity established upstream.
+    Independently printable components are identified by their extrusion
+    product identity rather than by their assigned printer color.
+
+    The extrusion product filename supplies that physical component identity,
+    while the component's PaletteColor independently preserves its physical
+    printer assignment.
 
     For example:
 
-        nydeli-black
-        nydeli-red
-        nydeli-white
+        nydeli-color-1
+        nydeli-color-2
+        nydeli-loop
     """
 
-    return f"{artifact_id}-{component.color.name}"
+    return f"{artifact_id}-{component.path.stem}"
 
 
 __all__ = [

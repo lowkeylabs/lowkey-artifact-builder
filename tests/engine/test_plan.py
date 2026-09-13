@@ -35,46 +35,22 @@ from lowkey_artifact_builder.model import (
 )
 
 
-def test_create_build_plans_normalizes_variant_name_to_one_realization(
+def test_create_build_plans_variant_selects_one_canonical_realization(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Compatibility Variant selection identifies one local runtime realization.
+    Selecting one Variant produces one BuildPlan for its canonical Realization.
 
-    Multi-plan construction must not combine a selected Variant with every
-    realization returned by realization discovery.
+    Variant identifies reusable Model configuration. The resulting BuildPlan
+    uses the canonical Artifact Realization that applies that Variant.
     """
 
-    calls: list[tuple[str, str | None, str | None, Path | None]] = []
-
-    def fake_create_build_plan(
-        artifact_id: str,
-        *,
-        model_name: str | None = None,
-        realization: str | None = None,
-        project_root: Path | None = None,
-    ):
-        calls.append(
-            (
-                artifact_id,
-                model_name,
-                realization,
-                project_root,
-            )
-        )
-        return object()
-
-    monkeypatch.setattr(
-        plan_module,
-        "create_build_plan",
-        fake_create_build_plan,
-    )
-
-    monkeypatch.setattr(
-        plan_module,
-        "get_realization_names",
-        lambda artifact_id, *, project_root: ("default",),
+    write_artifact_config(
+        "example",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
     )
 
     plans = create_build_plans(
@@ -86,14 +62,14 @@ def test_create_build_plans_normalizes_variant_name_to_one_realization(
 
     assert len(plans) == 1
 
-    assert calls == [
-        (
-            "example",
-            "shape",
-            "ornament",
-            tmp_path,
-        )
-    ]
+    plan = plans[0]
+
+    assert plan.model_name == "shape"
+    assert plan.realization_name == "shape_ornament"
+
+    assert plan.resolver("model") == "shape"
+    assert plan.resolver("variant") == "ornament"
+    assert plan.resolver("realization") == "shape_ornament"
 
 
 def test_create_build_plans_rejects_variant_name_with_realization_before_discovery(
@@ -314,13 +290,13 @@ def test_create_build_plan_materializes_product_paths(
 
     assert products == {
         "prepare": (
-            artifact_dir / "artwork" / "default" / "10-prepare" / "trace.svg",
-            artifact_dir / "artwork" / "default" / "10-prepare" / "envelope.svg",
+            artifact_dir / "artwork" / "artwork_default" / "10-prepare" / "trace.svg",
+            artifact_dir / "artwork" / "artwork_default" / "10-prepare" / "envelope.svg",
         ),
-        "raster": (artifact_dir / "artwork" / "default" / "20-raster" / "products.json",),
-        "vector": (artifact_dir / "artwork" / "default" / "30-vector" / "products.json",),
-        "extrude": (artifact_dir / "artwork" / "default" / "40-extrude" / "products.json",),
-        "package": (artifact_dir / "artwork" / "default" / "50-package" / "artifact.3mf",),
+        "raster": (artifact_dir / "artwork" / "artwork_default" / "20-raster" / "products.json",),
+        "vector": (artifact_dir / "artwork" / "artwork_default" / "30-vector" / "products.json",),
+        "extrude": (artifact_dir / "artwork" / "artwork_default" / "40-extrude" / "products.json",),
+        "package": (artifact_dir / "artwork" / "artwork_default" / "50-package" / "artifact.3mf",),
     }
 
 
@@ -369,7 +345,7 @@ def test_create_build_plan_targets_artwork_registered_vector_geometry(
     target = ProductRef(
         artifact="example",
         model="artwork",
-        realization="default",
+        realization="artwork_default",
         stage="vector",
         product="manifest",
     )
@@ -404,7 +380,7 @@ def test_create_build_plan_targets_artwork_registered_vector_geometry(
     assert tuple(product.spec.name for product in vector.products) == ("manifest",)
 
     assert vector.products[0].path == (
-        plan.artifact_dir / "artwork" / "default" / "30-vector" / "products.json"
+        plan.artifact_dir / "artwork" / "artwork_default" / "30-vector" / "products.json"
     )
 
 
@@ -467,7 +443,7 @@ def test_create_build_plan_rejects_unknown_model(
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_resolver",
-        lambda artifact_id, *, realization=None, project_root: Resolver(),
+        lambda artifact_id, *, model=None, realization=None, project_root: Resolver(),
     )
 
     with pytest.raises(
@@ -476,6 +452,7 @@ def test_create_build_plan_rejects_unknown_model(
     ):
         create_build_plan(
             "example",
+            realization="does-not-exist_default",
             project_root=tmp_path,
         )
 
@@ -485,49 +462,16 @@ def test_create_build_plan_rejects_unknown_model(
 # =========================================================
 
 
-def test_create_build_plan_normalizes_variant_name_to_realization(
+def test_create_build_plan_variant_selects_canonical_realization(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Compatibility Variant selection is normalized to the historical
-    realization coordinate before configuration resolution.
+    Selecting a Variant resolves its canonical Artifact Realization.
 
-    Variant and realization are not independent runtime identity axes.
+    The Variant remains the reusable Model configuration identity while the
+    BuildPlan and resolved configuration identify its Artifact application by
+    the canonical Realization name.
     """
-
-    calls: list[tuple[str, str | None, str | None, Path | None]] = []
-
-    real_get_resolver = plan_module.get_resolver
-
-    def recording_get_resolver(
-        artifact_id: str,
-        *,
-        model: str | None = None,
-        realization: str | None = None,
-        project_root: Path | None = None,
-    ):
-        calls.append(
-            (
-                artifact_id,
-                model,
-                realization,
-                project_root,
-            )
-        )
-
-        return real_get_resolver(
-            artifact_id,
-            model=model,
-            realization=realization,
-            project_root=project_root,
-        )
-
-    monkeypatch.setattr(
-        plan_module,
-        "get_resolver",
-        recording_get_resolver,
-    )
 
     write_artifact_config(
         "example",
@@ -544,19 +488,12 @@ def test_create_build_plan_normalizes_variant_name_to_realization(
         project_root=tmp_path,
     )
 
-    assert calls == [
-        (
-            "example",
-            "shape",
-            "ornament",
-            tmp_path,
-        )
-    ]
-
     assert plan.model_name == "shape"
-    assert plan.realization_name == "ornament"
+    assert plan.realization_name == "shape_ornament"
+
+    assert plan.resolver("model") == "shape"
     assert plan.resolver("variant") == "ornament"
-    assert plan.resolver("realization") == "ornament"
+    assert plan.resolver("realization") == "shape_ornament"
 
 
 def test_create_build_plan_rejects_variant_name_with_realization(
@@ -590,12 +527,15 @@ def test_create_build_plan_rejects_variant_name_with_realization(
         )
 
 
-def test_create_build_plan_variant_name_has_one_local_identity(
+def test_create_build_plan_variant_has_distinct_canonical_realization_identity(
     tmp_path: Path,
 ) -> None:
     """
-    Compatibility Variant selection produces one local identity across the
-    BuildPlan, resolved configuration, and persistent product namespace.
+    Variant and Realization retain their distinct identities in a BuildPlan.
+
+    The local Variant identifies reusable Model configuration while the
+    canonical Realization identifies that Variant's application to the
+    Artifact.
     """
 
     write_artifact_config(
@@ -614,29 +554,21 @@ def test_create_build_plan_variant_name_has_one_local_identity(
     )
 
     assert plan.model_name == "shape"
-    assert plan.realization_name == "ornament"
+    assert plan.realization_name == "shape_ornament"
 
     assert plan.resolver("model") == "shape"
     assert plan.resolver("variant") == "ornament"
-    assert plan.resolver("realization") == "ornament"
-
-    realization_directory = tmp_path / "artifacts" / "example" / "shape" / "ornament"
-
-    for stage in plan.stages:
-        for product in stage.products:
-            assert product.path.is_relative_to(realization_directory)
+    assert plan.resolver("realization") == "shape_ornament"
 
 
-def test_build_plan_has_default_realization(
+def test_build_plan_has_canonical_default_realization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     artwork_plan,
 ) -> None:
     """
-    A default Variant has an explicit runtime realization identity.
-
-    Ordinary Model behavior uses the local Variant name "default" as its
-    historical runtime realization coordinate.
+    The default Artwork Variant executes through its canonical Artifact
+    Realization.
     """
 
     plan = artwork_plan(
@@ -644,20 +576,19 @@ def test_build_plan_has_default_realization(
         monkeypatch,
     )
 
-    assert plan.realization_name == "default"
+    assert plan.realization_name == "artwork_default"
+    assert plan.resolver("variant") == "default"
+    assert plan.resolver("realization") == "artwork_default"
 
 
-def test_default_realization_owns_planned_products(
+def test_canonical_default_realization_owns_planned_products(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     artwork_plan,
 ) -> None:
     """
-    Planned products are stored beneath the BuildPlan realization.
-
-    This characterizes the relationship between the historical runtime
-    realization coordinate and canonical product storage for the default
-    Variant.
+    Planned products are stored beneath the BuildPlan's canonical Artifact
+    Realization.
     """
 
     plan = artwork_plan(
@@ -667,7 +598,7 @@ def test_default_realization_owns_planned_products(
 
     realization_directory = plan.artifact_dir / plan.model_name / plan.realization_name
 
-    assert plan.realization_name == "default"
+    assert plan.realization_name == "artwork_default"
 
     for stage in plan.stages:
         stage_directory = realization_directory / f"{stage.spec.id:02d}-{stage.name}"
@@ -775,6 +706,7 @@ def test_create_build_plan_selects_named_realization(
     def fake_get_resolver(
         artifact_id: str,
         *,
+        model: str | None = None,
         realization: str | None = None,
         project_root: Path,
     ) -> Resolver:
@@ -943,7 +875,7 @@ def test_named_realization_owns_planned_products(
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_resolver",
-        lambda artifact_id, *, realization=None, project_root: Resolver(),
+        lambda artifact_id, *, model=None, realization=None, project_root: Resolver(),
     )
 
     monkeypatch.setattr(
@@ -968,84 +900,6 @@ def test_named_realization_owns_planned_products(
         / "10-prepare"
         / "trace.svg"
     )
-
-
-def test_default_build_plan_preserves_legacy_realization_selection(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Planning without an explicit realization preserves the existing
-    implicit-default behavior.
-
-    The planner delegates realization selection to configuration rather
-    than manufacturing realization identity independently.
-    """
-
-    model = ModelSpec(
-        name="example-model",
-        title="Example Model",
-    )
-
-    class StubRegistry:
-        def get_model(
-            self,
-            name: str,
-        ) -> ModelSpec:
-            assert name == model.name
-
-            return model
-
-    class Resolver:
-        def __call__(
-            self,
-            name: str,
-        ):
-            values = {
-                "model": model.name,
-                "variant": "default",
-                "realization": "default",
-            }
-
-            return values[name]
-
-        def source(
-            self,
-            name: str,
-        ) -> str:
-            return "test"
-
-    requested: list[str | None] = []
-
-    def fake_get_resolver(
-        artifact_id: str,
-        *,
-        realization: str | None = None,
-        project_root: Path,
-    ) -> Resolver:
-        requested.append(realization)
-
-        return Resolver()
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.engine.plan.get_resolver",
-        fake_get_resolver,
-    )
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.engine.plan.build_model_registry",
-        lambda: StubRegistry(),
-    )
-
-    plan = create_build_plan(
-        "example",
-        project_root=tmp_path,
-    )
-
-    assert requested == [None]
-
-    assert plan.realization_name == "default"
-    assert plan.resolver("realization") == "default"
 
 
 def test_create_build_plan_uses_configured_named_realization(
@@ -1394,7 +1248,7 @@ def test_create_build_plan_targets_vector_product(
     target = ProductRef(
         artifact="example",
         model="artwork",
-        realization="default",
+        realization="artwork_default",
         stage="vector",
         product="manifest",
     )
@@ -1428,7 +1282,7 @@ def test_create_build_plan_targets_intermediate_product(
     target = ProductRef(
         artifact="example",
         model="artwork",
-        realization="default",
+        realization="artwork_default",
         stage="raster",
         product="manifest",
     )
@@ -1457,7 +1311,7 @@ def test_create_build_plan_targets_final_product(
     target = ProductRef(
         artifact="example",
         model="artwork",
-        realization="default",
+        realization="artwork_default",
         stage="package",
         product="artifact",
     )
@@ -1491,7 +1345,7 @@ def test_create_build_plan_supports_multiple_targets(
     raster = ProductRef(
         artifact="example",
         model="artwork",
-        realization="default",
+        realization="artwork_default",
         stage="raster",
         product="manifest",
     )
@@ -1499,7 +1353,7 @@ def test_create_build_plan_supports_multiple_targets(
     vector = ProductRef(
         artifact="example",
         model="artwork",
-        realization="default",
+        realization="artwork_default",
         stage="vector",
         product="manifest",
     )
@@ -1555,7 +1409,7 @@ def test_create_build_plan_rejects_unknown_target_product(
     target = ProductRef(
         artifact="example",
         model="artwork",
-        realization="default",
+        realization="artwork_default",
         stage="vector",
         product="missing",
     )
@@ -1980,7 +1834,7 @@ def test_create_build_plan_preserves_realization_product_dependencies(
             values = {
                 "model": "consumer",
                 "variant": "default",
-                "realization": "default",
+                "realization": "consumer_default",
             }
 
             return values[name]
@@ -1993,7 +1847,7 @@ def test_create_build_plan_preserves_realization_product_dependencies(
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_resolver",
-        lambda artifact_id, *, realization=None, project_root: Resolver(),
+        lambda artifact_id, *, model=None, realization=None, project_root: Resolver(),
     )
 
     monkeypatch.setattr(
@@ -2020,13 +1874,14 @@ def test_create_build_plan_preserves_realization_product_dependencies(
     target = ProductRef(
         artifact="consumer-artifact",
         model="consumer",
-        realization="default",
+        realization="consumer_default",
         stage="package",
         product="artifact",
     )
 
     plan = create_build_plan(
         "consumer-artifact",
+        realization="consumer_default",
         targets=(target,),
         project_root=tmp_path,
     )
@@ -2166,7 +2021,7 @@ def test_create_build_plan_resolves_product_dependency_bindings(
             values = {
                 "model": "consumer",
                 "variant": "default",
-                "realization": "default",
+                "realization": "consumer_default",
             }
 
             return values[name]
@@ -2179,7 +2034,7 @@ def test_create_build_plan_resolves_product_dependency_bindings(
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_resolver",
-        lambda artifact_id, *, realization=None, project_root: Resolver(),
+        lambda artifact_id, *, model=None, realization=None, project_root: Resolver(),
     )
 
     monkeypatch.setattr(
@@ -2206,13 +2061,14 @@ def test_create_build_plan_resolves_product_dependency_bindings(
     target = ProductRef(
         artifact="consumer-artifact",
         model="consumer",
-        realization="default",
+        realization="consumer_default",
         stage="package",
         product="artifact",
     )
 
     plan = create_build_plan(
         "consumer-artifact",
+        realization="consumer_default",
         targets=(target,),
         project_root=tmp_path,
     )
@@ -2503,7 +2359,7 @@ def test_product_dependency_build_plan_includes_producer_prerequisites(
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_resolver",
-        lambda artifact_id, *, realization=None, project_root: Resolver(),
+        lambda artifact_id, *, model=None, realization=None, project_root: Resolver(),
     )
 
     monkeypatch.setattr(
@@ -2638,7 +2494,7 @@ def test_product_dependency_build_plan_excludes_downstream_producer_stages(
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_resolver",
-        lambda artifact_id, *, realization=None, project_root: Resolver(),
+        lambda artifact_id, *, model=None, realization=None, project_root: Resolver(),
     )
 
     monkeypatch.setattr(
@@ -2980,7 +2836,7 @@ def test_create_build_plan_targets_shape_structure_independently(
     target = ProductRef(
         artifact="shape-example",
         model="shape",
-        realization="default",
+        realization="shape_default",
         stage="structure",
         product="structure",
     )

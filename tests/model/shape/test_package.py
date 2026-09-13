@@ -87,7 +87,7 @@ artwork_island_connectivity = 8
         / "artifacts"
         / "clean_bg_house"
         / "artwork"
-        / "default"
+        / "artwork_default"
         / "30-vector"
         / "products.json"
     )
@@ -2118,8 +2118,7 @@ artwork_island_connectivity = 8
                 },
             },
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_geometry": "polygon",
                     "shape_sides": 7,
                     "shape_size": 120.0,
@@ -2147,7 +2146,7 @@ artwork_island_connectivity = 8
         / "artifacts"
         / "clean_bg_house_shape"
         / "shape"
-        / "default"
+        / "shape_default"
         / "20-compose"
         / "products.json"
     )
@@ -2233,8 +2232,7 @@ artwork_island_connectivity = 8
                 },
             },
             "realizations": {
-                "default": {
-                    "variant": "shape.default",
+                "shape_default": {
                     "shape_geometry": "polygon",
                     "shape_sides": 7,
                     "shape_size": 120.0,
@@ -2262,7 +2260,7 @@ artwork_island_connectivity = 8
         / "artifacts"
         / "clean_bg_house_shape"
         / "shape"
-        / "default"
+        / "shape_default"
         / "30-extrude"
         / "products.json"
     )

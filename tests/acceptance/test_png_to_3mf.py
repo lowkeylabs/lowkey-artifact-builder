@@ -38,7 +38,7 @@ def test_png_builds_complete_3mf(
     Raster and vector processing preserve registered Artwork independently of
     manufacturing dimensions. Extrusion introduces physical dimensions, and
     packaging preserves each independently printable Artwork component's
-    semantic color identity and RGB representation.
+    product identity, semantic printer color identity, and RGB representation.
     """
 
     # -----------------------------------------------------
@@ -118,7 +118,7 @@ def test_png_builds_complete_3mf(
 
     assert plan.artifact_id == "nydeli"
     assert plan.model_name == "artwork"
-    assert plan.realization_name == "default"
+    assert plan.realization_name == "artwork_default"
 
     # -----------------------------------------------------
     # Verify backward-compatible envelope configuration
@@ -244,21 +244,17 @@ def test_png_builds_complete_3mf(
 
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
 
-    expected_names = {f"nydeli-{product['printer_color']['name']}" for product in products}
+    expected_names = {f"nydeli-{Path(product['path']).stem}" for product in products}
 
-    assert (
-        set(
-            objects_by_name,
-        )
-        == expected_names
-    )
+    assert set(objects_by_name) == expected_names
 
     assert len(materials) == len(products)
 
     materials_by_id = {material.get("id"): material for material in materials}
 
     # -----------------------------------------------------
-    # Verify semantic color identity survives packaging
+    # Verify component identity and semantic printer color
+    # survive packaging independently
     # -----------------------------------------------------
 
     for product in products:
@@ -267,7 +263,9 @@ def test_png_builds_complete_3mf(
         semantic_name = printer_color["name"]
         rgb = printer_color["rgb"]
 
-        object_ = objects_by_name[f"nydeli-{semantic_name}"]
+        component_name = f"nydeli-{Path(product['path']).stem}"
+
+        object_ = objects_by_name[component_name]
 
         material = materials_by_id[object_.get("pid")]
 
@@ -284,3 +282,261 @@ def test_png_builds_complete_3mf(
         )
 
         assert object_.get("pindex") == "0"
+
+
+@pytest.mark.slow
+def test_png_artwork_with_loop_builds_complete_3mf(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    Standalone Artwork with a participating Loop builds through the normal
+    pipeline into a complete 3MF containing the Loop as an independently
+    printable physical component with its resolved semantic printer color.
+    """
+
+    # -----------------------------------------------------
+    # Arrange temporary project
+    # -----------------------------------------------------
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
+
+    assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
+
+    project_root = tmp_path
+
+    source = project_root / "nydeli-clean.png"
+
+    shutil.copy2(
+        fixture_source,
+        source,
+    )
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    runner = CliRunner()
+
+    # -----------------------------------------------------
+    # Configure through the public CLI
+    # -----------------------------------------------------
+
+    config_result = runner.invoke(
+        cli,
+        [
+            "create",
+            "nydeli",
+        ],
+        input="1\n",
+    )
+
+    assert config_result.exit_code == 0, (
+        f"Artifact configuration failed:\n{config_result.output}\n{config_result.exception!r}"
+    )
+
+    # -----------------------------------------------------
+    # Enable Loop for artwork_default
+    # -----------------------------------------------------
+
+    artifact_config = project_root / "artifacts" / "nydeli" / "artifact.toml"
+
+    assert artifact_config.is_file()
+
+    with artifact_config.open(
+        "a",
+        encoding="utf-8",
+    ) as stream:
+        stream.write(
+            """
+[realizations.artwork_default]
+loop_inner_diameter = 6.0
+loop_width = 2.0
+loop_position = 0
+"""
+        )
+
+    # -----------------------------------------------------
+    # Plan customized artwork_default Realization
+    # -----------------------------------------------------
+
+    plans = create_build_plans(
+        "nydeli",
+        realization="artwork_default",
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    assert plan.artifact_id == "nydeli"
+    assert plan.model_name == "artwork"
+    assert plan.realization_name == "artwork_default"
+
+    assert plan.resolver("loop_inner_diameter") == 6.0
+    assert plan.resolver("loop_width") == 2.0
+    assert plan.resolver("loop_position") == 0
+
+    # -----------------------------------------------------
+    # Build through public CLI
+    # -----------------------------------------------------
+
+    build_result = runner.invoke(
+        cli,
+        [
+            "build",
+            "nydeli",
+            "--variant",
+            "artwork.default",
+        ],
+    )
+
+    assert build_result.exit_code == 0, (
+        f"Artifact build failed:\n{build_result.output}\n{build_result.exception!r}"
+    )
+
+    # -----------------------------------------------------
+    # Locate extrusion and package products
+    # -----------------------------------------------------
+
+    extrude_stage = next(stage for stage in plan.stages if stage.spec.name == "extrude")
+
+    extrude_manifest_product = next(
+        product for product in extrude_stage.products if product.spec.name == "manifest"
+    )
+
+    package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
+
+    artifact_product = next(
+        product for product in package_stage.products if product.spec.name == "artifact"
+    )
+
+    extrude_manifest = extrude_manifest_product.path
+    output = artifact_product.path
+
+    # -----------------------------------------------------
+    # Verify Loop extrusion product
+    # -----------------------------------------------------
+
+    assert extrude_manifest.is_file()
+
+    extrusion_data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    products = extrusion_data["products"]
+
+    assert isinstance(
+        products,
+        list,
+    )
+
+    loop_product = next(product for product in products if product["path"] == "loop.stl")
+
+    printer_color = loop_product["printer_color"]
+
+    assert isinstance(
+        printer_color["name"],
+        str,
+    )
+
+    assert printer_color["name"]
+
+    rgb = printer_color["rgb"]
+
+    assert isinstance(
+        rgb["red"],
+        int,
+    )
+
+    assert isinstance(
+        rgb["green"],
+        int,
+    )
+
+    assert isinstance(
+        rgb["blue"],
+        int,
+    )
+
+    loop_stl = extrude_manifest.parent / loop_product["path"]
+
+    assert loop_stl.is_file()
+    assert loop_stl.stat().st_size > 0
+
+    # -----------------------------------------------------
+    # Verify final product
+    # -----------------------------------------------------
+
+    assert output.is_relative_to(
+        project_root,
+    )
+
+    assert output.is_file(), f"Build did not produce the expected 3MF: {output}"
+
+    assert output.stat().st_size > 0
+
+    assert zipfile.is_zipfile(
+        output,
+    )
+
+    with zipfile.ZipFile(
+        output,
+    ) as archive:
+        names = set(
+            archive.namelist(),
+        )
+
+        assert "[Content_Types].xml" in names
+
+        model_name = next(
+            name for name in names if name.startswith("3D/") and name.endswith(".model")
+        )
+
+        model = ET.fromstring(
+            archive.read(
+                model_name,
+            ),
+        )
+
+    # -----------------------------------------------------
+    # Verify Loop survives as independently printable
+    # component
+    # -----------------------------------------------------
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    loop_name = "nydeli-loop"
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    assert loop_name in objects_by_name
+
+    loop_object = objects_by_name[loop_name]
+
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    loop_material = materials_by_id[loop_object.get("pid")]
+
+    color = loop_material.find(
+        f"{{{CORE_NS}}}base",
+    )
+
+    assert color is not None
+
+    assert color.get("name") == printer_color["name"]
+
+    assert color.get("displaycolor") == (f"#{rgb['red']:02X}{rgb['green']:02X}{rgb['blue']:02X}")
+
+    assert loop_object.get("pindex") == "0"

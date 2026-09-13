@@ -118,7 +118,7 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
 
     artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "artwork_default"
 
-    shape_root = project_root / "artifacts" / "artwork-shape" / "shape" / "default"
+    shape_root = project_root / "artifacts" / "artwork-shape" / "shape" / "shape_default"
 
     assert not artwork_root.exists()
     assert not shape_root.exists()

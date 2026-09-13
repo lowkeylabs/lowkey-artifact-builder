@@ -25,6 +25,9 @@ from lowkey_artifact_builder.config import (
     get_resolver,
     load_artifact_config,
 )
+from lowkey_artifact_builder.engine import (
+    create_build_plans,
+)
 from lowkey_artifact_builder.model import (
     build_model_registry,
 )
@@ -110,7 +113,8 @@ def _display_artifact(
     The artifact must already be defined.
 
     A selected Variant is identified by its Model and local Variant name.
-    The historical runtime realization coordinate carries that local name.
+    Artifact planning resolves that Variant to its canonical default
+    Realization before configuration is displayed.
     """
 
     try:
@@ -120,12 +124,20 @@ def _display_artifact(
                 project_root=project_root,
             )
         else:
-            resolver = get_resolver(
+            plans = create_build_plans(
                 artifact_id,
-                model=model_name,
-                realization=variant_name,
+                model_name=model_name,
+                variant_name=variant_name,
                 project_root=project_root,
             )
+
+            if len(plans) != 1:
+                raise ConfigError(
+                    f"Variant selection for artifact {artifact_id!r} "
+                    f"resolved to {len(plans)} build plans."
+                )
+
+            resolver = plans[0].resolver
 
         resolved_model_name = resolver("model")
 

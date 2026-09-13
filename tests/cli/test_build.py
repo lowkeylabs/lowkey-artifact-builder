@@ -1658,10 +1658,91 @@ def test_build_dry_run_qualified_variant_uses_effective_variant_configuration(
 
     for plan in plans:
         assert plan.model_name == "shape"
-        assert plan.realization_name == "ornament"
+        assert plan.realization_name == "shape_ornament"
         assert plan.resolver("variant") == "ornament"
         assert plan.resolver("shape_outer_ridge_width") == 2.0
         assert plan.resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
+
+
+def test_build_dry_run_qualified_variant_selects_customized_default_realization(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    Qualified Variant selection uses the canonical default Realization when
+    that Realization is explicitly customized by the Artifact.
+
+    Variant identifies the reusable Model configuration. Realization identifies
+    its application to the Artifact.
+    """
+
+    from lowkey_artifact_builder.config import write_artifact_config
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "example.png",
+            "realizations": {
+                "artwork_default": {
+                    "loop_inner_diameter": 6.0,
+                    "loop_width": 2.0,
+                    "loop_position": 0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    displayed = []
+
+    def display(plan) -> None:
+        displayed.append(
+            (
+                plan.model_name,
+                plan.realization_name,
+                plan.resolver("variant"),
+                plan.resolver("loop_inner_diameter"),
+                plan.resolver("loop_width"),
+                plan.resolver("loop_position"),
+            )
+        )
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        lambda plan: object(),
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_build_plan",
+        display,
+    )
+
+    result = _invoke(
+        "example",
+        "--variant",
+        "artwork.default",
+        "--dry-run",
+    )
+
+    assert result.exit_code == 0, result.output
+
+    assert displayed == [
+        (
+            "artwork",
+            "artwork_default",
+            "default",
+            6.0,
+            2.0,
+            0,
+        ),
+    ]
 
 
 def test_build_all_variants_dry_run_selects_all_default_realizations(

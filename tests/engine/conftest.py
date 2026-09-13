@@ -25,12 +25,11 @@ from lowkey_artifact_builder.model import (
 @pytest.fixture
 def test_resolver() -> Resolver:
     """
-    Construct the standard artifact configuration resolver used by
+    Construct the standard Artifact configuration resolver used by
     engine tests.
 
-    The resolver represents legacy single-realization artifact
-    configuration, which resolves to the implicit realization named
-    "default".
+    The resolver represents the canonical default Realization of the
+    Artwork Model's default Variant.
 
     Model defaults and derived values required by the realized Artwork
     stages are represented explicitly because this fixture constructs a
@@ -40,7 +39,8 @@ def test_resolver() -> Resolver:
     return Resolver(
         values={
             "model": "artwork",
-            "realization": "default",
+            "variant": "default",
+            "realization": "artwork_default",
             "source": "source.png",
             "artifact_color_count": 2,
             "artwork_envelope_mode": "shrink-wrap",
@@ -60,6 +60,7 @@ def test_resolver() -> Resolver:
         },
         provenance={
             "model": "test",
+            "variant": "test",
             "realization": "test",
             "source": "test",
             "artifact_color_count": "test",
@@ -94,14 +95,17 @@ def artwork_plan(
     BuildPlan,
 ]:
     """
-    Return a factory for standard artwork build plans.
+    Return a factory for standard Artwork build plans.
 
-    The standard plan exercises the legacy implicit-default realization
-    while honoring the realization-aware get_resolver() interface.
+    The fixture supplies the canonical ``artwork_default`` Realization
+    directly so tests using it remain focused on build planning rather than
+    Artifact configuration or Variant-to-Realization selection.
 
-    Optional product targets allow tests to construct Phase 7 targeted
-    plans while preserving complete-build behavior when targets are
-    omitted.
+    Tests specifically concerned with Variant or default-Realization
+    selection should exercise that behavior independently.
+
+    Optional product targets allow tests to construct targeted plans while
+    preserving complete-build behavior when targets are omitted.
     """
 
     def create(
@@ -112,12 +116,18 @@ def artwork_plan(
         def fake_get_resolver(
             artifact_id: str,
             *,
+            model: str | None = None,
             realization: str | None = None,
             project_root: Path,
         ) -> Resolver:
             assert artifact_id == "example"
-            assert realization is None
             assert project_root == tmp_path
+
+            # This fixture represents one already-selected execution
+            # identity. It intentionally does not emulate realization
+            # discovery.
+            assert model is None or model == "artwork"
+            assert realization == "artwork_default"
 
             return test_resolver
 
@@ -128,6 +138,7 @@ def artwork_plan(
 
         return create_build_plan(
             "example",
+            realization="artwork_default",
             targets=targets,
             project_root=tmp_path,
         )

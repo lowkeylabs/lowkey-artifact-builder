@@ -195,7 +195,7 @@ def test_shape_ornament_variant_accepts_artifact_customization(
 
     # Artifact customization changes the manufactured Shape without
     # changing the selected Variant's persistent product identity.
-    shape_root = project_root / "artifacts" / "custom-ornament" / "shape" / "ornament"
+    shape_root = project_root / "artifacts" / "custom-ornament" / "shape" / "shape_ornament"
 
     base = shape_root / "30-extrude" / "base.stl"
 
@@ -295,9 +295,9 @@ def test_shape_variants_have_distinct_persistent_product_identity(
 
     shape_root = project_root / "artifacts" / "multi-variant-shape" / "shape"
 
-    default_artifact = shape_root / "default" / "40-package" / "artifact.3mf"
+    default_artifact = shape_root / "shape_default" / "40-package" / "artifact.3mf"
 
-    ornament_artifact = shape_root / "ornament" / "40-package" / "artifact.3mf"
+    ornament_artifact = shape_root / "shape_ornament" / "40-package" / "artifact.3mf"
 
     assert default_artifact.is_file()
     assert ornament_artifact.is_file()
@@ -413,7 +413,7 @@ def test_shape_ornament_variant_reuses_current_artwork_product(
             "stage": "vector",
             "product": "manifest",
             "artifact": "variant-source-artwork",
-            "realization": "default",
+            "realization": "artwork_default",
         },
     }
 
@@ -445,7 +445,9 @@ def test_shape_ornament_variant_reuses_current_artwork_product(
         default_plan,
     )
 
-    artwork_root = project_root / "artifacts" / "variant-source-artwork" / "artwork" / "default"
+    artwork_root = (
+        project_root / "artifacts" / "variant-source-artwork" / "artwork" / "artwork_default"
+    )
 
     assert (artwork_root / "10-prepare" / "trace.svg").is_file()
     assert (artwork_root / "20-raster" / "products.json").is_file()
@@ -520,7 +522,7 @@ def test_shape_ornament_variant_reuses_current_artwork_product(
         / "artifacts"
         / "variant-artwork-shape"
         / "shape"
-        / "ornament"
+        / "shape_ornament"
         / "40-package"
         / "artifact.3mf"
     )
@@ -603,7 +605,7 @@ def test_explicit_shape_default_variant_preserves_default_manufacturing(
     plan = plans[0]
 
     assert plan.model_name == "shape"
-    assert plan.realization_name == "default"
+    assert plan.realization_name == "shape_default"
 
     assert plan.resolver("variant") == "default"
 
@@ -624,7 +626,7 @@ def test_explicit_shape_default_variant_preserves_default_manufacturing(
         / "artifacts"
         / "default-shape"
         / "shape"
-        / "default"
+        / "shape_default"
         / "40-package"
         / "artifact.3mf"
     )
@@ -676,7 +678,7 @@ def test_show_and_build_dry_run_use_same_qualified_variant_configuration(
 ) -> None:
     """
     Inspection and build resolve a qualified Variant to the same effective
-    Model-scoped configuration.
+    canonical Realization and Model-scoped configuration.
     """
 
     import lowkey_artifact_builder.cli.cmd_build as cmd_build
@@ -716,14 +718,13 @@ def test_show_and_build_dry_run_use_same_qualified_variant_configuration(
         ]
     ] = []
 
-    original_get_resolver = cmd_show.get_resolver
+    original_display_artifact_config = cmd_show.display_artifact_config
 
-    def capture_show_resolver(*args, **kwargs):
-        resolver = original_get_resolver(
-            *args,
-            **kwargs,
-        )
-
+    def capture_show_config(
+        artifact_id,
+        model,
+        resolver,
+    ):
         shown.append(
             (
                 resolver("model"),
@@ -734,12 +735,16 @@ def test_show_and_build_dry_run_use_same_qualified_variant_configuration(
             )
         )
 
-        return resolver
+        return original_display_artifact_config(
+            artifact_id,
+            model,
+            resolver,
+        )
 
     monkeypatch.setattr(
         cmd_show,
-        "get_resolver",
-        capture_show_resolver,
+        "display_artifact_config",
+        capture_show_config,
     )
 
     monkeypatch.setattr(
@@ -789,7 +794,7 @@ def test_show_and_build_dry_run_use_same_qualified_variant_configuration(
 
     expected = (
         "shape",
-        "ornament",
+        "shape_ornament",
         "ornament",
         2.0,
         "variant 'ornament'",

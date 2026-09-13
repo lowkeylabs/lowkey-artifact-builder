@@ -219,79 +219,48 @@ def test_show_resolves_qualified_variant_configuration(
     tmp_path: Path,
 ) -> None:
     """
-    Artifact inspection normalizes a qualified Variant to its Model and
-    runtime local-name identity.
+    Artifact inspection resolves a qualified Variant through its canonical
+    Artifact Realization.
 
-    The historical realization coordinate carries the local Variant name;
-    Variant and realization are not independent selection coordinates.
+    The displayed configuration preserves the selected Model and local Variant
+    while identifying the Artifact application by its canonical Realization.
     """
 
-    resolved: list[
+    write_artifact_config(
+        "skippy",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    displayed: list[
         tuple[
             str,
-            str | None,
-            str | None,
-            str | None,
-            Path,
+            str,
+            str,
+            str,
         ]
     ] = []
 
-    class Resolver:
-        def __call__(
-            self,
-            name: str,
-        ) -> str:
-            if name == "model":
-                return "shape"
-
-            raise KeyError(name)
-
-    resolver = Resolver()
-
-    def get_resolver(
+    def display_artifact_config(
         artifact_id: str,
-        *,
-        model: str | None = None,
-        variant: str | None = None,
-        realization: str | None = None,
-        project_root: Path,
-    ) -> Resolver:
-        resolved.append(
+        model,
+        resolver,
+    ) -> None:
+        displayed.append(
             (
                 artifact_id,
-                model,
-                variant,
-                realization,
-                project_root,
+                model.name,
+                resolver("variant"),
+                resolver("realization"),
             )
         )
-
-        return resolver
-
-    class Registry:
-        def get_model(
-            self,
-            model_name: str,
-        ) -> object:
-            assert model_name == "shape"
-            return object()
-
-    monkeypatch.setattr(
-        cmd_show,
-        "get_resolver",
-        get_resolver,
-    )
-
-    monkeypatch.setattr(
-        cmd_show,
-        "build_model_registry",
-        lambda: Registry(),
-    )
 
     monkeypatch.setattr(
         cmd_show,
         "display_artifact_config",
-        lambda *args: None,
+        display_artifact_config,
     )
 
     cmd_show._display_artifact(
@@ -301,13 +270,12 @@ def test_show_resolves_qualified_variant_configuration(
         project_root=tmp_path,
     )
 
-    assert resolved == [
+    assert displayed == [
         (
             "skippy",
             "shape",
-            None,
             "ornament",
-            tmp_path,
+            "shape_ornament",
         )
     ]
 

@@ -167,7 +167,7 @@ def test_create_stage_context_resolves_stage_working_directory(
     )
 
     assert context.working_dir == (
-        tmp_path / "artifacts" / "example" / "artwork" / "default" / "30-vector"
+        tmp_path / "artifacts" / "example" / "artwork" / "artwork_default" / "30-vector"
     )
 
 
@@ -228,14 +228,20 @@ def test_create_stage_context_resolves_direct_dependency_products(
 
     assert context.inputs == {
         "prepare.trace": (
-            tmp_path / "artifacts" / "example" / "artwork" / "default" / "10-prepare" / "trace.svg"
+            tmp_path
+            / "artifacts"
+            / "example"
+            / "artwork"
+            / "artwork_default"
+            / "10-prepare"
+            / "trace.svg"
         ),
         "prepare.envelope": (
             tmp_path
             / "artifacts"
             / "example"
             / "artwork"
-            / "default"
+            / "artwork_default"
             / "10-prepare"
             / "envelope.svg"
         ),
@@ -244,7 +250,7 @@ def test_create_stage_context_resolves_direct_dependency_products(
             / "artifacts"
             / "example"
             / "artwork"
-            / "default"
+            / "artwork_default"
             / "20-raster"
             / "products.json"
         ),
@@ -314,7 +320,7 @@ def test_create_stage_context_resolves_declared_outputs(
             / "artifacts"
             / "example"
             / "artwork"
-            / "default"
+            / "artwork_default"
             / "30-vector"
             / "products.json"
         ),
@@ -348,7 +354,7 @@ def test_create_stage_context_resolves_final_artifact_output(
             / "artifacts"
             / "example"
             / "artwork"
-            / "default"
+            / "artwork_default"
             / "50-package"
             / "artifact.3mf"
         ),
