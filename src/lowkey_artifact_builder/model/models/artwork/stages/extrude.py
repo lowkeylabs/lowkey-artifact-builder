@@ -1121,6 +1121,7 @@ def _build_scad(
     ],
     artwork_size: float,
     artwork_raise: float,
+    artwork_z: float = 0.0,
 ) -> str:
     """
     Return OpenSCAD source for one artwork color layer.
@@ -1133,6 +1134,10 @@ def _build_scad(
     One common uniform scale and translation are applied to every color
     layer so that the maximum physical X/Y extent of the envelope equals
     artwork_size while preserving registration between layers.
+
+    artwork_z specifies the physical Z position at which Artwork proper
+    begins. A value of zero preserves the ordinary no-Base placement.
+    When Base participates, Artwork proper begins at the top of that Base.
 
     Registered Artwork uses SVG coordinates, where positive Y points
     downward. OpenSCAD SVG import presents that geometry in an
@@ -1186,6 +1191,10 @@ def _build_scad(
         artwork_raise,
     )
 
+    artwork_z_scad = _scad_number(
+        artwork_z,
+    )
+
     artwork_svg = _scad_string(
         str(svg),
     )
@@ -1206,6 +1215,7 @@ envelope_openscad_center_y = {envelope_openscad_center_y_scad};
 
 artwork_size = {artwork_size_scad};
 artwork_raise = {artwork_raise_scad};
+artwork_z = {artwork_z_scad};
 
 artwork_svg = {artwork_svg};
 
@@ -1214,29 +1224,36 @@ artwork_svg = {artwork_svg};
 // Artwork solid
 // ---------------------------------------------------------
 
-scale(
+translate(
     [
-        artwork_size / envelope_extent,
-        artwork_size / envelope_extent,
-        1
+        0,
+        0,
+        artwork_z
     ]
 )
-    translate(
+    scale(
         [
-            -envelope_center_x,
-            -envelope_openscad_center_y,
-            0
+            artwork_size / envelope_extent,
+            artwork_size / envelope_extent,
+            1
         ]
     )
-        linear_extrude(
-            height = artwork_raise,
-            convexity = 10
+        translate(
+            [
+                -envelope_center_x,
+                -envelope_openscad_center_y,
+                0
+            ]
         )
-            import(
-                artwork_svg,
-                center = false,
-                dpi = 25.4
-            );
+            linear_extrude(
+                height = artwork_raise,
+                convexity = 10
+            )
+                import(
+                    artwork_svg,
+                    center = false,
+                    dpi = 25.4
+                );
 """
 
 

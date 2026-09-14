@@ -439,3 +439,244 @@ def test_base_raise_does_not_change_planar_dimensionalization(
     assert planar_source(low_source) == planar_source(
         high_source,
     )
+
+
+# =========================================================
+# Z placement
+# =========================================================
+
+
+def test_base_begins_at_zero_and_uses_base_raise(
+    tmp_path: Path,
+) -> None:
+    """
+    A participating Base occupies Z=0 through artwork_base_raise.
+
+    Base is the bottom-most standalone Artwork component and therefore
+    requires no positive Z translation.
+    """
+
+    from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
+        _build_base_scad,
+    )
+
+    envelope = tmp_path / "envelope.svg"
+    envelope.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    source = _build_base_scad(
+        envelope,
+        registered_extent=1024,
+        envelope_bounds=(
+            100.0,
+            200.0,
+            900.0,
+            700.0,
+        ),
+        artwork_size=100.0,
+        base_raise=1.5,
+    )
+
+    assert "base_raise = 1.5;" in source
+    assert "height = base_raise" in source
+
+    assert "base_z" not in source
+
+
+def test_artwork_without_base_begins_at_zero(
+    tmp_path: Path,
+) -> None:
+    """
+    Without a participating Base, Artwork proper retains its existing
+    Z=0 through artwork_raise placement.
+    """
+
+    from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
+        _build_scad,
+    )
+
+    artwork = tmp_path / "color-1.svg"
+    artwork.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    source = _build_scad(
+        artwork,
+        registered_extent=1024,
+        envelope_bounds=(
+            100.0,
+            200.0,
+            900.0,
+            700.0,
+        ),
+        artwork_size=100.0,
+        artwork_raise=2.0,
+        artwork_z=0.0,
+    )
+
+    assert "artwork_raise = 2;" in source
+    assert "artwork_z = 0;" in source
+    assert "height = artwork_raise" in source
+
+    assert ("translate(\n    [\n        0,\n        0,\n        artwork_z\n    ]\n") in source
+
+
+def test_artwork_with_base_begins_at_base_raise(
+    tmp_path: Path,
+) -> None:
+    """
+    With a participating Base, Artwork proper begins at the top of the Base.
+
+    Artwork therefore occupies:
+
+        Z = artwork_base_raise
+            through
+            artwork_base_raise + artwork_raise
+    """
+
+    from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
+        _build_scad,
+    )
+
+    artwork = tmp_path / "color-1.svg"
+    artwork.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    source = _build_scad(
+        artwork,
+        registered_extent=1024,
+        envelope_bounds=(
+            100.0,
+            200.0,
+            900.0,
+            700.0,
+        ),
+        artwork_size=100.0,
+        artwork_raise=2.0,
+        artwork_z=1.5,
+    )
+
+    assert "artwork_raise = 2;" in source
+    assert "artwork_z = 1.5;" in source
+    assert "height = artwork_raise" in source
+
+    assert ("translate(\n    [\n        0,\n        0,\n        artwork_z\n    ]\n") in source
+
+
+def test_base_raise_changes_artwork_z_without_changing_artwork_raise(
+    tmp_path: Path,
+) -> None:
+    """
+    Base participation translates Artwork proper without changing its own
+    extrusion height.
+
+    artwork_raise remains the thickness of Artwork proper; base raise is an
+    independent physical thickness beneath it.
+    """
+
+    from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
+        _build_scad,
+    )
+
+    artwork = tmp_path / "color-1.svg"
+    artwork.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    without_base = _build_scad(
+        artwork,
+        registered_extent=1024,
+        envelope_bounds=(
+            100.0,
+            200.0,
+            900.0,
+            700.0,
+        ),
+        artwork_size=100.0,
+        artwork_raise=2.0,
+        artwork_z=0.0,
+    )
+
+    with_base = _build_scad(
+        artwork,
+        registered_extent=1024,
+        envelope_bounds=(
+            100.0,
+            200.0,
+            900.0,
+            700.0,
+        ),
+        artwork_size=100.0,
+        artwork_raise=2.0,
+        artwork_z=1.5,
+    )
+
+    assert "artwork_raise = 2;" in without_base
+    assert "artwork_raise = 2;" in with_base
+
+    assert "artwork_z = 0;" in without_base
+    assert "artwork_z = 1.5;" in with_base
+
+
+def test_all_artwork_color_layers_accept_the_same_z_translation(
+    tmp_path: Path,
+) -> None:
+    """
+    Every Artwork color component uses the same Z translation.
+
+    Base participation must translate the registered Artwork as a whole and
+    must not alter relative placement between color components.
+    """
+
+    from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
+        _build_scad,
+    )
+
+    first = tmp_path / "color-1.svg"
+    second = tmp_path / "color-2.svg"
+
+    first.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+    second.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    first_source = _build_scad(
+        first,
+        registered_extent=1024,
+        envelope_bounds=(
+            100.0,
+            200.0,
+            900.0,
+            700.0,
+        ),
+        artwork_size=100.0,
+        artwork_raise=2.0,
+        artwork_z=1.5,
+    )
+
+    second_source = _build_scad(
+        second,
+        registered_extent=1024,
+        envelope_bounds=(
+            100.0,
+            200.0,
+            900.0,
+            700.0,
+        ),
+        artwork_size=100.0,
+        artwork_raise=2.0,
+        artwork_z=1.5,
+    )
+
+    assert "artwork_z = 1.5;" in first_source
+    assert "artwork_z = 1.5;" in second_source
