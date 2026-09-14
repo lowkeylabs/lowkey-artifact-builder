@@ -32,6 +32,9 @@ from lowkey_artifact_builder.model.models.shape.stages import compose, extrude, 
 
 def _build_clean_bg_house_registered_artwork(
     project_root: Path,
+    *,
+    artwork_base_raise: float = 0.0,
+    artwork_base_color: str | None = None,
 ) -> Path:
     """
     Build the real clean_bg_house fixture through registered Artwork vectorization.
@@ -39,6 +42,10 @@ def _build_clean_bg_house_registered_artwork(
     The source Artwork has artwork_size=200.0, matching the real artifact
     configuration. Shape nevertheless consumes its dimension-independent
     registered vector product and owns subsequent physical dimensionalization.
+
+    Optional standalone Base configuration may be supplied to prove that Base
+    does not contaminate the registered Artwork representation consumed by
+    Shape.
     """
 
     fixture = Path(__file__).parents[2] / "assets" / "clean_bg_house.png"
@@ -63,13 +70,19 @@ artwork_island_connectivity = 8
         encoding="utf-8",
     )
 
+    artifact_config: dict[str, object] = {
+        "model": "artwork",
+        "source": "clean_bg_house.png",
+        "artwork_size": 200.0,
+        "artwork_base_raise": artwork_base_raise,
+    }
+
+    if artwork_base_color is not None:
+        artifact_config["artwork_base_color"] = artwork_base_color
+
     write_artifact_config(
         "clean_bg_house",
-        {
-            "model": "artwork",
-            "source": "clean_bg_house.png",
-            "artwork_size": 200.0,
-        },
+        artifact_config,
         project_root=project_root,
     )
 
@@ -484,6 +497,79 @@ def _write_artwork_placement_diagnostic_3mf(
 # =========================================================
 # Registered Artwork physical dimensionalization
 # =========================================================
+
+
+@pytest.mark.slow
+def test_registered_artwork_does_not_include_standalone_base(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered Artwork remains independent of the standalone Base feature.
+
+    Enabling Base affects standalone Artwork extrusion only. The registered
+    vector product consumed by Shape must contain only registered Artwork
+    products and must not acquire standalone Base geometry.
+    """
+
+    vector_manifest = _build_clean_bg_house_registered_artwork(
+        tmp_path,
+        artwork_base_raise=2.0,
+        artwork_base_color="black",
+    )
+
+    data = json.loads(
+        vector_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    paths = {str(product["path"]) for product in data["products"]}
+
+    assert "base.stl" not in paths
+    assert all(not path.endswith(".stl") for path in paths)
+
+
+@pytest.mark.slow
+def test_shape_consumes_same_registered_artwork_when_standalone_base_is_enabled(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape consumes registered Artwork independently of standalone Base.
+
+    The standalone Artwork Base is not part of registered Artwork and must
+    therefore neither participate in nor alter Shape's registered Artwork
+    composition boundary.
+    """
+
+    vector_manifest = _build_clean_bg_house_registered_artwork(
+        tmp_path,
+        artwork_base_raise=2.0,
+        artwork_base_color="black",
+    )
+
+    registered_artwork = compose.load_registered_artwork(
+        vector_manifest,
+    )
+
+    assert registered_artwork.components
+    assert all(component.path.suffix == ".svg" for component in registered_artwork.components)
+
+    artwork, placement_radius = _compose_clean_bg_house_into_heptagon(
+        tmp_path,
+        vector_manifest,
+    )
+
+    assert artwork["components"]
+    assert placement_radius > 0.0
+
+    components = artwork["components"]
+
+    assert isinstance(
+        components,
+        list,
+    )
+
+    assert all(not str(component["path"]).endswith(".stl") for component in components)
 
 
 @pytest.mark.slow

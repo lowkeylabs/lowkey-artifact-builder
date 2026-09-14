@@ -23,20 +23,25 @@ def _resolver(
     values: dict[str, object],
     *,
     configured: set[str] | None = None,
+    colors: dict[str, object] | None = None,
 ) -> Resolver:
     """
     Construct an actual configuration Resolver for Base color tests.
 
     Values identified as explicitly configured receive realization
     provenance. Other values represent ordinary resolved defaults.
+
+    Optional color-catalog entries provide physical RGB identities for
+    explicitly configured semantic colors.
     """
 
     configured = configured or set()
+    colors = colors or {}
 
     return Resolver(
         values=values,
         provenance={name: ("realization" if name in configured else "model") for name in values},
-        colors={},
+        colors=colors,
     )
 
 
@@ -141,6 +146,15 @@ def test_explicit_base_color_is_authoritative(
             "artwork_base_color",
             "loop_color",
         },
+        colors={
+            "gold": {
+                "rgb": [
+                    210,
+                    170,
+                    40,
+                ],
+            },
+        },
     )
 
     assert (
@@ -174,6 +188,15 @@ def test_base_inherits_resolved_loop_color_when_loop_participates(
         },
         configured={
             "loop_color",
+        },
+        colors={
+            "gold": {
+                "rgb": [
+                    210,
+                    170,
+                    40,
+                ],
+            },
         },
     )
 
@@ -317,12 +340,13 @@ def test_base_without_loop_does_not_resolve_loop_color(
     )
 
 
-def test_explicit_base_color_identity_has_no_inherited_rgb(
+def test_explicit_base_color_identity_uses_its_own_palette_rgb(
     tmp_path: Path,
 ) -> None:
     """
-    Explicit Base color is authoritative and does not inherit an unrelated
-    registered Artwork physical RGB assignment.
+    Explicit Base color is authoritative and resolves its own physical RGB.
+
+    It must not inherit an unrelated registered Artwork attachment RGB.
     """
 
     artwork = _manifest(
@@ -340,6 +364,22 @@ def test_explicit_base_color_identity_has_no_inherited_rgb(
             "artwork_base_color",
             "loop_color",
         },
+        colors={
+            "gold": {
+                "rgb": [
+                    210,
+                    170,
+                    40,
+                ],
+            },
+            "red": {
+                "rgb": [
+                    190,
+                    20,
+                    20,
+                ],
+            },
+        },
     )
 
     assert resolve_base_color_identity(
@@ -347,16 +387,20 @@ def test_explicit_base_color_identity_has_no_inherited_rgb(
         resolver=resolver,
     ) == BaseColor(
         name="gold",
-        rgb=None,
+        rgb=(
+            210,
+            170,
+            40,
+        ),
     )
 
 
-def test_base_identity_inherits_explicit_loop_color_without_rgb(
+def test_base_identity_inherits_explicit_loop_color_with_its_palette_rgb(
     tmp_path: Path,
 ) -> None:
     """
     When Loop participates with an explicit semantic color, Base inherits
-    that semantic color without synthesizing a registered Artwork RGB.
+    that semantic color and the physical RGB belonging to that color.
     """
 
     artwork = _manifest(
@@ -372,6 +416,15 @@ def test_base_identity_inherits_explicit_loop_color_without_rgb(
         configured={
             "loop_color",
         },
+        colors={
+            "gold": {
+                "rgb": [
+                    210,
+                    170,
+                    40,
+                ],
+            },
+        },
     )
 
     assert resolve_base_color_identity(
@@ -379,7 +432,11 @@ def test_base_identity_inherits_explicit_loop_color_without_rgb(
         resolver=resolver,
     ) == BaseColor(
         name="gold",
-        rgb=None,
+        rgb=(
+            210,
+            170,
+            40,
+        ),
     )
 
 

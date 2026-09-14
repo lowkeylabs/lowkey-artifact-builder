@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from lowkey_artifact_builder.colors import resolve_palette_color
 from lowkey_artifact_builder.config.config import Resolver
 from lowkey_artifact_builder.model.models.artwork.attachment import (
     select_attachment_layer,
@@ -36,13 +37,17 @@ class BaseColor:
     """
     Resolved physical color identity of a standalone Artwork Base.
 
-    rgb is present when the Base color is inherited from registered Artwork.
-    An explicitly configured semantic Base color does not synthesize a
-    physical RGB assignment.
+    name identifies the semantic physical color.
+
+    rgb is the concrete physical RGB associated with that semantic color.
+    Explicitly configured colors resolve through the configured color palette
+    rather than inheriting an unrelated registered Artwork RGB assignment.
+    Derived attachment colors preserve the physical RGB already assigned to
+    the registered Artwork attachment.
     """
 
     name: str
-    rgb: tuple[int, int, int] | None
+    rgb: tuple[int, int, int]
 
 
 def resolve_base_color_identity(
@@ -59,14 +64,16 @@ def resolve_base_color_identity(
     2. resolved Loop color and attachment identity when Loop participates;
     3. registered Artwork attachment identity at position 0.
 
-    Explicit Base color configuration is authoritative and therefore does
-    not inherit an unrelated registered Artwork RGB assignment.
+    Explicit Base color configuration is authoritative. Its physical RGB is
+    resolved from that semantic color through the configured color palette
+    rather than inherited from registered Artwork.
 
     When Loop participates and its color is explicitly configured, Base
-    inherits that semantic Loop color without synthesizing an Artwork RGB.
+    inherits that semantic Loop color and resolves the physical RGB belonging
+    to that color.
 
-    Otherwise the RGB is preserved from the registered Artwork attachment
-    that determines the derived semantic color.
+    Otherwise Base preserves the physical RGB from the registered Artwork
+    attachment that determines the derived semantic color.
     """
 
     configured_names = resolver.configured_names()
@@ -82,9 +89,14 @@ def resolve_base_color_identity(
         ):
             raise TypeError("artwork_base_color must resolve to a string.")
 
+        color = resolve_palette_color(
+            value,
+            resolver.colors,
+        )
+
         return BaseColor(
-            name=value,
-            rgb=None,
+            name=color.name,
+            rgb=color.rgb,
         )
 
     loop_inner_diameter = resolver(
@@ -107,9 +119,14 @@ def resolve_base_color_identity(
         )
 
         if "loop_color" in configured_names:
+            color = resolve_palette_color(
+                loop_color,
+                resolver.colors,
+            )
+
             return BaseColor(
-                name=loop_color,
-                rgb=None,
+                name=color.name,
+                rgb=color.rgb,
             )
 
         loop_position = resolver(
@@ -155,7 +172,7 @@ def resolve_base_color(
     Resolve the physical semantic color name of the standalone Artwork Base.
 
     This compatibility API exposes only the semantic color name. Consumers
-    that also require the inherited physical RGB assignment should use
+    that also require the complete physical color identity should use
     resolve_base_color_identity().
     """
 

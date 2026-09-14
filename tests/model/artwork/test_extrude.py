@@ -38,8 +38,11 @@ class StubResolver:
     def __init__(
         self,
         values: dict[str, Any],
+        *,
+        colors: dict[str, Any] | None = None,
     ) -> None:
         self._values = values
+        self.colors = colors or {}
 
     def __call__(
         self,
@@ -1677,7 +1680,11 @@ def test_participating_base_produces_stage_local_stl_component(
         "resolve_base_color_identity",
         lambda artwork, *, resolver: BaseColor(
             name="white",
-            rgb=None,
+            rgb=(
+                255,
+                255,
+                255,
+            ),
         ),
     )
 
@@ -1780,7 +1787,11 @@ def test_participating_base_is_built_from_registered_envelope(
         "resolve_base_color_identity",
         lambda artwork, *, resolver: BaseColor(
             name="white",
-            rgb=None,
+            rgb=(
+                255,
+                255,
+                255,
+            ),
         ),
     )
 
@@ -1914,7 +1925,11 @@ def test_participating_base_translates_all_artwork_layers_upward(
         "resolve_base_color_identity",
         lambda artwork, *, resolver: BaseColor(
             name="red",
-            rgb=None,
+            rgb=(
+                255,
+                0,
+                0,
+            ),
         ),
     )
 
@@ -1934,7 +1949,7 @@ def test_participating_base_is_declared_as_semantic_color_product(
 ) -> None:
     """
     A participating Base is declared as an independently printable extrusion
-    product with its resolved semantic physical color identity.
+    product with its complete resolved semantic physical color identity.
     """
 
     vector_directory = tmp_path / "vector"
@@ -1992,7 +2007,16 @@ def test_participating_base_is_declared_as_semantic_color_product(
                 "loop_inner_diameter": 0.0,
                 "artwork_base_raise": 1.5,
                 "artwork_base_color": "gold",
-            }
+            },
+            colors={
+                "gold": {
+                    "rgb": [
+                        210,
+                        170,
+                        40,
+                    ],
+                },
+            },
         ),
     )
 
@@ -2000,13 +2024,6 @@ def test_participating_base_is_declared_as_semantic_color_product(
         extrude,
         "render_stl_source",
         _fake_render_stl_source,
-    )
-
-    monkeypatch.setattr(
-        extrude,
-        "resolve_base_color",
-        lambda artwork, *, resolver: "gold",
-        raising=False,
     )
 
     extrude.execute(context)  # type: ignore[arg-type]
@@ -2019,21 +2036,28 @@ def test_participating_base_is_declared_as_semantic_color_product(
 
     base_product = next(product for product in data["products"] if product["path"] == "base.stl")
 
-    assert base_product["printer_color"]["name"] == "gold"
+    assert base_product["printer_color"] == {
+        "name": "gold",
+        "rgb": {
+            "red": 210,
+            "green": 170,
+            "blue": 40,
+        },
+    }
 
     assert "artifact_color" not in base_product
     assert "distance" not in base_product
 
 
-def test_explicit_base_color_does_not_inherit_artwork_printer_rgb(
+def test_explicit_base_color_uses_its_own_physical_rgb(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
     An explicitly configured Base color is authoritative.
 
-    The Base must not attach an unrelated registered Artwork RGB merely
-    because the semantic color name was explicitly selected.
+    The Base resolves the physical RGB belonging to its explicitly selected
+    semantic color rather than inheriting an unrelated registered Artwork RGB.
     """
 
     vector_directory = tmp_path / "vector"
@@ -2091,6 +2115,15 @@ def test_explicit_base_color_does_not_inherit_artwork_printer_rgb(
                 "artwork_base_raise": 1.5,
                 "artwork_base_color": "gold",
             },
+            colors={
+                "gold": {
+                    "rgb": [
+                        210,
+                        170,
+                        40,
+                    ],
+                },
+            },
         ),
     )
 
@@ -2112,6 +2145,17 @@ def test_explicit_base_color_does_not_inherit_artwork_printer_rgb(
 
     assert base_product["printer_color"] == {
         "name": "gold",
+        "rgb": {
+            "red": 210,
+            "green": 170,
+            "blue": 40,
+        },
+    }
+
+    assert base_product["printer_color"]["rgb"] != {
+        "red": 255,
+        "green": 0,
+        "blue": 0,
     }
 
 
