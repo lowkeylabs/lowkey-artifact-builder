@@ -1887,23 +1887,13 @@ def test_participating_base_is_declared_as_semantic_color_product(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 100.0,
-                "artwork_raise": 1.0,
-                "loop_inner_diameter": 0.0,
-                "artwork_base_raise": 1.5,
-                "artwork_base_color": "gold",
-            },
-            colors={
-                "gold": {
-                    "rgb": [
-                        210,
-                        170,
-                        40,
-                    ],
-                },
-            },
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=100.0,
+            artwork_raise=1.0,
+            loop_inner_diameter=0.0,
+            artwork_base_raise=1.5,
+            artwork_base_color="test-yellow",
         ),
     )
 
@@ -1915,25 +1905,25 @@ def test_participating_base_is_declared_as_semantic_color_product(
 
     extrude.execute(context)  # type: ignore[arg-type]
 
-    data = json.loads(
+    manifest = json.loads(
         extrude_manifest.read_text(
             encoding="utf-8",
         )
     )
 
-    base_product = next(product for product in data["products"] if product["path"] == "base.stl")
+    base = next(product for product in manifest["products"] if product["path"] == "base.stl")
 
-    assert base_product["printer_color"] == {
-        "name": "gold",
-        "rgb": {
-            "red": 210,
-            "green": 170,
-            "blue": 40,
+    assert base == {
+        "path": "base.stl",
+        "printer_color": {
+            "name": "test-yellow",
+            "rgb": {
+                "red": 255,
+                "green": 255,
+                "blue": 0,
+            },
         },
     }
-
-    assert "artifact_color" not in base_product
-    assert "distance" not in base_product
 
 
 def test_explicit_base_color_uses_its_own_physical_rgb(
@@ -1994,23 +1984,13 @@ def test_explicit_base_color_uses_its_own_physical_rgb(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 100.0,
-                "artwork_raise": 1.0,
-                "loop_inner_diameter": 0.0,
-                "artwork_base_raise": 1.5,
-                "artwork_base_color": "gold",
-            },
-            colors={
-                "gold": {
-                    "rgb": [
-                        210,
-                        170,
-                        40,
-                    ],
-                },
-            },
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=100.0,
+            artwork_raise=1.0,
+            loop_inner_diameter=0.0,
+            artwork_base_raise=1.5,
+            artwork_base_color="test-yellow",
         ),
     )
 
@@ -2022,24 +2002,24 @@ def test_explicit_base_color_uses_its_own_physical_rgb(
 
     extrude.execute(context)  # type: ignore[arg-type]
 
-    data = json.loads(
+    manifest = json.loads(
         extrude_manifest.read_text(
             encoding="utf-8",
         )
     )
 
-    base_product = next(product for product in data["products"] if product["path"] == "base.stl")
+    base = next(product for product in manifest["products"] if product["path"] == "base.stl")
 
-    assert base_product["printer_color"] == {
-        "name": "gold",
+    assert base["printer_color"] == {
+        "name": "test-yellow",
         "rgb": {
-            "red": 210,
-            "green": 170,
-            "blue": 40,
+            "red": 255,
+            "green": 255,
+            "blue": 0,
         },
     }
 
-    assert base_product["printer_color"]["rgb"] != {
+    assert base["printer_color"]["rgb"] != {
         "red": 255,
         "green": 0,
         "blue": 0,
@@ -2567,34 +2547,17 @@ def test_explicit_base_and_loop_colors_preserve_independent_physical_identities(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 100.0,
-                "artwork_raise": 1.0,
-                "artwork_base_raise": 1.5,
-                "artwork_base_color": "gold",
-                "loop_inner_diameter": 5.0,
-                "loop_width": 2.0,
-                "loop_position": 0,
-                "loop_raise": 1.0,
-                "loop_color": "black",
-            },
-            colors={
-                "gold": {
-                    "rgb": [
-                        210,
-                        170,
-                        40,
-                    ],
-                },
-                "black": {
-                    "rgb": [
-                        0,
-                        0,
-                        0,
-                    ],
-                },
-            },
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=100.0,
+            artwork_raise=1.0,
+            artwork_base_raise=1.5,
+            artwork_base_color="test-yellow",
+            loop_inner_diameter=5.0,
+            loop_width=2.0,
+            loop_position=0,
+            loop_raise=1.0,
+            loop_color="test-black",
         ),
     )
 
@@ -2606,32 +2569,30 @@ def test_explicit_base_and_loop_colors_preserve_independent_physical_identities(
 
     extrude.execute(context)  # type: ignore[arg-type]
 
-    data = json.loads(
+    manifest = json.loads(
         extrude_manifest.read_text(
             encoding="utf-8",
         )
     )
 
-    base_product = next(product for product in data["products"] if product["path"] == "base.stl")
+    base = next(product for product in manifest["products"] if product["path"] == "base.stl")
 
-    loop_product = next(product for product in data["products"] if product["path"] == "loop.stl")
+    loop = next(product for product in manifest["products"] if product["path"] == "loop.stl")
 
-    assert base_product["printer_color"] == {
-        "name": "gold",
+    assert base["printer_color"] == {
+        "name": "test-yellow",
         "rgb": {
-            "red": 210,
-            "green": 170,
-            "blue": 40,
+            "red": 255,
+            "green": 255,
+            "blue": 0,
         },
     }
 
-    assert loop_product["printer_color"] == {
-        "name": "black",
+    assert loop["printer_color"] == {
+        "name": "test-black",
         "rgb": {
             "red": 0,
             "green": 0,
             "blue": 0,
         },
     }
-
-    assert base_product["printer_color"] != loop_product["printer_color"]

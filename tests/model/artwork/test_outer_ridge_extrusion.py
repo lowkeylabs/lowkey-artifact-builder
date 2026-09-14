@@ -11,8 +11,13 @@ registration.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
+import pytest
+
+from lowkey_artifact_builder.config import Resolver, get_resolver
 from lowkey_artifact_builder.model.models.artwork.stages import extrude
 
 
@@ -29,6 +34,308 @@ def _write_svg(
 </svg>
 """.strip(),
         encoding="utf-8",
+    )
+
+
+class _StubContext:
+    def __init__(
+        self,
+        *,
+        vector_manifest: Path,
+        extrude_manifest: Path,
+        resolver: Resolver,
+    ) -> None:
+        self._vector_manifest = vector_manifest
+        self._extrude_manifest = extrude_manifest
+        self.resolver = resolver
+
+    def input(
+        self,
+        name: str,
+    ) -> Path:
+        assert name == "vector.manifest"
+        return self._vector_manifest
+
+    def output(
+        self,
+        name: str,
+    ) -> Path:
+        assert name == "manifest"
+        return self._extrude_manifest
+
+
+def _resolver(
+    tmp_path: Path,
+    **overrides: Any,
+) -> Resolver:
+    resolver = get_resolver(
+        "outer-ridge-extrusion",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    return resolver.with_values(
+        overrides,
+        provenance="test",
+    )
+
+
+def _write_vector_manifest(
+    path: Path,
+) -> None:
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    envelope = path.parent / "envelope.svg"
+    first = path.parent / "color-1.svg"
+    second = path.parent / "color-2.svg"
+
+    _write_svg(envelope)
+    _write_svg(first)
+    _write_svg(second)
+
+    path.write_text(
+        json.dumps(
+            {
+                "registered_extent": 100,
+                "envelope": envelope.name,
+                "products": [
+                    {
+                        "index": 1,
+                        "path": first.name,
+                        "artifact_color": {
+                            "index": 1,
+                            "rgb": {
+                                "red": 255,
+                                "green": 0,
+                                "blue": 0,
+                            },
+                        },
+                        "printer_color": {
+                            "name": "test-red",
+                            "rgb": {
+                                "red": 255,
+                                "green": 0,
+                                "blue": 0,
+                            },
+                        },
+                        "distance": 0.0,
+                    },
+                    {
+                        "index": 2,
+                        "path": second.name,
+                        "artifact_color": {
+                            "index": 2,
+                            "rgb": {
+                                "red": 0,
+                                "green": 0,
+                                "blue": 255,
+                            },
+                        },
+                        "printer_color": {
+                            "name": "test-blue",
+                            "rgb": {
+                                "red": 0,
+                                "green": 0,
+                                "blue": 255,
+                            },
+                        },
+                        "distance": 0.0,
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _fake_render_stl_source(
+    source: str,
+    output: Path,
+) -> None:
+    output.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    output.write_text(
+        "stl",
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.slow
+def test_execute_applies_outer_ridge_scale_to_every_artwork_layer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A participating Outer Ridge reserves its perimeter from Artwork proper.
+
+    Every registered Artwork color layer receives the same model-owned
+    uniform scale so registration between layers is preserved.
+    """
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+    )
+
+    context = _StubContext(
+        vector_manifest=vector_manifest,
+        extrude_manifest=extrude_manifest,
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=40.0,
+            artwork_raise=1.0,
+            artwork_outer_ridge_width=2.0,
+        ),
+    )
+
+    scales: list[float] = []
+
+    original_build_scad = extrude._build_scad
+
+    def capture_build_scad(
+        svg_path: Path,
+        *,
+        registered_extent: int,
+        envelope_bounds: tuple[
+            float,
+            float,
+            float,
+            float,
+        ],
+        artwork_size: float,
+        artwork_raise: float,
+        artwork_z: float = 0.0,
+        artwork_scale: float = 1.0,
+    ) -> str:
+        scales.append(
+            artwork_scale,
+        )
+
+        return original_build_scad(
+            svg_path,
+            registered_extent=registered_extent,
+            envelope_bounds=envelope_bounds,
+            artwork_size=artwork_size,
+            artwork_raise=artwork_raise,
+            artwork_z=artwork_z,
+            artwork_scale=artwork_scale,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "_build_scad",
+        capture_build_scad,
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        _fake_render_stl_source,
+    )
+
+    extrude.execute(
+        context,  # type: ignore[arg-type]
+    )
+
+    assert scales == pytest.approx(
+        [
+            0.9,
+            0.9,
+        ]
+    )
+
+
+@pytest.mark.slow
+def test_execute_uses_neutral_artwork_scale_when_outer_ridge_is_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Disabled Outer Ridge preserves ordinary Artwork dimensionalization.
+
+    artwork_outer_ridge_width == 0 therefore supplies the neutral scale to
+    every registered Artwork color layer.
+    """
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+    )
+
+    context = _StubContext(
+        vector_manifest=vector_manifest,
+        extrude_manifest=extrude_manifest,
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=40.0,
+            artwork_raise=1.0,
+            artwork_outer_ridge_width=0.0,
+        ),
+    )
+
+    scales: list[float] = []
+
+    original_build_scad = extrude._build_scad
+
+    def capture_build_scad(
+        svg_path: Path,
+        *,
+        registered_extent: int,
+        envelope_bounds: tuple[
+            float,
+            float,
+            float,
+            float,
+        ],
+        artwork_size: float,
+        artwork_raise: float,
+        artwork_z: float = 0.0,
+        artwork_scale: float = 1.0,
+    ) -> str:
+        scales.append(
+            artwork_scale,
+        )
+
+        return original_build_scad(
+            svg_path,
+            registered_extent=registered_extent,
+            envelope_bounds=envelope_bounds,
+            artwork_size=artwork_size,
+            artwork_raise=artwork_raise,
+            artwork_z=artwork_z,
+            artwork_scale=artwork_scale,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "_build_scad",
+        capture_build_scad,
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        _fake_render_stl_source,
+    )
+
+    extrude.execute(
+        context,  # type: ignore[arg-type]
+    )
+
+    assert scales == pytest.approx(
+        [
+            1.0,
+            1.0,
+        ]
     )
 
 

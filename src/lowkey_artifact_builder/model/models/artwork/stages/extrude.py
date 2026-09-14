@@ -43,6 +43,9 @@ from lowkey_artifact_builder.model.models.artwork.loop import (
 from lowkey_artifact_builder.model.models.artwork.loop_color import (
     resolve_loop_color_identity,
 )
+from lowkey_artifact_builder.model.models.artwork.outer_ridge import (
+    artwork_scale_for_outer_ridge,
+)
 from lowkey_artifact_builder.model.models.artwork.vector_manifest import (
     VectorLayer,
     VectorManifest,
@@ -92,6 +95,11 @@ def execute(
         artwork_raise
             Physical extrusion height of the artwork geometry in
             millimeters.
+
+        artwork_outer_ridge_width
+            Physical width reserved around the Artwork perimeter for the
+            optional standalone Outer Ridge. A value greater than zero
+            uniformly scales Artwork proper inside artwork_size.
 
         artwork_base_raise
             Physical extrusion height of the optional standalone Artwork
@@ -156,6 +164,17 @@ def execute(
         ),
     )
 
+    artwork_outer_ridge_width = float(
+        context.resolver(
+            "artwork_outer_ridge_width",
+        )
+    )
+
+    artwork_scale = artwork_scale_for_outer_ridge(
+        artwork_size=artwork_size,
+        outer_ridge_width=artwork_outer_ridge_width,
+    )
+
     artwork_base_raise = float(
         context.resolver(
             "artwork_base_raise",
@@ -202,6 +221,7 @@ def execute(
                 artwork_size=artwork_size,
                 artwork_raise=artwork_raise,
                 artwork_z=artwork_base_raise,
+                artwork_scale=artwork_scale,
             )
 
             render_stl_source(
