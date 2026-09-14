@@ -685,3 +685,138 @@ def test_outer_ridge_scad_accepts_supporting_plane_z(
     assert "outer_ridge_z = 1.5;" in source
     assert "height = outer_ridge_raise" in source
     assert "outer_ridge_z" in source
+
+
+@pytest.mark.slow
+def test_execute_creates_outer_ridge_stl_when_ridge_participates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A positive Outer Ridge width causes the extrusion stage to manufacture
+    the independently printable Outer Ridge solid.
+    """
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+    )
+
+    context = _StubContext(
+        vector_manifest=vector_manifest,
+        extrude_manifest=extrude_manifest,
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=40.0,
+            artwork_raise=1.0,
+            artwork_outer_ridge_width=2.0,
+            artwork_outer_ridge_raise=1.25,
+        ),
+    )
+
+    rendered: list[
+        tuple[
+            str,
+            Path,
+        ]
+    ] = []
+
+    def capture_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        rendered.append(
+            (
+                source,
+                output,
+            )
+        )
+        _fake_render_stl_source(
+            source,
+            output,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        capture_render_stl_source,
+    )
+
+    extrude.execute(
+        context,  # type: ignore[arg-type]
+    )
+
+    ridge_output = extrude_manifest.parent / "outer-ridge.stl"
+
+    assert ridge_output.is_file()
+
+    ridge_sources = [source for source, output in rendered if output == ridge_output]
+
+    assert len(ridge_sources) == 1
+
+    ridge_source = ridge_sources[0]
+
+    assert "outer_ridge_scale = 0.9;" in ridge_source
+    assert "outer_ridge_raise = 1.25;" in ridge_source
+    assert "outer_ridge_z = 0;" in ridge_source
+
+
+@pytest.mark.slow
+def test_execute_does_not_create_outer_ridge_stl_when_ridge_is_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Width zero disables Outer Ridge participation completely.
+
+    The extrusion stage therefore does not manufacture an Outer Ridge STL.
+    """
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+    )
+
+    context = _StubContext(
+        vector_manifest=vector_manifest,
+        extrude_manifest=extrude_manifest,
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=40.0,
+            artwork_raise=1.0,
+            artwork_outer_ridge_width=0.0,
+        ),
+    )
+
+    rendered_outputs: list[Path] = []
+
+    def capture_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        rendered_outputs.append(
+            output,
+        )
+        _fake_render_stl_source(
+            source,
+            output,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        capture_render_stl_source,
+    )
+
+    extrude.execute(
+        context,  # type: ignore[arg-type]
+    )
+
+    ridge_output = extrude_manifest.parent / "outer-ridge.stl"
+
+    assert not ridge_output.exists()
+    assert ridge_output not in rendered_outputs

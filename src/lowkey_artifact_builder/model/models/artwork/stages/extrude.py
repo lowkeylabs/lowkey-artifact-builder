@@ -101,6 +101,10 @@ def execute(
             optional standalone Outer Ridge. A value greater than zero
             uniformly scales Artwork proper inside artwork_size.
 
+        artwork_outer_ridge_raise
+            Physical extrusion height of a participating standalone Outer
+            Ridge.
+
         artwork_base_raise
             Physical extrusion height of the optional standalone Artwork
             Base. A value greater than zero causes the Base to participate.
@@ -134,6 +138,10 @@ def execute(
             Manifest describing the dynamically generated Artwork STL
             components while preserving their physical printer color
             identities.
+
+        outer-ridge.stl
+            Independently printable Outer Ridge component when Outer Ridge
+            participates.
 
         base.stl
             Independently printable Base component when Base participates.
@@ -240,6 +248,37 @@ def execute(
                     output,
                 )
             )
+
+        if artwork_outer_ridge_width > 0.0:
+            artwork_outer_ridge_raise = _positive_number(
+                "artwork_outer_ridge_raise",
+                context.resolver(
+                    "artwork_outer_ridge_raise",
+                ),
+            )
+
+            outer_ridge_output = extrude_manifest.parent / "outer-ridge.stl"
+
+            outer_ridge_source = _build_outer_ridge_scad(
+                vector_products.envelope,
+                registered_extent=vector_products.registered_extent,
+                envelope_bounds=envelope_bounds,
+                artwork_size=artwork_size,
+                outer_ridge_width=artwork_outer_ridge_width,
+                outer_ridge_raise=artwork_outer_ridge_raise,
+                outer_ridge_z=artwork_base_raise,
+            )
+
+            render_stl_source(
+                outer_ridge_source,
+                outer_ridge_output,
+            )
+
+            if not outer_ridge_output.is_file():
+                raise ExtrudeError(
+                    "OpenSCAD completed without creating the expected "
+                    f"Outer Ridge STL: {outer_ridge_output}"
+                )
 
         base_product: (
             tuple[
