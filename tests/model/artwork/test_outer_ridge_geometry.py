@@ -138,3 +138,98 @@ def test_outer_ridge_inner_and_outer_envelopes_share_center() -> None:
 
     assert geometry.inner_offset_x == pytest.approx(2.0)
     assert geometry.inner_offset_y == pytest.approx(1.5)
+
+
+# =========================================================
+# Registered-envelope transform
+# =========================================================
+
+
+def test_outer_ridge_inner_transform_scales_about_envelope_center() -> None:
+    """
+    The inner envelope is produced by uniformly scaling the registered
+    envelope about its own center.
+
+    Scaling must not move the envelope toward the registered origin.
+    """
+
+    geometry = create_outer_ridge_geometry(
+        envelope_width=40.0,
+        envelope_height=30.0,
+        artwork_size=40.0,
+        outer_ridge_width=2.0,
+    )
+
+    transform = geometry.inner_transform
+
+    assert transform.scale_x == pytest.approx(0.9)
+    assert transform.scale_y == pytest.approx(0.9)
+
+    assert transform.translate_x == pytest.approx(2.0)
+    assert transform.translate_y == pytest.approx(1.5)
+
+
+def test_outer_ridge_inner_transform_preserves_non_origin_envelope_center() -> None:
+    """
+    Inner-envelope scaling is centered on the actual registered envelope,
+    not on coordinate-system origin.
+
+    This preserves registration for envelopes whose bounds do not begin
+    at zero.
+    """
+
+    geometry = create_outer_ridge_geometry(
+        envelope_width=40.0,
+        envelope_height=30.0,
+        artwork_size=40.0,
+        outer_ridge_width=2.0,
+        envelope_min_x=20.0,
+        envelope_min_y=10.0,
+    )
+
+    transform = geometry.inner_transform
+
+    assert transform.scale_x == pytest.approx(0.9)
+    assert transform.scale_y == pytest.approx(0.9)
+
+    # Original center = (40, 25).
+    # Scaling about that center maps:
+    #
+    # x' = 40 + 0.9 * (x - 40)
+    # y' = 25 + 0.9 * (y - 25)
+    #
+    # or equivalently:
+    #
+    # x' = 0.9*x + 4.0
+    # y' = 0.9*y + 2.5
+
+    assert transform.translate_x == pytest.approx(4.0)
+    assert transform.translate_y == pytest.approx(2.5)
+
+
+def test_outer_ridge_inner_transform_maps_outer_bounds_to_inner_bounds() -> None:
+    """
+    Applying the inner transform to the outer envelope bounds produces
+    the centered uniformly scaled inner bounds.
+    """
+
+    geometry = create_outer_ridge_geometry(
+        envelope_width=40.0,
+        envelope_height=30.0,
+        artwork_size=40.0,
+        outer_ridge_width=2.0,
+        envelope_min_x=20.0,
+        envelope_min_y=10.0,
+    )
+
+    transform = geometry.inner_transform
+
+    min_x = transform.scale_x * 20.0 + transform.translate_x
+    max_x = transform.scale_x * 60.0 + transform.translate_x
+    min_y = transform.scale_y * 10.0 + transform.translate_y
+    max_y = transform.scale_y * 40.0 + transform.translate_y
+
+    assert min_x == pytest.approx(22.0)
+    assert max_x == pytest.approx(58.0)
+    assert min_y == pytest.approx(11.5)
+    assert max_y == pytest.approx(38.5)

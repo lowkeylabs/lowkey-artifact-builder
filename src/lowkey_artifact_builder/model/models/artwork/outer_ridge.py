@@ -21,6 +21,22 @@ from dataclasses import dataclass
     frozen=True,
     slots=True,
 )
+class OuterRidgeTransform:
+    """
+    Uniform affine transform from the full Artwork envelope to the
+    centered inner envelope reserved inside an Outer Ridge.
+    """
+
+    scale_x: float
+    scale_y: float
+    translate_x: float
+    translate_y: float
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
 class OuterRidgeGeometry:
     """
     Dimensional relationship between the full Artwork envelope and the
@@ -33,6 +49,7 @@ class OuterRidgeGeometry:
     inner_height: float
     inner_offset_x: float
     inner_offset_y: float
+    inner_transform: OuterRidgeTransform
 
 
 def create_outer_ridge_geometry(
@@ -41,13 +58,15 @@ def create_outer_ridge_geometry(
     envelope_height: float,
     artwork_size: float,
     outer_ridge_width: float,
+    envelope_min_x: float = 0.0,
+    envelope_min_y: float = 0.0,
 ) -> OuterRidgeGeometry:
     """
     Create dimensional Outer Ridge geometry for a standalone Artwork.
 
     The outer envelope retains the full dimensionalized Artwork extent.
-    Artwork proper is uniformly scaled about the envelope center to reserve
-    the configured Outer Ridge width on the size-controlling extent.
+    Artwork proper is uniformly scaled about the actual envelope center to
+    reserve the configured Outer Ridge width on the size-controlling extent.
     """
 
     scale = artwork_scale_for_outer_ridge(
@@ -58,6 +77,16 @@ def create_outer_ridge_geometry(
     inner_width = envelope_width * scale
     inner_height = envelope_height * scale
 
+    center_x = envelope_min_x + (envelope_width / 2.0)
+    center_y = envelope_min_y + (envelope_height / 2.0)
+
+    inner_transform = OuterRidgeTransform(
+        scale_x=scale,
+        scale_y=scale,
+        translate_x=center_x * (1.0 - scale),
+        translate_y=center_y * (1.0 - scale),
+    )
+
     return OuterRidgeGeometry(
         outer_width=envelope_width,
         outer_height=envelope_height,
@@ -65,6 +94,7 @@ def create_outer_ridge_geometry(
         inner_height=inner_height,
         inner_offset_x=(envelope_width - inner_width) / 2.0,
         inner_offset_y=(envelope_height - inner_height) / 2.0,
+        inner_transform=inner_transform,
     )
 
 
@@ -89,6 +119,7 @@ def artwork_scale_for_outer_ridge(
 
 __all__ = [
     "OuterRidgeGeometry",
+    "OuterRidgeTransform",
     "artwork_scale_for_outer_ridge",
     "create_outer_ridge_geometry",
 ]
