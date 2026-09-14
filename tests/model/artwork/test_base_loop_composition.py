@@ -19,36 +19,14 @@ from typing import Any
 
 import pytest
 
+from lowkey_artifact_builder.config import (
+    Resolver,
+    get_resolver,
+    write_artifact_config,
+)
+from lowkey_artifact_builder.engine import create_build_plan
+from lowkey_artifact_builder.model import ProductRef
 from lowkey_artifact_builder.model.models.artwork.stages import extrude
-
-
-class StubResolver:
-    """Minimal resolver used by Artwork Feature-composition tests."""
-
-    def __init__(
-        self,
-        values: dict[str, object],
-        *,
-        colors: dict[str, object] | None = None,
-    ) -> None:
-        self._values = values
-        self.colors = colors or {}
-
-    def __call__(
-        self,
-        name: str,
-        *,
-        allow_none: bool = False,
-    ) -> object:
-        value = self._values.get(name)
-
-        if value is None and not allow_none:
-            raise KeyError(name)
-
-        return value
-
-    def configured_names(self) -> set[str]:
-        return set(self._values)
 
 
 class StubContext:
@@ -59,7 +37,7 @@ class StubContext:
         *,
         inputs: dict[str, Path],
         outputs: dict[str, Path],
-        resolver: StubResolver,
+        resolver: Resolver,
     ) -> None:
         self.inputs = inputs
         self.outputs = outputs
@@ -223,6 +201,9 @@ def test_base_and_loop_participate_independently(
 
     Each combination produces exactly the standalone Feature components
     implied by its effective Feature parameters.
+
+    Parameters unrelated to this composition inherit their ordinary Artwork
+    defaults rather than being duplicated by this test.
     """
 
     vector_directory = tmp_path / "vector"
@@ -277,6 +258,23 @@ def test_base_and_loop_participate_independently(
 
     extrude_manifest = tmp_path / "extrude" / "products.json"
 
+    resolver = get_resolver(
+        "feature-artwork",
+        model="artwork",
+        project_root=tmp_path,
+    ).with_values(
+        {
+            "artwork_size": 100.0,
+            "artwork_raise": 1.0,
+            "artwork_base_raise": artwork_base_raise,
+            "loop_inner_diameter": loop_inner_diameter,
+            "loop_width": 2.0,
+            "loop_position": 0,
+            "loop_raise": 1.0,
+        },
+        provenance="test",
+    )
+
     context = StubContext(
         inputs={
             "vector.manifest": vector_manifest,
@@ -284,17 +282,7 @@ def test_base_and_loop_participate_independently(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 100.0,
-                "artwork_raise": 1.0,
-                "artwork_base_raise": artwork_base_raise,
-                "loop_inner_diameter": loop_inner_diameter,
-                "loop_width": 2.0,
-                "loop_position": 0,
-                "loop_raise": 1.0,
-            }
-        ),
+        resolver=resolver,
     )
 
     monkeypatch.setattr(
@@ -334,10 +322,6 @@ def test_base_and_loop_do_not_enter_registered_artwork_dependency_plan(
     dependency plan targeting only Registered Artwork stops at vectorization.
     Standalone physical extrusion and packaging remain downstream work.
     """
-
-    from lowkey_artifact_builder.config import write_artifact_config
-    from lowkey_artifact_builder.engine import create_build_plan
-    from lowkey_artifact_builder.model import ProductRef
 
     source = tmp_path / "source.png"
 

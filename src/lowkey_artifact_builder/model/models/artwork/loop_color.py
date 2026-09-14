@@ -21,6 +21,9 @@ from lowkey_artifact_builder.config import Resolver
 from lowkey_artifact_builder.model.models.artwork.attachment import (
     select_attachment_layer,
 )
+from lowkey_artifact_builder.model.models.artwork.outer_ridge_color import (
+    resolve_outer_ridge_color_identity,
+)
 from lowkey_artifact_builder.model.models.artwork.vector_manifest import (
     VectorManifest,
 )
@@ -80,6 +83,31 @@ def resolve_loop_color_identity(
         return LoopColor(
             name=color.name,
             rgb=color.rgb,
+        )
+
+    outer_ridge_width = resolver(
+        "artwork_outer_ridge_width",
+    )
+
+    if (
+        isinstance(
+            outer_ridge_width,
+            int | float,
+        )
+        and not isinstance(
+            outer_ridge_width,
+            bool,
+        )
+        and outer_ridge_width > 0.0
+    ):
+        outer_ridge_color = resolve_outer_ridge_color_identity(
+            artwork,
+            resolver=resolver,
+        )
+
+        return LoopColor(
+            name=outer_ridge_color.name,
+            rgb=outer_ridge_color.rgb,
         )
 
     position = resolver(

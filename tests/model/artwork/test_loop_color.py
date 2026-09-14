@@ -20,6 +20,7 @@ from lowkey_artifact_builder.config import (
 )
 from lowkey_artifact_builder.model.models.artwork.loop_color import (
     resolve_loop_color,
+    resolve_loop_color_identity,
 )
 from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
     VectorLayer,
@@ -356,3 +357,66 @@ def test_attachment_derived_loop_color_is_deterministic(
     )
 
     assert first == second == "black"
+
+
+def test_loop_color_defaults_to_resolved_outer_ridge_color_when_ridge_participates(
+    tmp_path: Path,
+) -> None:
+    """
+    A participating Outer Ridge becomes the default physical color identity
+    for Loop when loop_color is not explicitly configured.
+
+    Loop consumes the resolved Outer Ridge identity rather than independently
+    selecting its attachment color.
+    """
+
+    resolver = _resolver_with_parameters(
+        tmp_path,
+        {
+            "artwork_outer_ridge_width": 2.0,
+            "artwork_outer_ridge_color": "test-black",
+            "loop_position": 0,
+        },
+    )
+
+    artwork = _vector_manifest(
+        tmp_path,
+    )
+
+    color = resolve_loop_color_identity(
+        artwork,
+        resolver=resolver,
+    )
+
+    assert color.name == "test-black"
+    assert color.rgb == (0, 0, 0)
+
+
+def test_explicit_loop_color_overrides_participating_outer_ridge_color(
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit Loop color remains authoritative when Outer Ridge participates.
+    """
+
+    resolver = _resolver_with_parameters(
+        tmp_path,
+        {
+            "artwork_outer_ridge_width": 2.0,
+            "artwork_outer_ridge_color": "test-black",
+            "loop_color": "test-white",
+            "loop_position": 0,
+        },
+    )
+
+    artwork = _vector_manifest(
+        tmp_path,
+    )
+
+    color = resolve_loop_color_identity(
+        artwork,
+        resolver=resolver,
+    )
+
+    assert color.name == "test-white"
+    assert color.rgb == (255, 255, 255)
