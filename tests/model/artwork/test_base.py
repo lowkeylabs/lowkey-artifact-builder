@@ -207,3 +207,235 @@ def test_negative_base_raise_is_invalid(
         _validate_base(
             raise_=raise_,
         )
+
+
+# =========================================================
+# Planar geometry
+# =========================================================
+
+
+def test_base_uses_registered_artwork_envelope(
+    tmp_path: Path,
+) -> None:
+    """
+    Base planar geometry is derived from the registered Artwork envelope.
+
+    The Base imports the envelope itself rather than any individual Artwork
+    color layer.
+    """
+
+    from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
+        _build_base_scad,
+    )
+
+    envelope = tmp_path / "envelope.svg"
+    envelope.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    source = _build_base_scad(
+        envelope,
+        registered_extent=1024,
+        envelope_bounds=(
+            100.0,
+            200.0,
+            900.0,
+            700.0,
+        ),
+        artwork_size=100.0,
+        base_raise=1.0,
+    )
+
+    assert str(envelope.resolve()) in source
+
+
+def test_base_uses_artwork_envelope_for_physical_scale(
+    tmp_path: Path,
+) -> None:
+    """
+    Base uses the same size-controlled envelope dimensionalization as
+    standalone Artwork.
+
+    The maximum registered envelope extent therefore determines the common
+    physical scale.
+    """
+
+    from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
+        _build_base_scad,
+    )
+
+    envelope = tmp_path / "envelope.svg"
+    envelope.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    source = _build_base_scad(
+        envelope,
+        registered_extent=1024,
+        envelope_bounds=(
+            100.0,
+            200.0,
+            900.0,
+            700.0,
+        ),
+        artwork_size=100.0,
+        base_raise=1.0,
+    )
+
+    assert "envelope_width = 800;" in source
+    assert "envelope_height = 500;" in source
+    assert "envelope_extent = 800;" in source
+    assert "artwork_size = 100;" in source
+
+    assert "artwork_size / envelope_extent" in source
+
+
+def test_base_uses_artwork_envelope_for_physical_centering(
+    tmp_path: Path,
+) -> None:
+    """
+    Base uses the registered Artwork envelope center when dimensionalizing
+    into standalone physical coordinates.
+
+    This preserves registration between Base and Artwork proper.
+    """
+
+    from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
+        _build_base_scad,
+    )
+
+    envelope = tmp_path / "envelope.svg"
+    envelope.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    source = _build_base_scad(
+        envelope,
+        registered_extent=1024,
+        envelope_bounds=(
+            100.0,
+            200.0,
+            900.0,
+            700.0,
+        ),
+        artwork_size=100.0,
+        base_raise=1.0,
+    )
+
+    # Registered envelope center:
+    #
+    #     x = (100 + 900) / 2 = 500
+    #     y = (200 + 700) / 2 = 450
+    #
+    # SVG Y coordinates point downward. OpenSCAD's imported SVG coordinate
+    # system therefore uses:
+    #
+    #     1024 - 450 = 574
+    #
+    # for the physical centering translation.
+
+    assert "envelope_center_x = 500;" in source
+    assert "envelope_openscad_center_y = 574;" in source
+
+    assert "-envelope_center_x" in source
+    assert "-envelope_openscad_center_y" in source
+
+
+def test_base_does_not_independently_fit_artwork_color_layers(
+    tmp_path: Path,
+) -> None:
+    """
+    Base dimensionalization depends only on the registered Artwork envelope.
+
+    Individual Artwork color-layer bounds are not inputs to Base geometry and
+    therefore cannot independently fit, scale, or recenter the Base.
+    """
+
+    from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
+        _build_base_scad,
+    )
+
+    envelope = tmp_path / "envelope.svg"
+    envelope.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    source = _build_base_scad(
+        envelope,
+        registered_extent=1024,
+        envelope_bounds=(
+            100.0,
+            200.0,
+            900.0,
+            700.0,
+        ),
+        artwork_size=100.0,
+        base_raise=1.0,
+    )
+
+    assert source.count("import(") == 1
+    assert str(envelope.resolve()) in source
+
+
+def test_base_raise_does_not_change_planar_dimensionalization(
+    tmp_path: Path,
+) -> None:
+    """
+    Base raise controls extrusion height rather than planar geometry.
+
+    Changing only artwork_base_raise leaves the Base's X/Y dimensionalization
+    unchanged.
+    """
+
+    from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
+        _build_base_scad,
+    )
+
+    envelope = tmp_path / "envelope.svg"
+    envelope.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    low_source = _build_base_scad(
+        envelope,
+        registered_extent=1024,
+        envelope_bounds=(
+            100.0,
+            200.0,
+            900.0,
+            700.0,
+        ),
+        artwork_size=100.0,
+        base_raise=0.5,
+    )
+
+    high_source = _build_base_scad(
+        envelope,
+        registered_extent=1024,
+        envelope_bounds=(
+            100.0,
+            200.0,
+            900.0,
+            700.0,
+        ),
+        artwork_size=100.0,
+        base_raise=3.0,
+    )
+
+    def planar_source(
+        source: str,
+    ) -> str:
+        return "\n".join(
+            line
+            for line in source.splitlines()
+            if "base_raise" not in line and "height =" not in line
+        )
+
+    assert planar_source(low_source) == planar_source(
+        high_source,
+    )
