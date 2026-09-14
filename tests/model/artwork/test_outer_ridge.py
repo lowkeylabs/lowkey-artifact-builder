@@ -20,6 +20,9 @@ from lowkey_artifact_builder.config import (
     get_resolver,
     write_artifact_config,
 )
+from lowkey_artifact_builder.model.models.artwork.outer_ridge import (
+    artwork_scale_for_outer_ridge,
+)
 from lowkey_artifact_builder.model.validation import (
     get_named_model_validators,
     validate_configuration,
@@ -261,3 +264,55 @@ def test_explicit_outer_ridge_raise_overrides_artwork_raise(
 
     assert resolver("artwork_raise") == 2.25
     assert resolver("artwork_outer_ridge_raise") == 3.5
+
+
+def test_outer_ridge_uniformly_scales_artwork_inside_reserved_perimeter() -> None:
+    """
+    Outer Ridge width reserves physical space around the size-controlling
+    Artwork extent.
+
+    The remaining Artwork is uniformly scaled in X and Y rather than
+    independently subtracting ridge width from each occupied dimension.
+    """
+
+    scale = artwork_scale_for_outer_ridge(
+        artwork_size=40.0,
+        outer_ridge_width=2.0,
+    )
+
+    assert scale == pytest.approx(0.9)
+
+
+def test_outer_ridge_uniform_scaling_preserves_artwork_aspect_ratio() -> None:
+    """
+    Outer Ridge scaling preserves the aspect ratio of a non-square Artwork
+    envelope.
+
+    A 40 x 30 mm envelope with a 2 mm Outer Ridge becomes 36 x 27 mm,
+    rather than 36 x 26 mm.
+    """
+
+    scale = artwork_scale_for_outer_ridge(
+        artwork_size=40.0,
+        outer_ridge_width=2.0,
+    )
+
+    width = 40.0 * scale
+    height = 30.0 * scale
+
+    assert width == pytest.approx(36.0)
+    assert height == pytest.approx(27.0)
+    assert width / height == pytest.approx(40.0 / 30.0)
+
+
+def test_disabled_outer_ridge_does_not_scale_artwork() -> None:
+    """
+    Disabled Outer Ridge leaves standalone Artwork at its ordinary size.
+    """
+
+    scale = artwork_scale_for_outer_ridge(
+        artwork_size=40.0,
+        outer_ridge_width=0.0,
+    )
+
+    assert scale == pytest.approx(1.0)
