@@ -314,11 +314,11 @@ def test_base_without_loop_does_not_resolve_loop_color(
     def unexpected_loop_resolution(
         *args: object,
         **kwargs: object,
-    ) -> str:
+    ) -> object:
         raise AssertionError("nonparticipating Loop must not determine Base color")
 
     monkeypatch.setattr(
-        "lowkey_artifact_builder.model.models.artwork.base_color.resolve_loop_color",
+        "lowkey_artifact_builder.model.models.artwork.base_color.resolve_loop_color_identity",
         unexpected_loop_resolution,
     )
 
@@ -440,14 +440,21 @@ def test_base_identity_inherits_explicit_loop_color_with_its_palette_rgb(
     )
 
 
-def test_base_identity_inherits_derived_loop_attachment_rgb(
+def test_base_identity_reuses_complete_resolved_loop_identity(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
     """
-    When Loop participates with a derived color, Base preserves the physical
-    RGB of the same registered Artwork attachment that determines Loop color.
+    A participating Loop supplies Base with its complete resolved physical
+    color identity.
+
+    Base must reuse Loop color resolution rather than independently repeating
+    attachment selection or reconstructing the Loop's physical RGB.
     """
+
+    from lowkey_artifact_builder.model.models.artwork.loop_color import (
+        LoopColor,
+    )
 
     artwork = _manifest(
         tmp_path,
@@ -461,26 +468,29 @@ def test_base_identity_inherits_derived_loop_attachment_rgb(
     )
 
     monkeypatch.setattr(
-        "lowkey_artifact_builder.model.models.artwork.base_color.resolve_loop_color",
-        lambda artwork, *, resolver: "derived-loop-color",
+        "lowkey_artifact_builder.model.models.artwork.base_color.resolve_loop_color_identity",
+        lambda artwork, *, resolver: LoopColor(
+            name="derived-loop-color",
+            rgb=(
+                0,
+                0,
+                255,
+            ),
+        ),
+        raising=False,
     )
 
-    positions: list[int] = []
-
-    def select_layer(
-        artwork: VectorManifest,
-        *,
-        position: int,
+    def unexpected_attachment_selection(
+        *args: object,
+        **kwargs: object,
     ) -> VectorLayer:
-        positions.append(
-            position,
+        raise AssertionError(
+            "Base must not independently select an attachment when Loop participates"
         )
-
-        return artwork.layers[1]
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.model.models.artwork.base_color.select_attachment_layer",
-        select_layer,
+        unexpected_attachment_selection,
     )
 
     assert resolve_base_color_identity(
@@ -494,10 +504,6 @@ def test_base_identity_inherits_derived_loop_attachment_rgb(
             255,
         ),
     )
-
-    assert positions == [
-        90,
-    ]
 
 
 def test_base_identity_without_loop_uses_position_zero_attachment(

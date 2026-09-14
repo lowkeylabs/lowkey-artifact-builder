@@ -22,7 +22,7 @@ from lowkey_artifact_builder.model.models.artwork.attachment import (
     select_attachment_layer,
 )
 from lowkey_artifact_builder.model.models.artwork.loop_color import (
-    resolve_loop_color,
+    resolve_loop_color_identity,
 )
 from lowkey_artifact_builder.model.models.artwork.vector_manifest import (
     VectorManifest,
@@ -61,19 +61,19 @@ def resolve_base_color_identity(
     Resolution precedence is:
 
     1. explicitly configured artwork_base_color;
-    2. resolved Loop color and attachment identity when Loop participates;
+    2. complete resolved Loop color identity when Loop participates;
     3. registered Artwork attachment identity at position 0.
 
     Explicit Base color configuration is authoritative. Its physical RGB is
     resolved from that semantic color through the configured color palette
     rather than inherited from registered Artwork.
 
-    When Loop participates and its color is explicitly configured, Base
-    inherits that semantic Loop color and resolves the physical RGB belonging
-    to that color.
+    When Loop participates, Base reuses the complete resolved physical color
+    identity of the Loop. Base does not independently repeat Loop attachment
+    selection or reconstruct the Loop's physical RGB.
 
-    Otherwise Base preserves the physical RGB from the registered Artwork
-    attachment that determines the derived semantic color.
+    When Loop does not participate, Base preserves the complete physical
+    identity of the registered Artwork attachment selected at position 0.
     """
 
     configured_names = resolver.configured_names()
@@ -113,43 +113,14 @@ def resolve_base_color_identity(
         raise TypeError("loop_inner_diameter must resolve to a number.")
 
     if float(loop_inner_diameter) > 0.0:
-        loop_color = resolve_loop_color(
+        loop_color = resolve_loop_color_identity(
             artwork,
             resolver=resolver,
         )
 
-        if "loop_color" in configured_names:
-            color = resolve_palette_color(
-                loop_color,
-                resolver.colors,
-            )
-
-            return BaseColor(
-                name=color.name,
-                rgb=color.rgb,
-            )
-
-        loop_position = resolver(
-            "loop_position",
-        )
-
-        if isinstance(
-            loop_position,
-            bool,
-        ) or not isinstance(
-            loop_position,
-            int,
-        ):
-            raise TypeError("loop_position must resolve to an integer.")
-
-        attachment_layer = select_attachment_layer(
-            artwork,
-            position=loop_position,
-        )
-
         return BaseColor(
-            name=loop_color,
-            rgb=attachment_layer.printer_color,
+            name=loop_color.name,
+            rgb=loop_color.rgb,
         )
 
     attachment_layer = select_attachment_layer(
