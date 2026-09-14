@@ -550,3 +550,138 @@ def test_build_scad_artwork_scale_is_independent_of_z_raise(
 
     assert "height = artwork_raise" in low
     assert "height = artwork_raise" in high
+
+
+# =========================================================
+# Outer Ridge solid
+# =========================================================
+
+
+def test_outer_ridge_scad_builds_ring_from_full_and_scaled_envelope(
+    tmp_path: Path,
+) -> None:
+    """
+    Outer Ridge occupies the region between the full-size Artwork envelope
+    and the uniformly scaled envelope reserved for Artwork proper.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+    _write_svg(envelope)
+
+    source = extrude._build_outer_ridge_scad(
+        envelope,
+        registered_extent=100,
+        envelope_bounds=(
+            20.0,
+            10.0,
+            60.0,
+            40.0,
+        ),
+        artwork_size=40.0,
+        outer_ridge_width=2.0,
+        outer_ridge_raise=1.0,
+    )
+
+    assert "difference()" in source
+
+    assert "artwork_size / envelope_extent" in source
+    assert "artwork_size * outer_ridge_scale / envelope_extent" in source
+
+    assert "outer_ridge_scale = 0.9;" in source
+
+
+def test_outer_ridge_scad_preserves_common_envelope_center(
+    tmp_path: Path,
+) -> None:
+    """
+    The full outer envelope and scaled inner envelope share one center.
+
+    Scaling therefore reserves the Outer Ridge perimeter without shifting
+    Artwork registration.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+    _write_svg(envelope)
+
+    source = extrude._build_outer_ridge_scad(
+        envelope,
+        registered_extent=100,
+        envelope_bounds=(
+            20.0,
+            10.0,
+            60.0,
+            40.0,
+        ),
+        artwork_size=40.0,
+        outer_ridge_width=2.0,
+        outer_ridge_raise=1.0,
+    )
+
+    assert "envelope_center_x = 40;" in source
+    assert "envelope_openscad_center_y = 75;" in source
+
+    assert source.count("-envelope_center_x") == 2
+    assert source.count("-envelope_openscad_center_y") == 2
+
+
+def test_outer_ridge_scad_uses_configured_total_raise(
+    tmp_path: Path,
+) -> None:
+    """
+    Outer Ridge raise is its total extrusion height from its supporting
+    plane rather than an amount added above Artwork proper.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+    _write_svg(envelope)
+
+    source = extrude._build_outer_ridge_scad(
+        envelope,
+        registered_extent=100,
+        envelope_bounds=(
+            20.0,
+            10.0,
+            60.0,
+            40.0,
+        ),
+        artwork_size=40.0,
+        outer_ridge_width=2.0,
+        outer_ridge_raise=1.75,
+    )
+
+    assert "outer_ridge_raise = 1.75;" in source
+    assert "height = outer_ridge_raise" in source
+
+
+def test_outer_ridge_scad_accepts_supporting_plane_z(
+    tmp_path: Path,
+) -> None:
+    """
+    Outer Ridge begins at the common standalone Artwork supporting plane.
+
+    The default is Z=0. A participating Base may later supply its top
+    surface as that supporting plane without changing Outer Ridge raise.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+    _write_svg(envelope)
+
+    source = extrude._build_outer_ridge_scad(
+        envelope,
+        registered_extent=100,
+        envelope_bounds=(
+            20.0,
+            10.0,
+            60.0,
+            40.0,
+        ),
+        artwork_size=40.0,
+        outer_ridge_width=2.0,
+        outer_ridge_raise=1.25,
+        outer_ridge_z=1.5,
+    )
+
+    assert "outer_ridge_raise = 1.25;" in source
+    assert "outer_ridge_z = 1.5;" in source
+    assert "height = outer_ridge_raise" in source
+    assert "outer_ridge_z" in source
