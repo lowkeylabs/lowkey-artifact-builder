@@ -37,6 +37,7 @@ from lowkey_artifact_builder.engine import (
 from lowkey_artifact_builder.model.models.artwork.attachment import (
     select_attachment_layer,
 )
+from lowkey_artifact_builder.model.models.artwork.base_color import resolve_base_color_identity
 from lowkey_artifact_builder.model.models.artwork.loop import (
     Bounds,
     LoopGeometry,
@@ -95,6 +96,15 @@ def execute(
             Physical extrusion height of the artwork geometry in
             millimeters.
 
+        artwork_base_raise
+            Physical extrusion height of the optional standalone Artwork
+            Base. A value greater than zero causes the Base to participate.
+
+        artwork_base_color
+            Optional explicit physical semantic color of a participating
+            Base. When not explicitly configured, Artwork derives the Base
+            color from the existing attachment-color semantics.
+
         loop_inner_diameter
             Inner diameter of the optional Artwork Loop. A value greater
             than zero causes the Loop to participate.
@@ -120,6 +130,9 @@ def execute(
             components while preserving their physical printer color
             identities.
 
+        base.stl
+            Independently printable Base component when Base participates.
+
         loop.stl
             Independently printable Loop component when Loop participates.
     """
@@ -144,6 +157,12 @@ def execute(
         context.resolver(
             "artwork_raise",
         ),
+    )
+
+    artwork_base_raise = float(
+        context.resolver(
+            "artwork_base_raise",
+        )
     )
 
     loop_inner_diameter = float(
@@ -185,6 +204,7 @@ def execute(
                 envelope_bounds=envelope_bounds,
                 artwork_size=artwork_size,
                 artwork_raise=artwork_raise,
+                artwork_z=artwork_base_raise,
             )
 
             render_stl_source(
@@ -202,6 +222,47 @@ def execute(
                     layer,
                     output,
                 )
+            )
+
+        base_product: (
+            tuple[
+                Path,
+                str,
+                tuple[int, int, int] | None,
+            ]
+            | None
+        ) = None
+
+        if artwork_base_raise > 0.0:
+            base_output = extrude_manifest.parent / "base.stl"
+
+            base_source = _build_base_scad(
+                vector_products.envelope,
+                registered_extent=vector_products.registered_extent,
+                envelope_bounds=envelope_bounds,
+                artwork_size=artwork_size,
+                base_raise=artwork_base_raise,
+            )
+
+            render_stl_source(
+                base_source,
+                base_output,
+            )
+
+            if not base_output.is_file():
+                raise ExtrudeError(
+                    f"OpenSCAD completed without creating the expected Base STL: {base_output}"
+                )
+
+            base_color = resolve_base_color_identity(
+                vector_products,
+                resolver=context.resolver,
+            )
+
+            base_product = (
+                base_output,
+                base_color.name,
+                base_color.rgb,
             )
 
         loop_product: (
@@ -288,6 +349,7 @@ def execute(
             extrude_manifest,
             outputs,
             artwork_raise=artwork_raise,
+            base_product=base_product,
             loop_product=loop_product,
         )
 
@@ -1272,6 +1334,12 @@ def _write_manifest(
     ],
     *,
     artwork_raise: float,
+    base_product: tuple[
+        Path,
+        str,
+        tuple[int, int, int] | None,
+    ]
+    | None = None,
     loop_product: tuple[
         Path,
         str,
@@ -1284,6 +1352,11 @@ def _write_manifest(
 
     Registered Artwork products preserve their Artifact color information
     and physical printer assignments unchanged.
+
+    A participating Base is recorded as an independently printable physical
+    component with its resolved semantic printer color identity. The Base is
+    not Registered Artwork and therefore does not acquire synthetic Artifact
+    color or color-assignment metadata.
 
     A participating Loop is recorded as an independently printable physical
     component with its resolved semantic printer color identity. When that
@@ -1319,6 +1392,31 @@ def _write_manifest(
         for vector, stl in layers
     ]
 
+    if base_product is not None:
+        (
+            base_stl,
+            base_color,
+            base_printer_color,
+        ) = base_product
+
+        printer_color: dict[str, Any] = {
+            "name": base_color,
+        }
+
+        if base_printer_color is not None:
+            printer_color["rgb"] = {
+                "red": base_printer_color[0],
+                "green": base_printer_color[1],
+                "blue": base_printer_color[2],
+            }
+
+        products.append(
+            {
+                "path": base_stl.name,
+                "printer_color": printer_color,
+            }
+        )
+
     if loop_product is not None:
         (
             loop_stl,
@@ -1326,7 +1424,7 @@ def _write_manifest(
             loop_printer_color,
         ) = loop_product
 
-        printer_color: dict[str, Any] = {
+        printer_color = {
             "name": loop_color,
         }
 

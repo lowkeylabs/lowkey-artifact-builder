@@ -14,9 +14,11 @@ were attached at position 0.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from lowkey_artifact_builder.config.config import Resolver
 from lowkey_artifact_builder.model.models.artwork.attachment import (
-    select_attachment_color,
+    select_attachment_layer,
 )
 from lowkey_artifact_builder.model.models.artwork.loop_color import (
     resolve_loop_color,
@@ -26,22 +28,45 @@ from lowkey_artifact_builder.model.models.artwork.vector_manifest import (
 )
 
 
-def resolve_base_color(
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class BaseColor:
+    """
+    Resolved physical color identity of a standalone Artwork Base.
+
+    rgb is present when the Base color is inherited from registered Artwork.
+    An explicitly configured semantic Base color does not synthesize a
+    physical RGB assignment.
+    """
+
+    name: str
+    rgb: tuple[int, int, int] | None
+
+
+def resolve_base_color_identity(
     artwork: VectorManifest,
     *,
     resolver: Resolver,
-) -> str:
+) -> BaseColor:
     """
-    Resolve the physical semantic color of the standalone Artwork Base.
+    Resolve the complete physical color identity of the Artwork Base.
 
     Resolution precedence is:
 
     1. explicitly configured artwork_base_color;
-    2. resolved Loop color when Loop participates;
-    3. registered Artwork attachment color at position 0.
+    2. resolved Loop color and attachment identity when Loop participates;
+    3. registered Artwork attachment identity at position 0.
 
-    The final rule is equivalent to resolving the attachment color of a
-    hypothetical Loop at position 0 without requiring Loop participation.
+    Explicit Base color configuration is authoritative and therefore does
+    not inherit an unrelated registered Artwork RGB assignment.
+
+    When Loop participates and its color is explicitly configured, Base
+    inherits that semantic Loop color without synthesizing an Artwork RGB.
+
+    Otherwise the RGB is preserved from the registered Artwork attachment
+    that determines the derived semantic color.
     """
 
     configured_names = resolver.configured_names()
@@ -57,7 +82,10 @@ def resolve_base_color(
         ):
             raise TypeError("artwork_base_color must resolve to a string.")
 
-        return value
+        return BaseColor(
+            name=value,
+            rgb=None,
+        )
 
     loop_inner_diameter = resolver(
         "loop_inner_diameter",
@@ -73,17 +101,72 @@ def resolve_base_color(
         raise TypeError("loop_inner_diameter must resolve to a number.")
 
     if float(loop_inner_diameter) > 0.0:
-        return resolve_loop_color(
+        loop_color = resolve_loop_color(
             artwork,
             resolver=resolver,
         )
 
-    return select_attachment_color(
+        if "loop_color" in configured_names:
+            return BaseColor(
+                name=loop_color,
+                rgb=None,
+            )
+
+        loop_position = resolver(
+            "loop_position",
+        )
+
+        if isinstance(
+            loop_position,
+            bool,
+        ) or not isinstance(
+            loop_position,
+            int,
+        ):
+            raise TypeError("loop_position must resolve to an integer.")
+
+        attachment_layer = select_attachment_layer(
+            artwork,
+            position=loop_position,
+        )
+
+        return BaseColor(
+            name=loop_color,
+            rgb=attachment_layer.printer_color,
+        )
+
+    attachment_layer = select_attachment_layer(
         artwork,
         position=0,
     )
 
+    return BaseColor(
+        name=attachment_layer.printer_color_name,
+        rgb=attachment_layer.printer_color,
+    )
+
+
+def resolve_base_color(
+    artwork: VectorManifest,
+    *,
+    resolver: Resolver,
+) -> str:
+    """
+    Resolve the physical semantic color name of the standalone Artwork Base.
+
+    This compatibility API exposes only the semantic color name. Consumers
+    that also require the inherited physical RGB assignment should use
+    resolve_base_color_identity().
+    """
+
+    return resolve_base_color_identity(
+        artwork,
+        resolver=resolver,
+    ).name
+
 
 __all__ = [
+    "BaseColor",
     "resolve_base_color",
+    "resolve_base_color_identity",
 ]

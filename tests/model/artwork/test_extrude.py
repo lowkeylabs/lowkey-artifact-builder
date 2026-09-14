@@ -20,6 +20,9 @@ from typing import Any
 
 import pytest
 
+from lowkey_artifact_builder.model.models.artwork.base_color import (
+    BaseColor,
+)
 from lowkey_artifact_builder.model.models.artwork.stages import extrude
 
 # =========================================================
@@ -196,6 +199,7 @@ def _resolver() -> StubResolver:
             "artwork_size": 150.0,
             "artwork_raise": 1.0,
             "loop_inner_diameter": 0.0,
+            "artwork_base_raise": 0.0,
         }
     )
 
@@ -1474,5 +1478,867 @@ def test_participating_loop_manifest_preserves_attachment_printer_rgb(
             "red": 255,
             "green": 0,
             "blue": 0,
+        },
+    }
+
+
+# =========================================================
+# Base product-boundary tests
+# =========================================================
+
+
+def test_disabled_base_does_not_produce_stage_local_stl_component(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    artwork_base_raise == 0 disables Base participation.
+
+    A disabled Base produces no stage-local STL product and does not alter
+    ordinary Artwork extrusion.
+    """
+
+    vector_directory = tmp_path / "vector"
+
+    svg = vector_directory / "layer.svg"
+
+    vector_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    svg.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path=svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    255,
+                    255,
+                    255,
+                ),
+                printer_color_name="white",
+                printer_rgb=(
+                    255,
+                    255,
+                    255,
+                ),
+                distance=0.0,
+            )
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=_resolver(),
+    )
+
+    rendered_outputs: list[Path] = []
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        rendered_outputs.append(
+            output,
+        )
+
+        _fake_render_stl_source(
+            source,
+            output,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    assert extrude_manifest.parent / "base.stl" not in rendered_outputs
+    assert not (extrude_manifest.parent / "base.stl").exists()
+
+    data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert all(product["path"] != "base.stl" for product in data["products"])
+
+
+def test_participating_base_produces_stage_local_stl_component(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A positive artwork_base_raise makes Base an independently printable
+    stage-local extrusion product.
+    """
+
+    vector_directory = tmp_path / "vector"
+
+    svg = vector_directory / "layer.svg"
+
+    vector_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    svg.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path=svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    255,
+                    255,
+                    255,
+                ),
+                printer_color_name="white",
+                printer_rgb=(
+                    255,
+                    255,
+                    255,
+                ),
+                distance=0.0,
+            )
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_size": 100.0,
+                "artwork_raise": 1.0,
+                "loop_inner_diameter": 0.0,
+                "artwork_base_raise": 1.5,
+            }
+        ),
+    )
+
+    rendered_outputs: list[Path] = []
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        rendered_outputs.append(
+            output,
+        )
+
+        _fake_render_stl_source(
+            source,
+            output,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "resolve_base_color_identity",
+        lambda artwork, *, resolver: BaseColor(
+            name="white",
+            rgb=None,
+        ),
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    base = extrude_manifest.parent / "base.stl"
+
+    assert base in rendered_outputs
+    assert base.is_file()
+
+
+def test_participating_base_is_built_from_registered_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    The standalone Base is rendered from the registered Artwork envelope,
+    not from any individual Artwork color layer.
+    """
+
+    vector_directory = tmp_path / "vector"
+
+    svg = vector_directory / "layer.svg"
+
+    vector_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    svg.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path=svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    255,
+                    255,
+                    255,
+                ),
+                printer_color_name="white",
+                printer_rgb=(
+                    255,
+                    255,
+                    255,
+                ),
+                distance=0.0,
+            )
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_size": 100.0,
+                "artwork_raise": 1.0,
+                "loop_inner_diameter": 0.0,
+                "artwork_base_raise": 1.5,
+            }
+        ),
+    )
+
+    rendered_sources: dict[Path, str] = {}
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        rendered_sources[output] = source
+
+        _fake_render_stl_source(
+            source,
+            output,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "resolve_base_color_identity",
+        lambda artwork, *, resolver: BaseColor(
+            name="white",
+            rgb=None,
+        ),
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    base = extrude_manifest.parent / "base.stl"
+
+    assert base in rendered_sources
+
+    base_source = rendered_sources[base]
+
+    envelope = vector_manifest.parent / "envelope.svg"
+
+    assert str(envelope.resolve()) in base_source
+    assert str(svg.resolve()) not in base_source
+
+
+def test_participating_base_translates_all_artwork_layers_upward(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Base participation translates every Artwork color component upward by the
+    same artwork_base_raise.
+
+    Relative Z registration between Artwork color components is preserved.
+    """
+
+    vector_directory = tmp_path / "vector"
+
+    first_svg = vector_directory / "first.svg"
+    second_svg = vector_directory / "second.svg"
+
+    vector_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    first_svg.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    second_svg.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path=first_svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    255,
+                    0,
+                    0,
+                ),
+                printer_color_name="red",
+                printer_rgb=(
+                    255,
+                    0,
+                    0,
+                ),
+                distance=0.0,
+            ),
+            _product(
+                index=2,
+                path=second_svg.name,
+                artifact_color_index=2,
+                artifact_rgb=(
+                    0,
+                    0,
+                    255,
+                ),
+                printer_color_name="blue",
+                printer_rgb=(
+                    0,
+                    0,
+                    255,
+                ),
+                distance=0.0,
+            ),
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_size": 100.0,
+                "artwork_raise": 1.0,
+                "loop_inner_diameter": 0.0,
+                "artwork_base_raise": 1.5,
+            }
+        ),
+    )
+
+    rendered_sources: dict[Path, str] = {}
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        rendered_sources[output] = source
+
+        _fake_render_stl_source(
+            source,
+            output,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "resolve_base_color_identity",
+        lambda artwork, *, resolver: BaseColor(
+            name="red",
+            rgb=None,
+        ),
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    first_source = rendered_sources[extrude_manifest.parent / "color-1.stl"]
+
+    second_source = rendered_sources[extrude_manifest.parent / "color-2.stl"]
+
+    assert "artwork_z = 1.5;" in first_source
+    assert "artwork_z = 1.5;" in second_source
+
+
+def test_participating_base_is_declared_as_semantic_color_product(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A participating Base is declared as an independently printable extrusion
+    product with its resolved semantic physical color identity.
+    """
+
+    vector_directory = tmp_path / "vector"
+
+    svg = vector_directory / "layer.svg"
+
+    vector_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    svg.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path=svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    255,
+                    0,
+                    0,
+                ),
+                printer_color_name="red",
+                printer_rgb=(
+                    255,
+                    0,
+                    0,
+                ),
+                distance=0.0,
+            )
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_size": 100.0,
+                "artwork_raise": 1.0,
+                "loop_inner_diameter": 0.0,
+                "artwork_base_raise": 1.5,
+                "artwork_base_color": "gold",
+            }
+        ),
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        _fake_render_stl_source,
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "resolve_base_color",
+        lambda artwork, *, resolver: "gold",
+        raising=False,
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    base_product = next(product for product in data["products"] if product["path"] == "base.stl")
+
+    assert base_product["printer_color"]["name"] == "gold"
+
+    assert "artifact_color" not in base_product
+    assert "distance" not in base_product
+
+
+def test_explicit_base_color_does_not_inherit_artwork_printer_rgb(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    An explicitly configured Base color is authoritative.
+
+    The Base must not attach an unrelated registered Artwork RGB merely
+    because the semantic color name was explicitly selected.
+    """
+
+    vector_directory = tmp_path / "vector"
+    svg = vector_directory / "layer.svg"
+
+    vector_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    svg.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path=svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    255,
+                    0,
+                    0,
+                ),
+                printer_color_name="red",
+                printer_rgb=(
+                    255,
+                    0,
+                    0,
+                ),
+                distance=0.0,
+            )
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_size": 100.0,
+                "artwork_raise": 1.0,
+                "loop_inner_diameter": 0.0,
+                "artwork_base_raise": 1.5,
+                "artwork_base_color": "gold",
+            },
+        ),
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        _fake_render_stl_source,
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    base_product = next(product for product in data["products"] if product["path"] == "base.stl")
+
+    assert base_product["printer_color"] == {
+        "name": "gold",
+    }
+
+
+def test_derived_base_color_with_loop_preserves_attachment_printer_rgb(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A participating Base preserves the complete physical color identity
+    resolved by the model-owned Base color operation when Loop participates.
+    """
+
+    vector_directory = tmp_path / "vector"
+    svg = vector_directory / "layer.svg"
+
+    vector_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    svg.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path=svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    17,
+                    34,
+                    51,
+                ),
+                printer_color_name="attachment-blue",
+                printer_rgb=(
+                    20,
+                    40,
+                    200,
+                ),
+                distance=0.0,
+            )
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_size": 100.0,
+                "artwork_raise": 1.0,
+                "artwork_base_raise": 1.5,
+                "loop_inner_diameter": 5.0,
+                "loop_width": 2.0,
+                "loop_position": 0,
+                "loop_raise": 1.0,
+            }
+        ),
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        _fake_render_stl_source,
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "resolve_base_color_identity",
+        lambda artwork, *, resolver: BaseColor(
+            name="attachment-blue",
+            rgb=(
+                20,
+                40,
+                200,
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "resolve_loop_color",
+        lambda artwork, *, resolver: "attachment-blue",
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "select_attachment_layer",
+        lambda artwork, *, position: artwork.layers[0],
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    base_product = next(product for product in data["products"] if product["path"] == "base.stl")
+
+    loop_product = next(product for product in data["products"] if product["path"] == "loop.stl")
+
+    assert base_product["printer_color"] == {
+        "name": "attachment-blue",
+        "rgb": {
+            "red": 20,
+            "green": 40,
+            "blue": 200,
+        },
+    }
+
+    assert base_product["printer_color"] == loop_product["printer_color"]
+
+
+def test_derived_base_color_without_loop_preserves_position_zero_printer_rgb(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A participating Base preserves the complete physical color identity
+    resolved by the model-owned Base color operation without Loop.
+    """
+
+    vector_directory = tmp_path / "vector"
+    svg = vector_directory / "layer.svg"
+
+    vector_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    svg.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path=svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    170,
+                    85,
+                    0,
+                ),
+                printer_color_name="attachment-orange",
+                printer_rgb=(
+                    230,
+                    110,
+                    20,
+                ),
+                distance=0.0,
+            )
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_size": 100.0,
+                "artwork_raise": 1.0,
+                "artwork_base_raise": 1.5,
+                "loop_inner_diameter": 0.0,
+            }
+        ),
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        _fake_render_stl_source,
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "resolve_base_color_identity",
+        lambda artwork, *, resolver: BaseColor(
+            name="attachment-orange",
+            rgb=(
+                230,
+                110,
+                20,
+            ),
+        ),
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    base_product = next(product for product in data["products"] if product["path"] == "base.stl")
+
+    assert base_product["printer_color"] == {
+        "name": "attachment-orange",
+        "rgb": {
+            "red": 230,
+            "green": 110,
+            "blue": 20,
         },
     }
