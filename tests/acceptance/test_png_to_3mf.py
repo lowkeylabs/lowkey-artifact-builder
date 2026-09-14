@@ -540,3 +540,231 @@ loop_position = 0
     assert color.get("displaycolor") == (f"#{rgb['red']:02X}{rgb['green']:02X}{rgb['blue']:02X}")
 
     assert loop_object.get("pindex") == "0"
+
+
+@pytest.mark.slow
+def test_png_artwork_with_base_builds_complete_3mf(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    An ordinary Artwork Realization may enable Base through parameter
+    overrides and build through the normal pipeline.
+
+    The resulting standalone 3MF contains Base as an independently printable
+    physical component with its resolved semantic physical color identity.
+    """
+
+    # -----------------------------------------------------
+    # Arrange temporary project
+    # -----------------------------------------------------
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
+
+    assert fixture_source.is_file()
+
+    project_root = tmp_path
+
+    source = project_root / "nydeli-clean.png"
+
+    shutil.copy2(
+        fixture_source,
+        source,
+    )
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    runner = CliRunner()
+
+    # -----------------------------------------------------
+    # Configure through the public CLI
+    # -----------------------------------------------------
+
+    config_result = runner.invoke(
+        cli,
+        [
+            "create",
+            "nydeli",
+        ],
+        input="1\n",
+    )
+
+    assert config_result.exit_code == 0, (
+        f"Artifact configuration failed:\n{config_result.output}\n{config_result.exception!r}"
+    )
+
+    # -----------------------------------------------------
+    # Enable Base on the ordinary artwork_default Realization
+    # -----------------------------------------------------
+
+    artifact_config = project_root / "artifacts" / "nydeli" / "artifact.toml"
+
+    assert artifact_config.is_file()
+
+    with artifact_config.open(
+        "a",
+        encoding="utf-8",
+    ) as stream:
+        stream.write(
+            """
+[realizations.artwork_default]
+artwork_base_raise = 2.0
+artwork_base_color = "test-black"
+"""
+        )
+
+    # -----------------------------------------------------
+    # Plan customized ordinary Artwork Realization
+    # -----------------------------------------------------
+
+    plans = create_build_plans(
+        "nydeli",
+        realization="artwork_default",
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    assert plan.artifact_id == "nydeli"
+    assert plan.model_name == "artwork"
+    assert plan.realization_name == "artwork_default"
+
+    assert plan.resolver("artwork_base_raise") == 2.0
+    assert plan.resolver("artwork_base_color") == "test-black"
+
+    # -----------------------------------------------------
+    # Build through the ordinary public CLI
+    # -----------------------------------------------------
+
+    build_result = runner.invoke(
+        cli,
+        [
+            "build",
+            "nydeli",
+            "--variant",
+            "artwork.default",
+        ],
+    )
+
+    assert build_result.exit_code == 0, (
+        f"Artifact build failed:\n{build_result.output}\n{build_result.exception!r}"
+    )
+
+    # -----------------------------------------------------
+    # Locate extrusion and package products
+    # -----------------------------------------------------
+
+    extrude_stage = next(stage for stage in plan.stages if stage.spec.name == "extrude")
+
+    extrude_manifest_product = next(
+        product for product in extrude_stage.products if product.spec.name == "manifest"
+    )
+
+    package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
+
+    artifact_product = next(
+        product for product in package_stage.products if product.spec.name == "artifact"
+    )
+
+    extrude_manifest = extrude_manifest_product.path
+    output = artifact_product.path
+
+    # -----------------------------------------------------
+    # Verify Base extrusion product
+    # -----------------------------------------------------
+
+    assert extrude_manifest.is_file()
+
+    extrusion_data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    products = extrusion_data["products"]
+
+    assert isinstance(
+        products,
+        list,
+    )
+
+    base_product = next(product for product in products if product["path"] == "base.stl")
+
+    assert base_product["printer_color"] == {
+        "name": "test-black",
+        "rgb": {
+            "red": 0,
+            "green": 0,
+            "blue": 0,
+        },
+    }
+
+    base_stl = extrude_manifest.parent / base_product["path"]
+
+    assert base_stl.is_file()
+    assert base_stl.stat().st_size > 0
+
+    # -----------------------------------------------------
+    # Verify complete packaged 3MF
+    # -----------------------------------------------------
+
+    assert output.is_file()
+    assert output.stat().st_size > 0
+
+    assert zipfile.is_zipfile(
+        output,
+    )
+
+    with zipfile.ZipFile(
+        output,
+    ) as archive:
+        model_name = next(
+            name
+            for name in archive.namelist()
+            if name.startswith("3D/") and name.endswith(".model")
+        )
+
+        model = ET.fromstring(
+            archive.read(
+                model_name,
+            )
+        )
+
+    # -----------------------------------------------------
+    # Verify independently printable Base identity
+    # -----------------------------------------------------
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    assert "nydeli-base" in objects_by_name
+
+    base_object = objects_by_name["nydeli-base"]
+
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    base_material = materials_by_id[base_object.get("pid")]
+
+    color = base_material.find(
+        f"{{{CORE_NS}}}base",
+    )
+
+    assert color is not None
+
+    assert color.get("name") == "test-black"
+    assert color.get("displaycolor") == "#000000"
+
+    assert base_object.get("pindex") == "0"

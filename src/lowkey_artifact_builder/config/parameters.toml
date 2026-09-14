@@ -176,6 +176,11 @@ manufacturer = "test"
 filament = "Test White"
 rgb = [255, 255, 255]
 
+[colors.test-black]
+manufacturer = "test"
+filament = "Test Black"
+rgb = [0, 0, 0]
+
 
 # ---------------------------------------------------------
 # Physical filament library
