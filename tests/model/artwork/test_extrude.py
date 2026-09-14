@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from lowkey_artifact_builder.config import Resolver, get_resolver
 from lowkey_artifact_builder.model.models.artwork.base_color import (
     BaseColor,
 )
@@ -72,7 +73,7 @@ class StubContext:
         *,
         inputs: dict[str, Path],
         outputs: dict[str, Path],
-        resolver: StubResolver,
+        resolver: Resolver | StubResolver,
     ) -> None:
         self._inputs = inputs
         self._outputs = outputs
@@ -189,21 +190,19 @@ def _write_vector_manifest(
     )
 
 
-def _resolver() -> StubResolver:
-    """
-    Return the standard extrusion-stage configuration.
+def _resolver(
+    tmp_path: Path,
+    **overrides: Any,
+) -> Resolver:
+    resolver = get_resolver(
+        "test-artifact",
+        model="artwork",
+        project_root=tmp_path,
+    )
 
-    Optional standalone Artwork features use their non-participating
-    defaults unless a test explicitly enables them.
-    """
-
-    return StubResolver(
-        {
-            "artwork_size": 150.0,
-            "artwork_raise": 1.0,
-            "loop_inner_diameter": 0.0,
-            "artwork_base_raise": 0.0,
-        }
+    return resolver.with_values(
+        overrides,
+        provenance="test",
     )
 
 
@@ -347,7 +346,9 @@ def test_extrude_uses_declared_vector_manifest(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=_resolver(),
+        resolver=_resolver(
+            tmp_path,
+        ),
     )
 
     rendered_sources: list[str] = []
@@ -461,7 +462,7 @@ def test_extrude_places_dynamic_stls_beside_declared_manifest(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=_resolver(),
+        resolver=_resolver(tmp_path),
     )
 
     rendered_outputs: list[Path] = []
@@ -551,7 +552,7 @@ def test_extrude_manifest_describes_stage_local_products(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=_resolver(),
+        resolver=_resolver(tmp_path),
     )
 
     monkeypatch.setattr(
@@ -654,16 +655,15 @@ def test_participating_loop_produces_stage_local_stl_component(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 100.0,
-                "artwork_raise": 1.0,
-                "loop_inner_diameter": 6.0,
-                "loop_width": 2.0,
-                "loop_position": 0,
-                "loop_raise": 1.5,
-                "loop_color": "black",
-            }
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=100.0,
+            artwork_raise=1.0,
+            loop_inner_diameter=6.0,
+            loop_width=2.0,
+            loop_position=0,
+            loop_raise=1.5,
+            loop_color="black",
         ),
     )
 
@@ -759,7 +759,7 @@ def test_extrude_preserves_artifact_and_printer_color_semantics(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=_resolver(),
+        resolver=_resolver(tmp_path),
     )
 
     monkeypatch.setattr(
@@ -941,12 +941,11 @@ def test_extrude_sizes_and_centers_occupied_envelope_in_physical_space(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 120.0,
-                "artwork_raise": 1.0,
-                "loop_inner_diameter": 0.0,
-            }
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=120.0,
+            artwork_raise=1.0,
+            loop_inner_diameter=0.0,
         ),
     )
 
@@ -1242,16 +1241,15 @@ def test_participating_loop_is_declared_as_semantic_color_product(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 100.0,
-                "artwork_raise": 1.0,
-                "loop_inner_diameter": 6.0,
-                "loop_width": 2.0,
-                "loop_position": 0,
-                "loop_raise": 1.5,
-                "loop_color": "black",
-            }
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=100.0,
+            artwork_raise=1.0,
+            loop_inner_diameter=6.0,
+            loop_width=2.0,
+            loop_position=0,
+            loop_raise=1.5,
+            loop_color="black",
         ),
     )
 
@@ -1345,15 +1343,14 @@ def test_participating_loop_manifest_uses_attachment_derived_color(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 100.0,
-                "artwork_raise": 1.0,
-                "loop_inner_diameter": 6.0,
-                "loop_width": 2.0,
-                "loop_position": 0,
-                "loop_raise": 1.5,
-            }
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=100.0,
+            artwork_raise=1.0,
+            loop_inner_diameter=6.0,
+            loop_width=2.0,
+            loop_position=0,
+            loop_raise=1.5,
         ),
     )
 
@@ -1447,15 +1444,14 @@ def test_participating_loop_manifest_preserves_attachment_printer_rgb(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 100.0,
-                "artwork_raise": 1.0,
-                "loop_inner_diameter": 6.0,
-                "loop_width": 2.0,
-                "loop_position": 0,
-                "loop_raise": 1.5,
-            }
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=100.0,
+            artwork_raise=1.0,
+            loop_inner_diameter=6.0,
+            loop_width=2.0,
+            loop_position=0,
+            loop_raise=1.5,
         ),
     )
 
@@ -1549,7 +1545,7 @@ def test_disabled_base_does_not_produce_stage_local_stl_component(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=_resolver(),
+        resolver=_resolver(tmp_path),
     )
 
     rendered_outputs: list[Path] = []
@@ -1644,13 +1640,12 @@ def test_participating_base_produces_stage_local_stl_component(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 100.0,
-                "artwork_raise": 1.0,
-                "loop_inner_diameter": 0.0,
-                "artwork_base_raise": 1.5,
-            }
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=100.0,
+            artwork_raise=1.0,
+            loop_inner_diameter=0.0,
+            artwork_base_raise=1.5,
         ),
     )
 
@@ -1753,13 +1748,12 @@ def test_participating_base_is_built_from_registered_envelope(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 100.0,
-                "artwork_raise": 1.0,
-                "loop_inner_diameter": 0.0,
-                "artwork_base_raise": 1.5,
-            }
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=100.0,
+            artwork_raise=1.0,
+            loop_inner_diameter=0.0,
+            artwork_base_raise=1.5,
         ),
     )
 
@@ -1891,13 +1885,12 @@ def test_participating_base_translates_all_artwork_layers_upward(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 100.0,
-                "artwork_raise": 1.0,
-                "loop_inner_diameter": 0.0,
-                "artwork_base_raise": 1.5,
-            }
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=100.0,
+            artwork_raise=1.0,
+            loop_inner_diameter=0.0,
+            artwork_base_raise=1.5,
         ),
     )
 
@@ -2215,16 +2208,15 @@ def test_derived_base_color_with_loop_preserves_attachment_printer_rgb(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 100.0,
-                "artwork_raise": 1.0,
-                "artwork_base_raise": 1.5,
-                "loop_inner_diameter": 5.0,
-                "loop_width": 2.0,
-                "loop_position": 0,
-                "loop_raise": 1.0,
-            }
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=100.0,
+            artwork_raise=1.0,
+            artwork_base_raise=1.5,
+            loop_inner_diameter=5.0,
+            loop_width=2.0,
+            loop_position=0,
+            loop_raise=1.0,
         ),
     )
 
@@ -2339,13 +2331,12 @@ def test_derived_base_color_without_loop_preserves_position_zero_printer_rgb(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 100.0,
-                "artwork_raise": 1.0,
-                "artwork_base_raise": 1.5,
-                "loop_inner_diameter": 0.0,
-            }
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=100.0,
+            artwork_raise=1.0,
+            artwork_base_raise=1.5,
+            loop_inner_diameter=0.0,
         ),
     )
 
@@ -2386,3 +2377,248 @@ def test_derived_base_color_without_loop_preserves_position_zero_printer_rgb(
             "blue": 20,
         },
     }
+
+
+@pytest.mark.slow
+def test_base_and_loop_share_artwork_supporting_plane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    When Base and Loop both participate, Artwork proper and Loop begin at
+    the top of Base while Base itself begins at Z=0.
+    """
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+
+    layer = vector_manifest.parent / "color-1.svg"
+
+    layer.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    layer.write_text(
+        """
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+        >
+            <rect
+                x="0"
+                y="0"
+                width="20"
+                height="20"
+            />
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path="color-1.svg",
+                artifact_color_index=1,
+                artifact_rgb=(255, 0, 0),
+                printer_color_name="test-red",
+                printer_rgb=(255, 0, 0),
+                distance=0.0,
+            ),
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_size": 20.0,
+                "artwork_raise": 3.0,
+                "artwork_base_raise": 2.0,
+                "artwork_base_color": "test-red",
+                "loop_inner_diameter": 4.0,
+                "loop_width": 2.0,
+                "loop_position": 0,
+                "loop_raise": 3.0,
+            },
+            colors={
+                "test-red": {
+                    "rgb": [255, 0, 0],
+                },
+            },
+        ),
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "query_all",
+        lambda _path, *, millimeters=False: {
+            "svg1": {
+                "x": 0.0,
+                "y": 0.0,
+                "width": 20.0,
+                "height": 20.0,
+            },
+        },
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    base_bounds = _stl_bounds(
+        extrude_manifest.parent / "base.stl",
+    )
+
+    artwork_bounds = _stl_bounds(
+        extrude_manifest.parent / "color-1.stl",
+    )
+
+    loop_bounds = _stl_bounds(
+        extrude_manifest.parent / "loop.stl",
+    )
+
+    assert base_bounds[4:6] == pytest.approx(
+        (
+            0.0,
+            2.0,
+        )
+    )
+
+    assert artwork_bounds[4:6] == pytest.approx(
+        (
+            2.0,
+            5.0,
+        )
+    )
+
+    assert loop_bounds[4:6] == pytest.approx(
+        (
+            2.0,
+            5.0,
+        )
+    )
+
+
+@pytest.mark.slow
+def test_base_and_loop_preserve_independent_raises_above_common_support(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Loop and Artwork may have different physical heights while sharing the
+    same Base-supported starting Z plane.
+    """
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+
+    layer = vector_manifest.parent / "color-1.svg"
+
+    layer.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    layer.write_text(
+        """
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+        >
+            <rect
+                x="0"
+                y="0"
+                width="20"
+                height="20"
+            />
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path="color-1.svg",
+                artifact_color_index=1,
+                artifact_rgb=(255, 0, 0),
+                printer_color_name="test-red",
+                printer_rgb=(255, 0, 0),
+                distance=0.0,
+            ),
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_size": 20.0,
+                "artwork_raise": 3.0,
+                "artwork_base_raise": 2.0,
+                "artwork_base_color": "test-red",
+                "loop_inner_diameter": 4.0,
+                "loop_width": 2.0,
+                "loop_position": 0,
+                "loop_raise": 5.0,
+            },
+            colors={
+                "test-red": {
+                    "rgb": [255, 0, 0],
+                },
+            },
+        ),
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "query_all",
+        lambda _path, *, millimeters=False: {
+            "svg1": {
+                "x": 0.0,
+                "y": 0.0,
+                "width": 20.0,
+                "height": 20.0,
+            },
+        },
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    artwork_bounds = _stl_bounds(
+        extrude_manifest.parent / "color-1.stl",
+    )
+
+    loop_bounds = _stl_bounds(
+        extrude_manifest.parent / "loop.stl",
+    )
+
+    assert artwork_bounds[4:6] == pytest.approx(
+        (
+            2.0,
+            5.0,
+        )
+    )
+
+    assert loop_bounds[4:6] == pytest.approx(
+        (
+            2.0,
+            7.0,
+        )
+    )

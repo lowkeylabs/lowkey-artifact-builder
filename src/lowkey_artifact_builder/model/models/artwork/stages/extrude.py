@@ -312,6 +312,7 @@ def execute(
             loop_source = _build_loop_scad(
                 loop_geometry,
                 loop_raise=loop_raise,
+                loop_z=artwork_base_raise,
             )
 
             render_stl_source(
@@ -889,6 +890,7 @@ def _build_loop_scad(
     geometry: LoopGeometry,
     *,
     loop_raise: float,
+    loop_z: float = 0.0,
 ) -> str:
     """
     Return OpenSCAD source for one physical Artwork Loop.
@@ -918,6 +920,10 @@ def _build_loop_scad(
         loop_raise,
     )
 
+    loop_z_scad = _scad_number(
+        loop_z,
+    )
+
     return f"""//
 // Generated Artwork Loop.
 //
@@ -931,6 +937,7 @@ loop_inner_radius = {loop_inner_radius};
 loop_outer_radius = {loop_outer_radius};
 
 loop_raise = {loop_raise_scad};
+loop_z = {loop_z_scad};
 
 
 // ---------------------------------------------------------
@@ -941,7 +948,7 @@ translate(
     [
         loop_center_x,
         loop_center_y,
-        0
+        loop_z
     ]
 )
     linear_extrude(
