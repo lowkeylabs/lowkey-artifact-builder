@@ -249,7 +249,7 @@ At minimum establish that:
   physical color identity; and
 * ordinary Artwork with Loop disabled retains existing behavior.
 
-Do not add `artwork.charm`, `artwork.ear_rings`, or another specialized Variant
+Do not add `artwork.charm`, `artwork.earrings`, or another specialized Variant
 merely to exercise Loop.
 
 ## 1.9 Loop Completion
@@ -559,7 +559,7 @@ Possible examples include:
 
 ```text
 artwork.charm
-artwork.ear_rings
+artwork.earrings
 ```
 
 A new Variant is a reusable sparse configuration of already-supported Model
@@ -684,7 +684,7 @@ The required change plan is complete when:
 
 22. no unnecessary large-scale redesign has been introduced.
 
-Optional reusable Variants such as `artwork.charm` or `artwork.ear_rings` may
+Optional reusable Variants such as `artwork.charm` or `artwork.earrings` may
 be added afterward as lightweight configurations of the completed Features.
 They are not required to complete the underlying Feature implementation.
 
