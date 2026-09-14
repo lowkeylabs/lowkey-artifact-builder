@@ -34,9 +34,6 @@ from typing import Any
 from lowkey_artifact_builder.engine import (
     StageContext,
 )
-from lowkey_artifact_builder.model.models.artwork.attachment import (
-    select_attachment_layer,
-)
 from lowkey_artifact_builder.model.models.artwork.base_color import resolve_base_color_identity
 from lowkey_artifact_builder.model.models.artwork.loop import (
     Bounds,
@@ -44,7 +41,7 @@ from lowkey_artifact_builder.model.models.artwork.loop import (
     create_loop_geometry,
 )
 from lowkey_artifact_builder.model.models.artwork.loop_color import (
-    resolve_loop_color,
+    resolve_loop_color_identity,
 )
 from lowkey_artifact_builder.model.models.artwork.vector_manifest import (
     VectorLayer,
@@ -325,25 +322,15 @@ def execute(
                     f"OpenSCAD completed without creating the expected Loop STL: {loop_output}"
                 )
 
-            loop_color = resolve_loop_color(
+            loop_color = resolve_loop_color_identity(
                 vector_products,
                 resolver=context.resolver,
             )
 
-            loop_printer_color: tuple[int, int, int] | None = None
-
-            if "loop_color" not in context.resolver.configured_names():
-                attachment_layer = select_attachment_layer(
-                    vector_products,
-                    position=loop_position,
-                )
-
-                loop_printer_color = attachment_layer.printer_color
-
             loop_product = (
                 loop_output,
-                loop_color,
-                loop_printer_color,
+                loop_color.name,
+                loop_color.rgb,
             )
 
         _write_manifest(
@@ -1344,13 +1331,13 @@ def _write_manifest(
     base_product: tuple[
         Path,
         str,
-        tuple[int, int, int] | None,
+        tuple[int, int, int],
     ]
     | None = None,
     loop_product: tuple[
         Path,
         str,
-        tuple[int, int, int] | None,
+        tuple[int, int, int],
     ]
     | None = None,
 ) -> None:
@@ -1360,17 +1347,11 @@ def _write_manifest(
     Registered Artwork products preserve their Artifact color information
     and physical printer assignments unchanged.
 
-    A participating Base is recorded as an independently printable physical
-    component with its resolved semantic printer color identity. The Base is
-    not Registered Artwork and therefore does not acquire synthetic Artifact
-    color or color-assignment metadata.
+    Participating Base and Loop Features are recorded as independently
+    printable physical components with their complete resolved semantic
+    printer color identities.
 
-    A participating Loop is recorded as an independently printable physical
-    component with its resolved semantic printer color identity. When that
-    color is inherited from the registered Artwork attachment, its physical
-    printer RGB assignment is preserved as well.
-
-    The Loop is not Registered Artwork and therefore does not acquire
+    Base and Loop are not Registered Artwork and therefore do not acquire
     synthetic Artifact color or color-assignment metadata.
     """
 
@@ -1406,21 +1387,17 @@ def _write_manifest(
             base_printer_color,
         ) = base_product
 
-        printer_color: dict[str, Any] = {
-            "name": base_color,
-        }
-
-        if base_printer_color is not None:
-            printer_color["rgb"] = {
-                "red": base_printer_color[0],
-                "green": base_printer_color[1],
-                "blue": base_printer_color[2],
-            }
-
         products.append(
             {
                 "path": base_stl.name,
-                "printer_color": printer_color,
+                "printer_color": {
+                    "name": base_color,
+                    "rgb": {
+                        "red": base_printer_color[0],
+                        "green": base_printer_color[1],
+                        "blue": base_printer_color[2],
+                    },
+                },
             }
         )
 
@@ -1431,21 +1408,17 @@ def _write_manifest(
             loop_printer_color,
         ) = loop_product
 
-        printer_color = {
-            "name": loop_color,
-        }
-
-        if loop_printer_color is not None:
-            printer_color["rgb"] = {
-                "red": loop_printer_color[0],
-                "green": loop_printer_color[1],
-                "blue": loop_printer_color[2],
-            }
-
         products.append(
             {
                 "path": loop_stl.name,
-                "printer_color": printer_color,
+                "printer_color": {
+                    "name": loop_color,
+                    "rgb": {
+                        "red": loop_printer_color[0],
+                        "green": loop_printer_color[1],
+                        "blue": loop_printer_color[2],
+                    },
+                },
             }
         )
 

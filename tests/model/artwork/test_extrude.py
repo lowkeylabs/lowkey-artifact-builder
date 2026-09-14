@@ -24,6 +24,9 @@ from lowkey_artifact_builder.config import Resolver, get_resolver
 from lowkey_artifact_builder.model.models.artwork.base_color import (
     BaseColor,
 )
+from lowkey_artifact_builder.model.models.artwork.loop_color import (
+    LoopColor,
+)
 from lowkey_artifact_builder.model.models.artwork.stages import extrude
 
 # =========================================================
@@ -2241,14 +2244,15 @@ def test_derived_base_color_with_loop_preserves_attachment_printer_rgb(
 
     monkeypatch.setattr(
         extrude,
-        "resolve_loop_color",
-        lambda artwork, *, resolver: "attachment-blue",
-    )
-
-    monkeypatch.setattr(
-        extrude,
-        "select_attachment_layer",
-        lambda artwork, *, position: artwork.layers[0],
+        "resolve_loop_color_identity",
+        lambda artwork, *, resolver: LoopColor(
+            name="attachment-blue",
+            rgb=(
+                20,
+                40,
+                200,
+            ),
+        ),
     )
 
     extrude.execute(context)  # type: ignore[arg-type]
@@ -2622,3 +2626,133 @@ def test_base_and_loop_preserve_independent_raises_above_common_support(
             7.0,
         )
     )
+
+
+def test_explicit_base_and_loop_colors_preserve_independent_physical_identities(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Explicit Base and Loop colors remain independent when both Features
+    participate.
+
+    Each independently printable component preserves the complete physical
+    printer color identity belonging to its explicitly selected semantic
+    color.
+    """
+
+    vector_directory = tmp_path / "vector"
+    svg = vector_directory / "layer.svg"
+
+    vector_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    svg.write_text(
+        "<svg/>",
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+        [
+            _product(
+                index=1,
+                path=svg.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    255,
+                    0,
+                    0,
+                ),
+                printer_color_name="red",
+                printer_rgb=(
+                    255,
+                    0,
+                    0,
+                ),
+                distance=0.0,
+            )
+        ],
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_size": 100.0,
+                "artwork_raise": 1.0,
+                "artwork_base_raise": 1.5,
+                "artwork_base_color": "gold",
+                "loop_inner_diameter": 5.0,
+                "loop_width": 2.0,
+                "loop_position": 0,
+                "loop_raise": 1.0,
+                "loop_color": "black",
+            },
+            colors={
+                "gold": {
+                    "rgb": [
+                        210,
+                        170,
+                        40,
+                    ],
+                },
+                "black": {
+                    "rgb": [
+                        0,
+                        0,
+                        0,
+                    ],
+                },
+            },
+        ),
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        _fake_render_stl_source,
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    base_product = next(product for product in data["products"] if product["path"] == "base.stl")
+
+    loop_product = next(product for product in data["products"] if product["path"] == "loop.stl")
+
+    assert base_product["printer_color"] == {
+        "name": "gold",
+        "rgb": {
+            "red": 210,
+            "green": 170,
+            "blue": 40,
+        },
+    }
+
+    assert loop_product["printer_color"] == {
+        "name": "black",
+        "rgb": {
+            "red": 0,
+            "green": 0,
+            "blue": 0,
+        },
+    }
+
+    assert base_product["printer_color"] != loop_product["printer_color"]
