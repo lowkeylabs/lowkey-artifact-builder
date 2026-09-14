@@ -1178,6 +1178,7 @@ def _build_scad(
     artwork_size: float,
     artwork_raise: float,
     artwork_z: float = 0.0,
+    artwork_scale: float = 1.0,
 ) -> str:
     """
     Return OpenSCAD source for one artwork color layer.
@@ -1191,6 +1192,11 @@ def _build_scad(
     layer so that the maximum physical X/Y extent of the envelope equals
     artwork_size while preserving registration between layers.
 
+    artwork_scale specifies the uniform planar scale reserved for Artwork
+    proper within artwork_size. A value of one preserves ordinary standalone
+    Artwork dimensionalization. A participating Outer Ridge supplies a value
+    less than one so that Artwork proper fits inside the reserved perimeter.
+
     artwork_z specifies the physical Z position at which Artwork proper
     begins. A value of zero preserves the ordinary no-Base placement.
     When Base participates, Artwork proper begins at the top of that Base.
@@ -1201,8 +1207,8 @@ def _build_scad(
     therefore converted into OpenSCAD coordinates before centering.
 
     SVG import uses a fixed DPI only to establish the SVG coordinate-unit
-    convention. Physical Artwork size remains determined by artwork_size
-    and the occupied registered envelope.
+    convention. Physical Artwork size remains determined by artwork_size,
+    artwork_scale, and the occupied registered envelope.
     """
 
     svg = svg.resolve()
@@ -1243,6 +1249,10 @@ def _build_scad(
         artwork_size,
     )
 
+    artwork_scale_scad = _scad_number(
+        artwork_scale,
+    )
+
     artwork_raise_scad = _scad_number(
         artwork_raise,
     )
@@ -1270,6 +1280,7 @@ envelope_center_x = {envelope_center_x_scad};
 envelope_openscad_center_y = {envelope_openscad_center_y_scad};
 
 artwork_size = {artwork_size_scad};
+artwork_scale = {artwork_scale_scad};
 artwork_raise = {artwork_raise_scad};
 artwork_z = {artwork_z_scad};
 
@@ -1289,8 +1300,8 @@ translate(
 )
     scale(
         [
-            artwork_size / envelope_extent,
-            artwork_size / envelope_extent,
+            artwork_size * artwork_scale / envelope_extent,
+            artwork_size * artwork_scale / envelope_extent,
             1
         ]
     )

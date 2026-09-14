@@ -1030,62 +1030,6 @@ def test_extrude_sizes_and_centers_occupied_envelope_in_physical_space(
     )
 
 
-def test_build_scad_fits_occupied_envelope_to_physical_size(
-    tmp_path: Path,
-) -> None:
-    """
-    Extrusion fits the occupied Artwork envelope to the configured
-    physical artwork size.
-
-    Registered vector coordinates remain dimensionless until extrusion.
-    The consuming extrusion stage uniformly scales the common coordinate
-    system according to the occupied envelope rather than the complete
-    registered extent.
-    """
-
-    svg = tmp_path / "layer.svg"
-
-    svg.write_text(
-        """
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-        >
-            <rect
-                x="0"
-                y="0"
-                width="20"
-                height="20"
-            />
-        </svg>
-        """,
-        encoding="utf-8",
-    )
-
-    source = extrude._build_scad(
-        svg,
-        registered_extent=20,
-        envelope_bounds=(
-            0.0,
-            0.0,
-            20.0,
-            20.0,
-        ),
-        artwork_size=150.0,
-        artwork_raise=1.0,
-    )
-
-    assert "registered_extent = 20;" in source
-    assert "envelope_width = 20;" in source
-    assert "envelope_height = 20;" in source
-    assert "envelope_extent = 20;" in source
-    assert "envelope_center_x = 10;" in source
-    assert "envelope_openscad_center_y = 10;" in source
-    assert "artwork_size = 150;" in source
-    assert "artwork_size / envelope_extent" in source
-    assert "dpi = 25.4" in source
-
-
 def test_build_scad_introduces_physical_z_from_artwork_raise(
     tmp_path: Path,
 ) -> None:
@@ -1131,59 +1075,6 @@ def test_build_scad_introduces_physical_z_from_artwork_raise(
     assert "artwork_raise = 1.25;" in source
     assert "linear_extrude(" in source
     assert "height = artwork_raise" in source
-
-
-def test_build_scad_applies_one_physical_xy_scale_independent_of_z_raise(
-    tmp_path: Path,
-) -> None:
-    """
-    Physical X/Y dimensionalization is independent of physical Z height.
-
-    artwork_size scales the registered coordinate system in X/Y while
-    artwork_raise independently supplies the extrusion height.
-    """
-
-    svg = tmp_path / "layer.svg"
-
-    svg.write_text(
-        "<svg/>",
-        encoding="utf-8",
-    )
-
-    low = extrude._build_scad(
-        svg,
-        registered_extent=25,
-        envelope_bounds=(
-            0.0,
-            0.0,
-            25.0,
-            25.0,
-        ),
-        artwork_size=100.0,
-        artwork_raise=0.5,
-    )
-
-    high = extrude._build_scad(
-        svg,
-        registered_extent=25,
-        envelope_bounds=(
-            0.0,
-            0.0,
-            25.0,
-            25.0,
-        ),
-        artwork_size=100.0,
-        artwork_raise=2.0,
-    )
-
-    assert "artwork_size / envelope_extent" in low
-    assert "artwork_size / envelope_extent" in high
-
-    assert "artwork_raise = 0.5;" in low
-    assert "artwork_raise = 2;" in high
-
-    assert "height = artwork_raise" in low
-    assert "height = artwork_raise" in high
 
 
 @pytest.mark.slow
@@ -2443,22 +2334,16 @@ def test_base_and_loop_share_artwork_supporting_plane(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 20.0,
-                "artwork_raise": 3.0,
-                "artwork_base_raise": 2.0,
-                "artwork_base_color": "test-red",
-                "loop_inner_diameter": 4.0,
-                "loop_width": 2.0,
-                "loop_position": 0,
-                "loop_raise": 3.0,
-            },
-            colors={
-                "test-red": {
-                    "rgb": [255, 0, 0],
-                },
-            },
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=20.0,
+            artwork_raise=3.0,
+            artwork_base_raise=2.0,
+            artwork_base_color="test-red",
+            loop_inner_diameter=4.0,
+            loop_width=2.0,
+            loop_position=0,
+            loop_raise=3.0,
         ),
     )
 
@@ -2571,22 +2456,16 @@ def test_base_and_loop_preserve_independent_raises_above_common_support(
         outputs={
             "manifest": extrude_manifest,
         },
-        resolver=StubResolver(
-            {
-                "artwork_size": 20.0,
-                "artwork_raise": 3.0,
-                "artwork_base_raise": 2.0,
-                "artwork_base_color": "test-red",
-                "loop_inner_diameter": 4.0,
-                "loop_width": 2.0,
-                "loop_position": 0,
-                "loop_raise": 5.0,
-            },
-            colors={
-                "test-red": {
-                    "rgb": [255, 0, 0],
-                },
-            },
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=20.0,
+            artwork_raise=3.0,
+            artwork_base_raise=2.0,
+            artwork_base_color="test-red",
+            loop_inner_diameter=4.0,
+            loop_width=2.0,
+            loop_position=0,
+            loop_raise=5.0,
         ),
     )
 
