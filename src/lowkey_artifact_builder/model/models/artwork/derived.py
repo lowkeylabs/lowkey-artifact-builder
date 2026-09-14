@@ -41,6 +41,21 @@ def derive_loop_raise(
     )
 
 
+def derive_artwork_outer_ridge_raise(
+    resolver: Resolver,
+) -> float:
+    """
+    Derive Outer Ridge physical raise from the effective Artwork raise.
+
+    An explicitly configured artwork_outer_ridge_raise overrides this
+    derivation through normal configuration resolution.
+    """
+
+    return resolver(
+        "artwork_raise",
+    )
+
+
 def derive_artifact_color_count(
     resolver: Resolver,
 ) -> int:
@@ -97,7 +112,9 @@ def derive_artifact_color_count(
 DERIVED = {
     "artifact_color_count": derive_artifact_color_count,
     "loop_raise": derive_loop_raise,
+    "artwork_outer_ridge_raise": derive_artwork_outer_ridge_raise,
 }
+
 
 # =========================================================
 # Exports
@@ -107,5 +124,6 @@ DERIVED = {
 __all__ = [
     "DERIVED",
     "derive_artifact_color_count",
+    "derive_artwork_outer_ridge_raise",
     "derive_loop_raise",
 ]

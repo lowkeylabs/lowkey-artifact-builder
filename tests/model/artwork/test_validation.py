@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from lowkey_artifact_builder.config import ConfigError
+from lowkey_artifact_builder.config import ConfigError, get_resolver
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     ExecutionPlan,
@@ -63,12 +63,12 @@ class StubResolver:
 
 
 def _validate_artwork(
+    tmp_path: Path,
     *,
     artifact_color_count: object = 2,
     envelope_mode: object = "alpha",
     printer_colors: object = (),
     library_colors: object = (),
-    catalog_colors: tuple[str, ...] = (),
 ) -> None:
     """
     Apply the Artwork model's declared configuration validators.
@@ -78,20 +78,18 @@ def _validate_artwork(
     relevant to the behavior under test.
     """
 
-    resolver = StubResolver(
+    resolver = get_resolver(
+        "example",
+        model="artwork",
+        project_root=tmp_path,
+    ).with_values(
         {
             "artifact_color_count": artifact_color_count,
             "artwork_envelope_mode": envelope_mode,
             "printer_colors": printer_colors,
             "library_colors": library_colors,
-            "loop_inner_diameter": 0.0,
-            "loop_width": 1.0,
-            "loop_position": 0,
-            "loop_raise": 1.0,
-            "loop_color": "white",
-            "artwork_base_raise": 0.0,
         },
-        colors={name: {} for name in catalog_colors},
+        provenance="test",
     )
 
     validate_configuration(
@@ -189,18 +187,18 @@ def test_artwork_declares_configuration_validators() -> None:
     ],
 )
 def test_artwork_accepts_positive_artifact_color_count(
+    tmp_path: Path,
     artifact_color_count: int,
 ) -> None:
-    """
-    Artwork accepts any positive integer Artifact color count.
-    """
-
     _validate_artwork(
+        tmp_path,
         artifact_color_count=artifact_color_count,
     )
 
 
-def test_artwork_color_count_may_be_smaller_than_printer_capacity() -> None:
+def test_artwork_color_count_may_be_smaller_than_printer_capacity(
+    tmp_path: Path,
+) -> None:
     """
     Artifact color count is independent of printer capacity once
     explicitly resolved.
@@ -209,20 +207,11 @@ def test_artwork_color_count_may_be_smaller_than_printer_capacity() -> None:
     """
 
     _validate_artwork(
-        artifact_color_count=3,
+        tmp_path,
+        artifact_color_count=1,
         printer_colors=(
-            "red",
-            "green",
-            "blue",
+            "cold-white",
             "black",
-            "white",
-        ),
-        catalog_colors=(
-            "red",
-            "green",
-            "blue",
-            "black",
-            "white",
         ),
     )
 
@@ -238,6 +227,7 @@ def test_artwork_color_count_may_be_smaller_than_printer_capacity() -> None:
     ],
 )
 def test_artwork_rejects_invalid_artifact_color_count(
+    tmp_path: Path,
     artifact_color_count: object,
 ) -> None:
     """
@@ -251,31 +241,40 @@ def test_artwork_rejects_invalid_artifact_color_count(
         match="artifact_color_count",
     ):
         _validate_artwork(
+            tmp_path,
             artifact_color_count=artifact_color_count,
         )
 
 
-def test_artwork_alpha_envelope_mode_is_valid() -> None:
+def test_artwork_alpha_envelope_mode_is_valid(
+    tmp_path: Path,
+) -> None:
     """
     Artwork accepts alpha envelope derivation.
     """
 
     _validate_artwork(
+        tmp_path,
         envelope_mode="alpha",
     )
 
 
-def test_artwork_shrink_wrap_envelope_mode_is_valid() -> None:
+def test_artwork_shrink_wrap_envelope_mode_is_valid(
+    tmp_path: Path,
+) -> None:
     """
     Artwork accepts shrink-wrap envelope derivation.
     """
 
     _validate_artwork(
+        tmp_path,
         envelope_mode="shrink-wrap",
     )
 
 
-def test_artwork_rejects_unsupported_envelope_mode() -> None:
+def test_artwork_rejects_unsupported_envelope_mode(
+    tmp_path: Path,
+) -> None:
     """
     Artwork rejects envelope modes outside its defined model semantics.
     """
@@ -285,11 +284,14 @@ def test_artwork_rejects_unsupported_envelope_mode() -> None:
         match="artwork_envelope_mode",
     ):
         _validate_artwork(
+            tmp_path,
             envelope_mode="aggressive",
         )
 
 
-def test_artwork_rejects_non_string_envelope_mode() -> None:
+def test_artwork_rejects_non_string_envelope_mode(
+    tmp_path: Path,
+) -> None:
     """
     Artwork envelope mode must be a semantic mode name.
     """
@@ -299,6 +301,7 @@ def test_artwork_rejects_non_string_envelope_mode() -> None:
         match="artwork_envelope_mode",
     ):
         _validate_artwork(
+            tmp_path,
             envelope_mode=42,
         )
 
@@ -308,24 +311,25 @@ def test_artwork_rejects_non_string_envelope_mode() -> None:
 # =========================================================
 
 
-def test_artwork_accepts_known_printer_colors() -> None:
+def test_artwork_accepts_known_printer_colors(
+    tmp_path: Path,
+) -> None:
     """
     Artwork accepts printer colors that reference known catalog colors.
     """
 
     _validate_artwork(
+        tmp_path,
         printer_colors=(
-            "red",
-            "blue",
-        ),
-        catalog_colors=(
-            "red",
-            "blue",
+            "cold-white",
+            "black",
         ),
     )
 
 
-def test_artwork_rejects_unknown_printer_color() -> None:
+def test_artwork_rejects_unknown_printer_color(
+    tmp_path: Path,
+) -> None:
     """
     Artwork rejects printer colors absent from the shared color catalog.
     """
@@ -335,35 +339,33 @@ def test_artwork_rejects_unknown_printer_color() -> None:
         match="printer_colors",
     ):
         _validate_artwork(
+            tmp_path,
             printer_colors=(
-                "red",
-                "unknown",
-            ),
-            catalog_colors=(
-                "red",
-                "blue",
+                "cold-white",
+                "definitely-not-a-real-color",
             ),
         )
 
 
-def test_artwork_accepts_known_library_colors() -> None:
+def test_artwork_accepts_known_library_colors(
+    tmp_path: Path,
+) -> None:
     """
     Artwork accepts library colors that reference known catalog colors.
     """
 
     _validate_artwork(
+        tmp_path,
         library_colors=(
-            "green",
-            "gold",
-        ),
-        catalog_colors=(
-            "green",
-            "gold",
+            "cold-white",
+            "black",
         ),
     )
 
 
-def test_artwork_rejects_unknown_library_color() -> None:
+def test_artwork_rejects_unknown_library_color(
+    tmp_path: Path,
+) -> None:
     """
     Artwork rejects library colors absent from the shared color catalog.
     """
@@ -373,18 +375,17 @@ def test_artwork_rejects_unknown_library_color() -> None:
         match="library_colors",
     ):
         _validate_artwork(
+            tmp_path,
             library_colors=(
-                "green",
-                "unknown",
-            ),
-            catalog_colors=(
-                "green",
-                "gold",
+                "cold-white",
+                "definitely-not-a-real-color",
             ),
         )
 
 
-def test_artwork_rejects_non_sequence_printer_colors() -> None:
+def test_artwork_rejects_non_sequence_printer_colors(
+    tmp_path: Path,
+) -> None:
     """
     Artwork printer_colors must be a sequence of semantic color names.
     """
@@ -394,12 +395,14 @@ def test_artwork_rejects_non_sequence_printer_colors() -> None:
         match="printer_colors",
     ):
         _validate_artwork(
-            printer_colors="red",
-            catalog_colors=("red",),
+            tmp_path,
+            printer_colors="cold-white",
         )
 
 
-def test_artwork_rejects_non_string_printer_color() -> None:
+def test_artwork_rejects_non_string_printer_color(
+    tmp_path: Path,
+) -> None:
     """
     Every printer_colors entry must be a semantic color name.
     """
@@ -409,15 +412,17 @@ def test_artwork_rejects_non_string_printer_color() -> None:
         match="printer_colors",
     ):
         _validate_artwork(
+            tmp_path,
             printer_colors=(
-                "red",
+                "cold-white",
                 42,
             ),
-            catalog_colors=("red",),
         )
 
 
-def test_artwork_rejects_non_sequence_library_colors() -> None:
+def test_artwork_rejects_non_sequence_library_colors(
+    tmp_path: Path,
+) -> None:
     """
     Artwork library_colors must be a sequence of semantic color names.
     """
@@ -427,12 +432,14 @@ def test_artwork_rejects_non_sequence_library_colors() -> None:
         match="library_colors",
     ):
         _validate_artwork(
-            library_colors="red",
-            catalog_colors=("red",),
+            tmp_path,
+            library_colors="cold-white",
         )
 
 
-def test_artwork_rejects_non_string_library_color() -> None:
+def test_artwork_rejects_non_string_library_color(
+    tmp_path: Path,
+) -> None:
     """
     Every library_colors entry must be a semantic color name.
     """
@@ -442,11 +449,11 @@ def test_artwork_rejects_non_string_library_color() -> None:
         match="library_colors",
     ):
         _validate_artwork(
+            tmp_path,
             library_colors=(
-                "red",
+                "cold-white",
                 42,
             ),
-            catalog_colors=("red",),
         )
 
 

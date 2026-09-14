@@ -27,3 +27,15 @@ loop_position = 0
 artwork_base_raise = 0.0
 
 # artwork_base_color = "white"  # derived from Loop or Artwork attachment color
+
+
+# --------------
+# Physical width of the optional standalone Artwork Outer Ridge.
+#
+# Zero disables the Outer Ridge.
+# Positive width enables the Outer Ridge.
+#
+
+artwork_outer_ridge_width = 0.0
+# artwork_outer_ridge_raise = 1.0 # defaults to artwork_raise
+# artwork_outer_ridge_color = "black"  # defaults to loop_color

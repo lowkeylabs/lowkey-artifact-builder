@@ -158,6 +158,9 @@ STAGES = (
             "loop_color",
             "artwork_base_raise",
             "artwork_base_color",
+            "artwork_outer_ridge_width",
+            "artwork_outer_ridge_raise",
+            "artwork_outer_ridge_color",
         ),
         products=(
             ProductSpec(

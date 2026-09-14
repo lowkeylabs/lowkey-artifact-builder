@@ -61,6 +61,7 @@ def test_resolver() -> Resolver:
         "loop_position": 0,
         "loop_raise": 1.0,
         "artwork_base_raise": 0.0,
+        "artwork_outer_ridge_width": 0.0,
     }
 
     return Resolver(
