@@ -28,6 +28,7 @@ from lowkey_artifact_builder.model.specs import (
     ModelSpec,
     ProductSpec,
     StageSpec,
+    VariantSpec,
 )
 
 # =========================================================
@@ -196,6 +197,28 @@ MODEL = ModelSpec(
     description=(
         "Multicolor 2.5D artwork consisting of independently printable "
         "color components with no underlying base."
+    ),
+    variants=(
+        VariantSpec(
+            name="charm",
+            description=("Durable looped Artwork suitable for use as a charm."),
+            parameters={
+                "artwork_size": 40.0,
+                "artwork_raise": 2.4,
+                "loop_inner_diameter": 4.0,
+                "loop_width": 3.0,
+            },
+        ),
+        VariantSpec(
+            name="earrings",
+            description=("Smaller, thinner looped Artwork suitable for earrings."),
+            parameters={
+                "artwork_size": 30.0,
+                "artwork_raise": 1.5,
+                "loop_inner_diameter": 1.0,
+                "loop_width": 1.5,
+            },
+        ),
     ),
     stages=STAGES,
     defined_in=__name__,

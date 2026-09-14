@@ -1050,8 +1050,8 @@ def test_create_build_plans_combines_default_and_additional_realizations(
     tmp_path: Path,
 ) -> None:
     """
-    Artifact-level planning includes both canonical default Realizations and
-    additional Artifact-defined Realizations.
+    Artifact-level planning includes canonical catalog Realizations together
+    with additional Artifact-defined Realizations.
 
     Declaring additional Realizations does not suppress the defaults derived
     from the registered Model/Variant catalog.
@@ -1095,47 +1095,18 @@ artwork_raise = 1.0
         project_root=tmp_path,
     )
 
-    assert tuple(
-        (
-            plan.model_name,
-            plan.realization_name,
-            plan.resolver("variant"),
-        )
-        for plan in plans
-    ) == (
-        (
-            "artwork",
-            "artwork_default",
-            "default",
-        ),
-        (
-            "shape",
-            "shape_default",
-            "default",
-        ),
-        (
-            "shape",
-            "shape_ornament",
-            "ornament",
-        ),
-        (
-            "artwork",
-            "ornament",
-            "default",
-        ),
-        (
-            "artwork",
-            "coaster",
-            "default",
-        ),
-    )
-
     plans_by_realization = {plan.realization_name: plan for plan in plans}
 
+    assert "artwork_default" in plans_by_realization
+    assert "ornament" in plans_by_realization
+    assert "coaster" in plans_by_realization
+
+    assert plans_by_realization["artwork_default"].resolver("variant") == "default"
+    assert plans_by_realization["ornament"].resolver("variant") == "default"
+    assert plans_by_realization["coaster"].resolver("variant") == "default"
+
     assert plans_by_realization["artwork_default"].resolver("artwork_size") == 80.0
-
     assert plans_by_realization["ornament"].resolver("artwork_size") == 100.0
-
     assert plans_by_realization["coaster"].resolver("artwork_size") == 90.0
 
 
@@ -1143,7 +1114,7 @@ def test_create_build_plans_plans_default_realization_for_each_variant(
     tmp_path: Path,
 ) -> None:
     """
-    Artifact-level planning exposes the default Realization of every
+    Artifact-level planning exposes the canonical default Realization of every
     registered Model Variant.
 
     Default Realizations exist independently of artifact.toml declarations
@@ -1172,30 +1143,28 @@ artwork_raise = 1.0
         project_root=tmp_path,
     )
 
-    assert tuple(
+    registry = plan_module.build_model_registry()
+
+    expected = {
+        (
+            model.name,
+            f"{model.name}_{variant.name}",
+            variant.name,
+        )
+        for model in registry.all_models()
+        for variant in model.variants
+    }
+
+    actual = {
         (
             plan.model_name,
             plan.realization_name,
             plan.resolver("variant"),
         )
         for plan in plans
-    ) == (
-        (
-            "artwork",
-            "artwork_default",
-            "default",
-        ),
-        (
-            "shape",
-            "shape_default",
-            "default",
-        ),
-        (
-            "shape",
-            "shape_ornament",
-            "ornament",
-        ),
-    )
+    }
+
+    assert actual == expected
 
     assert all(plan.artifact_id == "example" for plan in plans)
 

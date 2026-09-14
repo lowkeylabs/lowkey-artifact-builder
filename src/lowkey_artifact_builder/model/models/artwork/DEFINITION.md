@@ -1070,6 +1070,243 @@ packaging when enabled.
 It is not part of registered raster or vector Artwork and is not
 required by a consumer of registered Artwork.
 
+### Outer Ridge
+
+The Outer Ridge Feature provides an optional physical perimeter around
+standalone Artwork.
+
+The Outer Ridge follows the Artwork envelope and participates in the physical
+dimensionalization of standalone Artwork.
+
+#### Parameters
+
+The Outer Ridge Feature defines:
+
+```text
+artwork_outer_ridge_width
+artwork_outer_ridge_raise
+artwork_outer_ridge_color
+```
+
+`artwork_outer_ridge_width` controls Outer Ridge participation and the physical
+width of the ridge around the Artwork perimeter.
+
+`artwork_outer_ridge_raise` controls the physical Z height of the Outer Ridge.
+
+`artwork_outer_ridge_color` controls the physical semantic color of the Outer
+Ridge and may be explicitly configured or derived as described below.
+
+#### Participation
+
+`artwork_outer_ridge_width` alone determines whether the Outer Ridge
+participates.
+
+An effective value of:
+
+```text
+artwork_outer_ridge_width = 0
+```
+
+means that no Outer Ridge participates.
+
+A positive `artwork_outer_ridge_width` causes the Outer Ridge to participate.
+
+A negative `artwork_outer_ridge_width` is invalid.
+
+Outer Ridge participation does not require Base or Loop participation.
+
+The Outer Ridge is a standalone Artwork Feature. It is not part of registered
+Artwork supplied to another model.
+
+#### Geometry
+
+The Outer Ridge follows the perimeter of the dimensionalized Artwork envelope.
+
+`artwork_size` continues to define the maximum physical X/Y extent of the
+standalone Artwork including the Outer Ridge.
+
+When the Outer Ridge participates, a perimeter having physical width:
+
+```text
+artwork_outer_ridge_width
+```
+
+is reserved within that size-controlled extent.
+
+The registered Artwork is uniformly scaled in X/Y so that its dimensionalized
+envelope fits within the region remaining inside the reserved Outer Ridge
+perimeter.
+
+The Artwork envelope is not geometrically inset, clipped, or independently
+reshaped to produce the reduced Artwork region.
+
+Instead, one common uniform scaling transformation is applied to the registered
+Artwork envelope and every registered Artwork color layer. The aspect ratio of
+the registered Artwork and registration among all Artwork components are
+therefore preserved.
+
+The outer boundary of the Outer Ridge is the Artwork envelope dimensionalized
+at the full `artwork_size`. The inner boundary corresponds to the same Artwork
+envelope after the uniform scaling applied to the Artwork proper.
+
+The Outer Ridge occupies the region between those two corresponding envelope
+boundaries.
+
+The resulting relationship is:
+
+```text
+maximum outer extent including Outer Ridge = artwork_size
+
+maximum Artwork extent inside Outer Ridge
+    = artwork_size - 2 * artwork_outer_ridge_width
+```
+
+where the maximum extent refers to the size-controlling X or Y dimension of the
+Artwork envelope.
+
+The same uniform scale factor is applied to both X and Y. The non-size-controlling
+dimension is therefore determined by the original Artwork aspect ratio rather
+than independently reduced by `2 * artwork_outer_ridge_width`.
+
+The Outer Ridge does not increase the size-controlled physical extent of the
+standalone Artwork. This differs from attachment geometry such as the Loop,
+which may extend beyond that extent.
+
+#### Raise
+
+`artwork_outer_ridge_raise` defines the physical Z height of the Outer Ridge.
+
+When `artwork_outer_ridge_raise` is not explicitly configured, it is derived
+from:
+
+```text
+artwork_raise
+```
+
+so that the ordinary Outer Ridge has the same physical height as the Artwork
+proper.
+
+An explicitly configured `artwork_outer_ridge_raise` may override that derived
+value.
+
+The Outer Ridge begins at the same supporting Z plane as the Artwork proper.
+
+The Outer Ridge does not rest on top of the Artwork proper.
+`artwork_outer_ridge_raise` is the complete height of the Outer Ridge measured
+from their common supporting plane rather than an additional height above
+`artwork_raise`.
+
+When no Base participates:
+
+```text
+Artwork:
+    Z = 0 .. artwork_raise
+
+Outer Ridge:
+    Z = 0 .. artwork_outer_ridge_raise
+```
+
+When the Base Feature participates, the Base translates the common supporting
+plane of both the Artwork proper and Outer Ridge upward by
+`artwork_base_raise`.
+
+Their resulting physical placements are:
+
+```text
+Artwork:
+    Z = artwork_base_raise
+        ..
+        artwork_base_raise + artwork_raise
+
+Outer Ridge:
+    Z = artwork_base_raise
+        ..
+        artwork_base_raise + artwork_outer_ridge_raise
+```
+
+#### Color
+
+`artwork_outer_ridge_color` defines the Outer Ridge's physical semantic color.
+
+When `artwork_outer_ridge_color` is explicitly configured, that value is
+authoritative.
+
+When `artwork_outer_ridge_color` is not explicitly configured, Artwork derives
+the Outer Ridge color using the same attachment-color selection semantics used
+by the Loop Feature.
+
+The attachment position used for this derivation is the effective
+`loop_position`. A Loop need not participate for `loop_position` to identify
+the attachment position used for color derivation.
+
+The effective `artwork_outer_ridge_color` therefore has the following
+precedence:
+
+1. explicitly configured `artwork_outer_ridge_color`;
+2. Artwork attachment color at the effective `loop_position`.
+
+The complete Outer Ridge is manufactured using the effective
+`artwork_outer_ridge_color`, preserving its semantic physical color identity.
+
+#### Interaction With Loop
+
+Outer Ridge and Loop are independent optional Features.
+
+When both participate, the Loop attaches to the outer perimeter of the
+size-controlled Artwork object after Outer Ridge geometry has been applied.
+
+An explicitly configured `loop_color` remains authoritative.
+
+When `loop_color` is not explicitly configured and the Outer Ridge
+participates, the Loop derives its physical semantic color from the resolved
+`artwork_outer_ridge_color`.
+
+When no Outer Ridge participates, the Loop retains its ordinary derived-color
+behavior based on the Artwork attachment color at the effective
+`loop_position`.
+
+Loop participation does not require Outer Ridge participation, and Outer Ridge
+participation does not require Loop participation.
+
+#### Interaction With Base
+
+Outer Ridge and Base are independent optional Features.
+
+When both participate, the Outer Ridge and Artwork proper rest on top of the
+Base and share the same supporting Z plane.
+
+Base participation translates the Outer Ridge and Artwork proper equally in Z.
+It does not change `artwork_outer_ridge_raise`.
+
+An explicitly configured `artwork_base_color` remains authoritative.
+
+Any Base color derived through the resolved Loop color retains the color
+relationships defined by the participating Features without requiring the Base
+to independently resolve Outer Ridge color.
+
+Outer Ridge participation does not require Base participation.
+
+#### Product Participation
+
+The Outer Ridge participates only in standalone physical dimensionalization and
+packaging when enabled.
+
+A participating Outer Ridge is produced as independently printable physical
+geometry using its resolved semantic physical color identity.
+
+When `artwork_outer_ridge_width` is zero, no Outer Ridge physical component is
+produced.
+
+The Outer Ridge is not added to prepared, raster, or vector registered Artwork.
+
+A consumer of registered Artwork does not receive Outer Ridge geometry and does
+not require standalone Outer Ridge dimensionalization.
+
+When registered Artwork is consumed by another model, that consuming model
+remains responsible for any perimeter, ridge, border, or other supporting
+physical geometry belonging to its own realization.
+
+
 ### Loop
 
 The Loop Feature provides an optional annular attachment for standalone
@@ -1232,20 +1469,11 @@ the Base Feature for its derived color.
 
 When `loop_color` is explicitly configured, that value is authoritative.
 
-When `loop_color` is not explicitly configured, its default value is
-determined by Artwork.
+When `loop_color` is not explicitly configured, Artwork derives the Loop color
+from the Artwork attachment color selected at the effective `loop_position`.
 
-If the Artwork Outer Edge Feature participates, the default is the resolved
-Outer Edge semantic physical color.
-
-Otherwise, the default is the Artwork attachment color selected at the
-effective `loop_position`.
-
-The effective `loop_color` therefore has the following precedence:
-
-1. explicitly configured `loop_color`;
-2. resolved participating Outer Edge color;
-3. Artwork attachment color at `loop_position`.
+Interactions in which another participating Feature modifies this derived color
+are defined exclusively by that Feature.
 
 The complete Loop is manufactured using the effective `loop_color`, preserving
 its semantic physical color identity.
@@ -1704,13 +1932,13 @@ The Artwork model includes:
 
 -   reusable registered vector Artwork;
 
--   optional standalone Artwork Features, including Base and Loop.
+-   optional standalone Artwork Features.
 
 Artwork does not define:
 
 -   circles, squares, octagons, or other supporting Shape geometry;
 
--   structural ridges;
+-   supporting shape ridges;
 
 -   labels or text belonging to another object;
 
