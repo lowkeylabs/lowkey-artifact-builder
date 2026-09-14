@@ -2911,3 +2911,142 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
     assert not (artwork_root / "40-extrude" / "products.json").exists()
 
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+
+@pytest.mark.slow
+def test_shape_dependency_does_not_realize_standalone_artwork_base(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    Shape consumes registered Artwork without realizing standalone Base.
+
+    Enabling Base on the producing Artwork Realization does not extend a
+    dependency build beyond registered vector Artwork. Base belongs to
+    standalone Artwork dimensionalization, not to the reusable registered
+    representation consumed by Shape.
+    """
+
+    project_root = tmp_path
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    # -----------------------------------------------------
+    # Create canonical Artwork input
+    # -----------------------------------------------------
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
+
+    assert fixture_source.is_file()
+
+    artwork_directory = project_root / "artifacts" / "source-artwork"
+
+    artwork_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_input = artwork_directory / "artifact.png"
+
+    shutil.copy2(
+        fixture_source,
+        artwork_input,
+    )
+
+    # -----------------------------------------------------
+    # Configure Artwork with standalone Base enabled
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "source-artwork",
+        {
+            "source": str(
+                artwork_input,
+            ),
+            "realizations": {
+                "artwork_default": {
+                    "artwork_base_raise": 2.0,
+                    "artwork_base_color": "black",
+                },
+            },
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Configure Shape to consume registered Artwork
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        "artwork-shape",
+        {
+            "product_dependencies": {
+                "manifest": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "manifest",
+                    "artifact": "source-artwork",
+                    "realization": "artwork_default",
+                },
+            },
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Build Shape through dependency-aware orchestration
+    # -----------------------------------------------------
+
+    plans = create_build_plans(
+        "artwork-shape",
+        model_name="shape",
+        variant_name="default",
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+
+    execute_dependency_build(
+        plans[0],
+    )
+
+    # -----------------------------------------------------
+    # Registered Artwork exists
+    # -----------------------------------------------------
+
+    artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "artwork_default"
+
+    vector_manifest = artwork_root / "30-vector" / "products.json"
+
+    assert vector_manifest.is_file()
+
+    vector_data = json.loads(
+        vector_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert vector_data["products"]
+
+    assert all(product["path"] != "base.stl" for product in vector_data["products"])
+
+    # -----------------------------------------------------
+    # Standalone Base dimensionalization was not required
+    # -----------------------------------------------------
+
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+    assert not (artwork_root / "40-extrude" / "base.stl").exists()
+
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+    # -----------------------------------------------------
+    # Shape still builds successfully from registered Artwork
+    # -----------------------------------------------------
+
+    shape_root = project_root / "artifacts" / "artwork-shape" / "shape" / "shape_default"
+
+    assert (shape_root / "40-package" / "artifact.3mf").is_file()
