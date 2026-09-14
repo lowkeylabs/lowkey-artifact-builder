@@ -322,3 +322,66 @@ def test_base_and_loop_participate_independently(
     }
 
     assert feature_products == expected_feature_products
+
+
+def test_base_and_loop_do_not_enter_registered_artwork_dependency_plan(
+    tmp_path: Path,
+) -> None:
+    """
+    Standalone Base and Loop Features do not enter Registered Artwork.
+
+    Even when both Features are enabled for the Artwork Realization, a
+    dependency plan targeting only Registered Artwork stops at vectorization.
+    Standalone physical extrusion and packaging remain downstream work.
+    """
+
+    from lowkey_artifact_builder.config import write_artifact_config
+    from lowkey_artifact_builder.engine import create_build_plan
+    from lowkey_artifact_builder.model import ProductRef
+
+    source = tmp_path / "source.png"
+
+    source.write_bytes(b"test-source")
+
+    write_artifact_config(
+        "feature-artwork",
+        {
+            "model": "artwork",
+            "source": str(source),
+            "artwork_base_raise": 1.5,
+            "loop_inner_diameter": 5.0,
+        },
+        project_root=tmp_path,
+    )
+
+    target = ProductRef(
+        artifact="feature-artwork",
+        model="artwork",
+        realization="artwork_default",
+        stage="vector",
+        product="manifest",
+    )
+
+    plan = create_build_plan(
+        "feature-artwork",
+        project_root=tmp_path,
+        targets=(target,),
+    )
+
+    assert plan.resolver("artwork_base_raise") == 1.5
+    assert plan.resolver("loop_inner_diameter") == 5.0
+
+    assert tuple(stage.name for stage in plan.stages) == (
+        "prepare",
+        "raster",
+        "vector",
+    )
+
+    assert all(
+        stage.name
+        not in {
+            "extrude",
+            "package",
+        }
+        for stage in plan.stages
+    )
