@@ -155,6 +155,8 @@ STAGES = (
             "loop_position",
             "loop_raise",
             "loop_color",
+            "artwork_base_raise",
+            "artwork_base_color",
         ),
         products=(
             ProductSpec(

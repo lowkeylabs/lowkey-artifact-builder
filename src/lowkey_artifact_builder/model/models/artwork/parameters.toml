@@ -9,6 +9,7 @@ artwork_envelope_mode = "shrink-wrap"
 artwork_min_island_area = 34
 artwork_island_connectivity = 8
 
+# --------------
 # Optional standalone Loop Feature.
 # loop_inner_diameter == 0 disables Loop participation.
 
@@ -18,3 +19,11 @@ loop_position = 0
 
 # loop_raise = 1.0  # defaults to artwork_raise
 # loop_color = "white" # defaults to outer_ridge color, or color at point of attachment
+
+# --------------
+# Optional standalone Base Feature.
+# artwork_base_raise == 0 disables Base participation.
+
+artwork_base_raise = 0.0
+
+# artwork_base_color = "white"  # derived from Loop or Artwork attachment color

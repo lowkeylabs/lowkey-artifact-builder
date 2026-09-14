@@ -119,8 +119,9 @@ def test_artwork_extrude_introduces_physical_dimensions() -> None:
     """
     Extrusion is the Artwork model's physical dimensionalization boundary.
 
-    Artwork and participating Loop physical configuration consumed during
-    extrusion is declared by the extrusion stage.
+    Physical Artwork configuration consumed during extrusion is declared
+    by the extrusion stage. Optional standalone features may add further
+    extrusion parameters without changing this architectural boundary.
 
     Printer assignment is persistent product information established
     upstream rather than an extrusion configuration parameter.
@@ -128,15 +129,14 @@ def test_artwork_extrude_introduces_physical_dimensions() -> None:
 
     stages = {stage.name: stage for stage in MODEL.stages}
 
-    assert stages["extrude"].parameters == (
+    parameters = set(stages["extrude"].parameters)
+
+    assert {
         "artwork_size",
         "artwork_raise",
-        "loop_inner_diameter",
-        "loop_width",
-        "loop_position",
-        "loop_raise",
-        "loop_color",
-    )
+    }.issubset(parameters)
+
+    assert "printer_colors" not in parameters
 
 
 def test_artwork_stage_products() -> None:

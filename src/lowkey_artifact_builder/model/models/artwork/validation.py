@@ -291,6 +291,37 @@ def _validate_loop_position(
         )
 
 
+def _validate_artwork_base_raise(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require Artwork Base raise to be nonnegative.
+
+    Zero disables Base participation. A positive value enables Base and
+    determines its physical height.
+    """
+
+    base_raise = resolver(
+        "artwork_base_raise",
+    )
+
+    if not isinstance(
+        base_raise,
+        int | float,
+    ) or isinstance(
+        base_raise,
+        bool,
+    ):
+        raise ConfigError(
+            "artwork_base_raise must be a number.",
+        )
+
+    if base_raise < 0:
+        raise ConfigError(
+            "artwork_base_raise cannot be negative.",
+        )
+
+
 VALIDATORS = (
     ConfigurationValidator(
         parameters=("artifact_color_count",),
@@ -325,6 +356,10 @@ VALIDATORS = (
             "loop_position",
         ),
         validate=_validate_loop_position,
+    ),
+    ConfigurationValidator(
+        parameters=("artwork_base_raise",),
+        validate=_validate_artwork_base_raise,
     ),
 )
 

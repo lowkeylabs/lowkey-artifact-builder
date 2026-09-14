@@ -34,48 +34,38 @@ def test_resolver() -> Resolver:
     Model defaults and derived values required by the realized Artwork
     stages are represented explicitly because this fixture constructs a
     Resolver directly rather than through model configuration resolution.
+
+    Optional Artwork features are represented in their default
+    nonparticipating state so adding a feature does not accidentally
+    change the behavior exercised by generic engine tests.
     """
 
+    values: dict[str, object] = {
+        "model": "artwork",
+        "variant": "default",
+        "realization": "artwork_default",
+        "source": "source.png",
+        "artifact_color_count": 2,
+        "artwork_envelope_mode": "shrink-wrap",
+        "printer_colors": [
+            "cold-white",
+            "black",
+        ],
+        "artwork_pixels": 1024,
+        "artwork_min_island_area": 0.5,
+        "artwork_island_connectivity": 8,
+        "artwork_size": 150.0,
+        "artwork_raise": 1.0,
+        "loop_inner_diameter": 0.0,
+        "loop_width": 1.0,
+        "loop_position": 0,
+        "loop_raise": 1.0,
+        "artwork_base_raise": 0.0,
+    }
+
     return Resolver(
-        values={
-            "model": "artwork",
-            "variant": "default",
-            "realization": "artwork_default",
-            "source": "source.png",
-            "artifact_color_count": 2,
-            "artwork_envelope_mode": "shrink-wrap",
-            "printer_colors": [
-                "cold-white",
-                "black",
-            ],
-            "artwork_pixels": 1024,
-            "artwork_min_island_area": 0.5,
-            "artwork_island_connectivity": 8,
-            "artwork_size": 150.0,
-            "artwork_raise": 1.0,
-            "loop_inner_diameter": 0.0,
-            "loop_width": 1.0,
-            "loop_position": 0,
-            "loop_raise": 1.0,
-        },
-        provenance={
-            "model": "test",
-            "variant": "test",
-            "realization": "test",
-            "source": "test",
-            "artifact_color_count": "test",
-            "artwork_envelope_mode": "test",
-            "printer_colors": "test",
-            "artwork_pixels": "test",
-            "artwork_min_island_area": "test",
-            "artwork_island_connectivity": "test",
-            "artwork_size": "test",
-            "artwork_raise": "test",
-            "loop_inner_diameter": "test",
-            "loop_width": "test",
-            "loop_position": "test",
-            "loop_raise": "test",
-        },
+        values=values,
+        provenance={name: "test" for name in values},
         colors={
             "cold-white": {},
             "black": {},

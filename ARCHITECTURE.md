@@ -1678,4 +1678,3 @@ A 3MF is simply one possible Product.
 The long-term manufacturing objective is:
 
 > interpret source material once, preserve reusable manufacturing assets, and create increasingly sophisticated physical products by applying Model-owned Variants to Artifacts and composing generic, well-defined operations with minimal manual intervention.
-

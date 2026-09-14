@@ -72,6 +72,10 @@ def _validate_artwork(
 ) -> None:
     """
     Apply the Artwork model's declared configuration validators.
+
+    The resolver represents a complete valid ordinary Artwork
+    configuration. Individual tests override only the configuration
+    relevant to the behavior under test.
     """
 
     resolver = StubResolver(
@@ -85,6 +89,7 @@ def _validate_artwork(
             "loop_position": 0,
             "loop_raise": 1.0,
             "loop_color": "white",
+            "artwork_base_raise": 0.0,
         },
         colors={name: {} for name in catalog_colors},
     )
