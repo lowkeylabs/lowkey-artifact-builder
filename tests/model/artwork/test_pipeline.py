@@ -1202,3 +1202,148 @@ def test_create_build_plan_without_selection_uses_canonical_default_realization(
     assert plan.realization_name == "artwork_default"
     assert plan.resolver("variant") == "default"
     assert plan.resolver("realization") == "artwork_default"
+
+
+def test_artwork_pipeline_packages_participating_outer_ridge(
+    tmp_path: Path,
+) -> None:
+    """
+    A participating Artwork Outer Ridge survives the complete public build
+    pipeline as an independently printable physical component with its
+    resolved semantic printer color.
+
+    The test enters through create_build_plan() and execute_build() rather
+    than invoking extrusion or packaging stages directly.
+    """
+
+    _write_workspace(
+        tmp_path,
+    )
+
+    source = tmp_path / "source.png"
+
+    _write_source(
+        source,
+    )
+
+    write_artifact_config(
+        "example",
+        {
+            "model": "artwork",
+            "source": "source.png",
+            "artwork_outer_ridge_width": 2.0,
+            "artwork_outer_ridge_color": "test-red",
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        "example",
+        project_root=tmp_path,
+    )
+
+    execute_build(
+        plan,
+    )
+
+    realization = tmp_path / "artifacts" / "example" / "artwork" / "artwork_default"
+
+    extrude_directory = realization / "40-extrude"
+    package_directory = realization / "50-package"
+
+    # -----------------------------------------------------
+    # Extrude
+    # -----------------------------------------------------
+
+    outer_ridge_stl = extrude_directory / "outer-ridge.stl"
+
+    assert outer_ridge_stl.is_file()
+
+    ridge_mesh = load_stl(
+        outer_ridge_stl,
+    )
+
+    assert ridge_mesh.vertices
+    assert ridge_mesh.triangles
+
+    extrude_manifest = _read_manifest(
+        extrude_directory / "products.json",
+    )
+
+    extrude_products = _manifest_products(
+        extrude_manifest,
+    )
+
+    ridge_products = [
+        product for product in extrude_products if product["path"] == "outer-ridge.stl"
+    ]
+
+    assert ridge_products == [
+        {
+            "path": "outer-ridge.stl",
+            "printer_color": {
+                "name": "test-red",
+                "rgb": {
+                    "red": 255,
+                    "green": 0,
+                    "blue": 0,
+                },
+            },
+        }
+    ]
+
+    # -----------------------------------------------------
+    # Package
+    # -----------------------------------------------------
+
+    artifact = package_directory / "artifact.3mf"
+
+    assert artifact.is_file()
+    assert artifact.stat().st_size > 0
+
+    model = _read_3mf_model(
+        artifact,
+    )
+
+    namespace = {
+        "m": CORE_NS,
+    }
+
+    objects = model.findall(
+        "./m:resources/m:object",
+        namespace,
+    )
+
+    build_items = model.findall(
+        "./m:build/m:item",
+        namespace,
+    )
+
+    ridge_objects = [
+        object_element
+        for object_element in objects
+        if object_element.get("name") == "example-outer-ridge"
+    ]
+
+    assert len(ridge_objects) == 1
+
+    ridge_object = ridge_objects[0]
+
+    vertices = ridge_object.findall(
+        "./m:mesh/m:vertices/m:vertex",
+        namespace,
+    )
+
+    triangles = ridge_object.findall(
+        "./m:mesh/m:triangles/m:triangle",
+        namespace,
+    )
+
+    assert vertices
+    assert triangles
+
+    ridge_object_id = ridge_object.get("id")
+
+    assert ridge_object_id is not None
+
+    assert any(item.get("objectid") == ridge_object_id for item in build_items)

@@ -58,6 +58,7 @@ def _validate_outer_ridge(
     resolver = StubResolver(
         {
             "artwork_outer_ridge_width": width,
+            "artwork_size": 100.0,
         }
     )
 
@@ -316,3 +317,52 @@ def test_disabled_outer_ridge_does_not_scale_artwork() -> None:
     )
 
     assert scale == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    ("artwork_size", "outer_ridge_width"),
+    [
+        (40.0, 20.0),
+        (40.0, 21.0),
+        (20.0, 10.0),
+        (20.0, 11.0),
+    ],
+)
+def test_outer_ridge_width_must_leave_positive_artwork_interior(
+    tmp_path: Path,
+    artwork_size: float,
+    outer_ridge_width: float,
+) -> None:
+    """
+    A participating Outer Ridge must leave a positive-area Artwork interior.
+
+    The ridge reserves its configured width on both sides of the
+    size-controlling Artwork extent, so twice the ridge width must remain
+    strictly less than artwork_size.
+    """
+
+    write_artifact_config(
+        "nydeli",
+        {
+            "model": "artwork",
+            "source": "source.png",
+            "artwork_size": artwork_size,
+            "artwork_outer_ridge_width": outer_ridge_width,
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "nydeli",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="artwork_outer_ridge_width",
+    ):
+        validate_configuration(
+            resolver,
+            validators=get_named_model_validators("artwork"),
+        )

@@ -326,10 +326,14 @@ def _validate_artwork_outer_ridge_width(
     resolver: ConfigurationResolver,
 ) -> None:
     """
-    Require Artwork Outer Ridge width to be nonnegative.
+    Require Artwork Outer Ridge width to be physically valid.
 
     Zero disables Outer Ridge participation. A positive value enables
-    Outer Ridge and determines its physical width.
+    Outer Ridge and reserves that width around the size-controlling
+    Artwork extent.
+
+    A participating Outer Ridge must leave a positive Artwork interior,
+    so twice the ridge width must be strictly less than artwork_size.
     """
 
     ridge_width = resolver(
@@ -350,6 +354,29 @@ def _validate_artwork_outer_ridge_width(
     if ridge_width < 0:
         raise ConfigError(
             "artwork_outer_ridge_width cannot be negative.",
+        )
+
+    if ridge_width == 0:
+        return
+
+    artwork_size = resolver(
+        "artwork_size",
+    )
+
+    if not isinstance(
+        artwork_size,
+        int | float,
+    ) or isinstance(
+        artwork_size,
+        bool,
+    ):
+        raise ConfigError(
+            "artwork_size must be a number.",
+        )
+
+    if 2.0 * ridge_width >= artwork_size:
+        raise ConfigError(
+            "artwork_outer_ridge_width must be less than half of artwork_size.",
         )
 
 
@@ -393,7 +420,10 @@ VALIDATORS = (
         validate=_validate_artwork_base_raise,
     ),
     ConfigurationValidator(
-        parameters=("artwork_outer_ridge_width",),
+        parameters=(
+            "artwork_outer_ridge_width",
+            "artwork_size",
+        ),
         validate=_validate_artwork_outer_ridge_width,
     ),
 )

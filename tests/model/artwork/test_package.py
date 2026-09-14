@@ -880,3 +880,164 @@ def test_package_includes_participating_loop_as_independent_component(
     assert captured_components[0].name != captured_components[1].name
 
     assert artifact.is_file()
+
+
+def test_package_includes_participating_outer_ridge_as_independent_component(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A participating Outer Ridge declared by extrusion is packaged as an
+    independently printable 3MF component.
+
+    Packaging preserves the Outer Ridge's resolved semantic physical color
+    identity without requiring Registered Artwork color metadata.
+    """
+
+    extrude_directory = tmp_path / "extrude"
+
+    artwork_stl = extrude_directory / "color-1.stl"
+    outer_ridge_stl = extrude_directory / "outer-ridge.stl"
+
+    extrude_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_stl.write_text(
+        "artwork",
+        encoding="utf-8",
+    )
+
+    outer_ridge_stl.write_text(
+        "outer ridge",
+        encoding="utf-8",
+    )
+
+    manifest = extrude_directory / "products.json"
+
+    _write_extrude_manifest(
+        manifest,
+        [
+            _product(
+                index=1,
+                path=artwork_stl.name,
+                artifact_color_index=1,
+                artifact_rgb=(
+                    255,
+                    255,
+                    255,
+                ),
+                printer_color_name="white",
+                printer_rgb=(
+                    255,
+                    255,
+                    255,
+                ),
+                distance=0.0,
+            ),
+            {
+                "path": outer_ridge_stl.name,
+                "printer_color": {
+                    "name": "test-black",
+                    "rgb": {
+                        "red": 0,
+                        "green": 0,
+                        "blue": 0,
+                    },
+                },
+            },
+        ],
+    )
+
+    artifact = tmp_path / "artifact.3mf"
+
+    context = StubContext(
+        artifact_id="ornament",
+        inputs={
+            "extrude.manifest": manifest,
+        },
+        outputs={
+            "artifact": artifact,
+        },
+    )
+
+    loaded_paths: list[Path] = []
+
+    def fake_load_stl(
+        path: Path,
+    ) -> Mesh:
+        loaded_paths.append(
+            path,
+        )
+
+        return _mesh()
+
+    monkeypatch.setattr(
+        package,
+        "load_stl",
+        fake_load_stl,
+        raising=False,
+    )
+
+    captured_components: tuple[Component, ...] | None = None
+
+    def fake_write(
+        components,
+        output: Path,
+    ) -> None:
+        nonlocal captured_components
+
+        captured_components = tuple(
+            components,
+        )
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_bytes(
+            b"3mf",
+        )
+
+    monkeypatch.setattr(
+        package,
+        "write",
+        fake_write,
+        raising=False,
+    )
+
+    package.execute(context)  # type: ignore[arg-type]
+
+    assert loaded_paths == [
+        artwork_stl,
+        outer_ridge_stl,
+    ]
+
+    assert captured_components is not None
+    assert len(captured_components) == 2
+
+    assert captured_components[0].name == "ornament-color-1"
+
+    assert captured_components[0].color == PaletteColor(
+        name="white",
+        rgb=(
+            255,
+            255,
+            255,
+        ),
+    )
+
+    assert captured_components[1].name == "ornament-outer-ridge"
+
+    assert captured_components[1].color == PaletteColor(
+        name="test-black",
+        rgb=(
+            0,
+            0,
+            0,
+        ),
+    )
+
+    assert artifact.is_file()
