@@ -46,6 +46,9 @@ from lowkey_artifact_builder.model.models.artwork.loop_color import (
 from lowkey_artifact_builder.model.models.artwork.outer_ridge import (
     artwork_scale_for_outer_ridge,
 )
+from lowkey_artifact_builder.model.models.artwork.outer_ridge_color import (
+    resolve_outer_ridge_color_identity,
+)
 from lowkey_artifact_builder.model.models.artwork.vector_manifest import (
     VectorLayer,
     VectorManifest,
@@ -104,6 +107,12 @@ def execute(
         artwork_outer_ridge_raise
             Physical extrusion height of a participating standalone Outer
             Ridge.
+
+        artwork_outer_ridge_color
+            Optional explicit physical semantic color of a participating
+            Outer Ridge. When not explicitly configured, Artwork derives
+            the Outer Ridge color from the existing attachment-color
+            semantics.
 
         artwork_base_raise
             Physical extrusion height of the optional standalone Artwork
@@ -249,6 +258,15 @@ def execute(
                 )
             )
 
+        outer_ridge_product: (
+            tuple[
+                Path,
+                str,
+                tuple[int, int, int] | None,
+            ]
+            | None
+        ) = None
+
         if artwork_outer_ridge_width > 0.0:
             artwork_outer_ridge_raise = _positive_number(
                 "artwork_outer_ridge_raise",
@@ -279,6 +297,17 @@ def execute(
                     "OpenSCAD completed without creating the expected "
                     f"Outer Ridge STL: {outer_ridge_output}"
                 )
+
+            outer_ridge_color = resolve_outer_ridge_color_identity(
+                vector_products,
+                resolver=context.resolver,
+            )
+
+            outer_ridge_product = (
+                outer_ridge_output,
+                outer_ridge_color.name,
+                outer_ridge_color.rgb,
+            )
 
         base_product: (
             tuple[
@@ -396,6 +425,7 @@ def execute(
             extrude_manifest,
             outputs,
             artwork_raise=artwork_raise,
+            outer_ridge_product=outer_ridge_product,
             base_product=base_product,
             loop_product=loop_product,
         )
@@ -1567,6 +1597,12 @@ def _write_manifest(
     ],
     *,
     artwork_raise: float,
+    outer_ridge_product: tuple[
+        Path,
+        str,
+        tuple[int, int, int],
+    ]
+    | None = None,
     base_product: tuple[
         Path,
         str,
@@ -1586,12 +1622,12 @@ def _write_manifest(
     Registered Artwork products preserve their Artifact color information
     and physical printer assignments unchanged.
 
-    Participating Base and Loop Features are recorded as independently
-    printable physical components with their complete resolved semantic
-    printer color identities.
+    Participating Outer Ridge, Base, and Loop Features are recorded as
+    independently printable physical components with their complete resolved
+    semantic printer color identities.
 
-    Base and Loop are not Registered Artwork and therefore do not acquire
-    synthetic Artifact color or color-assignment metadata.
+    Outer Ridge, Base, and Loop are not Registered Artwork and therefore do
+    not acquire synthetic Artifact color or color-assignment metadata.
     """
 
     products = [
@@ -1618,6 +1654,27 @@ def _write_manifest(
         }
         for vector, stl in layers
     ]
+
+    if outer_ridge_product is not None:
+        (
+            outer_ridge_stl,
+            outer_ridge_color,
+            outer_ridge_printer_color,
+        ) = outer_ridge_product
+
+        products.append(
+            {
+                "path": outer_ridge_stl.name,
+                "printer_color": {
+                    "name": outer_ridge_color,
+                    "rgb": {
+                        "red": outer_ridge_printer_color[0],
+                        "green": outer_ridge_printer_color[1],
+                        "blue": outer_ridge_printer_color[2],
+                    },
+                },
+            }
+        )
 
     if base_product is not None:
         (

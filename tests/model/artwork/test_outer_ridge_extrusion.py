@@ -820,3 +820,220 @@ def test_execute_does_not_create_outer_ridge_stl_when_ridge_is_disabled(
 
     assert not ridge_output.exists()
     assert ridge_output not in rendered_outputs
+
+
+@pytest.mark.slow
+def test_execute_places_outer_ridge_on_top_of_participating_base(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    When Base participates, Outer Ridge begins at the top of that Base.
+
+    Outer Ridge raise remains its own total height measured from the common
+    standalone Artwork supporting plane.
+    """
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+    )
+
+    context = _StubContext(
+        vector_manifest=vector_manifest,
+        extrude_manifest=extrude_manifest,
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=40.0,
+            artwork_raise=1.0,
+            artwork_base_raise=1.5,
+            artwork_outer_ridge_width=2.0,
+            artwork_outer_ridge_raise=1.25,
+        ),
+    )
+
+    rendered: list[
+        tuple[
+            str,
+            Path,
+        ]
+    ] = []
+
+    def capture_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        rendered.append(
+            (
+                source,
+                output,
+            )
+        )
+        _fake_render_stl_source(
+            source,
+            output,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        capture_render_stl_source,
+    )
+
+    extrude.execute(
+        context,  # type: ignore[arg-type]
+    )
+
+    ridge_output = extrude_manifest.parent / "outer-ridge.stl"
+
+    ridge_source = next(source for source, output in rendered if output == ridge_output)
+
+    assert "outer_ridge_z = 1.5;" in ridge_source
+    assert "outer_ridge_raise = 1.25;" in ridge_source
+    assert "height = outer_ridge_raise" in ridge_source
+
+
+@pytest.mark.slow
+def test_base_shifts_artwork_and_outer_ridge_by_same_supporting_plane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Base participation establishes one common supporting plane for Artwork
+    proper and Outer Ridge.
+
+    Their independently configured raises do not alter that common Z origin.
+    """
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+    )
+
+    context = _StubContext(
+        vector_manifest=vector_manifest,
+        extrude_manifest=extrude_manifest,
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=40.0,
+            artwork_raise=2.0,
+            artwork_base_raise=1.5,
+            artwork_outer_ridge_width=2.0,
+            artwork_outer_ridge_raise=3.0,
+        ),
+    )
+
+    rendered: list[
+        tuple[
+            str,
+            Path,
+        ]
+    ] = []
+
+    def capture_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        rendered.append(
+            (
+                source,
+                output,
+            )
+        )
+        _fake_render_stl_source(
+            source,
+            output,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        capture_render_stl_source,
+    )
+
+    extrude.execute(
+        context,  # type: ignore[arg-type]
+    )
+
+    artwork_sources = [source for source, output in rendered if output.name.startswith("color-")]
+
+    ridge_source = next(source for source, output in rendered if output.name == "outer-ridge.stl")
+
+    assert artwork_sources
+
+    for source in artwork_sources:
+        assert "artwork_z = 1.5;" in source
+        assert "artwork_raise = 2;" in source
+
+    assert "outer_ridge_z = 1.5;" in ridge_source
+    assert "outer_ridge_raise = 3;" in ridge_source
+
+
+@pytest.mark.slow
+def test_execute_declares_outer_ridge_with_resolved_semantic_color(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A participating Outer Ridge is declared as an independently printable
+    extrusion product with its complete resolved semantic physical color
+    identity.
+    """
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_vector_manifest(
+        vector_manifest,
+    )
+
+    context = _StubContext(
+        vector_manifest=vector_manifest,
+        extrude_manifest=extrude_manifest,
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=40.0,
+            artwork_raise=1.0,
+            artwork_outer_ridge_width=2.0,
+            artwork_outer_ridge_raise=1.25,
+            artwork_outer_ridge_color="test-black",
+        ),
+    )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        _fake_render_stl_source,
+    )
+
+    extrude.execute(
+        context,  # type: ignore[arg-type]
+    )
+
+    data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    ridge_products = [
+        product for product in data["products"] if product["path"] == "outer-ridge.stl"
+    ]
+
+    assert ridge_products == [
+        {
+            "path": "outer-ridge.stl",
+            "printer_color": {
+                "name": "test-black",
+                "rgb": {
+                    "red": 0,
+                    "green": 0,
+                    "blue": 0,
+                },
+            },
+        }
+    ]
