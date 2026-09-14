@@ -768,3 +768,303 @@ artwork_base_color = "test-black"
     assert color.get("displaycolor") == "#000000"
 
     assert base_object.get("pindex") == "0"
+
+
+@pytest.mark.slow
+def test_png_artwork_with_base_and_loop_builds_complete_3mf(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    Base and Loop compose through the ordinary standalone Artwork pipeline.
+
+    An ordinary Artwork Realization may enable both Features through parameter
+    overrides. The completed 3MF preserves Artwork, Base, and Loop as
+    independently printable physical components with their resolved semantic
+    physical color identities.
+    """
+
+    # -----------------------------------------------------
+    # Arrange temporary project
+    # -----------------------------------------------------
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
+
+    assert fixture_source.is_file()
+
+    project_root = tmp_path
+
+    source = project_root / "nydeli-clean.png"
+
+    shutil.copy2(
+        fixture_source,
+        source,
+    )
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    runner = CliRunner()
+
+    # -----------------------------------------------------
+    # Configure through the public CLI
+    # -----------------------------------------------------
+
+    config_result = runner.invoke(
+        cli,
+        [
+            "create",
+            "nydeli",
+        ],
+        input="1\n",
+    )
+
+    assert config_result.exit_code == 0, (
+        f"Artifact configuration failed:\n{config_result.output}\n{config_result.exception!r}"
+    )
+
+    # -----------------------------------------------------
+    # Enable Base and Loop on ordinary artwork_default
+    # -----------------------------------------------------
+
+    artifact_config = project_root / "artifacts" / "nydeli" / "artifact.toml"
+
+    assert artifact_config.is_file()
+
+    with artifact_config.open(
+        "a",
+        encoding="utf-8",
+    ) as stream:
+        stream.write(
+            """
+[realizations.artwork_default]
+artwork_base_raise = 2.0
+artwork_base_color = "test-black"
+loop_inner_diameter = 6.0
+loop_width = 2.0
+loop_position = 0
+loop_raise = 3.0
+"""
+        )
+
+    # -----------------------------------------------------
+    # Plan customized ordinary Artwork Realization
+    # -----------------------------------------------------
+
+    plans = create_build_plans(
+        "nydeli",
+        realization="artwork_default",
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    assert plan.artifact_id == "nydeli"
+    assert plan.model_name == "artwork"
+    assert plan.realization_name == "artwork_default"
+
+    assert plan.resolver("artwork_base_raise") == 2.0
+    assert plan.resolver("artwork_base_color") == "test-black"
+    assert plan.resolver("loop_inner_diameter") == 6.0
+    assert plan.resolver("loop_width") == 2.0
+    assert plan.resolver("loop_position") == 0
+    assert plan.resolver("loop_raise") == 3.0
+
+    # -----------------------------------------------------
+    # Build through the ordinary public CLI
+    # -----------------------------------------------------
+
+    build_result = runner.invoke(
+        cli,
+        [
+            "build",
+            "nydeli",
+            "--variant",
+            "artwork.default",
+        ],
+    )
+
+    assert build_result.exit_code == 0, (
+        f"Artifact build failed:\n{build_result.output}\n{build_result.exception!r}"
+    )
+
+    # -----------------------------------------------------
+    # Locate extrusion and package products
+    # -----------------------------------------------------
+
+    extrude_stage = next(stage for stage in plan.stages if stage.spec.name == "extrude")
+
+    extrude_manifest_product = next(
+        product for product in extrude_stage.products if product.spec.name == "manifest"
+    )
+
+    package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
+
+    artifact_product = next(
+        product for product in package_stage.products if product.spec.name == "artifact"
+    )
+
+    extrude_manifest = extrude_manifest_product.path
+    output = artifact_product.path
+
+    assert extrude_manifest.is_file()
+
+    extrusion_data = json.loads(
+        extrude_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    products = extrusion_data["products"]
+
+    assert isinstance(
+        products,
+        list,
+    )
+
+    # -----------------------------------------------------
+    # Verify composed physical component contract
+    # -----------------------------------------------------
+
+    products_by_path = {product["path"]: product for product in products}
+
+    assert "base.stl" in products_by_path
+    assert "loop.stl" in products_by_path
+
+    artwork_products = [
+        product
+        for product in products
+        if product["path"]
+        not in {
+            "base.stl",
+            "loop.stl",
+        }
+    ]
+
+    assert artwork_products
+
+    base_product = products_by_path["base.stl"]
+    loop_product = products_by_path["loop.stl"]
+
+    assert base_product["printer_color"] == {
+        "name": "test-black",
+        "rgb": {
+            "red": 0,
+            "green": 0,
+            "blue": 0,
+        },
+    }
+
+    for product in (
+        base_product,
+        loop_product,
+    ):
+        printer_color = product["printer_color"]
+
+        assert isinstance(
+            printer_color["name"],
+            str,
+        )
+
+        assert printer_color["name"]
+
+        rgb = printer_color["rgb"]
+
+        assert isinstance(
+            rgb["red"],
+            int,
+        )
+        assert isinstance(
+            rgb["green"],
+            int,
+        )
+        assert isinstance(
+            rgb["blue"],
+            int,
+        )
+
+        stl = extrude_manifest.parent / product["path"]
+
+        assert stl.is_file()
+        assert stl.stat().st_size > 0
+
+    # -----------------------------------------------------
+    # Verify complete packaged 3MF
+    # -----------------------------------------------------
+
+    assert output.is_file()
+    assert output.stat().st_size > 0
+
+    assert zipfile.is_zipfile(
+        output,
+    )
+
+    with zipfile.ZipFile(
+        output,
+    ) as archive:
+        model_name = next(
+            name
+            for name in archive.namelist()
+            if name.startswith("3D/") and name.endswith(".model")
+        )
+
+        model = ET.fromstring(
+            archive.read(
+                model_name,
+            )
+        )
+
+    # -----------------------------------------------------
+    # Verify all extrusion components survive packaging
+    # -----------------------------------------------------
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    expected_names = {f"nydeli-{Path(product['path']).stem}" for product in products}
+
+    assert set(objects_by_name) == expected_names
+
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    # -----------------------------------------------------
+    # Verify semantic physical identities survive packaging
+    # -----------------------------------------------------
+
+    for product in products:
+        printer_color = product["printer_color"]
+
+        semantic_name = printer_color["name"]
+        rgb = printer_color["rgb"]
+
+        component_name = f"nydeli-{Path(product['path']).stem}"
+
+        object_ = objects_by_name[component_name]
+
+        material = materials_by_id[object_.get("pid")]
+
+        color = material.find(
+            f"{{{CORE_NS}}}base",
+        )
+
+        assert color is not None
+
+        assert color.get("name") == semantic_name
+
+        assert color.get("displaycolor") == (
+            f"#{rgb['red']:02X}{rgb['green']:02X}{rgb['blue']:02X}"
+        )
+
+        assert object_.get("pindex") == "0"
