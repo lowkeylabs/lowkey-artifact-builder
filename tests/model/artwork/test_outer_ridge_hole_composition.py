@@ -49,10 +49,12 @@ def _write_svg(
 
 def _hole_geometry() -> HoleGeometry:
     """
-    Return a Hole resolved against the full 40 x 30 mm outer boundary.
+    Return one resolved physical Hole for Outer Ridge composition tests.
 
-    A 6 mm Hole with a 1 mm edge distance at the top has its center
-    4 mm inward from the outer boundary.
+    This is deliberately supplied directly rather than resolved from a
+    cardinal position. Builder tests therefore prove that Outer Ridge and
+    Artwork consume the supplied physical Hole geometry without repositioning
+    it.
     """
 
     return HoleGeometry(
@@ -254,6 +256,7 @@ def test_outer_ridge_without_hole_preserves_existing_geometry(
 
     # Only the existing planar ring difference is present.
     assert source.count("difference()") == 1
+    assert "circle(" not in source
     assert "cylinder(" not in source
 
 
@@ -267,6 +270,9 @@ def test_outer_ridge_subtracts_participating_hole(
 ) -> None:
     """
     A participating Hole subtracts intersecting Outer Ridge material.
+
+    Outer Ridge and Hole subtraction are composed in the same planar
+    difference before extrusion.
     """
 
     envelope = tmp_path / "envelope.svg"
@@ -287,29 +293,29 @@ def test_outer_ridge_subtracts_participating_hole(
         hole_geometry=_hole_geometry(),
     )
 
-    # One difference constructs the ridge and another performs the
-    # physical Hole subtraction.
-    assert source.count("difference()") == 2
+    # The single planar difference constructs the ridge and subtracts
+    # the Hole before the resulting cross-section is extruded.
+    assert source.count("difference()") == 1
 
     assert (
         """translate(
-    [
-        0,
-        11,
-        0
-    ]
-)"""
+                [
+                    0,
+                    11
+                ]
+            )"""
         in source
     )
 
     assert (
-        """cylinder(
-        h = 1.5,
-        r = 3,
-        $fn = 128
-    );"""
+        """circle(
+                    r = 3,
+                    $fn = 128
+                );"""
         in source
     )
+
+    assert "cylinder(" not in source
 
 
 def test_outer_ridge_hole_subtraction_spans_complete_ridge_z_extent(
@@ -317,6 +323,10 @@ def test_outer_ridge_hole_subtraction_spans_complete_ridge_z_extent(
 ) -> None:
     """
     Hole passes completely through the Outer Ridge physical Z extent.
+
+    The Hole is subtracted from the planar Ridge before linear extrusion.
+    Therefore the resulting opening necessarily spans the complete Ridge
+    extrusion height regardless of the Ridge Z offset.
     """
 
     envelope = tmp_path / "envelope.svg"
@@ -341,25 +351,48 @@ def test_outer_ridge_hole_subtraction_spans_complete_ridge_z_extent(
     assert "outer_ridge_raise = 2.25;" in source
     assert "outer_ridge_z = 1.5;" in source
 
+    # The complete planar difference, including the Hole, is extruded
+    # through the full Ridge height.
+    assert (
+        """linear_extrude(
+        height = outer_ridge_raise,
+        convexity = 10
+    )
+        difference()"""
+        in source
+    )
+
+    # Ridge Z placement applies to the complete extruded cross-section.
     assert (
         """translate(
     [
         0,
-        11,
-        1.5
+        0,
+        outer_ridge_z
     ]
 )"""
         in source
     )
 
     assert (
-        """cylinder(
-        h = 2.25,
-        r = 3,
-        $fn = 128
-    );"""
+        """translate(
+                [
+                    0,
+                    11
+                ]
+            )"""
         in source
     )
+
+    assert (
+        """circle(
+                    r = 3,
+                    $fn = 128
+                );"""
+        in source
+    )
+
+    assert "cylinder(" not in source
 
 
 # =========================================================
@@ -373,8 +406,10 @@ def test_outer_ridge_and_artwork_use_same_resolved_hole_geometry(
     """
     Outer Ridge and Artwork proper consume the same resolved physical Hole.
 
-    Outer Ridge must not independently reposition Hole relative to its
-    inset Artwork-proper boundary.
+    Their SCAD representations may differ: Outer Ridge performs planar
+    subtraction before extrusion while Artwork proper currently performs
+    volumetric subtraction. Both nevertheless use the same physical X/Y
+    center and radius supplied by the resolved HoleGeometry.
     """
 
     envelope = tmp_path / "envelope.svg"
@@ -415,13 +450,20 @@ def test_outer_ridge_and_artwork_use_same_resolved_hole_geometry(
         hole_geometry=hole,
     )
 
-    hole_xy = """translate(
+    ridge_hole_xy = """translate(
+                [
+                    0,
+                    11
+                ]
+            )"""
+
+    artwork_hole_xy = """translate(
     [
         0,
         11,"""
 
-    assert hole_xy in ridge_source
-    assert hole_xy in artwork_source
+    assert ridge_hole_xy in ridge_source
+    assert artwork_hole_xy in artwork_source
 
     assert "r = 3," in ridge_source
     assert "r = 3," in artwork_source
@@ -519,14 +561,89 @@ def test_execute_passes_resolved_hole_geometry_to_participating_outer_ridge(
     assert captured_hole.radius == pytest.approx(3.0)
 
     assert captured_hole.center_x == pytest.approx(0.0)
-    assert captured_hole.center_y == pytest.approx(11.0)
+    assert captured_hole.center_y == pytest.approx(-11.0)
 
     assert captured_hole.nearest_edge_x == pytest.approx(0.0)
-    assert captured_hole.nearest_edge_y == pytest.approx(14.0)
+    assert captured_hole.nearest_edge_y == pytest.approx(-14.0)
 
     assert captured_hole.envelope_bounds == Bounds(
         min_x=-20.0,
         min_y=-15.0,
         max_x=20.0,
         max_y=15.0,
+    )
+
+
+@pytest.mark.slow
+def test_outer_ridge_with_intersecting_hole_renders_closed_stl(
+    tmp_path: Path,
+) -> None:
+    """
+    Outer Ridge remains renderable when Hole intersects Ridge material.
+
+    Hole edge distance may be smaller than Outer Ridge width. In that case
+    the subtractive Hole legitimately cuts through the Ridge rather than
+    being required to remain wholly inside or outside it.
+
+    The generated OpenSCAD must therefore produce a closed, non-empty STL
+    for this supported composition.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    _write_svg(
+        envelope,
+    )
+
+    hole = HoleGeometry(
+        envelope_bounds=Bounds(
+            min_x=-20.0,
+            min_y=-15.0,
+            max_x=20.0,
+            max_y=15.0,
+        ),
+        center_x=0.0,
+        center_y=-11.0,
+        radius=3.0,
+        nearest_edge_x=0.0,
+        nearest_edge_y=-14.0,
+    )
+
+    source = extrude._build_outer_ridge_scad(
+        envelope,
+        registered_extent=100,
+        envelope_bounds=(
+            20.0,
+            10.0,
+            60.0,
+            40.0,
+        ),
+        artwork_size=40.0,
+        outer_ridge_width=2.0,
+        outer_ridge_raise=1.0,
+        hole_geometry=hole,
+    )
+
+    output = tmp_path / "outer-ridge.stl"
+
+    extrude.render_stl_source(
+        source,
+        output,
+    )
+
+    assert output.is_file()
+    assert output.stat().st_size > 0
+
+    contents = output.read_text(
+        encoding="utf-8",
+    )
+
+    assert contents.startswith("solid ")
+    assert "facet normal" in contents
+    assert (
+        contents.rstrip()
+        .splitlines()[-1]
+        .startswith(
+            "endsolid",
+        )
     )

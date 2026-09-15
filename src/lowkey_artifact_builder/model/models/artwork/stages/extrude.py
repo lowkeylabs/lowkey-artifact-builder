@@ -1199,7 +1199,8 @@ def _build_base_scad(
 
     hole_geometry optionally supplies the resolved physical planar geometry
     of a participating Artwork Hole. When supplied, the Hole is subtracted
-    through the complete Z extent of the Base.
+    from the planar Base before extrusion so that it passes through the
+    complete Z extent of the resulting Base.
     """
 
     envelope = envelope.resolve()
@@ -1248,7 +1249,7 @@ def _build_base_scad(
         str(envelope),
     )
 
-    base_solid = """scale(
+    base_planar = """scale(
     [
         artwork_size / envelope_extent,
         artwork_size / envelope_extent,
@@ -1262,31 +1263,45 @@ def _build_base_scad(
             0
         ]
     )
-        linear_extrude(
-            height = base_raise,
-            convexity = 10
-        )
-            import(
-                envelope_svg,
-                center = false,
-                dpi = 25.4
-            );
+        import(
+            envelope_svg,
+            center = false,
+            dpi = 25.4
+        );
 """
 
     if hole_geometry is None:
-        physical_solid = base_solid
+        physical_planar = base_planar
 
     else:
-        hole_solid = _build_hole_scad(
-            hole_geometry,
-            bottom_z=0.0,
-            top_z=base_raise,
+        hole_center_x_scad = _scad_number(
+            hole_geometry.center_x,
         )
 
-        physical_solid = f"""difference()
+        hole_center_y_scad = _scad_number(
+            hole_geometry.center_y,
+        )
+
+        hole_radius_scad = _scad_number(
+            hole_geometry.radius,
+        )
+
+        hole_planar = f"""translate(
+    [
+        {hole_center_x_scad},
+        {hole_center_y_scad}
+    ]
+)
+    circle(
+        r = {hole_radius_scad},
+        $fn = 128
+    );
+"""
+
+        physical_planar = f"""difference()
 {{
-{base_solid}
-{hole_solid}
+{base_planar}
+{hole_planar}
 }}
 """
 
@@ -1315,7 +1330,11 @@ envelope_svg = {envelope_svg};
 // Base solid
 // ---------------------------------------------------------
 
-{physical_solid}"""
+linear_extrude(
+    height = base_raise,
+    convexity = 10
+)
+{physical_planar}"""
 
 
 def _build_hole_scad(
@@ -1579,7 +1598,8 @@ def _build_outer_ridge_scad(
 
     hole_geometry optionally supplies the resolved physical planar geometry
     of a participating Artwork Hole. When supplied, the Hole is subtracted
-    through the complete Z extent of the Outer Ridge.
+    from the planar Outer Ridge before extrusion so that it passes through
+    the complete Z extent of the resulting Ridge.
     """
 
     envelope = envelope.resolve()
@@ -1641,76 +1661,32 @@ def _build_outer_ridge_scad(
         str(envelope),
     )
 
-    outer_ridge_solid = """translate(
-    [
-        0,
-        0,
-        outer_ridge_z
-    ]
-)
-    linear_extrude(
-        height = outer_ridge_raise,
-        convexity = 10
-    )
-        difference()
-        {
-            scale(
-                [
-                    artwork_size / envelope_extent,
-                    artwork_size / envelope_extent,
-                    1
-                ]
-            )
-                translate(
-                    [
-                        -envelope_center_x,
-                        -envelope_openscad_center_y,
-                        0
-                    ]
-                )
-                    import(
-                        envelope_svg,
-                        center = false,
-                        dpi = 25.4
-                    );
+    hole_planar = ""
 
-            scale(
-                [
-                    artwork_size * outer_ridge_scale / envelope_extent,
-                    artwork_size * outer_ridge_scale / envelope_extent,
-                    1
-                ]
-            )
-                translate(
-                    [
-                        -envelope_center_x,
-                        -envelope_openscad_center_y,
-                        0
-                    ]
-                )
-                    import(
-                        envelope_svg,
-                        center = false,
-                        dpi = 25.4
-                    );
-        }
-"""
-
-    if hole_geometry is None:
-        physical_solid = outer_ridge_solid
-
-    else:
-        hole_solid = _build_hole_scad(
-            hole_geometry,
-            bottom_z=outer_ridge_z,
-            top_z=outer_ridge_z + outer_ridge_raise,
+    if hole_geometry is not None:
+        hole_center_x_scad = _scad_number(
+            hole_geometry.center_x,
         )
 
-        physical_solid = f"""difference()
-{{
-{outer_ridge_solid}
-{hole_solid}
-}}
+        hole_center_y_scad = _scad_number(
+            hole_geometry.center_y,
+        )
+
+        hole_radius_scad = _scad_number(
+            hole_geometry.radius,
+        )
+
+        hole_planar = f"""
+            translate(
+                [
+                    {hole_center_x_scad},
+                    {hole_center_y_scad}
+                ]
+            )
+                circle(
+                    r = {hole_radius_scad},
+                    $fn = 128
+                );
 """
 
     return f"""//
@@ -1741,7 +1717,61 @@ envelope_svg = {envelope_svg};
 // Outer Ridge solid
 // ---------------------------------------------------------
 
-{physical_solid}"""
+translate(
+    [
+        0,
+        0,
+        outer_ridge_z
+    ]
+)
+    linear_extrude(
+        height = outer_ridge_raise,
+        convexity = 10
+    )
+        difference()
+        {{
+            scale(
+                [
+                    artwork_size / envelope_extent,
+                    artwork_size / envelope_extent,
+                    1
+                ]
+            )
+                translate(
+                    [
+                        -envelope_center_x,
+                        -envelope_openscad_center_y,
+                        0
+                    ]
+                )
+                    import(
+                        envelope_svg,
+                        center = false,
+                        dpi = 25.4
+                    );
+
+            scale(
+                [
+                    artwork_size * outer_ridge_scale / envelope_extent,
+                    artwork_size * outer_ridge_scale / envelope_extent,
+                    1
+                ]
+            )
+                translate(
+                    [
+                        -envelope_center_x,
+                        -envelope_openscad_center_y,
+                        0
+                    ]
+                )
+                    import(
+                        envelope_svg,
+                        center = false,
+                        dpi = 25.4
+                    );
+{hole_planar}
+        }}
+"""
 
 
 # =========================================================

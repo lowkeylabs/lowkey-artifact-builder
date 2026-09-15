@@ -157,6 +157,10 @@ def _write_svg(
 def _hole_geometry() -> HoleGeometry:
     """
     Return one resolved physical Hole for Base composition tests.
+
+    This is deliberately supplied directly rather than resolved from a
+    cardinal position. Builder tests therefore prove that Base and Artwork
+    consume the supplied physical Hole geometry without repositioning it.
     """
 
     return HoleGeometry(
@@ -213,6 +217,7 @@ def test_base_without_hole_preserves_existing_base_geometry(
     assert "height = base_raise" in source
 
     assert "difference()" not in source
+    assert "circle(" not in source
     assert "cylinder(" not in source
 
 
@@ -227,8 +232,8 @@ def test_base_subtracts_participating_hole(
     """
     A participating Hole is subtracted from a participating Base.
 
-    The Base remains one printable component whose physical solid contains
-    the same circular opening used by Artwork proper.
+    Base Hole subtraction is planar: the circular Hole is removed from the
+    Base cross-section before that cross-section is extruded.
     """
 
     envelope = tmp_path / "envelope.svg"
@@ -257,21 +262,21 @@ def test_base_subtracts_participating_hole(
         """translate(
     [
         0,
-        11,
-        0
+        11
     ]
 )"""
         in source
     )
 
     assert (
-        """cylinder(
-        h = 1.5,
+        """circle(
         r = 3,
         $fn = 128
     );"""
         in source
     )
+
+    assert "cylinder(" not in source
 
 
 def test_base_hole_subtraction_spans_complete_base_z_extent(
@@ -280,8 +285,9 @@ def test_base_hole_subtraction_spans_complete_base_z_extent(
     """
     Hole passes completely through the Base.
 
-    Base occupies Z=0 through artwork_base_raise, so its subtractive Hole
-    cylinder must cover that complete physical Z interval.
+    The Hole is subtracted from the planar Base before linear extrusion.
+    Therefore the resulting opening necessarily spans the complete Base
+    extrusion height.
     """
 
     envelope = tmp_path / "envelope.svg"
@@ -307,24 +313,33 @@ def test_base_hole_subtraction_spans_complete_base_z_extent(
     assert "base_raise = 2.25;" in source
 
     assert (
+        """linear_extrude(
+    height = base_raise,
+    convexity = 10
+)
+difference()"""
+        in source
+    )
+
+    assert (
         """translate(
     [
         0,
-        11,
-        0
+        11
     ]
 )"""
         in source
     )
 
     assert (
-        """cylinder(
-        h = 2.25,
+        """circle(
         r = 3,
         $fn = 128
     );"""
         in source
     )
+
+    assert "cylinder(" not in source
 
 
 # =========================================================
@@ -338,8 +353,10 @@ def test_base_and_artwork_use_same_resolved_hole_geometry(
     """
     Base and Artwork proper consume the same resolved physical Hole.
 
-    Hole placement is resolved once in the common dimensionalized Artwork
-    coordinate system rather than being independently repositioned for Base.
+    Their SCAD representations may differ: Base performs planar subtraction
+    before extrusion while Artwork proper currently performs volumetric
+    subtraction. Both must nevertheless use the same physical XY center and
+    radius supplied by the resolved HoleGeometry.
     """
 
     envelope = tmp_path / "envelope.svg"
@@ -384,13 +401,20 @@ def test_base_and_artwork_use_same_resolved_hole_geometry(
         hole_geometry=hole,
     )
 
-    hole_xy = """translate(
+    base_hole_xy = """translate(
+    [
+        0,
+        11
+    ]
+)"""
+
+    artwork_hole_xy = """translate(
     [
         0,
         11,"""
 
-    assert hole_xy in base_source
-    assert hole_xy in artwork_source
+    assert base_hole_xy in base_source
+    assert artwork_hole_xy in artwork_source
 
     assert "r = 3," in base_source
     assert "r = 3," in artwork_source
@@ -489,7 +513,10 @@ def test_execute_passes_resolved_hole_geometry_to_participating_base(
     )
 
     assert captured_hole.center_x == pytest.approx(0.0)
-    assert captured_hole.center_y == pytest.approx(11.0)
+    assert captured_hole.center_y == pytest.approx(-11.0)
+
+    assert captured_hole.nearest_edge_x == pytest.approx(0.0)
+    assert captured_hole.nearest_edge_y == pytest.approx(-14.0)
 
 
 @pytest.mark.slow
@@ -584,14 +611,71 @@ def test_execute_passes_resolved_hole_geometry_to_participating_outer_ridge(
     assert captured_hole.radius == pytest.approx(3.0)
 
     assert captured_hole.center_x == pytest.approx(0.0)
-    assert captured_hole.center_y == pytest.approx(11.0)
+    assert captured_hole.center_y == pytest.approx(-11.0)
 
     assert captured_hole.nearest_edge_x == pytest.approx(0.0)
-    assert captured_hole.nearest_edge_y == pytest.approx(14.0)
+    assert captured_hole.nearest_edge_y == pytest.approx(-14.0)
 
     assert captured_hole.envelope_bounds == Bounds(
         min_x=-20.0,
         min_y=-15.0,
         max_x=20.0,
         max_y=15.0,
+    )
+
+
+@pytest.mark.slow
+def test_base_with_intersecting_hole_renders_closed_stl(
+    tmp_path: Path,
+) -> None:
+    """
+    A participating Hole through Base renders as a valid STL.
+
+    This exercises the real OpenSCAD boundary rather than merely inspecting
+    generated SCAD source. The Hole intersects the Base throughout its complete
+    Z extent and must leave a renderable physical Base.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    _write_svg(
+        envelope,
+    )
+
+    source = extrude._build_base_scad(
+        envelope,
+        registered_extent=100,
+        envelope_bounds=(
+            20.0,
+            10.0,
+            60.0,
+            40.0,
+        ),
+        artwork_size=40.0,
+        base_raise=2.0,
+        hole_geometry=_hole_geometry(),
+    )
+
+    output = tmp_path / "base-with-hole.stl"
+
+    extrude.render_stl_source(
+        source,
+        output,
+    )
+
+    assert output.is_file()
+    assert output.stat().st_size > 0
+
+    contents = output.read_text(
+        encoding="utf-8",
+    )
+
+    assert contents.startswith("solid ")
+    assert "facet normal" in contents
+    assert (
+        contents.rstrip()
+        .splitlines()[-1]
+        .startswith(
+            "endsolid",
+        )
     )
