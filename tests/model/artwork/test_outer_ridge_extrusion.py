@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 
 from lowkey_artifact_builder.config import Resolver, get_resolver
+from lowkey_artifact_builder.model.models.artwork.hole import HoleGeometry
 from lowkey_artifact_builder.model.models.artwork.stages import extrude
 
 
@@ -213,6 +214,7 @@ def test_execute_applies_outer_ridge_scale_to_every_artwork_layer(
         artwork_raise: float,
         artwork_z: float = 0.0,
         artwork_scale: float = 1.0,
+        hole_geometry: HoleGeometry | None = None,
     ) -> str:
         scales.append(
             artwork_scale,
@@ -226,6 +228,7 @@ def test_execute_applies_outer_ridge_scale_to_every_artwork_layer(
             artwork_raise=artwork_raise,
             artwork_z=artwork_z,
             artwork_scale=artwork_scale,
+            hole_geometry=hole_geometry,
         )
 
     monkeypatch.setattr(
@@ -300,6 +303,7 @@ def test_execute_uses_neutral_artwork_scale_when_outer_ridge_is_disabled(
         artwork_raise: float,
         artwork_z: float = 0.0,
         artwork_scale: float = 1.0,
+        hole_geometry: HoleGeometry | None = None,
     ) -> str:
         scales.append(
             artwork_scale,
@@ -313,6 +317,7 @@ def test_execute_uses_neutral_artwork_scale_when_outer_ridge_is_disabled(
             artwork_raise=artwork_raise,
             artwork_z=artwork_z,
             artwork_scale=artwork_scale,
+            hole_geometry=hole_geometry,
         )
 
     monkeypatch.setattr(
