@@ -365,6 +365,7 @@ def execute(
                 envelope_bounds=envelope_bounds,
                 artwork_size=artwork_size,
                 base_raise=artwork_base_raise,
+                hole_geometry=hole_geometry,
             )
 
             render_stl_source(
@@ -1180,6 +1181,7 @@ def _build_base_scad(
     ],
     artwork_size: float,
     base_raise: float,
+    hole_geometry: HoleGeometry | None = None,
 ) -> str:
     """
     Return OpenSCAD source for the standalone Artwork Base.
@@ -1193,6 +1195,10 @@ def _build_base_scad(
 
     Base raise controls only physical extrusion height and does not affect
     planar dimensionalization.
+
+    hole_geometry optionally supplies the resolved physical planar geometry
+    of a participating Artwork Hole. When supplied, the Hole is subtracted
+    through the complete Z extent of the Base.
     """
 
     envelope = envelope.resolve()
@@ -1241,6 +1247,48 @@ def _build_base_scad(
         str(envelope),
     )
 
+    base_solid = """scale(
+    [
+        artwork_size / envelope_extent,
+        artwork_size / envelope_extent,
+        1
+    ]
+)
+    translate(
+        [
+            -envelope_center_x,
+            -envelope_openscad_center_y,
+            0
+        ]
+    )
+        linear_extrude(
+            height = base_raise,
+            convexity = 10
+        )
+            import(
+                envelope_svg,
+                center = false,
+                dpi = 25.4
+            );
+"""
+
+    if hole_geometry is None:
+        physical_solid = base_solid
+
+    else:
+        hole_solid = _build_hole_scad(
+            hole_geometry,
+            bottom_z=0.0,
+            top_z=base_raise,
+        )
+
+        physical_solid = f"""difference()
+{{
+{base_solid}
+{hole_solid}
+}}
+"""
+
     return f"""//
 //
 // Generated Artwork Base.
@@ -1266,30 +1314,7 @@ envelope_svg = {envelope_svg};
 // Base solid
 // ---------------------------------------------------------
 
-scale(
-    [
-        artwork_size / envelope_extent,
-        artwork_size / envelope_extent,
-        1
-    ]
-)
-    translate(
-        [
-            -envelope_center_x,
-            -envelope_openscad_center_y,
-            0
-        ]
-    )
-        linear_extrude(
-            height = base_raise,
-            convexity = 10
-        )
-            import(
-                envelope_svg,
-                center = false,
-                dpi = 25.4
-            );
-"""
+{physical_solid}"""
 
 
 def _build_hole_scad(
