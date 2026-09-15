@@ -281,10 +281,11 @@ def test_execute_applies_same_hole_geometry_to_every_artwork_layer(
     #     X: -20 .. 20
     #     Y: -15 .. 15
     #
+    # Artwork cardinal orientation defines position 0 as top/min_y.
     # A top Hole with radius 3 mm and edge distance 1 mm therefore
-    # has center Y = 15 - 3 - 1 = 11 mm.
+    # has center Y = -15 + 3 + 1 = -11 mm.
     assert first.center_x == pytest.approx(0.0)
-    assert first.center_y == pytest.approx(11.0)
+    assert first.center_y == pytest.approx(-11.0)
 
 
 @pytest.mark.slow
