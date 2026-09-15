@@ -16,8 +16,11 @@ from __future__ import annotations
 import pytest
 
 from lowkey_artifact_builder.model.models.artwork.hole import (
-    Bounds,
     create_hole_geometry,
+)
+from lowkey_artifact_builder.model.models.artwork.loop import (
+    Bounds,
+    create_loop_geometry,
 )
 
 # =========================================================
@@ -57,9 +60,9 @@ def test_hole_radius_is_half_configured_diameter() -> None:
         "expected_y",
     ),
     (
-        (0, 0.0, 11.0),
+        (0, 0.0, -11.0),
         (90, 16.0, 0.0),
-        (180, 0.0, -11.0),
+        (180, 0.0, 11.0),
         (-90, -16.0, 0.0),
     ),
 )
@@ -99,9 +102,9 @@ def test_hole_center_is_placed_inward_from_cardinal_boundary(
         "expected_y",
     ),
     (
-        (0, 0.0, 14.0),
+        (0, 0.0, -14.0),
         (90, 19.0, 0.0),
-        (180, 0.0, -14.0),
+        (180, 0.0, 14.0),
         (-90, -19.0, 0.0),
     ),
 )
@@ -158,10 +161,10 @@ def test_hole_top_placement_uses_actual_vertical_boundary() -> None:
     )
 
     assert geometry.center_x == pytest.approx(0.0)
-    assert geometry.center_y == pytest.approx(7.0)
+    assert geometry.center_y == pytest.approx(-7.0)
 
     assert geometry.nearest_edge_x == pytest.approx(0.0)
-    assert geometry.nearest_edge_y == pytest.approx(9.0)
+    assert geometry.nearest_edge_y == pytest.approx(-9.0)
 
 
 def test_hole_right_placement_uses_actual_horizontal_boundary() -> None:
@@ -201,9 +204,9 @@ def test_hole_right_placement_uses_actual_horizontal_boundary() -> None:
         "expected_y",
     ),
     (
-        (0, 40.0, 36.0),
+        (0, 40.0, 14.0),
         (90, 56.0, 25.0),
-        (180, 40.0, 14.0),
+        (180, 40.0, 36.0),
         (-90, 24.0, 25.0),
     ),
 )
@@ -242,9 +245,9 @@ def test_hole_placement_uses_actual_envelope_center(
         "expected_y",
     ),
     (
-        (0, 40.0, 39.0),
+        (0, 40.0, 11.0),
         (90, 59.0, 25.0),
-        (180, 40.0, 11.0),
+        (180, 40.0, 39.0),
         (-90, 21.0, 25.0),
     ),
 )
@@ -329,3 +332,108 @@ def test_hole_geometry_does_not_expand_outer_extent() -> None:
     assert geometry.center_x + geometry.radius <= bounds.max_x
     assert geometry.center_y - geometry.radius >= bounds.min_y
     assert geometry.center_y + geometry.radius <= bounds.max_y
+
+
+# =========================================================
+# Loop cardinal orientation
+# =========================================================
+
+
+def test_hole_position_zero_uses_same_top_orientation_as_loop() -> None:
+    """
+    Hole position 0 uses the same top orientation as Artwork Loop.
+
+    Artwork planar geometry defines top as the minimum-Y boundary.
+    """
+
+    bounds = Bounds(
+        min_x=-20.0,
+        min_y=-15.0,
+        max_x=20.0,
+        max_y=15.0,
+    )
+
+    hole = create_hole_geometry(
+        envelope_bounds=bounds,
+        diameter=6.0,
+        edge_distance=1.0,
+        position=0,
+    )
+
+    loop = create_loop_geometry(
+        envelope_bounds=bounds,
+        inner_diameter=6.0,
+        width=1.0,
+        position=0,
+    )
+
+    assert loop.inner_attachment_point == (
+        0.0,
+        -15.0,
+    )
+
+    assert hole.center_x == pytest.approx(
+        loop.center_x,
+    )
+
+    assert hole.center_y == pytest.approx(
+        -11.0,
+    )
+
+    assert hole.nearest_edge_x == pytest.approx(
+        0.0,
+    )
+
+    assert hole.nearest_edge_y == pytest.approx(
+        -14.0,
+    )
+
+
+def test_hole_position_180_uses_same_bottom_orientation_as_loop() -> None:
+    """
+    Hole position 180 uses the same bottom orientation as Artwork Loop.
+
+    Artwork planar geometry defines bottom as the maximum-Y boundary.
+    """
+
+    bounds = Bounds(
+        min_x=-20.0,
+        min_y=-15.0,
+        max_x=20.0,
+        max_y=15.0,
+    )
+
+    hole = create_hole_geometry(
+        envelope_bounds=bounds,
+        diameter=6.0,
+        edge_distance=1.0,
+        position=180,
+    )
+
+    loop = create_loop_geometry(
+        envelope_bounds=bounds,
+        inner_diameter=6.0,
+        width=1.0,
+        position=180,
+    )
+
+    assert loop.inner_attachment_point == (
+        0.0,
+        15.0,
+    )
+
+    assert hole.center_x == pytest.approx(
+        loop.center_x,
+    )
+
+    assert hole.center_y == pytest.approx(
+        11.0,
+    )
+
+    assert hole.nearest_edge_x == pytest.approx(
+        0.0,
+    )
+
+    assert hole.nearest_edge_y == pytest.approx(
+        14.0,
+    )
