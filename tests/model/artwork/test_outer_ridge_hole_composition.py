@@ -1,14 +1,13 @@
 """
-Tests for composition of Artwork Base and Hole Features.
+Tests for composition of Artwork Outer Ridge and Hole Features.
 
-Base and Hole are independent optional standalone Artwork Features.
+Outer Ridge and Hole are independent optional standalone Artwork Features.
 
-When both participate, the same resolved physical Hole used by Artwork
-proper passes completely through the participating Base. Hole remains
-subtractive geometry and does not become an independently printable
-component.
+When both participate, Hole placement remains registered to the full
+size-controlled Artwork boundary and subtracts any Outer Ridge material
+intersecting its physical X/Y region.
 """
-# File: tests/model/artwork/test_base_hole_composition.py
+# File: tests/model/artwork/test_outer_ridge_hole_composition.py
 # Copyright 2026 lowkeylabs LLC
 # SPDX-License-Identifier: Apache-2.0
 
@@ -32,7 +31,50 @@ from lowkey_artifact_builder.model.models.artwork.stages import extrude
 # =========================================================
 
 
+def _write_svg(
+    path: Path,
+) -> None:
+    path.write_text(
+        """
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="100"
+     height="100"
+     viewBox="0 0 100 100">
+  <rect x="20" y="10" width="40" height="30"/>
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+
+def _hole_geometry() -> HoleGeometry:
+    """
+    Return a Hole resolved against the full 40 x 30 mm outer boundary.
+
+    A 6 mm Hole with a 1 mm edge distance at the top has its center
+    4 mm inward from the outer boundary.
+    """
+
+    return HoleGeometry(
+        envelope_bounds=Bounds(
+            min_x=-20.0,
+            min_y=-15.0,
+            max_x=20.0,
+            max_y=15.0,
+        ),
+        center_x=0.0,
+        center_y=11.0,
+        radius=3.0,
+        nearest_edge_x=0.0,
+        nearest_edge_y=14.0,
+    )
+
+
 class _StubContext:
+    """
+    Minimal StageContext substitute for execute-level extrusion tests.
+    """
+
     def __init__(
         self,
         *,
@@ -63,8 +105,12 @@ def _resolver(
     tmp_path: Path,
     **overrides: Any,
 ) -> Resolver:
+    """
+    Return an Artwork resolver with test-owned parameter overrides.
+    """
+
     resolver = get_resolver(
-        "base-hole-composition",
+        "outer-ridge-hole-composition",
         model="artwork",
         project_root=tmp_path,
     )
@@ -78,16 +124,22 @@ def _resolver(
 def _write_vector_manifest(
     path: Path,
 ) -> None:
+    """
+    Write the minimal vector-stage products required by extrude.execute().
+    """
+
     path.parent.mkdir(
         parents=True,
         exist_ok=True,
     )
 
     envelope = path.parent / "envelope.svg"
-    color = path.parent / "color-1.svg"
+    first = path.parent / "color-1.svg"
+    second = path.parent / "color-2.svg"
 
     _write_svg(envelope)
-    _write_svg(color)
+    _write_svg(first)
+    _write_svg(second)
 
     path.write_text(
         json.dumps(
@@ -97,7 +149,7 @@ def _write_vector_manifest(
                 "products": [
                     {
                         "index": 1,
-                        "path": color.name,
+                        "path": first.name,
                         "artifact_color": {
                             "index": 1,
                             "rgb": {
@@ -116,6 +168,27 @@ def _write_vector_manifest(
                         },
                         "distance": 0.0,
                     },
+                    {
+                        "index": 2,
+                        "path": second.name,
+                        "artifact_color": {
+                            "index": 2,
+                            "rgb": {
+                                "red": 0,
+                                "green": 0,
+                                "blue": 255,
+                            },
+                        },
+                        "printer_color": {
+                            "name": "test-blue",
+                            "rgb": {
+                                "red": 0,
+                                "green": 0,
+                                "blue": 255,
+                            },
+                        },
+                        "distance": 0.0,
+                    },
                 ],
             }
         ),
@@ -127,6 +200,10 @@ def _fake_render_stl_source(
     source: str,
     output: Path,
 ) -> None:
+    """
+    Stand in for OpenSCAD while preserving execute() output behavior.
+    """
+
     output.parent.mkdir(
         parents=True,
         exist_ok=True,
@@ -138,64 +215,22 @@ def _fake_render_stl_source(
     )
 
 
-def _write_svg(
-    path: Path,
-) -> None:
-    path.write_text(
-        """
-<svg xmlns="http://www.w3.org/2000/svg"
-     width="100"
-     height="100"
-     viewBox="0 0 100 100">
-  <rect x="20" y="10" width="40" height="30"/>
-</svg>
-""".strip(),
-        encoding="utf-8",
-    )
-
-
-def _hole_geometry() -> HoleGeometry:
-    """
-    Return one resolved physical Hole for Base composition tests.
-    """
-
-    return HoleGeometry(
-        envelope_bounds=Bounds(
-            min_x=-20.0,
-            min_y=-15.0,
-            max_x=20.0,
-            max_y=15.0,
-        ),
-        center_x=0.0,
-        center_y=11.0,
-        radius=3.0,
-        nearest_edge_x=0.0,
-        nearest_edge_y=14.0,
-    )
-
-
 # =========================================================
 # Disabled Hole
 # =========================================================
 
 
-def test_base_without_hole_preserves_existing_base_geometry(
+def test_outer_ridge_without_hole_preserves_existing_geometry(
     tmp_path: Path,
 ) -> None:
     """
-    Base geometry remains unchanged when Hole does not participate.
-
-    The neutral Hole state must therefore preserve the existing Base SCAD
-    rather than introducing subtractive geometry.
+    Outer Ridge geometry remains unchanged when Hole does not participate.
     """
 
     envelope = tmp_path / "envelope.svg"
+    _write_svg(envelope)
 
-    _write_svg(
-        envelope,
-    )
-
-    source = extrude._build_base_scad(
+    source = extrude._build_outer_ridge_scad(
         envelope,
         registered_extent=100,
         envelope_bounds=(
@@ -205,14 +240,20 @@ def test_base_without_hole_preserves_existing_base_geometry(
             40.0,
         ),
         artwork_size=40.0,
-        base_raise=1.5,
+        outer_ridge_width=2.0,
+        outer_ridge_raise=1.5,
         hole_geometry=None,
     )
 
-    assert "base_raise = 1.5;" in source
-    assert "height = base_raise" in source
+    assert "outer_ridge_raise = 1.5;" in source
+    assert "outer_ridge_scale = 0.9;" in source
 
-    assert "difference()" not in source
+    # Existing ridge construction remains present.
+    assert "artwork_size / envelope_extent" in source
+    assert "artwork_size * outer_ridge_scale / envelope_extent" in source
+
+    # Only the existing planar ring difference is present.
+    assert source.count("difference()") == 1
     assert "cylinder(" not in source
 
 
@@ -221,23 +262,17 @@ def test_base_without_hole_preserves_existing_base_geometry(
 # =========================================================
 
 
-def test_base_subtracts_participating_hole(
+def test_outer_ridge_subtracts_participating_hole(
     tmp_path: Path,
 ) -> None:
     """
-    A participating Hole is subtracted from a participating Base.
-
-    The Base remains one printable component whose physical solid contains
-    the same circular opening used by Artwork proper.
+    A participating Hole subtracts intersecting Outer Ridge material.
     """
 
     envelope = tmp_path / "envelope.svg"
+    _write_svg(envelope)
 
-    _write_svg(
-        envelope,
-    )
-
-    source = extrude._build_base_scad(
+    source = extrude._build_outer_ridge_scad(
         envelope,
         registered_extent=100,
         envelope_bounds=(
@@ -247,11 +282,14 @@ def test_base_subtracts_participating_hole(
             40.0,
         ),
         artwork_size=40.0,
-        base_raise=1.5,
+        outer_ridge_width=2.0,
+        outer_ridge_raise=1.5,
         hole_geometry=_hole_geometry(),
     )
 
-    assert "difference()" in source
+    # One difference constructs the ridge and another performs the
+    # physical Hole subtraction.
+    assert source.count("difference()") == 2
 
     assert (
         """translate(
@@ -274,23 +312,17 @@ def test_base_subtracts_participating_hole(
     )
 
 
-def test_base_hole_subtraction_spans_complete_base_z_extent(
+def test_outer_ridge_hole_subtraction_spans_complete_ridge_z_extent(
     tmp_path: Path,
 ) -> None:
     """
-    Hole passes completely through the Base.
-
-    Base occupies Z=0 through artwork_base_raise, so its subtractive Hole
-    cylinder must cover that complete physical Z interval.
+    Hole passes completely through the Outer Ridge physical Z extent.
     """
 
     envelope = tmp_path / "envelope.svg"
+    _write_svg(envelope)
 
-    _write_svg(
-        envelope,
-    )
-
-    source = extrude._build_base_scad(
+    source = extrude._build_outer_ridge_scad(
         envelope,
         registered_extent=100,
         envelope_bounds=(
@@ -300,18 +332,21 @@ def test_base_hole_subtraction_spans_complete_base_z_extent(
             40.0,
         ),
         artwork_size=40.0,
-        base_raise=2.25,
+        outer_ridge_width=2.0,
+        outer_ridge_raise=2.25,
+        outer_ridge_z=1.5,
         hole_geometry=_hole_geometry(),
     )
 
-    assert "base_raise = 2.25;" in source
+    assert "outer_ridge_raise = 2.25;" in source
+    assert "outer_ridge_z = 1.5;" in source
 
     assert (
         """translate(
     [
         0,
         11,
-        0
+        1.5
     ]
 )"""
         in source
@@ -332,30 +367,25 @@ def test_base_hole_subtraction_spans_complete_base_z_extent(
 # =========================================================
 
 
-def test_base_and_artwork_use_same_resolved_hole_geometry(
+def test_outer_ridge_and_artwork_use_same_resolved_hole_geometry(
     tmp_path: Path,
 ) -> None:
     """
-    Base and Artwork proper consume the same resolved physical Hole.
+    Outer Ridge and Artwork proper consume the same resolved physical Hole.
 
-    Hole placement is resolved once in the common dimensionalized Artwork
-    coordinate system rather than being independently repositioned for Base.
+    Outer Ridge must not independently reposition Hole relative to its
+    inset Artwork-proper boundary.
     """
 
     envelope = tmp_path / "envelope.svg"
     artwork = tmp_path / "color-1.svg"
 
-    _write_svg(
-        envelope,
-    )
-
-    _write_svg(
-        artwork,
-    )
+    _write_svg(envelope)
+    _write_svg(artwork)
 
     hole = _hole_geometry()
 
-    base_source = extrude._build_base_scad(
+    ridge_source = extrude._build_outer_ridge_scad(
         envelope,
         registered_extent=100,
         envelope_bounds=(
@@ -365,7 +395,8 @@ def test_base_and_artwork_use_same_resolved_hole_geometry(
             40.0,
         ),
         artwork_size=40.0,
-        base_raise=1.5,
+        outer_ridge_width=2.0,
+        outer_ridge_raise=1.0,
         hole_geometry=hole,
     )
 
@@ -380,7 +411,7 @@ def test_base_and_artwork_use_same_resolved_hole_geometry(
         ),
         artwork_size=40.0,
         artwork_raise=1.0,
-        artwork_z=1.5,
+        artwork_scale=0.9,
         hole_geometry=hole,
     )
 
@@ -389,107 +420,11 @@ def test_base_and_artwork_use_same_resolved_hole_geometry(
         0,
         11,"""
 
-    assert hole_xy in base_source
+    assert hole_xy in ridge_source
     assert hole_xy in artwork_source
 
-    assert "r = 3," in base_source
+    assert "r = 3," in ridge_source
     assert "r = 3," in artwork_source
-
-
-@pytest.mark.slow
-def test_execute_passes_resolved_hole_geometry_to_participating_base(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    execute composes participating Base and Hole Features.
-
-    Hole placement is resolved once in the standalone physical Artwork
-    coordinate system and that resolved geometry is supplied to Base rather
-    than being independently recomputed by Base generation.
-    """
-
-    vector_manifest = tmp_path / "vector" / "products.json"
-    extrude_manifest = tmp_path / "extrude" / "products.json"
-
-    _write_vector_manifest(
-        vector_manifest,
-    )
-
-    context = _StubContext(
-        vector_manifest=vector_manifest,
-        extrude_manifest=extrude_manifest,
-        resolver=_resolver(
-            tmp_path,
-            artwork_size=40.0,
-            artwork_raise=1.0,
-            artwork_base_raise=1.5,
-            artwork_hole_diameter=6.0,
-            artwork_hole_edge_distance=1.0,
-            artwork_hole_position=0,
-        ),
-    )
-
-    captured_hole: HoleGeometry | None = None
-
-    original_build_base_scad = extrude._build_base_scad
-
-    def capture_build_base_scad(
-        envelope: Path,
-        *,
-        registered_extent: int,
-        envelope_bounds: tuple[
-            float,
-            float,
-            float,
-            float,
-        ],
-        artwork_size: float,
-        base_raise: float,
-        hole_geometry: HoleGeometry | None = None,
-    ) -> str:
-        nonlocal captured_hole
-
-        captured_hole = hole_geometry
-
-        return original_build_base_scad(
-            envelope,
-            registered_extent=registered_extent,
-            envelope_bounds=envelope_bounds,
-            artwork_size=artwork_size,
-            base_raise=base_raise,
-            hole_geometry=hole_geometry,
-        )
-
-    monkeypatch.setattr(
-        extrude,
-        "_build_base_scad",
-        capture_build_base_scad,
-    )
-
-    monkeypatch.setattr(
-        extrude,
-        "render_stl_source",
-        _fake_render_stl_source,
-    )
-
-    extrude.execute(
-        context,  # type: ignore[arg-type]
-    )
-
-    assert captured_hole is not None
-
-    assert captured_hole.radius == pytest.approx(3.0)
-
-    assert captured_hole.envelope_bounds == Bounds(
-        min_x=-20.0,
-        min_y=-15.0,
-        max_x=20.0,
-        max_y=15.0,
-    )
-
-    assert captured_hole.center_x == pytest.approx(0.0)
-    assert captured_hole.center_y == pytest.approx(11.0)
 
 
 @pytest.mark.slow
