@@ -1324,6 +1324,251 @@ remains responsible for any perimeter, ridge, border, or other supporting
 physical geometry belonging to its own realization.
 
 
+### Hole
+
+The Hole Feature provides an optional circular through-hole in standalone
+Artwork.
+
+The Hole is subtractive geometry. It removes material from the standalone
+Artwork object rather than producing an independently printable physical
+component.
+
+#### Parameters
+
+The Hole Feature defines:
+
+```text
+artwork_hole_diameter
+artwork_hole_position
+artwork_hole_edge_distance
+```
+
+`artwork_hole_diameter` controls Hole participation and the physical diameter
+of the circular opening.
+
+`artwork_hole_position` selects the cardinal position of the Hole.
+
+`artwork_hole_edge_distance` defines the physical material distance between the
+nearest edge of the Hole and the outer boundary of the finished
+size-controlled Artwork object along the selected cardinal axis.
+
+#### Participation
+
+`artwork_hole_diameter` alone determines whether the Hole participates.
+
+An effective value of:
+
+```text
+artwork_hole_diameter = 0
+```
+
+means that no Hole participates.
+
+A positive `artwork_hole_diameter` causes the Hole to participate.
+
+A negative `artwork_hole_diameter` is invalid.
+
+Hole participation does not require Base, Outer Ridge, or Loop participation.
+
+The Hole is a standalone Artwork Feature. It is not part of registered Artwork
+supplied to another model.
+
+#### Position
+
+`artwork_hole_position` selects one of four cardinal positions measured from
+the top of the Artwork:
+
+```text
+  0     top
+ 90     right
+180     bottom
+-90     left
+```
+
+The Artwork origin is the center used by standalone Artwork dimensionalization.
+
+Each position defines a cardinal axis through `(0, 0)`:
+
+```text
+             0
+             +Y
+              |
+              |
+ -90  -X ------+------ +X  90
+              |
+              |
+             -Y
+            180
+```
+
+The Hole center lies on the selected cardinal axis.
+
+#### Geometry
+
+The Hole is circular in the X/Y plane.
+
+Let:
+
+```text
+r_hole = artwork_hole_diameter / 2
+d_edge = artwork_hole_edge_distance
+```
+
+For the selected `artwork_hole_position`, Artwork determines the point at which
+the selected outward cardinal ray from `(0, 0)` intersects the outer boundary
+of the finished size-controlled Artwork object.
+
+The Hole center is placed:
+
+```text
+r_hole + d_edge
+```
+
+inward from that boundary point along the same cardinal axis.
+
+The nearest edge of the Hole is therefore exactly:
+
+```text
+artwork_hole_edge_distance
+```
+
+from the applicable outer boundary along the selected cardinal axis.
+
+The Hole is contained within the size-controlled Artwork extent. Hole
+participation does not increase that extent and does not cause the Artwork
+proper to be scaled larger or smaller.
+
+#### Minimum Remaining Material
+
+A participating Hole must leave at least:
+
+```text
+0.4 mm
+```
+
+of material between the nearest Hole edge and the applicable outer boundary.
+
+Therefore, whenever the Hole participates:
+
+```text
+artwork_hole_edge_distance >= 0.4 mm
+```
+
+must hold.
+
+Values less than `0.4 mm` are invalid for a participating Hole.
+
+Hole-specific placement requirements do not apply when
+`artwork_hole_diameter` is zero.
+
+#### Subtractive Geometry
+
+The Hole removes material throughout the complete Z extent of every
+participating standalone Artwork physical component occupying the Hole's X/Y
+region.
+
+The same circular X/Y opening is therefore subtracted from all intersecting
+physical geometry.
+
+The resulting opening passes completely through the standalone manufactured
+Artwork object.
+
+The Hole does not define its own Z height or raise. Its Z extent is determined
+by the physical components from which material is removed.
+
+#### Color
+
+The Hole has no physical semantic color.
+
+Because the Hole represents removed material rather than manufactured
+material, it does not participate in Artwork color assignment, attachment-color
+selection, or Feature color derivation.
+
+The Hole does not produce an independently printable color component.
+
+#### Interaction With Base
+
+Hole and Base are independent optional Features.
+
+When both participate, the Hole removes material from the Base wherever the
+Hole's X/Y region intersects the Base.
+
+The same Hole remains registered through the Base and Artwork proper so that
+Base participation does not interrupt the through-hole.
+
+Base participation and the resulting Z translation of the Artwork proper do
+not change the Hole's X/Y center or diameter.
+
+Hole participation does not affect Base color.
+
+#### Interaction With Outer Ridge
+
+Hole and Outer Ridge are independent optional Features.
+
+When no Outer Ridge participates, the boundary used for Hole placement is the
+outer boundary of the dimensionalized Artwork envelope.
+
+When the Outer Ridge participates, the boundary used for Hole placement is the
+outer boundary of the Outer Ridge.
+
+Because the Outer Ridge remains within the size-controlled Artwork extent, Hole
+placement continues to be measured from the outer boundary of that same
+size-controlled object.
+
+The nearest Hole edge remains exactly:
+
+```text
+artwork_hole_edge_distance
+```
+
+from that outer boundary.
+
+When the Hole's X/Y region intersects Outer Ridge material, the Hole removes
+that material throughout the complete Z extent of the intersecting Outer Ridge.
+
+Outer Ridge participation does not otherwise change the Hole's diameter or
+cardinal-axis placement.
+
+Hole participation does not affect Outer Ridge color.
+
+#### Interaction With Loop
+
+Hole and Loop are independent optional Features.
+
+`artwork_hole_position` and `loop_position` are independent configuration
+parameters.
+
+Loop participation does not change the size-controlled outer boundary used for
+Hole placement.
+
+In particular, Loop attachment geometry outside the size-controlled Artwork
+extent does not become the boundary from which `artwork_hole_edge_distance` is
+measured.
+
+Hole participation does not change Loop geometry, attachment placement, or
+color derivation.
+
+The Hole does not participate in Loop attachment-color selection.
+
+#### Product Participation
+
+The Hole participates only in standalone physical dimensionalization and
+packaging when enabled.
+
+A participating Hole is represented by the removal of material from
+intersecting standalone Artwork physical components. It does not produce an
+independent physical product or independently printable component.
+
+The Hole is not added to prepared, raster, or vector registered Artwork.
+
+A consumer of registered Artwork does not receive Hole geometry and does not
+require standalone Hole dimensionalization.
+
+When registered Artwork is consumed by another model, that consuming model
+remains responsible for any hole, opening, cutout, or other subtractive
+physical geometry belonging to its own realization.
+
+
 ### Loop
 
 The Loop Feature provides an optional annular attachment for standalone
