@@ -28,6 +28,8 @@ from lowkey_artifact_builder.engine import create_build_plan
 from lowkey_artifact_builder.model import ProductRef
 from lowkey_artifact_builder.model.models.artwork.stages import extrude
 
+pytestmark = pytest.mark.slow
+
 
 class StubContext:
     """Minimal stage context used by Artwork Feature-composition tests."""

@@ -29,6 +29,8 @@ from lowkey_artifact_builder.model.models.artwork.loop_color import (
 )
 from lowkey_artifact_builder.model.models.artwork.stages import extrude
 
+pytestmark = pytest.mark.slow
+
 # =========================================================
 # Test support
 # =========================================================
@@ -1380,6 +1382,7 @@ def test_participating_loop_manifest_preserves_attachment_printer_rgb(
 # =========================================================
 
 
+@pytest.mark.slow
 def test_disabled_base_does_not_produce_stage_local_stl_component(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1477,6 +1480,7 @@ def test_disabled_base_does_not_produce_stage_local_stl_component(
     assert all(product["path"] != "base.stl" for product in data["products"])
 
 
+@pytest.mark.slow
 def test_participating_base_produces_stage_local_stl_component(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1585,6 +1589,7 @@ def test_participating_base_produces_stage_local_stl_component(
     assert base.is_file()
 
 
+@pytest.mark.slow
 def test_participating_base_is_built_from_registered_envelope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1697,6 +1702,7 @@ def test_participating_base_is_built_from_registered_envelope(
     assert str(svg.resolve()) not in base_source
 
 
+@pytest.mark.slow
 def test_participating_base_translates_all_artwork_layers_upward(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1830,6 +1836,7 @@ def test_participating_base_translates_all_artwork_layers_upward(
     assert "artwork_z = 1.5;" in second_source
 
 
+@pytest.mark.slow
 def test_participating_base_is_declared_as_semantic_color_product(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1926,6 +1933,7 @@ def test_participating_base_is_declared_as_semantic_color_product(
     }
 
 
+@pytest.mark.slow
 def test_explicit_base_color_uses_its_own_physical_rgb(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2026,6 +2034,7 @@ def test_explicit_base_color_uses_its_own_physical_rgb(
     }
 
 
+@pytest.mark.slow
 def test_derived_base_color_with_loop_preserves_attachment_printer_rgb(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2150,6 +2159,7 @@ def test_derived_base_color_with_loop_preserves_attachment_printer_rgb(
     assert base_product["printer_color"] == loop_product["printer_color"]
 
 
+@pytest.mark.slow
 def test_derived_base_color_without_loop_preserves_position_zero_printer_rgb(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
