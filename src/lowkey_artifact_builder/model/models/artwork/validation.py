@@ -291,6 +291,114 @@ def _validate_loop_position(
         )
 
 
+def _validate_artwork_hole_diameter(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require Artwork Hole diameter to be nonnegative.
+
+    Zero disables Hole participation. Any positive value enables Hole
+    participation and determines the physical diameter of the opening.
+    """
+
+    diameter = resolver(
+        "artwork_hole_diameter",
+    )
+
+    if not isinstance(
+        diameter,
+        int | float,
+    ) or isinstance(
+        diameter,
+        bool,
+    ):
+        raise ConfigError(
+            "artwork_hole_diameter must be a number.",
+        )
+
+    if diameter < 0:
+        raise ConfigError(
+            "artwork_hole_diameter cannot be negative.",
+        )
+
+
+def _validate_artwork_hole_edge_distance(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require minimum remaining material for a participating Hole.
+
+    A participating Hole must leave at least 0.4 mm between the Hole
+    edge and the applicable outer Artwork boundary.
+    """
+
+    diameter = resolver(
+        "artwork_hole_diameter",
+    )
+
+    if diameter == 0:
+        return
+
+    edge_distance = resolver(
+        "artwork_hole_edge_distance",
+    )
+
+    if (
+        not isinstance(
+            edge_distance,
+            int | float,
+        )
+        or isinstance(
+            edge_distance,
+            bool,
+        )
+        or edge_distance < 0.4
+    ):
+        raise ConfigError(
+            "artwork_hole_edge_distance must be at least 0.4 mm when Hole participates.",
+        )
+
+
+def _validate_artwork_hole_position(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require a participating Hole at one of Artwork's cardinal positions.
+    """
+
+    diameter = resolver(
+        "artwork_hole_diameter",
+    )
+
+    if diameter == 0:
+        return
+
+    position = resolver(
+        "artwork_hole_position",
+    )
+
+    if (
+        not isinstance(
+            position,
+            int,
+        )
+        or isinstance(
+            position,
+            bool,
+        )
+        or position
+        not in (
+            0,
+            90,
+            180,
+            -90,
+        )
+    ):
+        raise ConfigError(
+            "artwork_hole_position must be one of 0, 90, 180, or -90.",
+        )
+
+
 def _validate_artwork_base_raise(
     resolver: ConfigurationResolver,
 ) -> None:
@@ -425,6 +533,24 @@ VALIDATORS = (
             "artwork_size",
         ),
         validate=_validate_artwork_outer_ridge_width,
+    ),
+    ConfigurationValidator(
+        parameters=("artwork_hole_diameter",),
+        validate=_validate_artwork_hole_diameter,
+    ),
+    ConfigurationValidator(
+        parameters=(
+            "artwork_hole_diameter",
+            "artwork_hole_edge_distance",
+        ),
+        validate=_validate_artwork_hole_edge_distance,
+    ),
+    ConfigurationValidator(
+        parameters=(
+            "artwork_hole_diameter",
+            "artwork_hole_position",
+        ),
+        validate=_validate_artwork_hole_position,
     ),
 )
 

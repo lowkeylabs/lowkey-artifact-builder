@@ -437,4 +437,3 @@ The Artwork Hole Feature is complete when:
 * focused tests protect the Feature semantics without freezing unrelated Artwork
   inventory or defaults; and
 * the complete repository quality suite passes.
-

@@ -39,3 +39,12 @@ artwork_base_raise = 0.0
 artwork_outer_ridge_width = 0.0
 # artwork_outer_ridge_raise = 1.0 # defaults to artwork_raise
 # artwork_outer_ridge_color = "black"  # defaults to attachment color at loop_position
+
+
+# --------------
+# Optional standalone Hole Feature.
+# artwork_hole_diameter == 0 disables Hole participation.
+
+artwork_hole_diameter = 0.0
+artwork_hole_position = 0
+artwork_hole_edge_distance = 0.4
