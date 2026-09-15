@@ -1297,6 +1297,23 @@ geometry using its resolved semantic physical color identity.
 When `artwork_outer_ridge_width` is zero, no Outer Ridge physical component is
 produced.
 
+A participating Outer Ridge must leave a positive physical extent for the
+Artwork proper. Therefore:
+
+```text
+2 * artwork_outer_ridge_width < artwork_size
+```
+
+must hold whenever artwork_outer_ridge_width is positive.
+
+A value for which:
+
+```text
+2 * artwork_outer_ridge_width >= artwork_size
+```
+
+is invalid.
+
 The Outer Ridge is not added to prepared, raster, or vector registered Artwork.
 
 A consumer of registered Artwork does not receive Outer Ridge geometry and does
