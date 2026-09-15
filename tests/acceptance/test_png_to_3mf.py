@@ -1612,3 +1612,353 @@ artwork_hole_diameter = 0.0
 
     assert intersecting_output.is_file()
     assert intersecting_output.stat().st_size > 0
+
+
+@pytest.mark.slow
+def test_png_artwork_with_hole_preserves_through_hole_in_packaged_geometry(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    The final packaged 3MF preserves the configured Artwork through-hole.
+
+    The Hole is subtractive rather than an independently printable component.
+    At the resolved Hole center, no packaged Artwork, Base, or Outer Ridge
+    triangle may cross the vertical centerline of the Hole.
+    """
+
+    # -----------------------------------------------------
+    # Arrange temporary project
+    # -----------------------------------------------------
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
+
+    assert fixture_source.is_file()
+
+    project_root = tmp_path
+
+    shutil.copy2(
+        fixture_source,
+        project_root / "nydeli-clean.png",
+    )
+
+    monkeypatch.chdir(
+        project_root,
+    )
+
+    runner = CliRunner()
+
+    # -----------------------------------------------------
+    # Configure through the public CLI
+    # -----------------------------------------------------
+
+    config_result = runner.invoke(
+        cli,
+        [
+            "create",
+            "nydeli",
+        ],
+        input="1\n",
+    )
+
+    assert config_result.exit_code == 0, (
+        f"Artifact configuration failed:\n{config_result.output}\n{config_result.exception!r}"
+    )
+
+    artifact_config = project_root / "artifacts" / "nydeli" / "artifact.toml"
+
+    assert artifact_config.is_file()
+
+    with artifact_config.open(
+        "a",
+        encoding="utf-8",
+    ) as stream:
+        stream.write(
+            """
+[realizations.artwork_default]
+artwork_base_raise = 2.0
+artwork_base_color = "test-black"
+
+artwork_outer_ridge_width = 2.0
+artwork_outer_ridge_raise = 1.0
+artwork_outer_ridge_color = "test-white"
+
+artwork_hole_diameter = 6.0
+artwork_hole_position = 0
+artwork_hole_edge_distance = 1.0
+"""
+        )
+
+    # -----------------------------------------------------
+    # Plan and build ordinary Artwork Realization
+    # -----------------------------------------------------
+
+    plans = create_build_plans(
+        "nydeli",
+        realization="artwork_default",
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    build_result = runner.invoke(
+        cli,
+        [
+            "build",
+            "nydeli",
+            "--variant",
+            "artwork.default",
+        ],
+    )
+
+    assert build_result.exit_code == 0, (
+        f"Artifact build failed:\n{build_result.output}\n{build_result.exception!r}"
+    )
+
+    # -----------------------------------------------------
+    # Recover resolved physical Hole geometry
+    # -----------------------------------------------------
+
+    vector_stage = next(stage for stage in plan.stages if stage.spec.name == "vector")
+
+    vector_manifest_product = next(
+        product for product in vector_stage.products if product.spec.name == "manifest"
+    )
+
+    vector_manifest_path = vector_manifest_product.path
+
+    assert vector_manifest_path.is_file()
+
+    vector_manifest = json.loads(
+        vector_manifest_path.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    envelope = vector_manifest_path.parent / vector_manifest["envelope"]
+
+    assert envelope.is_file()
+
+    envelope_bounds = extrude._envelope_bounds(
+        envelope,
+    )
+
+    physical_bounds = extrude._physical_envelope_bounds(
+        envelope_bounds,
+        artwork_size=plan.resolver("artwork_size"),
+    )
+
+    hole_geometry = create_hole_geometry(
+        envelope_bounds=physical_bounds,
+        diameter=plan.resolver("artwork_hole_diameter"),
+        edge_distance=plan.resolver("artwork_hole_edge_distance"),
+        position=plan.resolver("artwork_hole_position"),
+    )
+
+    hole_x = hole_geometry.center_x
+    hole_y = hole_geometry.center_y
+
+    # -----------------------------------------------------
+    # Open the actual packaged 3MF
+    # -----------------------------------------------------
+
+    package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
+
+    artifact_product = next(
+        product for product in package_stage.products if product.spec.name == "artifact"
+    )
+
+    output = artifact_product.path
+
+    assert output.is_file()
+    assert zipfile.is_zipfile(output)
+
+    with zipfile.ZipFile(output) as archive:
+        model_name = next(
+            name
+            for name in archive.namelist()
+            if name.startswith("3D/") and name.endswith(".model")
+        )
+
+        model = ET.fromstring(
+            archive.read(
+                model_name,
+            )
+        )
+
+    # -----------------------------------------------------
+    # Test whether a triangle contains the Hole center in XY
+    # -----------------------------------------------------
+
+    def triangle_contains_xy(
+        point_x: float,
+        point_y: float,
+        a: tuple[float, float],
+        b: tuple[float, float],
+        c: tuple[float, float],
+    ) -> bool:
+        """
+        Return whether an XY point lies inside or on a nondegenerate triangle.
+
+        Three-dimensional mesh triangles representing vertical walls may
+        collapse to a line or point when projected into XY. Such projections
+        have no planar area and therefore cannot cover the Hole centerline in
+        XY.
+        """
+
+        def cross(
+            p1: tuple[float, float],
+            p2: tuple[float, float],
+            p3: tuple[float, float],
+        ) -> float:
+            return (p2[0] - p1[0]) * (p3[1] - p1[1]) - (p2[1] - p1[1]) * (p3[0] - p1[0])
+
+        epsilon = 1e-6
+
+        # A 3-D triangle may project to a line or point in XY.
+        # Such a projection has no planar area and cannot cover
+        # the Hole centerline.
+        area_twice = cross(
+            a,
+            b,
+            c,
+        )
+
+        if abs(area_twice) <= epsilon:
+            return False
+
+        point = (
+            point_x,
+            point_y,
+        )
+
+        d1 = cross(
+            a,
+            b,
+            point,
+        )
+
+        d2 = cross(
+            b,
+            c,
+            point,
+        )
+
+        d3 = cross(
+            c,
+            a,
+            point,
+        )
+
+        has_negative = d1 < -epsilon or d2 < -epsilon or d3 < -epsilon
+
+        has_positive = d1 > epsilon or d2 > epsilon or d3 > epsilon
+
+        return not (has_negative and has_positive)
+
+    # -----------------------------------------------------
+    # Verify the Hole centerline is empty in every packaged
+    # physical component that intersects the Hole region.
+    # -----------------------------------------------------
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    assert objects
+
+    inspected_objects = 0
+
+    for object_ in objects:
+        mesh = object_.find(
+            f"{{{CORE_NS}}}mesh",
+        )
+
+        assert mesh is not None
+
+        vertices_element = mesh.find(
+            f"{{{CORE_NS}}}vertices",
+        )
+
+        triangles_element = mesh.find(
+            f"{{{CORE_NS}}}triangles",
+        )
+
+        assert vertices_element is not None
+        assert triangles_element is not None
+
+        vertices: list[
+            tuple[
+                float,
+                float,
+                float,
+            ]
+        ] = []
+
+        for vertex in vertices_element.findall(
+            f"{{{CORE_NS}}}vertex",
+        ):
+            x = vertex.get("x")
+            y = vertex.get("y")
+            z = vertex.get("z")
+
+            assert x is not None
+            assert y is not None
+            assert z is not None
+
+            vertices.append(
+                (
+                    float(x),
+                    float(y),
+                    float(z),
+                )
+            )
+
+        triangles = triangles_element.findall(
+            f"{{{CORE_NS}}}triangle",
+        )
+
+        assert vertices
+        assert triangles
+
+        min_x = min(vertex[0] for vertex in vertices)
+        max_x = max(vertex[0] for vertex in vertices)
+        min_y = min(vertex[1] for vertex in vertices)
+        max_y = max(vertex[1] for vertex in vertices)
+
+        # Components that cannot reach the Hole center are
+        # irrelevant to this through-hole assertion.
+        if not (min_x <= hole_x <= max_x and min_y <= hole_y <= max_y):
+            continue
+
+        inspected_objects += 1
+
+        for triangle in triangles:
+            v1_index = triangle.get("v1")
+            v2_index = triangle.get("v2")
+            v3_index = triangle.get("v3")
+
+            assert v1_index is not None
+            assert v2_index is not None
+            assert v3_index is not None
+
+            v1 = vertices[int(v1_index)]
+            v2 = vertices[int(v2_index)]
+            v3 = vertices[int(v3_index)]
+
+            assert not triangle_contains_xy(
+                hole_x,
+                hole_y,
+                (v1[0], v1[1]),
+                (v2[0], v2[1]),
+                (v3[0], v3[1]),
+            ), (
+                "Packaged component contains material across "
+                f"the Hole centerline: {object_.get('name')}"
+            )
+
+    assert inspected_objects > 0
