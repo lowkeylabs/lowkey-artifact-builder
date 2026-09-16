@@ -60,21 +60,105 @@ def test_create_is_a_top_level_command() -> None:
     assert "create" in result.output
 
 
-def test_create_requires_exactly_one_artifact_id() -> None:
+def test_create_without_artifact_id_ingests_root_pngs(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     """
-    Artifact creation operates on one explicitly named artifact.
+    Bare create treats root-level PNG files as the Artifact intake queue.
+
+    Each PNG filename stem supplies the Artifact ID.
     """
 
-    missing = _invoke()
+    dog = tmp_path / "smith-dog.png"
+    cat = tmp_path / "jones-cat.PNG"
 
-    assert missing.exit_code != 0
+    dog.write_bytes(b"dog")
+    cat.write_bytes(b"cat")
 
-    multiple = _invoke(
+    # Files outside the root PNG intake queue are ignored.
+    (tmp_path / "notes.txt").write_text("notes")
+    nested = tmp_path / "incoming"
+    nested.mkdir()
+    (nested / "lee-house.png").write_bytes(b"house")
+
+    monkeypatch.chdir(tmp_path)
+
+    configured: list[
+        tuple[
+            str,
+            dict[str, Any],
+            dict[str, Path],
+            Path,
+        ]
+    ] = []
+
+    def configure(
+        artifact_id: str,
+        *,
+        values: dict[str, Any],
+        input_files: dict[str, Path],
+        project_root: Path,
+    ) -> None:
+        configured.append(
+            (
+                artifact_id,
+                values,
+                input_files,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_create,
+        "configure_artifact",
+        configure,
+    )
+
+    monkeypatch.setattr(
+        cmd_create,
+        "_display_artifact",
+        lambda *args, **kwargs: None,
+    )
+
+    result = _invoke()
+
+    assert result.exit_code == 0
+
+    assert configured == [
+        (
+            "jones-cat",
+            {},
+            {
+                "artwork": cat,
+            },
+            tmp_path,
+        ),
+        (
+            "smith-dog",
+            {},
+            {
+                "artwork": dog,
+            },
+            tmp_path,
+        ),
+    ]
+
+
+def test_create_rejects_multiple_explicit_artifact_ids() -> None:
+    """
+    Explicit creation addresses at most one named Artifact.
+
+    Multiple positional Artifact IDs do not become an alternate batch syntax;
+    bare create owns batch intake.
+    """
+
+    result = _invoke(
         "skippy",
         "scooby",
     )
 
-    assert multiple.exit_code != 0
+    assert result.exit_code != 0
 
 
 # =========================================================

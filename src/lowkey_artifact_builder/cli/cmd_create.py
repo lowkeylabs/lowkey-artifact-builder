@@ -1,7 +1,7 @@
 """
 Artifact creation command.
 
-Creates a new persistent artifact definition from source artwork.
+Creates new persistent artifact definitions from source artwork.
 
 Model defaults and Variant configuration are registered reusable
 configuration. Artifact creation therefore collects only the source PNG
@@ -46,21 +46,64 @@ def cli(
     source: str | None,
 ) -> None:
     """
-    Create a new artifact.
+    Create new Artifacts from PNG source artwork.
     """
 
-    if not artifact_ids:
-        raise click.UsageError("Artifact creation requires an artifact ID.")
-
-    if len(artifact_ids) != 1:
-        raise click.UsageError("Artifact creation requires exactly one artifact ID.")
-
-    artifact_id = artifact_ids[0]
     project_root = Path.cwd()
 
-    # =====================================================
-    # Existing artifact
-    # =====================================================
+    if not artifact_ids:
+        _create_intake_batch(
+            source=source,
+            project_root=project_root,
+        )
+        return
+
+    if len(artifact_ids) != 1:
+        raise click.UsageError("Artifact creation accepts at most one explicit artifact ID.")
+
+    _create_artifact(
+        artifact_ids[0],
+        source=source,
+        project_root=project_root,
+    )
+
+
+# =========================================================
+# Creation
+# =========================================================
+
+
+def _create_intake_batch(
+    *,
+    source: str | None,
+    project_root: Path,
+) -> None:
+    """
+    Create Artifacts from the root-level PNG intake queue.
+    """
+
+    if source is not None:
+        raise click.UsageError("--source requires an explicit artifact ID.")
+
+    sources = _discover_sources(project_root)
+
+    for source_path in sources:
+        _create_artifact_from_source(
+            source_path.stem,
+            source_path=source_path,
+            project_root=project_root,
+        )
+
+
+def _create_artifact(
+    artifact_id: str,
+    *,
+    source: str | None,
+    project_root: Path,
+) -> None:
+    """
+    Create one explicitly named Artifact.
+    """
 
     existing = load_artifact_config(
         artifact_id,
@@ -70,18 +113,27 @@ def cli(
     if existing:
         raise click.ClickException(f"Artifact {artifact_id!r} is already defined.")
 
-    # =====================================================
-    # Source
-    # =====================================================
-
     source_path = _resolve_source(
         source,
         project_root=project_root,
     )
 
-    # =====================================================
-    # Persistence
-    # =====================================================
+    _create_artifact_from_source(
+        artifact_id,
+        source_path=source_path,
+        project_root=project_root,
+    )
+
+
+def _create_artifact_from_source(
+    artifact_id: str,
+    *,
+    source_path: Path,
+    project_root: Path,
+) -> None:
+    """
+    Persist one Artifact from an already resolved PNG source.
+    """
 
     try:
         configure_artifact(
@@ -96,10 +148,6 @@ def cli(
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    # =====================================================
-    # Result
-    # =====================================================
-
     _display_artifact(
         artifact_id,
         project_root=project_root,
@@ -111,13 +159,25 @@ def cli(
 # =========================================================
 
 
+def _discover_sources(
+    project_root: Path,
+) -> list[Path]:
+    """
+    Discover root-level PNG source files in deterministic order.
+    """
+
+    return sorted(
+        path for path in project_root.iterdir() if path.is_file() and path.suffix.lower() == ".png"
+    )
+
+
 def _resolve_source(
     source: str | None,
     *,
     project_root: Path,
 ) -> Path:
     """
-    Resolve the PNG source selected for a new Artifact.
+    Resolve the PNG source selected for an explicitly named Artifact.
 
     An explicitly supplied source is validated directly. Otherwise the user
     selects from PNG files present in the project root.
@@ -128,9 +188,7 @@ def _resolve_source(
             project_root / source,
         )
 
-    sources = sorted(
-        path for path in project_root.iterdir() if path.is_file() and path.suffix.lower() == ".png"
-    )
+    sources = _discover_sources(project_root)
 
     if not sources:
         raise click.ClickException(f"No PNG source files were found in {project_root}.")

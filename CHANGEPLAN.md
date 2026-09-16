@@ -1573,4 +1573,3 @@ colors
 
 used when the ordinary path requires customization, maintenance, or
 explanation.
-

@@ -587,4 +587,3 @@ Citation metadata for the project is provided in:
 The project explores reproducible, dependency-driven workflows for converting
 source artwork into reusable registered geometry and multicolor additive
 manufacturing Products.
-
