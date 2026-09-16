@@ -39,6 +39,26 @@ def _invoke(
     )
 
 
+def _create_existing_batch_artifact(
+    tmp_path: Path,
+    artifact_id: str,
+    *,
+    content: bytes,
+) -> None:
+    """
+    Establish an Artifact in the same state produced by successful batch
+    intake.
+    """
+
+    source = tmp_path / f"{artifact_id}.png"
+    source.write_bytes(content)
+
+    result = _invoke()
+
+    assert result.exit_code == 0
+    assert not source.exists()
+
+
 # =========================================================
 # Command
 # =========================================================
@@ -164,6 +184,225 @@ def test_create_rejects_multiple_explicit_artifact_ids() -> None:
 # =========================================================
 # Lifecycle
 # =========================================================
+
+
+def test_create_batch_recognizes_verified_duplicate(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    An incoming PNG is a verified duplicate only when it matches both the
+    preserved original and the Artifact-managed source byte-for-byte.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    _create_existing_batch_artifact(
+        tmp_path,
+        "smith-cat",
+        content=b"cat artwork",
+    )
+
+    incoming = tmp_path / "smith-cat.png"
+    incoming.write_bytes(b"cat artwork")
+
+    result = _invoke()
+
+    assert result.exit_code == 0
+    assert "duplicate" in result.output.lower()
+    assert "smith-cat" in result.output.lower()
+
+    # Duplicate recognition alone does not consume the intake PNG.
+    assert incoming.read_bytes() == b"cat artwork"
+
+
+def test_create_batch_rejects_inconsistent_managed_source(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Matching incoming and preserved-original bytes do not establish a
+    duplicate when the managed Artifact source has diverged.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    _create_existing_batch_artifact(
+        tmp_path,
+        "smith-cat",
+        content=b"cat artwork",
+    )
+
+    managed = tmp_path / "artifacts" / "smith-cat" / "artifact.png"
+    managed.write_bytes(b"changed managed artwork")
+
+    incoming = tmp_path / "smith-cat.png"
+    incoming.write_bytes(b"cat artwork")
+
+    result = _invoke()
+
+    assert result.exit_code != 0
+    assert "smith-cat" in result.output.lower()
+
+    assert incoming.read_bytes() == b"cat artwork"
+
+
+def test_create_batch_rejects_inconsistent_preserved_original(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Matching incoming and managed-source bytes do not establish a duplicate
+    when the preserved original has diverged.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    _create_existing_batch_artifact(
+        tmp_path,
+        "smith-cat",
+        content=b"cat artwork",
+    )
+
+    original = tmp_path / "originals" / "smith-cat.png"
+    original.write_bytes(b"changed original artwork")
+
+    incoming = tmp_path / "smith-cat.png"
+    incoming.write_bytes(b"cat artwork")
+
+    result = _invoke()
+
+    assert result.exit_code != 0
+    assert "smith-cat" in result.output.lower()
+
+    assert incoming.read_bytes() == b"cat artwork"
+
+
+def test_create_batch_rejects_conflicting_input(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    A new incoming PNG for an existing Artifact is a conflict when it matches
+    neither the preserved original nor the managed source.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    _create_existing_batch_artifact(
+        tmp_path,
+        "smith-cat",
+        content=b"original cat artwork",
+    )
+
+    incoming = tmp_path / "smith-cat.png"
+    incoming.write_bytes(b"different cat artwork")
+
+    result = _invoke()
+
+    assert result.exit_code != 0
+    assert "smith-cat" in result.output.lower()
+
+    assert incoming.read_bytes() == b"different cat artwork"
+
+
+def test_create_batch_rejects_incomplete_existing_artifact(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    An existing Artifact cannot be classified as a duplicate when a required
+    provenance file is missing.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    _create_existing_batch_artifact(
+        tmp_path,
+        "smith-cat",
+        content=b"cat artwork",
+    )
+
+    original = tmp_path / "originals" / "smith-cat.png"
+    original.unlink()
+
+    incoming = tmp_path / "smith-cat.png"
+    incoming.write_bytes(b"cat artwork")
+
+    result = _invoke()
+
+    assert result.exit_code != 0
+    assert "smith-cat" in result.output.lower()
+
+    assert incoming.read_bytes() == b"cat artwork"
+
+
+def test_create_batch_duplicate_does_not_block_new_intake(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    A verified duplicate is resolved intake and does not prevent unrelated
+    new Artifacts from being ingested.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    _create_existing_batch_artifact(
+        tmp_path,
+        "smith-cat",
+        content=b"cat artwork",
+    )
+
+    duplicate = tmp_path / "smith-cat.png"
+    new_source = tmp_path / "jones-dog.png"
+
+    duplicate.write_bytes(b"cat artwork")
+    new_source.write_bytes(b"dog artwork")
+
+    result = _invoke()
+
+    assert result.exit_code == 0
+    assert "duplicate" in result.output.lower()
+
+    # Duplicate remains pending until explicit cleanup behavior is added.
+    assert duplicate.read_bytes() == b"cat artwork"
+
+    # Independent new intake proceeds normally.
+    assert not new_source.exists()
+    assert (tmp_path / "artifacts" / "jones-dog" / "artifact.png").read_bytes() == b"dog artwork"
+    assert (tmp_path / "originals" / "jones-dog.png").read_bytes() == b"dog artwork"
+
+
+def test_create_batch_rejects_incomplete_existing_artifact_without_managed_source(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    An existing Artifact cannot be classified as a duplicate when its managed
+    source is missing.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    _create_existing_batch_artifact(
+        tmp_path,
+        "smith-cat",
+        content=b"cat artwork",
+    )
+
+    managed = tmp_path / "artifacts" / "smith-cat" / "artifact.png"
+    managed.unlink()
+
+    incoming = tmp_path / "smith-cat.png"
+    incoming.write_bytes(b"cat artwork")
+
+    result = _invoke()
+
+    assert result.exit_code != 0
+    assert "smith-cat" in result.output.lower()
+
+    assert incoming.read_bytes() == b"cat artwork"
 
 
 def test_create_batch_preflights_existing_artifact_before_mutation(

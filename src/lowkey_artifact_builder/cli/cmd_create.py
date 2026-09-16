@@ -13,6 +13,7 @@ required to define the Artifact.
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 from pathlib import Path
 
@@ -86,6 +87,8 @@ def _create_intake_batch(
     Root-level intake PNGs are owned by the batch workflow. The complete
     intake queue is preflighted before any persistent project state is
     modified.
+
+    Verified duplicates are reported and left in the intake queue.
     """
 
     if source is not None:
@@ -93,12 +96,12 @@ def _create_intake_batch(
 
     sources = _discover_sources(project_root)
 
-    _preflight_intake_batch(
+    new_sources = _preflight_intake_batch(
         sources,
         project_root=project_root,
     )
 
-    for source_path in sources:
+    for source_path in new_sources:
         artifact_id = source_path.stem
 
         _create_artifact_from_source(
@@ -117,9 +120,13 @@ def _preflight_intake_batch(
     sources: list[Path],
     *,
     project_root: Path,
-) -> None:
+) -> list[Path]:
     """
-    Validate predictable batch collisions before persistent mutation.
+    Classify the complete intake queue before persistent mutation.
+
+    New sources are returned for ingestion. Verified duplicates are reported
+    and left in the intake queue. Incomplete, inconsistent, or conflicting
+    existing state aborts the complete batch before mutation.
 
     Artifact identity comparisons are case-insensitive so intake behavior
     remains portable across filesystems.
@@ -132,6 +139,8 @@ def _preflight_intake_batch(
         )
     }
 
+    new_sources: list[Path] = []
+
     for source_path in sources:
         artifact_id = source_path.stem
         identity = artifact_id.casefold()
@@ -139,12 +148,71 @@ def _preflight_intake_batch(
         existing_artifact = existing_artifacts.get(identity)
 
         if existing_artifact is not None:
-            raise click.ClickException(f"Artifact {existing_artifact!r} is already defined.")
+            _preflight_existing_artifact(
+                source_path,
+                artifact_id=existing_artifact,
+                project_root=project_root,
+            )
+            continue
 
         original_path = project_root / "originals" / source_path.name
 
         if original_path.exists():
             raise click.ClickException(f"Original PNG {source_path.name!r} already exists.")
+
+        new_sources.append(source_path)
+
+    return new_sources
+
+
+def _preflight_existing_artifact(
+    source_path: Path,
+    *,
+    artifact_id: str,
+    project_root: Path,
+) -> None:
+    """
+    Classify one incoming source that maps to an existing Artifact.
+
+    A verified duplicate must match both the preserved original and the
+    Artifact-managed source byte-for-byte. Any incomplete, inconsistent,
+    or conflicting state is an error.
+    """
+
+    original_path = project_root / "originals" / source_path.name
+    managed_path = project_root / "artifacts" / artifact_id / "artifact.png"
+
+    if not original_path.is_file():
+        raise click.ClickException(
+            f"Artifact {artifact_id!r} is incomplete: "
+            f"preserved original {original_path.name!r} is missing."
+        )
+
+    if not managed_path.is_file():
+        raise click.ClickException(
+            f"Artifact {artifact_id!r} is incomplete: managed source 'artifact.png' is missing."
+        )
+
+    incoming_digest = _sha256(source_path)
+    original_digest = _sha256(original_path)
+    managed_digest = _sha256(managed_path)
+
+    matches_original = incoming_digest == original_digest
+    matches_managed = incoming_digest == managed_digest
+
+    if matches_original and matches_managed:
+        console.print(f"{source_path.name} [bold]DUPLICATE[/bold]")
+        return
+
+    if matches_original:
+        raise click.ClickException(f"Artifact {artifact_id!r} has inconsistent managed source.")
+
+    if matches_managed:
+        raise click.ClickException(f"Artifact {artifact_id!r} has inconsistent preserved original.")
+
+    raise click.ClickException(
+        f"Incoming PNG {source_path.name!r} conflicts with existing Artifact {artifact_id!r}."
+    )
 
 
 def _preserve_intake_original(
@@ -313,6 +381,30 @@ def _validate_source(
         raise click.ClickException(f"Artifact source PNG {source.name!r} does not exist.")
 
     return source
+
+
+# =========================================================
+# Fingerprints
+# =========================================================
+
+
+def _sha256(
+    path: Path,
+) -> str:
+    """
+    Return the SHA-256 fingerprint of one file.
+    """
+
+    digest = hashlib.sha256()
+
+    with path.open("rb") as stream:
+        for chunk in iter(
+            lambda: stream.read(1024 * 1024),
+            b"",
+        ):
+            digest.update(chunk)
+
+    return digest.hexdigest()
 
 
 # =========================================================
