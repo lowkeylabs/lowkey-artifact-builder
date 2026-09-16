@@ -209,12 +209,24 @@ def _preflight_existing_artifact(
     Classify one incoming source that maps to an existing Artifact.
 
     Return True when the source is a verified duplicate. A verified duplicate
-    must match both the preserved original and the Artifact-managed source
-    byte-for-byte. Any incomplete, inconsistent, or conflicting state is an
-    error.
+    must match both the preserved original identified by Artifact provenance
+    and the Artifact-managed source byte-for-byte. Any incomplete,
+    inconsistent, or conflicting state is an error.
     """
 
-    original_path = project_root / "originals" / source_path.name
+    config = load_artifact_config(
+        artifact_id,
+        project_root=project_root,
+    )
+
+    original = config.get("original")
+
+    if not isinstance(original, str) or not original:
+        raise click.ClickException(
+            f"Artifact {artifact_id!r} is incomplete: original provenance is not defined."
+        )
+
+    original_path = project_root / original
     managed_path = project_root / "artifacts" / artifact_id / "artifact.png"
 
     if not original_path.is_file():

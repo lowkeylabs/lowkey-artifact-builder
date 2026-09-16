@@ -1219,3 +1219,133 @@ def test_create_explicit_artifact_id_collision_is_case_insensitive(
 
     # The existing Artifact remains intact.
     assert (tmp_path / "artifacts" / "dog" / "artifact.png").read_bytes() == b"existing artwork"
+
+
+def test_create_batch_preserves_intake_source_when_original_preservation_fails(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    A runtime failure while preserving the original must not destroy the
+    batch-owned intake PNG.
+
+    The managed Artifact source may already have been established, but the
+    root intake source remains available when preservation fails.
+    """
+
+    source = tmp_path / "dog.png"
+    content = b"dog artwork"
+    source.write_bytes(content)
+
+    monkeypatch.chdir(tmp_path)
+
+    def fail_move(
+        src: Path,
+        dst: Path,
+    ) -> None:
+        raise OSError("simulated preservation failure")
+
+    monkeypatch.setattr(
+        cmd_create.shutil,
+        "move",
+        fail_move,
+    )
+
+    result = _invoke()
+
+    assert result.exit_code != 0
+    assert "dog.png" in result.output
+    assert "simulated preservation failure" in result.output
+
+    # The batch-owned intake source remains available after failure.
+    assert source.read_bytes() == content
+
+    # The managed copy established before preservation also remains valid.
+    assert (tmp_path / "artifacts" / "dog" / "artifact.png").read_bytes() == content
+
+
+def test_create_batch_preserves_intake_when_artifact_creation_fails(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    A runtime failure while creating the managed Artifact must leave the
+    batch-owned intake PNG untouched.
+
+    Original preservation and intake removal occur only after managed
+    Artifact creation succeeds.
+    """
+
+    source = tmp_path / "dog.png"
+    content = b"dog artwork"
+    source.write_bytes(content)
+
+    monkeypatch.chdir(tmp_path)
+
+    def fail_configure(*args: object, **kwargs: object) -> None:
+        raise cmd_create.click.ClickException("simulated artifact creation failure")
+
+    monkeypatch.setattr(
+        cmd_create,
+        "configure_artifact",
+        fail_configure,
+    )
+
+    result = _invoke()
+
+    assert result.exit_code != 0
+    assert "simulated artifact creation failure" in result.output
+
+    # The only known input copy remains untouched.
+    assert source.read_bytes() == content
+
+    # Preservation/removal was never attempted.
+    assert not (tmp_path / "originals" / "dog.png").exists()
+
+
+def test_create_batch_duplicate_uses_persisted_original_provenance(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Duplicate detection uses the Artifact's persisted original provenance.
+
+    The preserved original filename may differ from the Artifact ID and from
+    a later root-level intake filename that maps to that Artifact.
+    """
+
+    original_source = tmp_path / "customer-final.png"
+    content = b"dog artwork"
+    original_source.write_bytes(content)
+
+    monkeypatch.chdir(tmp_path)
+
+    created = _invoke(
+        "dog",
+        "--source",
+        "customer-final.png",
+    )
+
+    assert created.exit_code == 0
+
+    # Explicit creation leaves its source caller-owned. Remove that caller
+    # copy so the subsequent bare invocation contains only the intake item
+    # under test.
+    original_source.unlink()
+
+    incoming = tmp_path / "dog.png"
+    incoming.write_bytes(content)
+
+    result = _invoke(
+        input="\n",
+    )
+
+    assert result.exit_code == 0
+    assert "duplicate" in result.output.lower()
+
+    # Declining duplicate cleanup leaves the intake item in place.
+    assert incoming.read_bytes() == content
+
+    # Provenance continues to identify the original filename supplied when
+    # the Artifact was explicitly created.
+    assert (tmp_path / "originals" / "customer-final.png").read_bytes() == content
