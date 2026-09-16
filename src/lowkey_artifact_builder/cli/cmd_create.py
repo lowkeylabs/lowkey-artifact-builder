@@ -127,8 +127,8 @@ def _create_intake_batch(
             project_root=project_root,
         )
 
-    if clean:
-        for source_path in duplicate_sources:
+    for source_path in duplicate_sources:
+        if clean or _confirm_duplicate_cleanup(source_path):
             _remove_duplicate_intake(
                 source_path,
             )
@@ -234,6 +234,25 @@ def _preflight_existing_artifact(
 
     raise click.ClickException(
         f"Incoming PNG {source_path.name!r} conflicts with existing Artifact {artifact_id!r}."
+    )
+
+
+def _confirm_duplicate_cleanup(
+    source_path: Path,
+) -> bool:
+    """
+    Ask whether one verified duplicate should be removed from the intake queue.
+
+    The safe default is to retain the duplicate.
+    """
+
+    return click.confirm(
+        (
+            f"{source_path.name} has already been ingested and is a "
+            "verified duplicate.\n\n"
+            "Remove the duplicate PNG from the intake directory?"
+        ),
+        default=False,
     )
 
 

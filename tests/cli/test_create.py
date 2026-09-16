@@ -191,8 +191,8 @@ def test_create_batch_recognizes_verified_duplicate(
     tmp_path: Path,
 ) -> None:
     """
-    An incoming PNG is a verified duplicate only when it matches both the
-    preserved original and the Artifact-managed source byte-for-byte.
+    Bare batch intake recognizes a verified duplicate and leaves it in the
+    intake queue when the operator accepts the default No cleanup response.
     """
 
     monkeypatch.chdir(tmp_path)
@@ -203,17 +203,82 @@ def test_create_batch_recognizes_verified_duplicate(
         content=b"cat artwork",
     )
 
-    incoming = tmp_path / "smith-cat.png"
-    incoming.write_bytes(b"cat artwork")
+    duplicate = tmp_path / "smith-cat.png"
+    duplicate.write_bytes(b"cat artwork")
 
-    result = _invoke()
+    result = _invoke(
+        input="\n",
+    )
 
     assert result.exit_code == 0
     assert "duplicate" in result.output.lower()
     assert "smith-cat" in result.output.lower()
+    assert duplicate.read_bytes() == b"cat artwork"
 
-    # Duplicate recognition alone does not consume the intake PNG.
-    assert incoming.read_bytes() == b"cat artwork"
+
+def test_create_batch_can_remove_verified_duplicate_interactively(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bare batch intake offers cleanup for a verified duplicate and removes the
+    intake PNG when the operator explicitly approves.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    _create_existing_batch_artifact(
+        tmp_path,
+        "smith-cat",
+        content=b"cat artwork",
+    )
+
+    duplicate = tmp_path / "smith-cat.png"
+    duplicate.write_bytes(b"cat artwork")
+
+    result = _invoke(
+        input="y\n",
+    )
+
+    assert result.exit_code == 0
+
+    assert "smith-cat" in result.output.lower()
+    assert "remove" in result.output.lower()
+    assert not duplicate.exists()
+
+    assert (tmp_path / "originals" / "smith-cat.png").read_bytes() == b"cat artwork"
+
+    assert (tmp_path / "artifacts" / "smith-cat" / "artifact.png").read_bytes() == b"cat artwork"
+
+
+def test_create_batch_clean_removes_duplicate_without_prompt(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    --clean performs verified duplicate cleanup without requesting interactive
+    approval.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    _create_existing_batch_artifact(
+        tmp_path,
+        "smith-cat",
+        content=b"cat artwork",
+    )
+
+    duplicate = tmp_path / "smith-cat.png"
+    duplicate.write_bytes(b"cat artwork")
+
+    result = _invoke(
+        "--clean",
+    )
+
+    assert result.exit_code == 0
+    assert not duplicate.exists()
+
+    assert "remove the duplicate" not in result.output.lower()
 
 
 def test_create_batch_rejects_inconsistent_managed_source(
@@ -342,8 +407,8 @@ def test_create_batch_duplicate_does_not_block_new_intake(
     tmp_path: Path,
 ) -> None:
     """
-    A verified duplicate is resolved intake and does not prevent unrelated
-    new Artifacts from being ingested.
+    A verified duplicate does not prevent independent NEW intake from being
+    processed when the operator declines duplicate cleanup.
     """
 
     monkeypatch.chdir(tmp_path)
@@ -360,17 +425,21 @@ def test_create_batch_duplicate_does_not_block_new_intake(
     duplicate.write_bytes(b"cat artwork")
     new_source.write_bytes(b"dog artwork")
 
-    result = _invoke()
+    result = _invoke(
+        input="\n",
+    )
 
     assert result.exit_code == 0
     assert "duplicate" in result.output.lower()
 
-    # Duplicate remains pending until explicit cleanup behavior is added.
+    # Declining duplicate cleanup leaves the verified duplicate in the queue.
     assert duplicate.read_bytes() == b"cat artwork"
 
-    # Independent new intake proceeds normally.
+    # Independent NEW intake is still processed normally.
     assert not new_source.exists()
+
     assert (tmp_path / "artifacts" / "jones-dog" / "artifact.png").read_bytes() == b"dog artwork"
+
     assert (tmp_path / "originals" / "jones-dog.png").read_bytes() == b"dog artwork"
 
 
