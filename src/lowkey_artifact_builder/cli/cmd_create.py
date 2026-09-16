@@ -13,6 +13,7 @@ required to define the Artifact.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import click
@@ -80,6 +81,9 @@ def _create_intake_batch(
 ) -> None:
     """
     Create Artifacts from the root-level PNG intake queue.
+
+    Root-level intake PNGs are owned by the batch workflow. Successful
+    ingestion preserves the original before removing the intake copy.
     """
 
     if source is not None:
@@ -88,11 +92,50 @@ def _create_intake_batch(
     sources = _discover_sources(project_root)
 
     for source_path in sources:
+        artifact_id = source_path.stem
+
         _create_artifact_from_source(
-            source_path.stem,
+            artifact_id,
             source_path=source_path,
             project_root=project_root,
         )
+
+        _preserve_intake_original(
+            source_path,
+            project_root=project_root,
+        )
+
+
+def _preserve_intake_original(
+    source_path: Path,
+    *,
+    project_root: Path,
+) -> None:
+    """
+    Preserve and consume one successfully ingested batch-owned source.
+
+    Moving the source establishes the preserved original and removes the
+    successfully processed PNG from the root intake queue as one filesystem
+    operation.
+    """
+
+    originals_dir = project_root / "originals"
+    originals_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    destination = originals_dir / source_path.name
+
+    try:
+        shutil.move(
+            source_path,
+            destination,
+        )
+    except OSError as exc:
+        raise click.ClickException(
+            f"Could not preserve original PNG {source_path.name!r}: {exc}"
+        ) from exc
 
 
 def _create_artifact(

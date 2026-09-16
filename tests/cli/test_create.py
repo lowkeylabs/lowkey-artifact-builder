@@ -421,3 +421,49 @@ def test_create_persists_source_only_artifact_definition(
     ) == {
         "source": str((artifact_dir / "artifact.png").resolve()),
     }
+
+
+def test_create_batch_ingests_root_png_into_artifact_and_originals(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bare create owns root-level intake PNGs.
+
+    Successful intake preserves the original, creates the Artifact-managed
+    source, and removes the PNG from the root intake queue.
+    """
+
+    source = tmp_path / "smith-dog.png"
+    source.write_bytes(b"dog artwork")
+
+    monkeypatch.chdir(tmp_path)
+
+    result = _invoke()
+
+    assert result.exit_code == 0
+
+    artifact_source = tmp_path / "artifacts" / "smith-dog" / "artifact.png"
+    preserved_original = tmp_path / "originals" / "smith-dog.png"
+
+    assert artifact_source.read_bytes() == b"dog artwork"
+    assert preserved_original.read_bytes() == b"dog artwork"
+
+    assert not source.exists()
+
+
+def test_create_batch_with_empty_intake_is_successful_no_op(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    An empty root PNG intake queue is not an error.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    result = _invoke()
+
+    assert result.exit_code == 0
+    assert not (tmp_path / "artifacts").exists()
+    assert not (tmp_path / "originals").exists()
