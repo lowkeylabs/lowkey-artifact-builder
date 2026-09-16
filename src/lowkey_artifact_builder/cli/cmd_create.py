@@ -410,7 +410,9 @@ def _create_artifact_from_source(
     try:
         configure_artifact(
             artifact_id,
-            values={},
+            values={
+                "original": str(Path("originals") / source_path.name),
+            },
             input_files={
                 "artwork": source_path,
             },

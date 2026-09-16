@@ -1206,3 +1206,40 @@ def test_get_product_dependency_binding_rejects_mismatched_definition(
             dependency,
             project_root=tmp_path,
         )
+
+
+def test_artifact_original_provenance_is_not_resolver_configuration(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact original provenance is metadata, not Model configuration.
+
+    Persisting an original path in artifact.toml must not make that path
+    available through normal parameter resolution.
+    """
+
+    artifact_dir = tmp_path / "artifacts" / "skippy"
+    artifact_dir.mkdir(parents=True)
+
+    (artifact_dir / "artifact.toml").write_text(
+        """
+source = "artifacts/skippy/artifact.png"
+original = "originals/customer-final.png"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    resolver = get_resolver(
+        "skippy",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    assert resolver("source") == "artifacts/skippy/artifact.png"
+
+    with pytest.raises(
+        ConfigError,
+        match="Unknown configuration value 'original'",
+    ):
+        resolver("original")

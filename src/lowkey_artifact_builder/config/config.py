@@ -1976,7 +1976,8 @@ def _artifact_parameters(
     """
     Extract configurable values from artifact.toml.
 
-    Artifact identity fields such as model live at the top level.
+    Artifact identity and provenance fields live at the top level and do
+    not participate in normal parameter resolution.
 
     Ordinary artifact parameter overrides may either be stored in a
     [parameters] table or, for sparse artifact configuration, directly
@@ -1985,7 +1986,8 @@ def _artifact_parameters(
     The top-level form keeps artifact.toml concise:
 
         model = "artwork"
-        source = "new-york-deli-blimp.png"
+        source = "artifacts/new-york-deli/artifact.png"
+        original = "originals/new-york-deli.png"
         printer_colors = ["black", "white", "red"]
 
     A [parameters] table is also accepted. Values in [parameters]
@@ -1998,6 +2000,7 @@ def _artifact_parameters(
         if name in {
             "model",
             "variant",
+            "original",
             "parameters",
             "realizations",
         }:

@@ -148,7 +148,9 @@ def test_create_without_artifact_id_ingests_root_pngs(
     assert configured == [
         (
             "jones-cat",
-            {},
+            {
+                "original": "originals/jones-cat.PNG",
+            },
             {
                 "artwork": cat,
             },
@@ -156,7 +158,9 @@ def test_create_without_artifact_id_ingests_root_pngs(
         ),
         (
             "smith-dog",
-            {},
+            {
+                "original": "originals/smith-dog.png",
+            },
             {
                 "artwork": dog,
             },
@@ -685,7 +689,9 @@ def test_create_prompts_only_for_png_source(
 
     assert configured == [
         (
-            {},
+            {
+                "original": "originals/skippy.png",
+            },
             {
                 "artwork": source,
             },
@@ -750,7 +756,9 @@ def test_create_source_can_be_supplied_noninteractively(
 
     assert configured == [
         (
-            {},
+            {
+                "original": "originals/skippy.png",
+            },
             {
                 "artwork": source,
             },
@@ -818,19 +826,19 @@ def test_create_does_not_expose_general_parameter_configuration() -> None:
     assert "--param" not in result.output
 
 
-def test_create_persists_source_only_artifact_definition(
+def test_create_persists_artifact_source_and_original_provenance(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    Creating an Artifact persists only its Artifact-owned source.
+    Explicit creation persists both managed source and preserved-original
+    provenance as project-relative Artifact metadata.
 
-    Ingesting artwork does not select a Model or serialize derived default
-    Realizations. Model and Variant configuration remain registered reusable
-    configuration.
+    The preserved original retains the caller-supplied filename even when it
+    differs from the Artifact ID.
     """
 
-    source = tmp_path / "skippy.png"
+    source = tmp_path / "customer-final.png"
     source.write_bytes(b"artwork")
 
     monkeypatch.chdir(tmp_path)
@@ -838,7 +846,7 @@ def test_create_persists_source_only_artifact_definition(
     result = _invoke(
         "skippy",
         "--source",
-        "skippy.png",
+        "customer-final.png",
     )
 
     assert result.exit_code == 0
@@ -846,12 +854,14 @@ def test_create_persists_source_only_artifact_definition(
     artifact_dir = tmp_path / "artifacts" / "skippy"
 
     assert (artifact_dir / "artifact.png").read_bytes() == b"artwork"
+    assert (tmp_path / "originals" / "customer-final.png").read_bytes() == b"artwork"
 
     assert load_artifact_config(
         "skippy",
         project_root=tmp_path,
     ) == {
         "source": "artifacts/skippy/artifact.png",
+        "original": "originals/customer-final.png",
     }
 
 
@@ -882,6 +892,14 @@ def test_create_batch_ingests_root_png_into_artifact_and_originals(
     assert preserved_original.read_bytes() == b"dog artwork"
 
     assert not source.exists()
+
+    assert load_artifact_config(
+        "smith-dog",
+        project_root=tmp_path,
+    ) == {
+        "source": "artifacts/smith-dog/artifact.png",
+        "original": "originals/smith-dog.png",
+    }
 
 
 def test_create_batch_with_empty_intake_is_successful_no_op(
