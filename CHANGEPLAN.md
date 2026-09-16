@@ -517,7 +517,7 @@ Change bare:
 
 ```bash
 artifact build
-```
+````
 
 into a read-only project build-status operation.
 
@@ -525,15 +525,39 @@ It must not build, clean, rebuild, or otherwise modify build products.
 
 Status is reported in terms of Artifacts and their effective Realizations.
 
-The CLI exposes exactly three semantic build states:
+#### Engine-owned status semantics
+
+Build status must use the engine's existing persistent product-state semantics.
+
+The engine distinguishes:
 
 ```text
 current
 stale
-missing
+invalid
+incomplete
+absent
 ```
 
-Their meaning comes from existing engine freshness/state semantics. The CLI must not implement an independent definition of freshness.
+These states retain meaningful distinctions about persistent build products and must not be collapsed into a smaller CLI-specific status vocabulary.
+
+The CLI must not independently determine freshness, validity, completeness, or existence. It reports status derived from the same engine state evaluation used for incremental build planning.
+
+In particular:
+
+* `current` means the required persistent products are reusable for the current build context;
+* `stale` means valid completed products exist but no longer represent the current build context;
+* `invalid` means completed product state exists but fails validity checks;
+* `incomplete` means product materialization exists without successful completion;
+* `absent` means the required persistent product materialization does not exist.
+
+#### Realization status
+
+A Realization may contain multiple persistent products and therefore may have multiple underlying ProductStates.
+
+The engine, not the CLI, owns any aggregation required to report one status for an Artifact + Realization pair.
+
+The CLI must not invent an independent severity ordering or otherwise infer a Realization status from product files.
 
 Conceptually:
 
@@ -541,10 +565,14 @@ Conceptually:
 ARTIFACT       REALIZATION       STATUS
 smith-cat      artwork_default   current
 smith-cat      shape_default     stale
-smith-cat      shape_ornament    missing
+smith-cat      shape_ornament    absent
 ```
 
-A project containing stale or missing products is not itself a CLI execution failure.
+Diagnostic states remain visible rather than being normalized to a generic `missing` state. For example, an incomplete or invalid Realization should be reported as such when that is the status determined by the engine.
+
+#### Command behavior
+
+A project containing non-current Realizations is not itself a CLI execution failure.
 
 Therefore:
 
@@ -552,7 +580,7 @@ Therefore:
 artifact build
 ```
 
-returns success after successfully determining and reporting status even when one or more products are stale or missing.
+returns success after successfully determining and reporting status even when one or more Realizations are not current.
 
 Status output should direct the operator toward:
 
@@ -560,7 +588,7 @@ Status output should direct the operator toward:
 artifact build --build-all
 ```
 
-when stale or missing products exist.
+when one or more Realizations require production.
 
 Canonical Realizations participate in status even when they are not explicitly serialized in the Artifact's configuration.
 
