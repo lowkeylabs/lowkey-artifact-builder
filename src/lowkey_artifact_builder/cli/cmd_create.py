@@ -44,9 +44,15 @@ from lowkey_artifact_builder.config import (
     type=str,
     help="Use the specified PNG as the Artifact source.",
 )
+@click.option(
+    "--clean",
+    is_flag=True,
+    help="Remove verified duplicate PNGs from the batch intake queue.",
+)
 def cli(
     artifact_ids: tuple[str, ...],
     source: str | None,
+    clean: bool,
 ) -> None:
     """
     Create new Artifacts from PNG source artwork.
@@ -57,12 +63,16 @@ def cli(
     if not artifact_ids:
         _create_intake_batch(
             source=source,
+            clean=clean,
             project_root=project_root,
         )
         return
 
     if len(artifact_ids) != 1:
         raise click.UsageError("Artifact creation accepts at most one explicit artifact ID.")
+
+    if clean:
+        raise click.UsageError("--clean applies only to bare batch intake.")
 
     _create_artifact(
         artifact_ids[0],
@@ -79,6 +89,7 @@ def cli(
 def _create_intake_batch(
     *,
     source: str | None,
+    clean: bool,
     project_root: Path,
 ) -> None:
     """
@@ -88,7 +99,8 @@ def _create_intake_batch(
     intake queue is preflighted before any persistent project state is
     modified.
 
-    Verified duplicates are reported and left in the intake queue.
+    Verified duplicates are reported and left in the intake queue unless
+    --clean requests their removal.
     """
 
     if source is not None:
@@ -96,7 +108,7 @@ def _create_intake_batch(
 
     sources = _discover_sources(project_root)
 
-    new_sources = _preflight_intake_batch(
+    new_sources, duplicate_sources = _preflight_intake_batch(
         sources,
         project_root=project_root,
     )
@@ -115,18 +127,24 @@ def _create_intake_batch(
             project_root=project_root,
         )
 
+    if clean:
+        for source_path in duplicate_sources:
+            _remove_duplicate_intake(
+                source_path,
+            )
+
 
 def _preflight_intake_batch(
     sources: list[Path],
     *,
     project_root: Path,
-) -> list[Path]:
+) -> tuple[list[Path], list[Path]]:
     """
     Classify the complete intake queue before persistent mutation.
 
-    New sources are returned for ingestion. Verified duplicates are reported
-    and left in the intake queue. Incomplete, inconsistent, or conflicting
-    existing state aborts the complete batch before mutation.
+    New sources and verified duplicates are returned separately. Incomplete,
+    inconsistent, or conflicting existing state aborts the complete batch
+    before mutation.
 
     Artifact identity comparisons are case-insensitive so intake behavior
     remains portable across filesystems.
@@ -140,6 +158,7 @@ def _preflight_intake_batch(
     }
 
     new_sources: list[Path] = []
+    duplicate_sources: list[Path] = []
 
     for source_path in sources:
         artifact_id = source_path.stem
@@ -148,11 +167,13 @@ def _preflight_intake_batch(
         existing_artifact = existing_artifacts.get(identity)
 
         if existing_artifact is not None:
-            _preflight_existing_artifact(
+            if _preflight_existing_artifact(
                 source_path,
                 artifact_id=existing_artifact,
                 project_root=project_root,
-            )
+            ):
+                duplicate_sources.append(source_path)
+
             continue
 
         original_path = project_root / "originals" / source_path.name
@@ -162,7 +183,7 @@ def _preflight_intake_batch(
 
         new_sources.append(source_path)
 
-    return new_sources
+    return new_sources, duplicate_sources
 
 
 def _preflight_existing_artifact(
@@ -170,13 +191,14 @@ def _preflight_existing_artifact(
     *,
     artifact_id: str,
     project_root: Path,
-) -> None:
+) -> bool:
     """
     Classify one incoming source that maps to an existing Artifact.
 
-    A verified duplicate must match both the preserved original and the
-    Artifact-managed source byte-for-byte. Any incomplete, inconsistent,
-    or conflicting state is an error.
+    Return True when the source is a verified duplicate. A verified duplicate
+    must match both the preserved original and the Artifact-managed source
+    byte-for-byte. Any incomplete, inconsistent, or conflicting state is an
+    error.
     """
 
     original_path = project_root / "originals" / source_path.name
@@ -202,7 +224,7 @@ def _preflight_existing_artifact(
 
     if matches_original and matches_managed:
         console.print(f"{source_path.name} [bold]DUPLICATE[/bold]")
-        return
+        return True
 
     if matches_original:
         raise click.ClickException(f"Artifact {artifact_id!r} has inconsistent managed source.")
@@ -213,6 +235,24 @@ def _preflight_existing_artifact(
     raise click.ClickException(
         f"Incoming PNG {source_path.name!r} conflicts with existing Artifact {artifact_id!r}."
     )
+
+
+def _remove_duplicate_intake(
+    source_path: Path,
+) -> None:
+    """
+    Remove one positively verified duplicate from the intake queue.
+
+    This operation is performed only after complete batch preflight and
+    successful ingestion of all NEW sources.
+    """
+
+    try:
+        source_path.unlink()
+    except OSError as exc:
+        raise click.ClickException(
+            f"Could not remove duplicate PNG {source_path.name!r}: {exc}"
+        ) from exc
 
 
 def _preserve_intake_original(

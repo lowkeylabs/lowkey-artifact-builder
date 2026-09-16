@@ -824,3 +824,143 @@ def test_create_batch_with_empty_intake_is_successful_no_op(
     assert result.exit_code == 0
     assert not (tmp_path / "artifacts").exists()
     assert not (tmp_path / "originals").exists()
+
+
+def test_create_batch_clean_removes_verified_duplicate(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    --clean removes a root-level intake PNG only after it has been positively
+    classified as a verified duplicate.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    _create_existing_batch_artifact(
+        tmp_path,
+        "smith-cat",
+        content=b"cat artwork",
+    )
+
+    duplicate = tmp_path / "smith-cat.png"
+    duplicate.write_bytes(b"cat artwork")
+
+    result = _invoke(
+        "--clean",
+    )
+
+    assert result.exit_code == 0
+    assert "duplicate" in result.output.lower()
+    assert not duplicate.exists()
+
+    assert (tmp_path / "originals" / "smith-cat.png").read_bytes() == b"cat artwork"
+
+    assert (tmp_path / "artifacts" / "smith-cat" / "artifact.png").read_bytes() == b"cat artwork"
+
+
+def test_create_batch_clean_removes_duplicate_and_ingests_new_intake(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Duplicate cleanup does not prevent independent NEW intake from being
+    processed normally.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    _create_existing_batch_artifact(
+        tmp_path,
+        "smith-cat",
+        content=b"cat artwork",
+    )
+
+    duplicate = tmp_path / "smith-cat.png"
+    new_source = tmp_path / "jones-dog.png"
+
+    duplicate.write_bytes(b"cat artwork")
+    new_source.write_bytes(b"dog artwork")
+
+    result = _invoke(
+        "--clean",
+    )
+
+    assert result.exit_code == 0
+
+    assert not duplicate.exists()
+    assert not new_source.exists()
+
+    assert (tmp_path / "artifacts" / "jones-dog" / "artifact.png").read_bytes() == b"dog artwork"
+
+    assert (tmp_path / "originals" / "jones-dog.png").read_bytes() == b"dog artwork"
+
+
+def test_create_batch_clean_does_not_mutate_when_batch_contains_conflict(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    --clean does not remove even a verified duplicate when another intake item
+    causes whole-batch preflight to fail.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    _create_existing_batch_artifact(
+        tmp_path,
+        "smith-cat",
+        content=b"cat artwork",
+    )
+
+    _create_existing_batch_artifact(
+        tmp_path,
+        "lee-house",
+        content=b"house artwork",
+    )
+
+    duplicate = tmp_path / "smith-cat.png"
+    conflicting = tmp_path / "lee-house.png"
+
+    duplicate.write_bytes(b"cat artwork")
+    conflicting.write_bytes(b"different house artwork")
+
+    result = _invoke(
+        "--clean",
+    )
+
+    assert result.exit_code != 0
+
+    # Preflight failure prevents duplicate cleanup.
+    assert duplicate.read_bytes() == b"cat artwork"
+
+    # Genuine conflicting input is never removed.
+    assert conflicting.read_bytes() == b"different house artwork"
+
+
+def test_create_clean_requires_bare_batch_intake(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    --clean belongs to bare batch intake and is not an explicit-create
+    overwrite or cleanup operation.
+    """
+
+    source = tmp_path / "customer-final.png"
+    source.write_bytes(b"artwork")
+
+    monkeypatch.chdir(tmp_path)
+
+    result = _invoke(
+        "dog",
+        "--source",
+        "customer-final.png",
+        "--clean",
+    )
+
+    assert result.exit_code != 0
+
+    # Explicit caller-owned input remains untouched.
+    assert source.read_bytes() == b"artwork"
+    assert not (tmp_path / "artifacts" / "dog").exists()
