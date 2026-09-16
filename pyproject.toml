@@ -71,6 +71,7 @@ Issues = "https://github.com/lowkeylabs/lowkey-artifact-builder/issues"
 
 [project.scripts]
 artifact = "lowkey_artifact_builder.cli._main:cli"
+art = "lowkey_artifact_builder.cli._main:cli"
 
 
 # =========================================================
