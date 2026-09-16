@@ -218,35 +218,33 @@ and Product identity rather than generated paths.
 
 ---
 
-# Phase 1 — Intake and Build
+## Phase 1 — Intake and Build
 
-## Goal
+### Goal
 
-At the end of Phase 1, raw customer PNGs can be ingested and every canonical
-Realization can be built without any Artifact-specific product configuration.
+Make raw customer PNG intake safe and efficient, make Artifact provenance explicit, and make every effective Realization buildable without requiring Artifact-specific product configuration.
 
-The usable workflow is:
+The normal Phase 1 workflow is:
 
-```text
+```bash
 artifact create
-
 artifact build
 artifact build --build-all
 ```
 
-A narrower build remains available when desired:
+where:
 
-```text
-artifact build dog
-artifact build --realization shape_ornament
-artifact build dog --realization shape_ornament
-```
+* `artifact create` ingests the root PNG intake queue;
+* bare `artifact build` reports project build status without modifying build products;
+* `artifact build --build-all` incrementally builds every stale or missing applicable product;
+* narrow `artifact build ...` commands incrementally build the selected scope;
+* `--rebuild` and `--rebuild-all` explicitly clean and rebuild already-current products when required.
 
-No `config` operation is required for ordinary canonical Realizations.
+Canonical Realizations remain available without being serialized into each `artifact.toml`.
 
 ---
 
-## 1.1 PNG intake
+### 1.1 PNG intake
 
 Treat root-level PNG files as an intake queue.
 
@@ -258,102 +256,276 @@ jones-cat.png
 lee-house.png
 ```
 
-After successful batch creation:
+After successful intake:
 
 ```text
 originals/
-    smith-dog.png
-    jones-cat.png
-    lee-house.png
+  smith-dog.png
+  jones-cat.png
+  lee-house.png
 
 artifacts/
-    smith-dog/
-        artifact.toml
-        artifact.png
-    jones-cat/
-        artifact.toml
-        artifact.png
-    lee-house/
-        artifact.toml
-        artifact.png
+  smith-dog/
+    artifact.toml
+    artifact.png
+  jones-cat/
+    artifact.toml
+    artifact.png
+  lee-house/
+    artifact.toml
+    artifact.png
 ```
 
-Required semantics:
+Required behavior:
 
-* `artifact create` with no Artifact ID discovers root-level PNG intake files;
-* each successfully ingested PNG creates an Artifact using its filename stem as
-  the Artifact ID;
-* the original PNG is moved out of the intake directory and preserved beneath
-  `originals/`;
+* bare `artifact create` discovers root-level PNG files;
+* each successfully ingested PNG creates one Artifact using the PNG filename stem as the Artifact ID;
+* the original PNG is preserved under `originals/` using its original filename;
 * the Artifact receives a managed working copy named `artifact.png`;
-* successfully processed PNGs no longer remain in the intake directory;
-* no root-level PNGs means that the intake queue is empty;
-* ingestion must not lose the only copy of an original PNG if creation fails.
+* successfully ingested root-level PNG files are removed from the intake directory;
+* if no root-level PNG files exist, the intake queue is empty and `artifact create` succeeds as a no-op rather than treating the absence of input as an error;
+* intake must never destroy the only known copy of an input PNG.
 
 Preserve explicit single-Artifact creation:
 
-```text
+```bash
 artifact create dog
 artifact create dog --source customer-final.png
 ```
 
-When the Artifact ID and source filename differ, preserve the original
-filename rather than renaming the preserved customer source merely to match the
-Artifact ID.
+When the explicit Artifact ID and source filename differ, preserve the original source filename under `originals/`; do not rename the preserved original merely to match the Artifact ID.
 
-Define deterministic, safe behavior for:
+#### Intake ownership
 
-* an Artifact that already exists;
-* an `originals/` destination collision;
-* duplicate or conflicting inferred Artifact IDs;
-* an explicit source outside the ordinary root intake queue;
-* partial failure during batch ingestion.
+Bare:
 
-Do not allow batch convenience to make destructive behavior ambiguous.
+```bash
+artifact create
+```
+
+owns the root-level PNG intake queue.
+
+A successfully ingested root-level PNG is therefore removed from the queue after its preserved original and Artifact-managed working copy have been successfully established.
+
+Explicit creation:
+
+```bash
+artifact create dog --source customer-final.png
+```
+
+treats the supplied source as caller-owned. The source is copied into project-owned storage and is not moved or deleted, even when the explicitly supplied pathname happens to refer to a root-level PNG.
+
+Likewise, when:
+
+```bash
+artifact create dog
+```
+
+uses interactive source selection, the selected source is caller-owned rather than implicitly owned by the batch intake queue.
+
+Only bare batch intake owns and removes root-level intake files.
+
+#### Preflight and collision safety
+
+Artifact creation must perform deterministic preflight validation before mutating persistent project state.
+
+For batch intake, discover the complete root-level PNG intake set, derive the proposed Artifact IDs, and validate the batch before beginning normal ingestion.
+
+Artifact-ID collision checks are case-insensitive. For example, an existing Artifact named:
+
+```text
+smith-cat
+```
+
+conflicts with inferred IDs such as:
+
+```text
+Smith-Cat
+SMITH-CAT
+```
+
+even on a case-sensitive filesystem.
+
+This prevents projects from acquiring Artifact identities that become ambiguous when moved between case-sensitive and case-insensitive filesystems.
+
+A genuine collision is loud and immediate. The CLI must not silently overwrite existing Artifacts, preserved originals, or managed sources, and must not automatically invent alternate Artifact IDs such as `smith-cat(1)`.
+
+At minimum, preflight must detect:
+
+* an inferred or explicit Artifact ID that conflicts with an existing Artifact;
+* duplicate or otherwise conflicting Artifact IDs inferred from the intake set;
+* an unexpected collision at the intended `originals/` destination;
+* incomplete or inconsistent state for an existing Artifact;
+* invalid or unavailable explicit source files.
+
+Predictable genuine collisions discovered during preflight must abort the operation before unrelated intake files are mutated.
+
+#### Duplicate intake detection
+
+An existing Artifact ID does not necessarily represent a genuine collision. It may represent a PNG that has already been successfully ingested and has subsequently been copied back into the root intake directory.
+
+When an incoming PNG maps to an existing Artifact, compare fingerprints of:
+
+1. the incoming PNG;
+2. the Artifact's preserved original under `originals/`;
+3. the Artifact's managed `artifact.png`.
+
+Use a strong content fingerprint such as SHA-256.
+
+Fingerprints are an on-demand integrity mechanism and are not persisted as Artifact configuration, Artifact metadata, or Model parameters.
+
+A PNG is a verified duplicate only when:
+
+```text
+incoming fingerprint
+    ==
+preserved-original fingerprint
+    ==
+managed artifact.png fingerprint
+```
+
+Fingerprint comparison is byte-oriented. Do not use perceptual image similarity or decoded-pixel equivalence to classify an input as a duplicate.
+
+Fingerprinting is narrowly scoped to the existing Artifact identified by the inferred or explicit Artifact ID. Do not search other Artifacts or `originals/` for matching fingerprints and infer Artifact identity from file content.
+
+#### Existing-Artifact states
+
+Classify an incoming PNG that maps to an existing Artifact as follows:
+
+| Incoming vs original  | Incoming vs `artifact.png` | Classification                  | Default behavior                |
+| --------------------- | -------------------------- | ------------------------------- | ------------------------------- |
+| same                  | same                       | verified duplicate              | report duplicate; offer cleanup |
+| same                  | different                  | inconsistent managed source     | error                           |
+| different             | same                       | inconsistent preserved original | error                           |
+| different             | different                  | conflicting input               | error                           |
+| required file missing | —                          | incomplete Artifact state       | error                           |
+
+Only the first state is a duplicate.
+
+All other states are genuine collisions or integrity problems and must fail loudly without deleting the incoming PNG.
+
+`artifact create` must not interpret changed content as an implicit request to replace an existing Artifact's source. Source replacement, if supported later, requires separately defined explicit semantics.
+
+#### Duplicate cleanup
+
+Interactive bare `artifact create` may offer to remove a verified duplicate from the root intake directory:
+
+```text
+smith-cat.png has already been ingested as Artifact 'smith-cat'.
+The intake PNG is identical to the preserved original and managed source.
+
+Remove the duplicate PNG from the intake directory? [y/N]:
+```
+
+The default answer is `No`.
+
+Support:
+
+```bash
+artifact create --clean
+```
+
+`--clean` applies only to bare batch intake.
+
+It automatically removes root-level PNGs that have been positively classified as verified duplicates.
+
+`--clean` must never remove:
+
+* a genuinely conflicting PNG;
+* a PNG whose preserved original is missing;
+* a PNG whose managed `artifact.png` is missing;
+* a PNG whose fingerprint differs from either existing copy;
+* a PNG whose duplicate status cannot be established.
+
+Thus `--clean` means **clean verified duplicate intake files**, not force creation, overwrite existing state, or discard conflicting input.
+
+Do not introduce `--force` as an alias for this behavior. Any future `--force` behavior must have separately specified semantics.
+
+#### Batch duplicate behavior
+
+Verified duplicates are resolved intake items rather than genuine collisions.
+
+For example:
+
+```text
+smith-cat.png   DUPLICATE
+jones-dog.png   NEW
+lee-house.png   NEW
+```
+
+does not prevent `jones-dog.png` and `lee-house.png` from being ingested.
+
+Without `--clean`, verified duplicates remain in the root intake directory unless the operator explicitly approves their removal.
+
+With `--clean`, verified duplicates are removed automatically.
+
+A genuine collision discovered during preflight remains an error and prevents normal batch mutation.
+
+#### Failure and mutation guarantees
+
+Creation must be ordered so that a batch-owned intake PNG is not removed until the Artifact-managed source and preserved original have been successfully established.
+
+For successfully ingested root-queue PNGs, removal from the intake directory is the final destructive step.
+
+For verified duplicates, deletion is permitted only after duplicate status has been established by fingerprint comparison and either:
+
+* the operator explicitly approves cleanup; or
+* `--clean` was supplied.
+
+If an unexpected runtime failure occurs after preflight, preserve enough source state to prevent loss of the only known input copy and report the failure clearly.
+
+The CLI should distinguish successful intake, verified duplicates, and failures in its output so that batch operation remains auditable.
 
 ---
 
-## 1.2 Artifact source metadata
+### 1.2 Artifact source and provenance metadata
 
-A newly created Artifact should require only source metadata.
+Artifact-owned source paths must be portable within the project rather than persisted as machine-specific absolute filesystem paths.
 
-Conceptually:
+A newly created Artifact conceptually records:
 
 ```toml
 source = "artifacts/smith-dog/artifact.png"
 original = "originals/smith-dog.png"
 ```
 
-Required semantics:
+Both paths are persisted as project-relative paths and resolved relative to the project root when consumed.
 
-* `source` references the managed Artifact input;
-* `original` references the preserved customer source;
-* both are project-relative;
-* `source` must no longer be persisted as an absolute filesystem path;
-* the preserved original remains referenceable after ingestion;
-* source/original metadata does not redefine Model or Variant semantics;
-* neither field represents a generated Model, Stage, or Product path.
+`source` identifies the Artifact-managed working source used by the build system.
 
-Determine the appropriate permanent configuration treatment of `original`
-before implementation. Do not accidentally expose it as a Model parameter if
-it is Artifact source metadata.
+`original` identifies the preserved original input and is Artifact-owned provenance metadata.
+
+`original` is **not**:
+
+* a Model parameter;
+* a Variant parameter;
+* a Realization override;
+* a feature-participation parameter;
+* a generated stage or product path.
+
+The parameter resolver must not accidentally expose `original` as Model configuration merely because it is stored in `artifact.toml`.
+
+The preserved original is authoritative provenance for duplicate-intake and integrity checks. Normal model execution continues to consume the managed `source`, not the preserved original.
+
+Generated stage and product filesystem paths must not be persisted into Artifact configuration.
 
 ---
 
-## 1.3 Build status
+### 1.3 Build status
 
-Make bare:
+Change bare:
 
-```text
+```bash
 artifact build
 ```
 
-a read-only build-state operation.
+into a read-only project build-status operation.
 
-It reports the current state of the effective Realizations across the project
-without executing build work.
+It must not build, clean, rebuild, or otherwise modify build products.
 
-The report should make useful distinctions such as:
+Status is reported in terms of Artifacts and their effective Realizations.
+
+The CLI exposes exactly three semantic build states:
 
 ```text
 current
@@ -361,133 +533,229 @@ stale
 missing
 ```
 
-and provide enough Artifact/Realization identity for the user to understand
-what work is required.
-
-For example:
-
-```text
-Artifact      Realization       Status
-smith-dog     artwork_default   current
-smith-dog     shape_default     current
-smith-dog     shape_ornament    stale
-jones-cat     artwork_default   missing
-...
-```
-
-The status operation must use the same dependency/Product-state semantics as
-the build engine rather than implementing an independent CLI definition of
-staleness.
-
-The command should summarize whether build work is required and direct the user
-toward `--build-all` when appropriate.
-
----
-
-## 1.4 Build all
-
-Add:
-
-```text
-artifact build --build-all
-```
-
-meaning:
-
-> Bring every effective Realization of every defined Artifact up to date.
-
-This is make-like desired-state behavior.
-
-Selecting everything does not imply blindly executing everything. Existing
-dependency and Product-state analysis determines what actually needs to run.
-
-A change to Model-owned configuration such as `parameters.toml` should permit:
-
-```text
-artifact build
-```
-
-to reveal the affected state, followed by:
-
-```text
-artifact build --build-all
-```
-
-to rebuild only what has become stale or missing.
-
-Preserve useful narrower execution:
-
-```text
-artifact build dog
-```
-
-builds all effective Realizations for `dog`.
-
-```text
-artifact build --realization shape_ornament
-```
-
-builds that Realization across applicable Artifacts.
-
-```text
-artifact build dog --realization shape_ornament
-```
-
-builds exactly that Artifact Realization.
-
-Normal build CLI should not require Variant selection.
-
-Remove or retire normal CLI behavior whose execution coordinate is
-`--variant` or `--all-variants` once equivalent Realization-oriented behavior
-is established.
-
-Independent Stage execution is a separate developer/diagnostic capability and
-must not cause the normal build vocabulary to conflate Variant and
-Realization.
-
----
-
-## 1.5 Named color layers
-
-Packaged 3MF Products produced by an ordinary build must expose the resolved physical printing color in the operator-facing name of each independently printable component.
-
-For Artwork-derived components, the name uses the physical printer color established by the Artwork printer_assignments.
-
-For Model-owned structural components, the name uses the resolved semantic printing color established by the owning Model.
-
-The component name must preserve stable component identity in addition to the color name; color must not replace component identity.
+Their meaning comes from existing engine freshness/state semantics. The CLI must not implement an independent definition of freshness.
 
 Conceptually:
 
 ```text
-dog-color-1 - Fire Engine Red
-dog-color-2 - Cold White
-dog-base - Cold White
-dog-outer-ridge - Gold
+ARTIFACT       REALIZATION       STATUS
+smith-cat      artwork_default   current
+smith-cat      shape_default     stale
+smith-cat      shape_ornament    missing
 ```
 
-Packaging must not independently select colors. It presents the semantic physical color assignment already established upstream.
+A project containing stale or missing products is not itself a CLI execution failure.
 
----
+Therefore:
 
-## Phase 1 completion criterion
-
-Starting with three raw PNG files in the project root, the user can run:
-
-```text
-artifact create
+```bash
 artifact build
+```
+
+returns success after successfully determining and reporting status even when one or more products are stale or missing.
+
+Status output should direct the operator toward:
+
+```bash
 artifact build --build-all
 ```
 
-and obtain current build Products for every canonical Realization without
-writing or editing Artifact-specific product configuration.
+when stale or missing products exist.
 
-The intake directory is clean afterward, the customer originals are preserved,
-and Artifact-owned source references are portable project-relative paths.
+Canonical Realizations participate in status even when they are not explicitly serialized in the Artifact's configuration.
 
-Packaged 3MF Products expose both stable component identity and the resolved
-physical printing color in their operator-facing component names.
+---
+
+### 1.4 Incremental build and rebuild
+
+Build commands operate on Artifacts and effective Realizations.
+
+Normal build behavior is incremental:
+
+> Without an explicit rebuild option, build only products that are stale or missing.
+
+Already-current products are left untouched.
+
+#### Project-wide build
+
+```bash
+artifact build --build-all
+```
+
+brings every effective Realization of every applicable Artifact up to date.
+
+It builds only stale or missing products.
+
+Current products are not rebuilt.
+
+This is the routine project-wide build operation.
+
+#### Artifact build
+
+```bash
+artifact build dog
+```
+
+brings all effective Realizations of Artifact `dog` up to date.
+
+Only stale or missing products are built.
+
+#### Realization build across Artifacts
+
+```bash
+artifact build --realization shape_ornament
+```
+
+brings the `shape_ornament` Realization of every applicable Artifact up to date.
+
+Only stale or missing products are built.
+
+#### Specific Artifact Realization
+
+```bash
+artifact build dog --realization shape_ornament
+```
+
+brings only `dog`'s `shape_ornament` Realization up to date.
+
+If it is already current, no build is required.
+
+#### Rebuild
+
+Support:
+
+```bash
+artifact build dog --rebuild
+artifact build dog --realization shape_ornament --rebuild
+artifact build --realization shape_ornament --rebuild
+```
+
+`--rebuild` means:
+
+> Clean the selected build scope and then build it again regardless of current freshness state.
+
+Thus:
+
+```bash
+artifact build dog
+```
+
+is incremental, while:
+
+```bash
+artifact build dog --rebuild
+```
+
+forces all effective Realizations of `dog` through clean + build.
+
+Likewise:
+
+```bash
+artifact build dog --realization shape_ornament --rebuild
+```
+
+forces only that Artifact/Realization through clean + build.
+
+#### Project-wide rebuild
+
+Support:
+
+```bash
+artifact build --rebuild-all
+```
+
+`--rebuild-all` means:
+
+> Clean and rebuild every effective Realization of every applicable Artifact regardless of current freshness state.
+
+The project-wide distinction is therefore:
+
+```text
+artifact build
+    read-only project status
+
+artifact build --build-all
+    incrementally build all stale or missing products
+
+artifact build --rebuild-all
+    clean and rebuild all products
+```
+
+`--build-all` and `--rebuild-all` are mutually exclusive.
+
+`--rebuild` applies to a narrowed build scope and must not silently imply project-wide scope. Bare project-wide forced rebuilding requires the explicit `--rebuild-all` option.
+
+Normal CLI execution addresses Realizations, not Variants. Retire normal execution options such as:
+
+```text
+--variant
+--all-variants
+```
+
+Variant selection remains a configuration concern rather than the routine build coordinate.
+
+#### Failure behavior
+
+Multi-Artifact and multi-Realization builds should continue independent requested work after an individual build failure when doing so is safe.
+
+For example:
+
+```text
+smith-cat      artwork_default    current
+smith-cat      shape_ornament     built
+jones-dog      artwork_default    FAILED
+lee-house      artwork_default    built
+```
+
+A failure in `jones-dog` should not unnecessarily prevent an independent `lee-house` build.
+
+After attempting the requested independent work, the command returns aggregate failure if any requested build failed.
+
+This differs intentionally from destructive intake preflight:
+
+* `create` protects irreplaceable input and therefore rejects predictable batch collisions before mutation;
+* build products are reproducible, so independent successful build work should not be discarded merely because another requested build fails.
+
+The build command delegates dependency ordering, applicability, freshness, cleaning, and execution semantics to the engine. CLI tests should verify user intent and scope translation rather than reproduce engine planning logic.
+
+---
+
+### 1.5 Human-readable 3MF component names
+
+Packaged 3MF products must expose component names useful to the human operator preparing the product for printing.
+
+Component names should combine:
+
+1. stable semantic component identity; and
+2. the resolved physical color name.
+
+For example:
+
+```text
+dog-color-1 - Fire Engine Red
+dog-color-2 - Mint Green
+dog-base - Cold White
+dog-ridge - Cold White
+```
+
+The physical color name is a human-facing helper. It does not replace semantic component identity.
+
+Components remain separate semantic layers even when they resolve to the same physical color.
+
+For example:
+
+```text
+dog-base - Cold White
+dog-ridge - Cold White
+```
+
+remain separate components rather than being merged merely because both currently use `Cold White`.
+
+Likewise, two artwork color components that happen to resolve to the same physical color remain distinct if they represent distinct upstream semantic components.
+
+Packaging must present semantic identity and resolved color information supplied by upstream processing. Packaging must not independently choose colors or collapse semantic components based on physical color equality.
+
+This naming establishes a stable human-in-the-loop boundary for downstream operations such as PrusaSlicer preparation and the later recolor workflow.
 
 ---
 
