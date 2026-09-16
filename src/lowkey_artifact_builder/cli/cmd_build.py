@@ -34,6 +34,7 @@ from lowkey_artifact_builder.cli.variants import (
 )
 from lowkey_artifact_builder.config import (
     ConfigError,
+    get_realization_names,
     list_artifacts,
 )
 from lowkey_artifact_builder.engine import (
@@ -230,9 +231,13 @@ def _display_build_status() -> None:
     """
     Display read-only build status for the current project.
 
-    Project Artifacts are discovered from persistent configuration.
-    Detailed Realization status and freshness reporting are introduced
-    incrementally by subsequent build-status slices.
+    Status is organized by persistent Artifact and effective Realization.
+    Realization discovery is delegated to configuration so canonical and
+    Artifact-declared Realizations follow the same semantics used by normal
+    engine planning.
+
+    Detailed freshness reporting is introduced by subsequent build-status
+    slices.
     """
 
     project_root = Path.cwd()
@@ -242,7 +247,17 @@ def _display_build_status() -> None:
     )
 
     for artifact_id in artifacts:
-        click.echo(artifact_id)
+        try:
+            realizations = get_realization_names(
+                artifact_id,
+                project_root=project_root,
+            )
+
+            for realization in realizations:
+                click.echo(f"{artifact_id} {realization}")
+
+        except ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
 
 
 def _display_available_variants(

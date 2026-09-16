@@ -1861,3 +1861,70 @@ def test_bare_build_discovers_project_artifacts(
 
     assert result.exit_code == 0
     assert "dog" in result.output
+
+
+def test_bare_build_reports_effective_realizations(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bare build reports status in terms of Artifact Realizations.
+
+    Realization discovery is delegated to configuration rather than
+    reconstructed from Variants by the CLI.
+    """
+
+    artifact_dir = tmp_path / "artifacts" / "dog"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "artifact.toml").write_text(
+        'source = "artifacts/dog/artifact.png"\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: (
+            "artwork_default",
+            "shape_default",
+            "shape_ornament",
+        ),
+        raising=False,
+    )
+
+    result = _invoke()
+
+    assert result.exit_code == 0
+    assert "dog" in result.output
+    assert "artwork_default" in result.output
+    assert "shape_default" in result.output
+    assert "shape_ornament" in result.output
+
+
+def test_bare_build_includes_canonical_realizations_not_in_artifact_config(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Canonical Realizations participate in status without being serialized
+    into artifact.toml.
+    """
+
+    artifact_dir = tmp_path / "artifacts" / "dog"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "artifact.toml").write_text(
+        'source = "artifacts/dog/artifact.png"\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    result = _invoke()
+
+    assert result.exit_code == 0
+    assert "dog" in result.output
+    assert "artwork_default" in result.output
+    assert "shape_default" in result.output
+    assert "shape_ornament" in result.output
