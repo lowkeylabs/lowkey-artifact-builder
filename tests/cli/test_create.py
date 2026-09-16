@@ -604,26 +604,42 @@ def test_create_batch_preflights_original_destination_before_mutation(
 
 def test_create_rejects_existing_artifact(
     monkeypatch,
+    tmp_path: Path,
 ) -> None:
     """
-    Creation does not silently become configuration of an existing artifact.
+    Creation does not silently become configuration of an existing Artifact.
     """
 
-    monkeypatch.setattr(
-        cmd_create,
-        "load_artifact_config",
-        lambda *args, **kwargs: {
-            "source": "artwork.png",
-        },
+    existing_source = tmp_path / "existing.png"
+    existing_source.write_bytes(b"existing artwork")
+
+    monkeypatch.chdir(tmp_path)
+
+    first = _invoke(
+        "skippy",
+        "--source",
+        "existing.png",
     )
+
+    assert first.exit_code == 0
+
+    new_source = tmp_path / "new.png"
+    new_source.write_bytes(b"new artwork")
 
     result = _invoke(
         "skippy",
+        "--source",
+        "new.png",
     )
 
     assert result.exit_code != 0
-    assert "already" in result.output.lower()
-    assert "defined" in result.output.lower()
+    assert "skippy" in result.output.lower()
+
+    # Rejected creation does not consume or modify the caller-owned source.
+    assert new_source.read_bytes() == b"new artwork"
+
+    # The existing Artifact remains unchanged.
+    assert (tmp_path / "artifacts" / "skippy" / "artifact.png").read_bytes() == b"existing artwork"
 
 
 # =========================================================
@@ -1156,3 +1172,50 @@ def test_create_batch_preflights_duplicate_inferred_artifact_ids(
 
     assert not (tmp_path / "artifacts").exists()
     assert not (tmp_path / "originals").exists()
+
+
+def test_create_explicit_artifact_id_collision_is_case_insensitive(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit creation rejects an Artifact ID that differs from an existing
+    Artifact ID only by case.
+
+    Artifact identity is case-insensitive even when the underlying filesystem
+    permits distinct directory names that differ only by case.
+    """
+
+    existing_source = tmp_path / "existing.png"
+    existing_source.write_bytes(b"existing artwork")
+
+    monkeypatch.chdir(tmp_path)
+
+    first = _invoke(
+        "dog",
+        "--source",
+        "existing.png",
+    )
+
+    assert first.exit_code == 0
+
+    new_source = tmp_path / "new.png"
+    new_source.write_bytes(b"new artwork")
+
+    result = _invoke(
+        "DOG",
+        "--source",
+        "new.png",
+    )
+
+    assert result.exit_code != 0
+    assert "dog" in result.output.lower()
+
+    # The rejected source remains caller-owned and untouched.
+    assert new_source.read_bytes() == b"new artwork"
+
+    # No second Artifact is created under the conflicting spelling.
+    assert not (tmp_path / "artifacts" / "DOG").exists()
+
+    # The existing Artifact remains intact.
+    assert (tmp_path / "artifacts" / "dog" / "artifact.png").read_bytes() == b"existing artwork"

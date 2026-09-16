@@ -380,13 +380,19 @@ def _create_artifact(
     project-owned storage.
     """
 
-    existing = load_artifact_config(
-        artifact_id,
-        project_root=project_root,
-    )
+    existing_artifacts = {
+        existing_id.casefold(): existing_id
+        for existing_id in list_artifacts(
+            project_root=project_root,
+        )
+    }
 
-    if existing:
-        raise click.ClickException(f"Artifact {artifact_id!r} is already defined.")
+    existing_artifact = existing_artifacts.get(artifact_id.casefold())
+
+    if existing_artifact is not None:
+        raise click.ClickException(
+            f"Artifact {artifact_id!r} conflicts with existing Artifact {existing_artifact!r}."
+        )
 
     source_path = _resolve_source(
         source,
