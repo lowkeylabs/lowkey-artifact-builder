@@ -1120,3 +1120,39 @@ def test_create_interactive_source_preserves_original_without_consuming_source(
     assert (tmp_path / "originals" / "customer-final.png").read_bytes() == b"customer artwork"
 
     assert (tmp_path / "artifacts" / "dog" / "artifact.png").read_bytes() == b"customer artwork"
+
+
+def test_create_batch_preflights_duplicate_inferred_artifact_ids(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bare batch creation rejects conflicting inferred Artifact IDs before
+    mutating any intake item.
+
+    Artifact identity is case-insensitive even when the underlying
+    filesystem permits filenames that differ only by case.
+    """
+
+    dog_lower = tmp_path / "dog.png"
+    dog_upper = tmp_path / "DOG.PNG"
+    cat = tmp_path / "cat.png"
+
+    dog_lower.write_bytes(b"lower dog")
+    dog_upper.write_bytes(b"upper dog")
+    cat.write_bytes(b"cat artwork")
+
+    monkeypatch.chdir(tmp_path)
+
+    result = _invoke()
+
+    assert result.exit_code != 0
+    assert "dog" in result.output.lower()
+
+    # Complete batch preflight occurs before persistent mutation.
+    assert dog_lower.read_bytes() == b"lower dog"
+    assert dog_upper.read_bytes() == b"upper dog"
+    assert cat.read_bytes() == b"cat artwork"
+
+    assert not (tmp_path / "artifacts").exists()
+    assert not (tmp_path / "originals").exists()

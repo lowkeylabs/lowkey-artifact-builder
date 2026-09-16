@@ -147,7 +147,9 @@ def _preflight_intake_batch(
     before mutation.
 
     Artifact identity comparisons are case-insensitive so intake behavior
-    remains portable across filesystems.
+    remains portable across filesystems. Proposed Artifact identities are
+    also checked against one another so a single intake batch cannot create
+    ambiguous Artifact IDs.
     """
 
     existing_artifacts = {
@@ -159,6 +161,7 @@ def _preflight_intake_batch(
 
     new_sources: list[Path] = []
     duplicate_sources: list[Path] = []
+    proposed_artifacts: dict[str, str] = {}
 
     for source_path in sources:
         artifact_id = source_path.stem
@@ -175,6 +178,16 @@ def _preflight_intake_batch(
                 duplicate_sources.append(source_path)
 
             continue
+
+        proposed_artifact = proposed_artifacts.get(identity)
+
+        if proposed_artifact is not None:
+            raise click.ClickException(
+                f"Intake PNGs infer conflicting Artifact IDs "
+                f"{proposed_artifact!r} and {artifact_id!r}."
+            )
+
+        proposed_artifacts[identity] = artifact_id
 
         original_path = project_root / "originals" / source_path.name
 
