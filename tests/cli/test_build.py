@@ -1809,3 +1809,55 @@ def test_build_all_variants_dry_run_selects_all_default_realizations(
             "variant 'ornament'",
         ),
     ]
+
+
+def test_bare_build_reports_project_status_without_execution(
+    monkeypatch,
+) -> None:
+    """
+    Bare build is a read-only project-status operation.
+
+    It does not require an Artifact ID and does not request build execution.
+    """
+
+    executed: list[str] = []
+
+    def fail_if_executed(*args: object, **kwargs: object) -> None:
+        executed.append("build")
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        fail_if_executed,
+    )
+
+    result = _invoke()
+
+    assert result.exit_code == 0
+    assert executed == []
+
+
+def test_bare_build_discovers_project_artifacts(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bare build discovers persistent Artifacts in the current project.
+
+    Artifact discovery is project-owned and occurs without requesting
+    build execution.
+    """
+
+    artifact_dir = tmp_path / "artifacts" / "dog"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "artifact.toml").write_text(
+        'source = "artifacts/dog/artifact.png"\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    result = _invoke()
+
+    assert result.exit_code == 0
+    assert "dog" in result.output

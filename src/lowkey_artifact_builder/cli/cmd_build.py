@@ -32,7 +32,10 @@ from lowkey_artifact_builder.cli.display import (
 from lowkey_artifact_builder.cli.variants import (
     parse_variant_reference,
 )
-from lowkey_artifact_builder.config import ConfigError
+from lowkey_artifact_builder.config import (
+    ConfigError,
+    list_artifacts,
+)
 from lowkey_artifact_builder.engine import (
     BuildError,
     BuildPlanError,
@@ -119,12 +122,15 @@ def cli(
     """
     Build configured artifacts.
 
+    Bare ``artifact build`` is a read-only project-status operation.
+
     Positional arguments are artifact IDs.
 
     Without --stage, --variant selects one Variant for incremental
     execution and --all-variants selects all applicable Variants.
-    When neither selection is supplied, the command displays the
-    available Variants without requesting execution.
+    When neither selection is supplied for explicitly named Artifacts,
+    the command displays the available Variants without requesting
+    execution.
 
     With --stage, exactly one declared stage is executed independently.
     An optional --realization selects the Artifact Realization for that
@@ -133,7 +139,8 @@ def cli(
     """
 
     if not artifact_ids:
-        raise click.UsageError("At least one artifact ID is required.")
+        _display_build_status()
+        return
 
     if stage is not None:
         _execute_stage(
@@ -217,6 +224,25 @@ def get_available_variant_names(
         for model in registry.all_models()
         for variant in model.variants
     )
+
+
+def _display_build_status() -> None:
+    """
+    Display read-only build status for the current project.
+
+    Project Artifacts are discovered from persistent configuration.
+    Detailed Realization status and freshness reporting are introduced
+    incrementally by subsequent build-status slices.
+    """
+
+    project_root = Path.cwd()
+
+    artifacts = list_artifacts(
+        project_root=project_root,
+    )
+
+    for artifact_id in artifacts:
+        click.echo(artifact_id)
 
 
 def _display_available_variants(
