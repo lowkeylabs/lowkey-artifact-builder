@@ -851,7 +851,7 @@ def test_create_persists_source_only_artifact_definition(
         "skippy",
         project_root=tmp_path,
     ) == {
-        "source": str((artifact_dir / "artifact.png").resolve()),
+        "source": "artifacts/skippy/artifact.png",
     }
 
 

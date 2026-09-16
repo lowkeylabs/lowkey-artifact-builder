@@ -44,8 +44,8 @@ def _configured_source_path(
     Return the Artifact-owned source path from persistent configuration.
 
     Artifact input ownership is independent of Model, Variant, and
-    Realization selection, so source ingestion tests inspect the sparse
-    Artifact definition directly.
+    Realization selection. Persisted Artifact paths are resolved relative
+    to the project root.
     """
 
     config = load_artifact_config(
@@ -58,12 +58,7 @@ def _configured_source_path(
     if source.is_absolute():
         return source
 
-    config_path = artifact_config_path(
-        artifact_id,
-        project_root=project_root,
-    )
-
-    return config_path.parent / source
+    return project_root / source
 
 
 # =========================================================
@@ -195,14 +190,50 @@ def test_configure_artifact_artwork_does_not_select_model(
     assert "model" not in config
 
 
-def test_configure_artifact_persists_sparse_configuration(
+def test_configured_source_is_resolved_relative_to_project_root(
     tmp_path: Path,
 ) -> None:
     """
-    Artifact input configuration persists only authored Artifact state.
+    Persisted Artifact source metadata identifies the managed input relative
+    to the project root rather than relative to artifact.toml.
+    """
 
-    Model defaults, Variant configuration, and derived default
-    Realizations are not serialized into artifact.toml.
+    source = tmp_path / "skippy.png"
+    content = b"skippy artwork"
+
+    _write_artwork(
+        source,
+        content,
+    )
+
+    configure_artifact(
+        "skippy",
+        input_files={
+            "artwork": source,
+        },
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    configured_source = tmp_path / config["source"]
+
+    assert configured_source == (tmp_path / "artifacts" / "skippy" / "artifact.png")
+
+    assert configured_source.read_bytes() == content
+
+
+def test_configure_artifact_persists_project_relative_source(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-owned source metadata is persisted relative to the project root.
+
+    Persistent Artifact configuration must remain portable when the complete
+    project is moved to another filesystem location.
     """
 
     source = tmp_path / "skippy.png"
@@ -223,7 +254,7 @@ def test_configure_artifact_persists_sparse_configuration(
     )
 
     assert config == {
-        "source": str((tmp_path / "artifacts" / "skippy" / "artifact.png").resolve()),
+        "source": "artifacts/skippy/artifact.png",
     }
 
 

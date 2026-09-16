@@ -216,6 +216,9 @@ def _configure_artwork_input(
 
     Artwork is an Artifact input. It does not select a Model, Variant,
     or Realization.
+
+    Persistent Artifact paths are stored relative to the project root so
+    Artifact definitions remain portable with the project.
     """
 
     destination = _artifact_input_path(
@@ -230,7 +233,7 @@ def _configure_artwork_input(
         input_name=_ARTWORK_INPUT,
     )
 
-    updates["source"] = str(destination.resolve())
+    updates["source"] = str(destination.relative_to(project_root))
 
 
 # =========================================================
