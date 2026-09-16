@@ -24,6 +24,7 @@ from lowkey_artifact_builder.cli.display import (
 from lowkey_artifact_builder.config import (
     ConfigError,
     configure_artifact,
+    list_artifacts,
     load_artifact_config,
 )
 
@@ -82,14 +83,20 @@ def _create_intake_batch(
     """
     Create Artifacts from the root-level PNG intake queue.
 
-    Root-level intake PNGs are owned by the batch workflow. Successful
-    ingestion preserves the original before removing the intake copy.
+    Root-level intake PNGs are owned by the batch workflow. The complete
+    intake queue is preflighted before any persistent project state is
+    modified.
     """
 
     if source is not None:
         raise click.UsageError("--source requires an explicit artifact ID.")
 
     sources = _discover_sources(project_root)
+
+    _preflight_intake_batch(
+        sources,
+        project_root=project_root,
+    )
 
     for source_path in sources:
         artifact_id = source_path.stem
@@ -104,6 +111,40 @@ def _create_intake_batch(
             source_path,
             project_root=project_root,
         )
+
+
+def _preflight_intake_batch(
+    sources: list[Path],
+    *,
+    project_root: Path,
+) -> None:
+    """
+    Validate predictable batch collisions before persistent mutation.
+
+    Artifact identity comparisons are case-insensitive so intake behavior
+    remains portable across filesystems.
+    """
+
+    existing_artifacts = {
+        artifact_id.casefold(): artifact_id
+        for artifact_id in list_artifacts(
+            project_root=project_root,
+        )
+    }
+
+    for source_path in sources:
+        artifact_id = source_path.stem
+        identity = artifact_id.casefold()
+
+        existing_artifact = existing_artifacts.get(identity)
+
+        if existing_artifact is not None:
+            raise click.ClickException(f"Artifact {existing_artifact!r} is already defined.")
+
+        original_path = project_root / "originals" / source_path.name
+
+        if original_path.exists():
+            raise click.ClickException(f"Original PNG {source_path.name!r} already exists.")
 
 
 def _preserve_intake_original(

@@ -166,6 +166,124 @@ def test_create_rejects_multiple_explicit_artifact_ids() -> None:
 # =========================================================
 
 
+def test_create_batch_preflights_existing_artifact_before_mutation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    A predictable Artifact collision aborts the complete intake batch before
+    unrelated sources are mutated.
+    """
+
+    existing_source = tmp_path / "existing.png"
+    existing_source.write_bytes(b"existing artwork")
+
+    monkeypatch.chdir(tmp_path)
+
+    existing_result = _invoke(
+        "smith-cat",
+        "--source",
+        "existing.png",
+    )
+
+    assert existing_result.exit_code == 0
+
+    # These are the batch intake queue. The first sorts before the collision,
+    # proving that preflight occurs before normal batch mutation.
+    new_source = tmp_path / "jones-dog.png"
+    conflicting_source = tmp_path / "smith-cat.png"
+
+    new_source.write_bytes(b"new dog")
+    conflicting_source.write_bytes(b"different cat")
+
+    result = _invoke()
+
+    assert result.exit_code != 0
+    assert "smith-cat" in result.output.lower()
+
+    # The unrelated earlier-sorting intake item was not processed.
+    assert new_source.read_bytes() == b"new dog"
+    assert not (tmp_path / "artifacts" / "jones-dog").exists()
+    assert not (tmp_path / "originals" / "jones-dog.png").exists()
+
+    # The conflicting intake source was not consumed either.
+    assert conflicting_source.read_bytes() == b"different cat"
+
+
+def test_create_batch_artifact_id_collisions_are_case_insensitive(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact identity collisions are detected case-insensitively so project
+    identity remains portable across filesystems.
+    """
+
+    existing_source = tmp_path / "existing.png"
+    existing_source.write_bytes(b"existing artwork")
+
+    monkeypatch.chdir(tmp_path)
+
+    existing_result = _invoke(
+        "smith-cat",
+        "--source",
+        "existing.png",
+    )
+
+    assert existing_result.exit_code == 0
+
+    incoming = tmp_path / "SMITH-CAT.png"
+    incoming.write_bytes(b"different artwork")
+
+    result = _invoke()
+
+    assert result.exit_code != 0
+    assert "smith-cat" in result.output.lower()
+
+    assert incoming.read_bytes() == b"different artwork"
+    assert not (tmp_path / "artifacts" / "SMITH-CAT").exists()
+
+
+def test_create_batch_preflights_original_destination_before_mutation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    An unexpected preserved-original collision aborts the complete intake
+    batch before any intake source is mutated.
+    """
+
+    originals = tmp_path / "originals"
+    originals.mkdir()
+
+    preserved = originals / "smith-cat.png"
+    preserved.write_bytes(b"unrelated preserved artwork")
+
+    new_source = tmp_path / "jones-dog.png"
+    conflicting_source = tmp_path / "smith-cat.png"
+
+    new_source.write_bytes(b"new dog")
+    conflicting_source.write_bytes(b"new cat")
+
+    monkeypatch.chdir(tmp_path)
+
+    result = _invoke()
+
+    assert result.exit_code != 0
+    assert "smith-cat" in result.output.lower()
+
+    # Whole-batch preflight prevents the earlier-sorting valid source from
+    # being processed before the later collision is discovered.
+    assert new_source.read_bytes() == b"new dog"
+    assert conflicting_source.read_bytes() == b"new cat"
+
+    assert not (tmp_path / "artifacts" / "jones-dog").exists()
+    assert not (tmp_path / "artifacts" / "smith-cat").exists()
+
+    # Existing project state is untouched.
+    assert preserved.read_bytes() == b"unrelated preserved artwork"
+
+
 def test_create_rejects_existing_artifact(
     monkeypatch,
 ) -> None:
