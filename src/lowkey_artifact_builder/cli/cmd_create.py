@@ -306,6 +306,53 @@ def _preserve_intake_original(
         ) from exc
 
 
+def _copy_original(
+    source_path: Path,
+    *,
+    project_root: Path,
+) -> None:
+    """
+    Preserve a caller-owned source without consuming the original file.
+    """
+
+    originals_dir = project_root / "originals"
+    originals_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    destination = originals_dir / source_path.name
+
+    if destination.exists():
+        raise click.ClickException(f"Original PNG {source_path.name!r} already exists.")
+
+    try:
+        shutil.copy2(
+            source_path,
+            destination,
+        )
+    except OSError as exc:
+        raise click.ClickException(
+            f"Could not preserve original PNG {source_path.name!r}: {exc}"
+        ) from exc
+
+
+def _preflight_original_destination(
+    source_path: Path,
+    *,
+    project_root: Path,
+) -> None:
+    """
+    Verify that preserving the selected source will not overwrite an existing
+    original.
+    """
+
+    destination = project_root / "originals" / source_path.name
+
+    if destination.exists():
+        raise click.ClickException(f"Original PNG {source_path.name!r} already exists.")
+
+
 def _create_artifact(
     artifact_id: str,
     *,
@@ -314,6 +361,10 @@ def _create_artifact(
 ) -> None:
     """
     Create one explicitly named Artifact.
+
+    Explicit creation treats the selected source as caller-owned. The source
+    remains in place while an independent original is preserved in
+    project-owned storage.
     """
 
     existing = load_artifact_config(
@@ -329,9 +380,19 @@ def _create_artifact(
         project_root=project_root,
     )
 
+    _preflight_original_destination(
+        source_path,
+        project_root=project_root,
+    )
+
     _create_artifact_from_source(
         artifact_id,
         source_path=source_path,
+        project_root=project_root,
+    )
+
+    _copy_original(
+        source_path,
         project_root=project_root,
     )
 

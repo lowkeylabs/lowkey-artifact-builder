@@ -496,6 +496,11 @@ def test_create_batch_preflights_existing_artifact_before_mutation(
 
     assert existing_result.exit_code == 0
 
+    # Explicit creation treats its source as caller-owned. Remove that
+    # caller-owned source from the root intake queue so this test isolates the
+    # intended smith-cat Artifact collision.
+    existing_source.unlink()
+
     # These are the batch intake queue. The first sorts before the collision,
     # proving that preflight occurs before normal batch mutation.
     new_source = tmp_path / "jones-dog.png"
@@ -509,13 +514,14 @@ def test_create_batch_preflights_existing_artifact_before_mutation(
     assert result.exit_code != 0
     assert "smith-cat" in result.output.lower()
 
-    # The unrelated earlier-sorting intake item was not processed.
+    # Complete-batch preflight prevents the earlier-sorting NEW source from
+    # being ingested before the later collision is discovered.
     assert new_source.read_bytes() == b"new dog"
-    assert not (tmp_path / "artifacts" / "jones-dog").exists()
-    assert not (tmp_path / "originals" / "jones-dog.png").exists()
-
-    # The conflicting intake source was not consumed either.
     assert conflicting_source.read_bytes() == b"different cat"
+
+    assert not (tmp_path / "artifacts" / "jones-dog").exists()
+
+    assert not (tmp_path / "originals" / "jones-dog.png").exists()
 
 
 def test_create_batch_artifact_id_collisions_are_case_insensitive(
@@ -1033,3 +1039,66 @@ def test_create_clean_requires_bare_batch_intake(
     # Explicit caller-owned input remains untouched.
     assert source.read_bytes() == b"artwork"
     assert not (tmp_path / "artifacts" / "dog").exists()
+
+
+def test_create_explicit_source_preserves_original_without_consuming_source(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit --source creation preserves the caller-owned source under its
+    original filename without removing the supplied source.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    source = tmp_path / "customer-final.png"
+    source.write_bytes(b"customer artwork")
+
+    result = _invoke(
+        "dog",
+        "--source",
+        "customer-final.png",
+    )
+
+    assert result.exit_code == 0
+
+    # Explicit creation does not own or consume the caller's source.
+    assert source.read_bytes() == b"customer artwork"
+
+    # The original is preserved using the supplied filename rather than the
+    # Artifact ID.
+    assert (tmp_path / "originals" / "customer-final.png").read_bytes() == b"customer artwork"
+
+    # The Artifact receives its independent managed working copy.
+    assert (tmp_path / "artifacts" / "dog" / "artifact.png").read_bytes() == b"customer artwork"
+
+
+def test_create_interactive_source_preserves_original_without_consuming_source(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit Artifact creation with interactive source selection treats the
+    selected PNG as caller-owned while preserving an original project copy.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    source = tmp_path / "customer-final.png"
+    source.write_bytes(b"customer artwork")
+
+    result = _invoke(
+        "dog",
+        input="1\n",
+    )
+
+    assert result.exit_code == 0
+
+    # Interactive explicit creation has the same ownership semantics as
+    # explicitly supplying --source.
+    assert source.read_bytes() == b"customer artwork"
+
+    assert (tmp_path / "originals" / "customer-final.png").read_bytes() == b"customer artwork"
+
+    assert (tmp_path / "artifacts" / "dog" / "artifact.png").read_bytes() == b"customer artwork"
