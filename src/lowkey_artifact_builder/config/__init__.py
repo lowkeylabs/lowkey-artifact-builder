@@ -15,8 +15,10 @@ this package rather than directly from config.py.
 from __future__ import annotations
 
 from lowkey_artifact_builder.config.artifact import (
+    ArtifactState,
     clean_artifact,
     configure_artifact,
+    discover_artifacts,
     list_artifacts,
 )
 from lowkey_artifact_builder.config.config import (
@@ -35,6 +37,7 @@ from lowkey_artifact_builder.config.config import (
 )
 
 __all__ = [
+    "ArtifactState",
     "ConfigError",
     "Derivation",
     "Derivations",
@@ -42,6 +45,7 @@ __all__ = [
     "artifact_config_path",
     "clean_artifact",
     "configure_artifact",
+    "discover_artifacts",
     "get_product_dependency_binding",
     "get_realization_names",
     "get_resolver",

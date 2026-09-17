@@ -12,7 +12,9 @@ from pathlib import Path
 from lowkey_artifact_builder.config import (
     artifact_config_path,
     configure_artifact,
+    discover_artifacts,
     get_resolver,
+    list_artifacts,
     load_artifact_config,
 )
 
@@ -59,6 +61,259 @@ def _configured_source_path(
         return source
 
     return project_root / source
+
+
+def _preserve_original(
+    project_root: Path,
+    artifact_id: str,
+    *,
+    content: bytes = b"artwork",
+) -> Path:
+    """
+    Preserve one canonical ingested Artifact original.
+    """
+
+    originals = project_root / "originals"
+    originals.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    original = originals / f"{artifact_id}.png"
+    original.write_bytes(content)
+
+    return original
+
+
+def _write_materialized_artifact(
+    project_root: Path,
+    artifact_id: str,
+    *,
+    artwork: bytes = b"artwork",
+) -> None:
+    """
+    Write the complete baseline state of one materialized Artifact.
+    """
+
+    artifact_dir = project_root / "artifacts" / artifact_id
+    artifact_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    (artifact_dir / "artifact.toml").write_text(
+        "\n".join(
+            (
+                f'source = "artifacts/{artifact_id}/artifact.png"',
+                f'original = "originals/{artifact_id}.png"',
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    (artifact_dir / "artifact.png").write_bytes(artwork)
+
+
+# =========================================================
+# Artifact discovery
+# =========================================================
+
+
+def test_artifact_discovery_uses_preserved_originals_as_inventory(
+    tmp_path: Path,
+) -> None:
+    """
+    Preserved originals establish the Artifact identities known to a project.
+
+    Artifact discovery does not require the Artifact workspace to have been
+    materialized.
+    """
+
+    _preserve_original(
+        tmp_path,
+        "dog",
+        content=b"dog artwork",
+    )
+
+    assert list_artifacts(
+        project_root=tmp_path,
+    ) == ("dog",)
+
+
+def test_artifact_discovery_ignores_workspace_without_preserved_original(
+    tmp_path: Path,
+) -> None:
+    """
+    Materialized workspace state does not independently establish an
+    ingested Artifact identity.
+
+    The authoritative Artifact inventory is originals/.
+    """
+
+    _write_materialized_artifact(
+        tmp_path,
+        "orphan",
+        artwork=b"orphan artwork",
+    )
+
+    assert (
+        list_artifacts(
+            project_root=tmp_path,
+        )
+        == ()
+    )
+
+
+def test_discover_artifacts_reports_unmaterialized_artifact(
+    tmp_path: Path,
+) -> None:
+    """
+    An ingested Artifact without baseline workspace state is not materialized.
+    """
+
+    original = _preserve_original(
+        tmp_path,
+        "dog",
+        content=b"dog artwork",
+    )
+
+    artifacts = discover_artifacts(
+        project_root=tmp_path,
+    )
+
+    assert len(artifacts) == 1
+
+    artifact = artifacts[0]
+
+    assert artifact.artifact_id == "dog"
+    assert artifact.original_path == original
+    assert artifact.materialized is False
+
+
+def test_discover_artifacts_reports_complete_baseline_as_materialized(
+    tmp_path: Path,
+) -> None:
+    """
+    An ingested Artifact is materialized when its Artifact directory,
+    artifact.toml, and artifact.png all exist.
+    """
+
+    original = _preserve_original(
+        tmp_path,
+        "dog",
+        content=b"dog artwork",
+    )
+
+    _write_materialized_artifact(
+        tmp_path,
+        "dog",
+        artwork=b"dog artwork",
+    )
+
+    artifacts = discover_artifacts(
+        project_root=tmp_path,
+    )
+
+    assert len(artifacts) == 1
+
+    artifact = artifacts[0]
+
+    assert artifact.artifact_id == "dog"
+    assert artifact.original_path == original
+    assert artifact.materialized is True
+
+
+def test_discover_artifacts_requires_complete_materialization_baseline(
+    tmp_path: Path,
+) -> None:
+    """
+    Partial Artifact workspace state is not materialized.
+
+    Materialization requires the Artifact directory, artifact.toml, and
+    artifact.png. Generated Product state is outside this predicate.
+    """
+
+    _preserve_original(
+        tmp_path,
+        "missing_workspace",
+    )
+
+    _preserve_original(
+        tmp_path,
+        "missing_config",
+    )
+
+    missing_config_dir = tmp_path / "artifacts" / "missing_config"
+    missing_config_dir.mkdir(
+        parents=True,
+    )
+    (missing_config_dir / "artifact.png").write_bytes(
+        b"artwork",
+    )
+
+    _preserve_original(
+        tmp_path,
+        "missing_artwork",
+    )
+
+    missing_artwork_dir = tmp_path / "artifacts" / "missing_artwork"
+    missing_artwork_dir.mkdir(
+        parents=True,
+    )
+    (missing_artwork_dir / "artifact.toml").write_text(
+        'source = "artifacts/missing_artwork/artifact.png"\n',
+        encoding="utf-8",
+    )
+
+    states = {
+        artifact.artifact_id: artifact.materialized
+        for artifact in discover_artifacts(
+            project_root=tmp_path,
+        )
+    }
+
+    assert states == {
+        "missing_artwork": False,
+        "missing_config": False,
+        "missing_workspace": False,
+    }
+
+
+def test_artifact_materialization_does_not_depend_on_generated_products(
+    tmp_path: Path,
+) -> None:
+    """
+    Product realization is independent of Artifact materialization.
+
+    A complete baseline Artifact is materialized even when no generated
+    Model, Realization, Stage, or Product directories exist.
+    """
+
+    _preserve_original(
+        tmp_path,
+        "dog",
+        content=b"dog artwork",
+    )
+
+    _write_materialized_artifact(
+        tmp_path,
+        "dog",
+        artwork=b"dog artwork",
+    )
+
+    artifact_dir = tmp_path / "artifacts" / "dog"
+
+    assert {path.name for path in artifact_dir.iterdir()} == {
+        "artifact.png",
+        "artifact.toml",
+    }
+
+    artifact = discover_artifacts(
+        project_root=tmp_path,
+    )[0]
+
+    assert artifact.materialized is True
 
 
 # =========================================================

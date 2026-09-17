@@ -30,6 +30,7 @@ from lowkey_artifact_builder.cli.display import (
 )
 from lowkey_artifact_builder.config import (
     ConfigError,
+    discover_artifacts,
     get_realization_names,
     list_artifacts,
 )
@@ -264,33 +265,42 @@ def _display_build_status() -> None:
     """
     Display read-only build status for the current project.
 
-    Status is organized by persistent Artifact and effective Realization.
-    Realization discovery is delegated to configuration so canonical and
-    Artifact-declared Realizations follow the same semantics used by normal
-    engine planning.
+    Artifact discovery begins with the authoritative ingested Artifact
+    inventory. An Artifact whose baseline workspace has not been
+    materialized is reported at that boundary without attempting
+    Realization or Product planning.
 
-    Status is derived from the prepared ExecutionPlan rather than persisted
-    separately. The earliest non-current persistent product state in build
-    order describes the Realization; a Realization whose persistent products
-    are all current is current.
+    For materialized Artifacts, status is organized by effective
+    Realization. Realization discovery is delegated to configuration so
+    canonical and Artifact-declared Realizations follow the same semantics
+    used by normal engine planning.
+
+    Realization status is derived from the prepared ExecutionPlan rather
+    than persisted separately. The earliest non-current persistent Product
+    state in build order describes the Realization; a Realization whose
+    persistent Products are all current is current.
     """
 
     project_root = Path.cwd()
 
-    artifacts = list_artifacts(
+    artifacts = discover_artifacts(
         project_root=project_root,
     )
 
-    for artifact_id in artifacts:
+    for artifact in artifacts:
+        if not artifact.materialized:
+            click.echo(f"{artifact.artifact_id} needs materialization")
+            continue
+
         try:
             realizations = get_realization_names(
-                artifact_id,
+                artifact.artifact_id,
                 project_root=project_root,
             )
 
             for realization in realizations:
                 plans = create_artifact_build_plans(
-                    artifact_id,
+                    artifact.artifact_id,
                     realization=realization,
                     project_root=project_root,
                 )
@@ -304,7 +314,7 @@ def _display_build_status() -> None:
                         execution_plan,
                     )
 
-                    click.echo(f"{artifact_id} {realization} {status.value}")
+                    click.echo(f"{artifact.artifact_id} {realization} {status.value}")
 
         except (
             ConfigError,

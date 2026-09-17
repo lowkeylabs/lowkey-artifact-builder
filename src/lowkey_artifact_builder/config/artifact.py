@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import shutil
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -35,11 +36,110 @@ from .config import (
 
 _ARTWORK_INPUT = "artwork"
 _ARTWORK_FILENAME = "artifact.png"
+_ORIGINALS_DIRECTORY = "originals"
+_ORIGINAL_SUFFIX = ".png"
+
+
+# =========================================================
+# Artifact state
+# =========================================================
+
+
+@dataclass(frozen=True)
+class ArtifactState:
+    """
+    Discovered project state for one ingested Artifact.
+
+    Artifact identity is established by its canonical preserved original.
+
+    Materialization describes only the baseline Artifact workspace. An
+    Artifact is materialized when its Artifact directory, artifact.toml,
+    and artifact.png all exist.
+
+    Generated Model, Realization, Stage, and Product state does not
+    participate in Artifact materialization. That state is owned by the
+    planning and execution engine.
+    """
+
+    artifact_id: str
+    original_path: Path
+    materialized: bool
 
 
 # =========================================================
 # Public interface
 # =========================================================
+
+
+def discover_artifacts(
+    *,
+    project_root: Path | None = None,
+) -> tuple[ArtifactState, ...]:
+    """
+    Return the ingested Artifacts known to the project.
+
+    Canonical preserved PNGs under ``originals/`` establish Artifact
+    identity and therefore define the authoritative Artifact inventory.
+
+    For each ingested Artifact, discovery also reports whether its
+    baseline Artifact workspace has been materialized.
+
+    Materialization requires all of:
+
+        artifacts/<artifact_id>/
+        artifacts/<artifact_id>/artifact.toml
+        artifacts/<artifact_id>/artifact.png
+
+    Generated Product state is intentionally not inspected here. Once an
+    Artifact is materialized, Product freshness and required production
+    are determined by the planning engine.
+    """
+
+    root = project_root if project_root is not None else Path.cwd()
+    originals_root = root / _ORIGINALS_DIRECTORY
+
+    if not originals_root.is_dir():
+        return ()
+
+    artifacts = [
+        ArtifactState(
+            artifact_id=original.stem,
+            original_path=original,
+            materialized=_artifact_is_materialized(
+                original.stem,
+                project_root=root,
+            ),
+        )
+        for original in originals_root.iterdir()
+        if original.is_file() and original.suffix.lower() == _ORIGINAL_SUFFIX
+    ]
+
+    return tuple(
+        sorted(
+            artifacts,
+            key=lambda artifact: artifact.artifact_id,
+        )
+    )
+
+
+def list_artifacts(
+    *,
+    project_root: Path | None = None,
+) -> tuple[str, ...]:
+    """
+    Return the IDs of ingested Artifacts known to the project.
+
+    Artifact identity is established by canonical preserved originals
+    under ``originals/``. Materialization of the Artifact workspace is
+    not required for an Artifact to be listed.
+    """
+
+    return tuple(
+        artifact.artifact_id
+        for artifact in discover_artifacts(
+            project_root=project_root,
+        )
+    )
 
 
 def configure_artifact(
@@ -93,39 +193,6 @@ def configure_artifact(
     )
 
 
-def list_artifacts(
-    *,
-    project_root: Path | None = None,
-) -> tuple[str, ...]:
-    """
-    Return the IDs of persistent artifacts defined in the project.
-
-    An artifact is discoverable when its artifact directory contains its
-    persistent ``artifact.toml`` definition.
-
-    Derived product directories without persistent artifact
-    configuration are not treated as artifact definitions.
-    """
-
-    root = project_root if project_root is not None else Path.cwd()
-    artifacts_root = root / "artifacts"
-
-    if not artifacts_root.is_dir():
-        return ()
-
-    artifact_ids = [
-        path.name
-        for path in artifacts_root.iterdir()
-        if path.is_dir()
-        and artifact_config_path(
-            path.name,
-            project_root=root,
-        ).is_file()
-    ]
-
-    return tuple(sorted(artifact_ids))
-
-
 def clean_artifact(
     artifact_id: str,
     *,
@@ -173,6 +240,34 @@ def clean_artifact(
             raise ConfigError(
                 f"Cannot clean artifact {artifact_id!r}: {generated_dir}: {exc}"
             ) from exc
+
+
+# =========================================================
+# Artifact discovery
+# =========================================================
+
+
+def _artifact_is_materialized(
+    artifact_id: str,
+    *,
+    project_root: Path,
+) -> bool:
+    """
+    Return whether baseline Artifact workspace state is materialized.
+
+    Materialization is deliberately independent of generated Product
+    state. Product existence and freshness are planning-engine concerns.
+    """
+
+    config_path = artifact_config_path(
+        artifact_id,
+        project_root=project_root,
+    )
+
+    artifact_dir = config_path.parent
+    artwork_path = artifact_dir / _ARTWORK_FILENAME
+
+    return artifact_dir.is_dir() and config_path.is_file() and artwork_path.is_file()
 
 
 # =========================================================
@@ -310,7 +405,9 @@ def _ingest_file(
 
 
 __all__ = [
+    "ArtifactState",
     "clean_artifact",
     "configure_artifact",
+    "discover_artifacts",
     "list_artifacts",
 ]
