@@ -1606,3 +1606,194 @@ def test_build_rejects_all_variants_option() -> None:
 
     assert result.exit_code == 2
     assert "No such option '--all-variants'" in result.output
+
+
+def test_build_realization_continues_after_independent_artifact_failure(
+    monkeypatch,
+) -> None:
+    """
+    Failure building one Artifact does not prevent an independently
+    requested Artifact from attempting the same Realization.
+
+    The command reports failure after all requested independent builds
+    have been attempted.
+    """
+
+    attempted: list[tuple[str, str]] = []
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        attempted.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+        if artifact_id == "smith-dog":
+            raise cmd_build.BuildError(
+                "smith-dog build failed",
+            )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "smith-dog",
+        "jones-dog",
+        "--realization",
+        "shape_ornament",
+    )
+
+    assert attempted == [
+        (
+            "smith-dog",
+            "shape_ornament",
+        ),
+        (
+            "jones-dog",
+            "shape_ornament",
+        ),
+    ]
+
+    assert result.exit_code != 0
+    assert "smith-dog build failed" in result.output
+
+
+def test_build_realization_reports_each_independent_artifact_failure(
+    monkeypatch,
+) -> None:
+    """
+    Failures from multiple independently requested Artifact builds remain
+    visible after all requested work has been attempted.
+    """
+
+    attempted: list[str] = []
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        attempted.append(
+            artifact_id,
+        )
+
+        raise cmd_build.BuildError(
+            f"{artifact_id} build failed",
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "smith-dog",
+        "jones-dog",
+        "--realization",
+        "shape_ornament",
+    )
+
+    assert attempted == [
+        "smith-dog",
+        "jones-dog",
+    ]
+
+    assert result.exit_code != 0
+    assert "smith-dog build failed" in result.output
+    assert "jones-dog build failed" in result.output
+
+
+def test_build_realization_dry_run_continues_after_independent_artifact_failure(
+    monkeypatch,
+) -> None:
+    """
+    A dry-run planning failure for one Artifact does not prevent an
+    independently requested Artifact from being planned and displayed.
+
+    The command reports failure after all requested independent dry-run
+    work has been attempted.
+    """
+
+    plans = {
+        "jones-dog": object(),
+    }
+
+    attempted: list[tuple[str, str]] = []
+    displayed: list[object] = []
+
+    def create_plans(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+    ) -> tuple[object, ...]:
+        attempted.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+        if artifact_id == "smith-dog":
+            raise cmd_build.BuildPlanError(
+                "smith-dog planning failed",
+            )
+
+        return (plans[artifact_id],)
+
+    monkeypatch.setattr(
+        cmd_build,
+        "create_artifact_build_plans",
+        create_plans,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        lambda plan: object(),
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "display_build_plan",
+        displayed.append,
+    )
+
+    result = _invoke(
+        "smith-dog",
+        "jones-dog",
+        "--realization",
+        "shape_ornament",
+        "--dry-run",
+    )
+
+    assert attempted == [
+        (
+            "smith-dog",
+            "shape_ornament",
+        ),
+        (
+            "jones-dog",
+            "shape_ornament",
+        ),
+    ]
+
+    assert displayed == [
+        plans["jones-dog"],
+    ]
+
+    assert result.exit_code != 0
+    assert "smith-dog planning failed" in result.output
