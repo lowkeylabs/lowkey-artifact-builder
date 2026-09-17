@@ -55,6 +55,12 @@ def test_build_artifact_executes_each_effective_realization(
     Artifact + Variant.
     """
 
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
+
     realizations = (
         "artwork_default",
         "shape_default",
@@ -118,6 +124,12 @@ def test_build_multiple_artifacts_executes_effective_realizations_in_argument_or
     Multiple named Artifacts build their effective Realizations in
     Artifact argument order and Realization discovery order.
     """
+
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
 
     realizations_by_artifact = {
         "skippy": (
@@ -273,6 +285,12 @@ def test_build_passes_project_root(
     """
     Explicit Artifact execution receives the current project root.
     """
+
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
 
     roots: list[Path] = []
 
@@ -478,6 +496,12 @@ def test_build_execution_error_is_reported(
     Explicit Artifact build errors are presented as Click command errors.
     """
 
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
+
     def execute_artifact(
         artifact_id: str,
         *,
@@ -510,6 +534,12 @@ def test_build_artifact_accepts_selected_realization(
     A selected Realization narrows normal build execution to that
     Artifact + Realization pair.
     """
+
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
 
     executed: list[tuple[str, str]] = []
 
@@ -615,6 +645,12 @@ def test_build_realization_executes_across_project_artifacts(
 
     monkeypatch.setattr(
         cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
         "list_artifacts",
         lambda *, project_root: (
             "skippy",
@@ -668,6 +704,12 @@ def test_build_all_executes_effective_realizations_across_project(
     """
     --build-all builds every effective Realization of every project Artifact.
     """
+
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
 
     monkeypatch.setattr(
         cmd_build,
@@ -1269,6 +1311,12 @@ def test_build_realization_continues_after_independent_artifact_failure(
     have been attempted.
     """
 
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
+
     attempted: list[tuple[str, str]] = []
 
     def execute_artifact(
@@ -1325,6 +1373,12 @@ def test_build_realization_reports_each_independent_artifact_failure(
     Failures from multiple independently requested Artifact builds remain
     visible after all requested work has been attempted.
     """
+
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
 
     attempted: list[str] = []
 
@@ -1460,6 +1514,12 @@ def test_build_artifact_continues_after_independent_realization_failure(
     Realizations have been attempted.
     """
 
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
+
     realizations = (
         "artwork_default",
         "shape_default",
@@ -1525,6 +1585,12 @@ def test_build_artifact_reports_each_independent_realization_failure(
     visible after all requested Realizations have been attempted.
     """
 
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
+
     realizations = (
         "artwork_default",
         "shape_default",
@@ -1580,6 +1646,12 @@ def test_build_artifacts_continue_after_realization_failure_in_prior_artifact(
     Failure of a Realization in one Artifact does not prevent independently
     requested Realizations of a later Artifact from being attempted.
     """
+
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
 
     realizations_by_artifact = {
         "smith-dog": (
@@ -2094,6 +2166,12 @@ def test_build_requested_realization_does_not_fall_back_to_available_realization
     requested one is unavailable for an Artifact.
     """
 
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
+
     artifacts = (
         "smith-dog",
         "jones-dog",
@@ -2282,3 +2360,311 @@ def test_bare_dry_run_requires_build_scope() -> None:
 
     assert result.exit_code == 2
     assert "--dry-run requires a build scope." in result.output
+
+
+def test_build_materialization_failure_does_not_enter_realization_execution(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    An Artifact that cannot be materialized does not enter Realization
+    discovery or execution.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    realization_requests: list[str] = []
+    executed: list[str] = []
+
+    def fail_materialization(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> None:
+        assert artifact_id == "dog"
+        assert project_root == tmp_path
+
+        raise ConfigError("Artifact 'dog' has incomplete materialized state.")
+
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        fail_materialization,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: (
+            realization_requests.append(artifact_id) or ("artwork_default",)
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        lambda artifact_id, **kwargs: executed.append(artifact_id),
+    )
+
+    result = _invoke("dog")
+
+    assert result.exit_code != 0
+    assert "dog" in result.output
+
+    assert realization_requests == []
+    assert executed == []
+
+
+def test_build_materializes_ingested_artifact_before_realization_execution(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Building an ingested Artifact materializes its baseline workspace before
+    Realization discovery and execution.
+    """
+
+    originals = tmp_path / "originals"
+    originals.mkdir()
+
+    original = originals / "dog.png"
+    original.write_bytes(b"dog artwork")
+
+    monkeypatch.chdir(tmp_path)
+
+    operations: list[str] = []
+
+    real_materialize = cmd_build.materialize_artifact
+
+    def materialize(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> None:
+        operations.append(f"materialize:{artifact_id}")
+
+        real_materialize(
+            artifact_id,
+            project_root=project_root,
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        materialize,
+    )
+
+    def get_realizations(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> tuple[str, ...]:
+        operations.append(f"realizations:{artifact_id}")
+
+        assert (project_root / "artifacts" / artifact_id / "artifact.toml").is_file()
+
+        assert (project_root / "artifacts" / artifact_id / "artifact.png").is_file()
+
+        return ("artwork_default",)
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        get_realizations,
+    )
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        operations.append(f"execute:{artifact_id}:{realization}")
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke("dog")
+
+    assert result.exit_code == 0
+
+    assert operations == [
+        "materialize:dog",
+        "realizations:dog",
+        "execute:dog:artwork_default",
+    ]
+
+    assert original.read_bytes() == b"dog artwork"
+
+    artifact_dir = tmp_path / "artifacts" / "dog"
+
+    assert (artifact_dir / "artifact.png").read_bytes() == b"dog artwork"
+
+
+def test_build_all_materializes_each_ingested_artifact_before_execution(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Project-wide build materializes every ingested Artifact before discovering
+    and executing that Artifact's Realizations.
+    """
+
+    originals = tmp_path / "originals"
+    originals.mkdir()
+
+    (originals / "cat.png").write_bytes(b"cat artwork")
+    (originals / "dog.png").write_bytes(b"dog artwork")
+
+    monkeypatch.chdir(tmp_path)
+
+    operations: list[str] = []
+
+    real_materialize = cmd_build.materialize_artifact
+
+    def materialize(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> None:
+        operations.append(f"materialize:{artifact_id}")
+
+        real_materialize(
+            artifact_id,
+            project_root=project_root,
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        materialize,
+    )
+
+    def get_realizations(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> tuple[str, ...]:
+        operations.append(f"realizations:{artifact_id}")
+
+        assert (project_root / "artifacts" / artifact_id / "artifact.toml").is_file()
+
+        assert (project_root / "artifacts" / artifact_id / "artifact.png").is_file()
+
+        return ("artwork_default",)
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        get_realizations,
+    )
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        operations.append(f"execute:{artifact_id}:{realization}")
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke("--build-all")
+
+    assert result.exit_code == 0
+
+    assert operations == [
+        "materialize:cat",
+        "realizations:cat",
+        "execute:cat:artwork_default",
+        "materialize:dog",
+        "realizations:dog",
+        "execute:dog:artwork_default",
+    ]
+
+    assert (tmp_path / "artifacts" / "cat" / "artifact.png").read_bytes() == b"cat artwork"
+
+    assert (tmp_path / "artifacts" / "dog" / "artifact.png").read_bytes() == b"dog artwork"
+
+
+def test_build_selected_realization_materializes_artifact_before_execution(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Building one selected Realization materializes its Artifact baseline before
+    Realization execution.
+    """
+
+    originals = tmp_path / "originals"
+    originals.mkdir()
+
+    original = originals / "dog.png"
+    original.write_bytes(b"dog artwork")
+
+    monkeypatch.chdir(tmp_path)
+
+    operations: list[str] = []
+
+    real_materialize = cmd_build.materialize_artifact
+
+    def materialize(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> None:
+        operations.append(f"materialize:{artifact_id}")
+
+        real_materialize(
+            artifact_id,
+            project_root=project_root,
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        materialize,
+    )
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        assert (project_root / "artifacts" / artifact_id / "artifact.toml").is_file()
+
+        assert (project_root / "artifacts" / artifact_id / "artifact.png").is_file()
+
+        operations.append(f"execute:{artifact_id}:{realization}")
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "dog",
+        "--realization",
+        "artwork_default",
+    )
+
+    assert result.exit_code == 0
+
+    assert operations == [
+        "materialize:dog",
+        "execute:dog:artwork_default",
+    ]
+
+    assert original.read_bytes() == b"dog artwork"

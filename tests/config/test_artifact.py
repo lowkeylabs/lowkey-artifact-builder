@@ -9,13 +9,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from lowkey_artifact_builder.config import (
+    ConfigError,
     artifact_config_path,
     configure_artifact,
     discover_artifacts,
     get_resolver,
     list_artifacts,
     load_artifact_config,
+    materialize_artifact,
 )
 
 # =========================================================
@@ -759,3 +763,169 @@ def test_explicit_default_realization_is_selected_implicitly_and_explicitly(
 
     assert implicit("model") == explicit("model") == "artwork"
     assert implicit("artwork_size") == explicit("artwork_size") == 75.0
+
+
+def test_materialize_artifact_creates_baseline_from_preserved_original(
+    tmp_path: Path,
+) -> None:
+    """
+    Materializing an ingested Artifact creates exactly the baseline state
+    required before Product planning.
+    """
+
+    original = _preserve_original(
+        tmp_path,
+        "dog",
+        content=b"dog artwork",
+    )
+
+    materialize_artifact(
+        "dog",
+        project_root=tmp_path,
+    )
+
+    artifact_dir = tmp_path / "artifacts" / "dog"
+    artifact_png = artifact_dir / "artifact.png"
+    config_path = artifact_dir / "artifact.toml"
+
+    assert original.read_bytes() == b"dog artwork"
+    assert artifact_png.read_bytes() == b"dog artwork"
+
+    assert config_path.read_text() == (
+        'source = "artifacts/dog/artifact.png"\noriginal = "originals/dog.png"\n'
+    )
+
+    assert {path.name for path in artifact_dir.iterdir()} == {
+        "artifact.png",
+        "artifact.toml",
+    }
+
+    state = discover_artifacts(
+        project_root=tmp_path,
+    )[0]
+
+    assert state.artifact_id == "dog"
+    assert state.materialized is True
+
+
+def test_materialize_artifact_requires_preserved_original(
+    tmp_path: Path,
+) -> None:
+    """
+    BUILD materialization cannot invent an Artifact that has not been
+    ingested into the preserved-original registry.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="dog",
+    ):
+        materialize_artifact(
+            "dog",
+            project_root=tmp_path,
+        )
+
+    assert not (tmp_path / "artifacts" / "dog").exists()
+
+
+@pytest.mark.parametrize(
+    "existing",
+    [
+        "directory-only",
+        "config-only",
+        "artwork-only",
+    ],
+)
+def test_materialize_artifact_rejects_partial_existing_workspace(
+    tmp_path: Path,
+    existing: str,
+) -> None:
+    """
+    Materialization creates absent baseline state; it does not silently
+    repair or replace a partially materialized Artifact workspace.
+    """
+
+    _preserve_original(
+        tmp_path,
+        "dog",
+        content=b"dog artwork",
+    )
+
+    artifact_dir = tmp_path / "artifacts" / "dog"
+    artifact_dir.mkdir(parents=True)
+
+    if existing == "config-only":
+        (artifact_dir / "artifact.toml").write_text(
+            'source = "artifacts/dog/artifact.png"\noriginal = "originals/dog.png"\n'
+        )
+
+    if existing == "artwork-only":
+        (artifact_dir / "artifact.png").write_bytes(
+            b"existing artwork",
+        )
+
+    before = {
+        path.name: (path.read_bytes() if path.is_file() else None)
+        for path in artifact_dir.iterdir()
+    }
+
+    with pytest.raises(
+        ConfigError,
+        match="dog",
+    ):
+        materialize_artifact(
+            "dog",
+            project_root=tmp_path,
+        )
+
+    after = {
+        path.name: (path.read_bytes() if path.is_file() else None)
+        for path in artifact_dir.iterdir()
+    }
+
+    assert after == before
+
+
+def test_materialize_artifact_does_not_replace_materialized_workspace(
+    tmp_path: Path,
+) -> None:
+    """
+    Materialization is not an implicit source-replacement operation.
+    """
+
+    _preserve_original(
+        tmp_path,
+        "dog",
+        content=b"preserved original",
+    )
+
+    artifact_dir = tmp_path / "artifacts" / "dog"
+    artifact_dir.mkdir(parents=True)
+
+    config_path = artifact_dir / "artifact.toml"
+    config_path.write_text(
+        'source = "artifacts/dog/artifact.png"\n'
+        'original = "originals/dog.png"\n'
+        "\n"
+        "[realizations.custom]\n"
+        'variant = "shape.ornament"\n'
+    )
+
+    artifact_png = artifact_dir / "artifact.png"
+    artifact_png.write_bytes(
+        b"existing managed artwork",
+    )
+
+    materialize_artifact(
+        "dog",
+        project_root=tmp_path,
+    )
+
+    assert artifact_png.read_bytes() == b"existing managed artwork"
+    assert config_path.read_text() == (
+        'source = "artifacts/dog/artifact.png"\n'
+        'original = "originals/dog.png"\n'
+        "\n"
+        "[realizations.custom]\n"
+        'variant = "shape.ornament"\n'
+    )

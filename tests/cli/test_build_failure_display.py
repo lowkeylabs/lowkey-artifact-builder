@@ -89,6 +89,12 @@ def _invoke_failed_build(
 
     monkeypatch.setattr(
         cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
         "execute_artifact_build",
         _emit_failed_build,
     )

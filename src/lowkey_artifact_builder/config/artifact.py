@@ -27,6 +27,7 @@ from .config import (
     ConfigError,
     artifact_config_path,
     update_artifact_config,
+    write_artifact_config,
 )
 
 # =========================================================
@@ -404,10 +405,98 @@ def _ingest_file(
         ) from exc
 
 
+def materialize_artifact(
+    artifact_id: str,
+    *,
+    project_root: Path | None = None,
+) -> None:
+    """
+    Materialize baseline workspace state for one ingested Artifact.
+
+    The canonical preserved original under ``originals/`` establishes
+    Artifact identity and is the authoritative source for materialization.
+
+    If the Artifact workspace is absent, materialization creates:
+
+        artifacts/<artifact_id>/artifact.toml
+        artifacts/<artifact_id>/artifact.png
+
+    An already-materialized Artifact is left unchanged.
+
+    A partially existing Artifact workspace is inconsistent baseline state
+    and is rejected rather than silently repaired or replaced.
+
+    Generated Model, Realization, Stage, and Product state is outside this
+    operation and remains the responsibility of the planning and execution
+    engine.
+    """
+
+    root = project_root if project_root is not None else Path.cwd()
+
+    original_path = root / _ORIGINALS_DIRECTORY / f"{artifact_id}{_ORIGINAL_SUFFIX}"
+
+    if not original_path.is_file():
+        raise ConfigError(f"Artifact {artifact_id!r} has no preserved original.")
+
+    config_path = artifact_config_path(
+        artifact_id,
+        project_root=root,
+    )
+
+    artifact_dir = config_path.parent
+    artwork_path = artifact_dir / _ARTWORK_FILENAME
+
+    if _artifact_is_materialized(
+        artifact_id,
+        project_root=root,
+    ):
+        return
+
+    if artifact_dir.exists():
+        raise ConfigError(f"Artifact {artifact_id!r} has incomplete materialized state.")
+
+    source_value = str(artwork_path.relative_to(root))
+    original_value = str(original_path.relative_to(root))
+
+    try:
+        artifact_dir.mkdir(
+            parents=True,
+        )
+
+        shutil.copy2(
+            original_path,
+            artwork_path,
+        )
+
+        write_artifact_config(
+            artifact_id,
+            {
+                "source": source_value,
+                "original": original_value,
+            },
+            project_root=root,
+        )
+
+    except (OSError, ConfigError) as exc:
+        try:
+            if artifact_dir.exists():
+                shutil.rmtree(
+                    artifact_dir,
+                )
+        except OSError:
+            pass
+
+        if isinstance(exc, ConfigError):
+            raise
+
+        raise ConfigError(f"Cannot materialize artifact {artifact_id!r}: {exc}") from exc
+
+
 __all__ = [
     "ArtifactState",
     "clean_artifact",
     "configure_artifact",
     "discover_artifacts",
     "list_artifacts",
+    "materialize_artifact",
 ]

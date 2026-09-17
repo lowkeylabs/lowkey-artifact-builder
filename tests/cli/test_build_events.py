@@ -81,6 +81,12 @@ def test_build_command_delegates_artifact_execution_to_engine(
     to the engine.
     """
 
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
+
     monkeypatch.chdir(
         tmp_path,
     )
@@ -151,6 +157,12 @@ def test_build_command_supplies_event_sink_to_artifact_execution(
     Explicit Artifact + Realization execution receives the CLI
     execution-event observer.
     """
+
+    monkeypatch.setattr(
+        cmd_build,
+        "materialize_artifact",
+        lambda artifact_id, *, project_root: None,
+    )
 
     monkeypatch.chdir(
         tmp_path,

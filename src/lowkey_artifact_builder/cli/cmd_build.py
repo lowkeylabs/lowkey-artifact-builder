@@ -33,6 +33,7 @@ from lowkey_artifact_builder.config import (
     discover_artifacts,
     get_realization_names,
     list_artifacts,
+    materialize_artifact,
 )
 from lowkey_artifact_builder.engine import (
     BuildError,
@@ -350,6 +351,9 @@ def _execute_realization(
     """
     Build one selected Realization for the selected Artifacts.
 
+    Mutating build execution materializes each Artifact baseline before
+    Realization execution. Dry-run remains non-mutating.
+
     Independent Artifact builds continue after individual failures. After
     all requested Artifacts have been attempted, any failures are reported
     together as command failure.
@@ -377,6 +381,11 @@ def _execute_realization(
                     )
 
                 continue
+
+            materialize_artifact(
+                artifact_id,
+                project_root=project_root,
+            )
 
             execute_artifact_build(
                 artifact_id,
@@ -507,6 +516,9 @@ def _execute_realizations(
     Normal build execution addresses Artifact + Realization. Effective
     Realization discovery remains owned by configuration.
 
+    Mutating build execution materializes each Artifact baseline before
+    Realization discovery. Dry-run remains non-mutating.
+
     Independent Realization builds continue after individual failures.
     After all requested independent builds have been attempted, any
     failures are reported together as command failure.
@@ -518,6 +530,12 @@ def _execute_realizations(
 
     for artifact_id in artifact_ids:
         try:
+            if not dry_run:
+                materialize_artifact(
+                    artifact_id,
+                    project_root=project_root,
+                )
+
             realizations = get_realization_names(
                 artifact_id,
                 project_root=project_root,
