@@ -74,7 +74,7 @@ def test_shape_builds_complete_3mf_without_artwork(
     )
 
     # -----------------------------------------------------
-    # Plan the same Shape Variant selected by the CLI
+    # Plan the Shape Variant underlying the Realization
     # -----------------------------------------------------
 
     plans = create_build_plans(
@@ -106,7 +106,7 @@ def test_shape_builds_complete_3mf_without_artwork(
     )
 
     # -----------------------------------------------------
-    # Build explicit Shape Variant through public CLI
+    # Build canonical Shape Realization through public CLI
     # -----------------------------------------------------
 
     build_result = runner.invoke(
@@ -114,8 +114,8 @@ def test_shape_builds_complete_3mf_without_artwork(
         [
             "build",
             "testshape",
-            "--variant",
-            "shape.default",
+            "--realization",
+            "shape_default",
         ],
     )
 
@@ -236,7 +236,7 @@ def test_shape_ridge_preserves_distinct_component_colors(
     runner = CliRunner()
 
     # -----------------------------------------------------
-    # Configure Shape default Variant
+    # Configure Shape default Realization
     # -----------------------------------------------------
 
     write_artifact_config(
@@ -256,7 +256,7 @@ def test_shape_ridge_preserves_distinct_component_colors(
     )
 
     # -----------------------------------------------------
-    # Plan the same Shape Variant selected by the CLI
+    # Plan the Shape Variant underlying the Realization
     # -----------------------------------------------------
 
     plans = create_build_plans(
@@ -275,7 +275,7 @@ def test_shape_ridge_preserves_distinct_component_colors(
     assert plan.realization_name == "shape_default"
 
     # -----------------------------------------------------
-    # Build explicit Shape Variant through public CLI
+    # Build canonical Shape Realization through public CLI
     # -----------------------------------------------------
 
     build_result = runner.invoke(
@@ -283,8 +283,8 @@ def test_shape_ridge_preserves_distinct_component_colors(
         [
             "build",
             "colored-shape",
-            "--variant",
-            "shape.default",
+            "--realization",
+            "shape_default",
         ],
     )
 
@@ -429,7 +429,7 @@ def test_shape_component_colors_do_not_change_geometry(
     )
 
     # -----------------------------------------------------
-    # Plan and build both Shape Variants
+    # Plan and build both Shape Realizations
     # -----------------------------------------------------
 
     plans = {}
@@ -461,8 +461,8 @@ def test_shape_component_colors_do_not_change_geometry(
             [
                 "build",
                 artifact_id,
-                "--variant",
-                "shape.default",
+                "--realization",
+                "shape_default",
             ],
         )
 

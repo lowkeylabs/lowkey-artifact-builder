@@ -1,8 +1,8 @@
 """
 Acceptance tests for artifact builds through the public CLI.
 
-The CLI is intentionally thin. A caller identifies the configured artifact
-and explicitly selects the Variant to build; the engine owns planning,
+The CLI is intentionally thin. A caller identifies the configured Artifact
+and explicitly selects the Realization to build; the engine owns planning,
 dependency resolution, incremental execution, and production of the
 requested artifact.
 """
@@ -36,11 +36,11 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    The public CLI builds an explicitly selected consumer Variant.
+    The public CLI builds an explicitly selected consumer Realization.
 
-    The caller requests only the consumer Variant. The CLI does not require
-    the producer to be built separately or require the caller to select an
-    execution strategy.
+    The caller requests only the consumer Realization. The CLI does not
+    require the producer to be built separately or require the caller to
+    select an execution strategy.
 
     The engine must satisfy the configured cross-Artifact dependency graph
     and produce the requested consumer artifact.
@@ -124,7 +124,7 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
     assert not shape_root.exists()
 
     # -----------------------------------------------------
-    # Request only the consumer through the public CLI
+    # Request only the consumer Realization through the CLI
     # -----------------------------------------------------
 
     result = runner.invoke(
@@ -132,8 +132,8 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
         [
             "build",
             "artwork-shape",
-            "--variant",
-            "shape.default",
+            "--realization",
+            "shape_default",
         ],
     )
 
