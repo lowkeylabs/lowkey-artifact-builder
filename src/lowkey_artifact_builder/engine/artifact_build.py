@@ -17,6 +17,7 @@ Callers do not construct BuildPlans or select an execution strategy.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from lowkey_artifact_builder.config import (
@@ -38,6 +39,9 @@ from .execution import (
 from .plan import (
     BuildPlan,
     create_build_plans,
+)
+from .product_resolver import (
+    ProductResolver,
 )
 
 # =========================================================
@@ -184,7 +188,56 @@ def execute_artifact_build(
     )
 
 
+def rebuild_artifact(
+    artifact_id: str,
+    *,
+    realization: str,
+    project_root: Path | None = None,
+    event_sink: EventSink | None = None,
+) -> tuple[ExecutionPlan, ...]:
+    """
+    Rebuild one selected Artifact Realization.
+
+    The selected Realization's generated products are removed before
+    dependency-aware execution. Generated products belonging to sibling
+    Realizations are preserved.
+    """
+
+    root = project_root if project_root is not None else Path.cwd()
+
+    plans = create_artifact_build_plans(
+        artifact_id,
+        realization=realization,
+        project_root=root,
+    )
+
+    product_resolver = ProductResolver(
+        project_root=root,
+    )
+
+    for plan in plans:
+        realization_dir = product_resolver.realization_dir(
+            artifact=plan.artifact_id,
+            model=plan.model_name,
+            realization=plan.realization_name,
+        )
+
+        if realization_dir.exists():
+            shutil.rmtree(
+                realization_dir,
+            )
+
+    return tuple(
+        execute_dependency_build(
+            plan,
+            event_sink=event_sink,
+        )
+        for plan in plans
+    )
+
+
 __all__ = [
     "create_artifact_build_plans",
     "execute_artifact_build",
+    "rebuild_artifact",
 ]

@@ -47,6 +47,7 @@ from lowkey_artifact_builder.engine import (
     execute_artifact_build,
     execute_artifact_stage,
     prepare_incremental_build,
+    rebuild_artifact,
 )
 from lowkey_artifact_builder.model import (
     build_model_registry,
@@ -116,6 +117,11 @@ from lowkey_artifact_builder.model import (
     is_flag=True,
     help="Incrementally build every effective Realization of every project Artifact.",
 )
+@click.option(
+    "--rebuild",
+    is_flag=True,
+    help="Clean and rebuild the selected Artifact Realization.",
+)
 def cli(
     artifact_ids: tuple[str, ...],
     stage: str | None,
@@ -127,6 +133,7 @@ def cli(
     output_bindings: tuple[str, ...],
     dry_run: bool,
     build_all: bool,
+    rebuild: bool,
 ) -> None:
     """
     Build configured artifacts.
@@ -184,6 +191,16 @@ def cli(
         _execute_realizations(
             artifact_ids,
             dry_run=dry_run,
+        )
+        return
+
+    if rebuild:
+        if len(artifact_ids) != 1 or realization is None:
+            raise click.UsageError("--rebuild requires one Artifact and one Realization.")
+
+        _rebuild_realization(
+            artifact_ids[0],
+            realization=realization,
         )
         return
 
@@ -393,6 +410,31 @@ def _execute_realization(
             BuildError,
         ) as exc:
             raise click.ClickException(str(exc)) from exc
+
+
+def _rebuild_realization(
+    artifact_id: str,
+    *,
+    realization: str,
+) -> None:
+    """
+    Rebuild one selected Artifact Realization.
+    """
+
+    try:
+        rebuild_artifact(
+            artifact_id,
+            realization=realization,
+            project_root=Path.cwd(),
+            event_sink=_display_execution_event,
+        )
+
+    except (
+        ConfigError,
+        BuildPlanError,
+        BuildError,
+    ) as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 def _execute_realizations(

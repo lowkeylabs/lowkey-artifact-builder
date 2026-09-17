@@ -2280,3 +2280,48 @@ def test_build_all_executes_effective_realizations_across_project(
             "shape_ornament",
         ),
     ]
+
+
+def test_build_artifact_realization_rebuilds_selected_scope(
+    monkeypatch,
+) -> None:
+    """
+    --rebuild forces the selected Artifact + Realization through rebuild.
+    """
+
+    rebuilt: list[tuple[str, str]] = []
+
+    def rebuild_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        rebuilt.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "rebuild_artifact",
+        rebuild_artifact,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--realization",
+        "shape_ornament",
+        "--rebuild",
+    )
+
+    assert result.exit_code == 0
+    assert rebuilt == [
+        (
+            "skippy",
+            "shape_ornament",
+        ),
+    ]

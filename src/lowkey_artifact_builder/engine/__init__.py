@@ -59,6 +59,7 @@ the subset of stages that must execute for the current build context.
 from .artifact_build import (
     create_artifact_build_plans,
     execute_artifact_build,
+    rebuild_artifact,
 )
 from .build import (
     BuildError,
@@ -212,6 +213,7 @@ __all__ = [
     "prepare_incremental_build",
     "product_is_fresh",
     "read_stage_completion",
+    "rebuild_artifact",
     "stage_requires_execution",
     "validate_stage_inputs",
     "write_stage_completion",

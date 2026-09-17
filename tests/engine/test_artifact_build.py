@@ -26,6 +26,7 @@ from lowkey_artifact_builder.config import (
 )
 from lowkey_artifact_builder.engine import (
     execute_artifact_build,
+    rebuild_artifact,
 )
 
 # =========================================================
@@ -251,6 +252,86 @@ def test_artifact_build_selects_requested_realization(
     )
 
     assert not alternate_output.exists()
+
+
+def test_artifact_rebuild_removes_only_selected_realization(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Rebuilding one Realization removes only that Realization's products.
+
+    The selected Realization is removed before dependency-aware execution.
+    Products belonging to sibling Realizations are preserved.
+    """
+
+    write_artifact_config(
+        "shape-artifact",
+        {
+            "realizations": {
+                "default": {
+                    "model": "shape",
+                },
+                "alternate": {
+                    "model": "shape",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    realization_root = tmp_path / "artifacts" / "shape-artifact" / "shape"
+
+    selected_root = realization_root / "default"
+    sibling_root = realization_root / "alternate"
+
+    selected_product = selected_root / "old-product"
+    sibling_product = sibling_root / "sibling-product"
+
+    selected_root.mkdir(
+        parents=True,
+    )
+    sibling_root.mkdir(
+        parents=True,
+    )
+
+    selected_product.write_text("old")
+    sibling_product.write_text("keep")
+
+    executed: list[str] = []
+
+    def fake_execute_dependency_build(
+        plan,
+        *,
+        event_sink=None,
+    ):
+        assert not selected_root.exists()
+        assert sibling_product.is_file()
+
+        executed.append(
+            plan.realization_name,
+        )
+
+        return plan
+
+    monkeypatch.setattr(
+        artifact_build,
+        "execute_dependency_build",
+        fake_execute_dependency_build,
+    )
+
+    rebuild_artifact(
+        "shape-artifact",
+        realization="default",
+        project_root=tmp_path,
+    )
+
+    assert executed == [
+        "default",
+    ]
+
+    assert not selected_product.exists()
+    assert sibling_product.is_file()
 
 
 def test_artifact_build_forwards_model_and_local_variant_selection(
