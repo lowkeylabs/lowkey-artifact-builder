@@ -2686,3 +2686,79 @@ def test_rebuild_all_rejects_artifact_scope(
     assert result.exit_code == 2
     assert "--rebuild-all cannot be combined with Artifact IDs." in result.output
     assert rebuilt is False
+
+
+def test_build_all_rejects_realization_scope(
+    monkeypatch,
+) -> None:
+    """
+    --build-all is project-wide and cannot be narrowed by Realization.
+    """
+
+    executed = False
+
+    def execute_realizations(
+        artifact_ids: tuple[str, ...],
+        *,
+        dry_run: bool,
+    ) -> None:
+        nonlocal executed
+        executed = True
+
+    monkeypatch.setattr(
+        cmd_build,
+        "list_artifacts",
+        lambda *, project_root: ("alpha",),
+    )
+    monkeypatch.setattr(
+        cmd_build,
+        "_execute_realizations",
+        execute_realizations,
+    )
+
+    result = _invoke(
+        "--realization",
+        "shape_ornament",
+        "--build-all",
+    )
+
+    assert result.exit_code == 2
+    assert "--build-all cannot be combined with --realization." in result.output
+    assert executed is False
+
+
+def test_rebuild_all_rejects_realization_scope(
+    monkeypatch,
+) -> None:
+    """
+    --rebuild-all is project-wide and cannot be narrowed by Realization.
+    """
+
+    rebuilt = False
+
+    def rebuild_all(
+        artifact_ids: tuple[str, ...],
+    ) -> None:
+        nonlocal rebuilt
+        rebuilt = True
+
+    monkeypatch.setattr(
+        cmd_build,
+        "list_artifacts",
+        lambda *, project_root: ("alpha",),
+    )
+    monkeypatch.setattr(
+        cmd_build,
+        "_rebuild_all",
+        rebuild_all,
+    )
+
+    result = _invoke(
+        "--realization",
+        "shape_ornament",
+        "--rebuild-all",
+    )
+
+    assert result.exit_code == 2
+    assert "--rebuild-all cannot be combined with --realization." in result.output
+    assert rebuilt is False
