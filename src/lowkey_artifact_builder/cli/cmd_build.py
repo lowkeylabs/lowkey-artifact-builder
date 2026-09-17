@@ -122,6 +122,11 @@ from lowkey_artifact_builder.model import (
     is_flag=True,
     help="Clean and rebuild the selected Artifact Realization.",
 )
+@click.option(
+    "--rebuild-all",
+    is_flag=True,
+    help="Clean and rebuild every effective Realization of every project Artifact.",
+)
 def cli(
     artifact_ids: tuple[str, ...],
     stage: str | None,
@@ -134,6 +139,7 @@ def cli(
     dry_run: bool,
     build_all: bool,
     rebuild: bool,
+    rebuild_all: bool,
 ) -> None:
     """
     Build configured artifacts.
@@ -154,7 +160,7 @@ def cli(
     this independent stage execution mode.
     """
 
-    if not artifact_ids and realization is None and not build_all:
+    if not artifact_ids and realization is None and not build_all and not rebuild_all:
         _display_build_status()
         return
 
@@ -191,6 +197,12 @@ def cli(
         _execute_realizations(
             artifact_ids,
             dry_run=dry_run,
+        )
+        return
+
+    if rebuild_all:
+        _rebuild_all(
+            artifact_ids,
         )
         return
 
@@ -529,6 +541,38 @@ def _execute_realizations(
             BuildError,
         ) as exc:
             raise click.ClickException(str(exc)) from exc
+
+
+def _rebuild_all(
+    artifact_ids: tuple[str, ...],
+) -> None:
+    """
+    Rebuild every effective Realization of the selected Artifacts.
+    """
+
+    project_root = Path.cwd()
+
+    try:
+        for artifact_id in artifact_ids:
+            realizations = get_realization_names(
+                artifact_id,
+                project_root=project_root,
+            )
+
+            for realization in realizations:
+                rebuild_artifact(
+                    artifact_id,
+                    realization=realization,
+                    project_root=project_root,
+                    event_sink=_display_execution_event,
+                )
+
+    except (
+        ConfigError,
+        BuildPlanError,
+        BuildError,
+    ) as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 # =========================================================

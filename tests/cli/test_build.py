@@ -2445,3 +2445,77 @@ def test_build_realization_rebuilds_across_project_artifacts(
             "shape_ornament",
         ),
     ]
+
+
+def test_rebuild_all_rebuilds_effective_realizations_across_project(
+    monkeypatch,
+) -> None:
+    """
+    --rebuild-all rebuilds every effective Realization of every
+    project Artifact.
+    """
+
+    rebuilt: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        cmd_build,
+        "list_artifacts",
+        lambda *, project_root: (
+            "alpha",
+            "beta",
+        ),
+    )
+
+    def get_realization_names(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> tuple[str, ...]:
+        if artifact_id == "alpha":
+            return (
+                "artwork_default",
+                "shape_default",
+            )
+
+        return (
+            "shape_default",
+            "shape_ornament",
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        get_realization_names,
+    )
+
+    def rebuild_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        rebuilt.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "rebuild_artifact",
+        rebuild_artifact,
+    )
+
+    result = _invoke(
+        "--rebuild-all",
+    )
+
+    assert result.exit_code == 0
+    assert rebuilt == [
+        ("alpha", "artwork_default"),
+        ("alpha", "shape_default"),
+        ("beta", "shape_default"),
+        ("beta", "shape_ornament"),
+    ]
