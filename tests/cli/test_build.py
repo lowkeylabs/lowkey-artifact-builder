@@ -2570,3 +2570,55 @@ def test_build_all_rejects_rebuild_all(
     assert "--build-all and --rebuild-all cannot be used together." in result.output
     assert executed is False
     assert rebuilt is False
+
+
+def test_bare_rebuild_does_not_imply_project_wide_scope(
+    monkeypatch,
+) -> None:
+    """
+    Bare --rebuild is invalid even when the project contains one Artifact.
+
+    Project-wide forced rebuilding requires --rebuild-all.
+    """
+
+    rebuilt: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        cmd_build,
+        "list_artifacts",
+        lambda *, project_root: ("alpha",),
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: ("shape_default",),
+    )
+
+    def rebuild_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        rebuilt.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "rebuild_artifact",
+        rebuild_artifact,
+    )
+
+    result = _invoke(
+        "--rebuild",
+    )
+
+    assert result.exit_code == 2
+    assert "--rebuild requires a narrowed build scope." in result.output
+    assert rebuilt == []
