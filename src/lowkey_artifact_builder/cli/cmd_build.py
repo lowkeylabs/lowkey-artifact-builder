@@ -41,6 +41,8 @@ from lowkey_artifact_builder.engine import (
     BuildError,
     BuildPlanError,
     ExecutionEvent,
+    ExecutionPlan,
+    ProductState,
     create_artifact_build_plans,
     execute_artifact_build,
     execute_artifact_stage,
@@ -236,8 +238,10 @@ def _display_build_status() -> None:
     Artifact-declared Realizations follow the same semantics used by normal
     engine planning.
 
-    Detailed freshness reporting is introduced by subsequent build-status
-    slices.
+    Status is derived from the prepared ExecutionPlan rather than persisted
+    separately. The earliest non-current persistent product state in build
+    order describes the Realization; a Realization whose persistent products
+    are all current is current.
     """
 
     project_root = Path.cwd()
@@ -254,10 +258,46 @@ def _display_build_status() -> None:
             )
 
             for realization in realizations:
-                click.echo(f"{artifact_id} {realization}")
+                plans = create_artifact_build_plans(
+                    artifact_id,
+                    realization=realization,
+                    project_root=project_root,
+                )
 
-        except ConfigError as exc:
+                for plan in plans:
+                    execution_plan = prepare_incremental_build(
+                        plan,
+                    )
+
+                    status = _execution_plan_status(
+                        execution_plan,
+                    )
+
+                    click.echo(f"{artifact_id} {realization} {status.value}")
+
+        except (
+            ConfigError,
+            BuildPlanError,
+        ) as exc:
             raise click.ClickException(str(exc)) from exc
+
+
+def _execution_plan_status(
+    execution_plan: ExecutionPlan,
+) -> ProductState:
+    """
+    Return the earliest non-current persistent product state in build order.
+
+    Stages without persistent products contribute no state. If every
+    persistent product is current, the Realization is current.
+    """
+
+    for stage in execution_plan.stages:
+        for state in stage.product_states:
+            if state is not ProductState.CURRENT:
+                return state
+
+    return ProductState.CURRENT
 
 
 def _display_available_variants(

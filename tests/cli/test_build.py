@@ -16,6 +16,11 @@ from click.testing import CliRunner
 import lowkey_artifact_builder.cli.cmd_build as cmd_build
 from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.config import ConfigError
+from lowkey_artifact_builder.engine import (
+    ExecutionPlan,
+    PlannedStageExecution,
+    ProductState,
+)
 
 # =========================================================
 # Helpers
@@ -1857,6 +1862,27 @@ def test_bare_build_discovers_project_artifacts(
 
     monkeypatch.chdir(tmp_path)
 
+    build_plan = object()
+
+    monkeypatch.setattr(
+        cmd_build,
+        "create_artifact_build_plans",
+        lambda artifact_id, *, realization, project_root: (build_plan,),
+    )
+
+    execution_plan = ExecutionPlan(
+        artifact_id="dog",
+        model_name="artwork",
+        realization="artwork_default",
+        stages=(),
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        lambda plan: execution_plan,
+    )
+
     result = _invoke()
 
     assert result.exit_code == 0
@@ -1883,15 +1909,35 @@ def test_bare_build_reports_effective_realizations(
 
     monkeypatch.chdir(tmp_path)
 
+    realizations = (
+        "artwork_default",
+        "shape_default",
+        "shape_ornament",
+    )
+
     monkeypatch.setattr(
         cmd_build,
         "get_realization_names",
-        lambda artifact_id, *, project_root: (
-            "artwork_default",
-            "shape_default",
-            "shape_ornament",
+        lambda artifact_id, *, project_root: realizations,
+    )
+
+    build_plan = object()
+
+    monkeypatch.setattr(
+        cmd_build,
+        "create_artifact_build_plans",
+        lambda artifact_id, *, realization, project_root: (build_plan,),
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        lambda plan: ExecutionPlan(
+            artifact_id="dog",
+            model_name="artwork",
+            realization="default",
+            stages=(),
         ),
-        raising=False,
     )
 
     result = _invoke()
@@ -1921,10 +1967,111 @@ def test_bare_build_includes_canonical_realizations_not_in_artifact_config(
 
     monkeypatch.chdir(tmp_path)
 
+    planned_realizations: list[str] = []
+
+    build_plan = object()
+
+    def create_plans(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+    ) -> tuple[object, ...]:
+        planned_realizations.append(realization)
+        return (build_plan,)
+
+    monkeypatch.setattr(
+        cmd_build,
+        "create_artifact_build_plans",
+        create_plans,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        lambda plan: ExecutionPlan(
+            artifact_id="dog",
+            model_name="artwork",
+            realization="default",
+            stages=(),
+        ),
+    )
+
+    result = _invoke()
+
+    assert result.exit_code == 0
+
+    assert "artwork_default" in planned_realizations
+    assert "shape_default" in planned_realizations
+    assert "shape_ornament" in planned_realizations
+
+    assert "artwork_default" in result.output
+    assert "shape_default" in result.output
+    assert "shape_ornament" in result.output
+
+
+def test_bare_build_reports_earliest_noncurrent_product_state(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bare build reports the earliest non-current persistent product state
+    in execution-plan order.
+    """
+
+    artifact_dir = tmp_path / "artifacts" / "dog"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "artifact.toml").write_text(
+        'source = "artifacts/dog/artifact.png"\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: ("artwork_default",),
+    )
+
+    build_plan = object()
+
+    monkeypatch.setattr(
+        cmd_build,
+        "create_artifact_build_plans",
+        lambda artifact_id, *, realization, project_root: (build_plan,),
+    )
+
+    execution_plan = ExecutionPlan(
+        artifact_id="dog",
+        model_name="artwork",
+        realization="artwork_default",
+        stages=(
+            PlannedStageExecution(
+                stage_name="prepare",
+                product_states=(ProductState.CURRENT,),
+            ),
+            PlannedStageExecution(
+                stage_name="raster",
+                product_states=(ProductState.STALE,),
+            ),
+            PlannedStageExecution(
+                stage_name="vector",
+                product_states=(ProductState.ABSENT,),
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "prepare_incremental_build",
+        lambda plan: execution_plan,
+        raising=False,
+    )
+
     result = _invoke()
 
     assert result.exit_code == 0
     assert "dog" in result.output
     assert "artwork_default" in result.output
-    assert "shape_default" in result.output
-    assert "shape_ornament" in result.output
+    assert "stale" in result.output
