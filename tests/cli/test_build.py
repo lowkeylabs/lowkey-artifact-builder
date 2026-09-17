@@ -2099,3 +2099,129 @@ def test_rebuild_realization_reports_each_independent_artifact_failure(
     assert result.exit_code != 0
     assert "smith-dog rebuild failed" in result.output
     assert "jones-dog rebuild failed" in result.output
+
+
+def test_rebuild_artifact_continues_after_independent_realization_failure(
+    monkeypatch,
+) -> None:
+    """
+    Failure rebuilding one effective Realization does not prevent another
+    independent Realization of the same Artifact from being attempted.
+
+    The command reports failure after all requested independent
+    Realizations have been attempted.
+    """
+
+    realizations = (
+        "artwork_default",
+        "shape_default",
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: realizations,
+    )
+
+    attempted: list[tuple[str, str]] = []
+
+    def rebuild_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        attempted.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+        if realization == "artwork_default":
+            raise cmd_build.BuildError(
+                "artwork_default rebuild failed",
+            )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "rebuild_artifact",
+        rebuild_artifact,
+    )
+
+    result = _invoke(
+        "smith-dog",
+        "--rebuild",
+    )
+
+    assert attempted == [
+        (
+            "smith-dog",
+            "artwork_default",
+        ),
+        (
+            "smith-dog",
+            "shape_default",
+        ),
+    ]
+
+    assert result.exit_code != 0
+    assert "artwork_default rebuild failed" in result.output
+
+
+def test_rebuild_artifact_reports_each_independent_realization_failure(
+    monkeypatch,
+) -> None:
+    """
+    Failures from multiple independent Realizations of one Artifact remain
+    visible after all requested Realizations have been attempted.
+    """
+
+    realizations = (
+        "artwork_default",
+        "shape_default",
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: realizations,
+    )
+
+    attempted: list[str] = []
+
+    def rebuild_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        attempted.append(
+            realization,
+        )
+
+        raise cmd_build.BuildError(
+            f"{realization} rebuild failed",
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "rebuild_artifact",
+        rebuild_artifact,
+    )
+
+    result = _invoke(
+        "smith-dog",
+        "--rebuild",
+    )
+
+    assert attempted == [
+        "artwork_default",
+        "shape_default",
+    ]
+
+    assert result.exit_code != 0
+    assert "artwork_default rebuild failed" in result.output
+    assert "shape_default rebuild failed" in result.output
