@@ -51,67 +51,48 @@ def _invoke(
 # =========================================================
 
 
-def test_build_without_variant_discovers_available_variants(
+def test_build_artifact_executes_each_effective_realization(
     monkeypatch,
 ) -> None:
     """
-    An unqualified Artifact build displays every available qualified Variant.
+    A named Artifact builds each of its effective Realizations.
 
-    Discovery does not imply execution.
+    Normal build execution addresses Artifact + Realization rather than
+    Artifact + Variant.
     """
 
-    discovered: list[str] = []
-    displayed: list[
-        tuple[
-            str,
-            tuple[str, ...],
-        ]
-    ] = []
-    executed: list[str] = []
-
-    variants = (
-        "artwork.default",
-        "shape.default",
-        "shape.ornament",
+    realizations = (
+        "artwork_default",
+        "shape_default",
+        "shape_ornament",
     )
 
-    def get_available_variants(
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: realizations,
+    )
+
+    executed: list[tuple[str, str]] = []
+
+    def execute_artifact(
         artifact_id: str,
         *,
+        realization: str,
         project_root: Path,
-    ) -> tuple[str, ...]:
-        discovered.append(artifact_id)
-        return variants
-
-    def display_available_variants(
-        artifact_id: str,
-        available_variants: tuple[str, ...],
+        event_sink=None,
     ) -> None:
-        displayed.append(
+        executed.append(
             (
                 artifact_id,
-                available_variants,
+                realization,
             )
         )
 
     monkeypatch.setattr(
         cmd_build,
-        "get_available_variant_names",
-        get_available_variants,
-        raising=False,
-    )
-
-    monkeypatch.setattr(
-        cmd_build,
-        "display_available_variants",
-        display_available_variants,
-        raising=False,
-    )
-
-    monkeypatch.setattr(
-        cmd_build,
         "execute_artifact_build",
-        lambda artifact_id, **kwargs: executed.append(artifact_id),
+        execute_artifact,
     )
 
     result = _invoke(
@@ -119,67 +100,68 @@ def test_build_without_variant_discovers_available_variants(
     )
 
     assert result.exit_code == 0
-    assert discovered == ["skippy"]
-    assert displayed == [
+
+    assert executed == [
         (
             "skippy",
-            variants,
-        )
+            "artwork_default",
+        ),
+        (
+            "skippy",
+            "shape_default",
+        ),
+        (
+            "skippy",
+            "shape_ornament",
+        ),
     ]
-    assert executed == []
 
 
-def test_build_without_variant_discovers_each_artifact_in_argument_order(
+def test_build_multiple_artifacts_executes_effective_realizations_in_argument_order(
     monkeypatch,
 ) -> None:
     """
-    Unqualified multi-Artifact builds perform discovery in argument order.
+    Multiple named Artifacts build their effective Realizations in
+    Artifact argument order and Realization discovery order.
     """
 
-    variants_by_artifact = {
+    realizations_by_artifact = {
         "skippy": (
-            "artwork.default",
-            "shape.default",
-            "shape.ornament",
+            "artwork_default",
+            "shape_default",
         ),
         "scooby": (
-            "artwork.default",
-            "shape.default",
-            "shape.ornament",
+            "artwork_default",
+            "shape_ornament",
         ),
     }
 
-    displayed: list[
-        tuple[
-            str,
-            tuple[str, ...],
-        ]
-    ] = []
-    executed: list[str] = []
-
     monkeypatch.setattr(
         cmd_build,
-        "get_available_variant_names",
-        lambda artifact_id, *, project_root: variants_by_artifact[artifact_id],
-        raising=False,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: realizations_by_artifact[artifact_id],
     )
 
-    monkeypatch.setattr(
-        cmd_build,
-        "display_available_variants",
-        lambda artifact_id, variants: displayed.append(
+    executed: list[tuple[str, str]] = []
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        executed.append(
             (
                 artifact_id,
-                variants,
+                realization,
             )
-        ),
-        raising=False,
-    )
+        )
 
     monkeypatch.setattr(
         cmd_build,
         "execute_artifact_build",
-        lambda artifact_id, **kwargs: executed.append(artifact_id),
+        execute_artifact,
     )
 
     result = _invoke(
@@ -188,80 +170,79 @@ def test_build_without_variant_discovers_each_artifact_in_argument_order(
     )
 
     assert result.exit_code == 0
-    assert displayed == [
-        (
-            "skippy",
-            variants_by_artifact["skippy"],
-        ),
-        (
-            "scooby",
-            variants_by_artifact["scooby"],
-        ),
+    assert executed == [
+        ("skippy", "artwork_default"),
+        ("skippy", "shape_default"),
+        ("scooby", "artwork_default"),
+        ("scooby", "shape_ornament"),
     ]
-    assert executed == []
 
 
-def test_build_dry_run_without_variant_is_discovery_only(
+def test_build_artifact_dry_run_plans_each_effective_realization(
     monkeypatch,
 ) -> None:
     """
-    An unqualified dry-run remains discovery-only.
-
-    Discovery does not manufacture BuildPlans or prepare execution state.
+    An unqualified Artifact dry-run plans each effective Realization
+    without executing it.
     """
 
-    variants = (
-        "artwork.default",
-        "shape.default",
-        "shape.ornament",
+    realizations = (
+        "artwork_default",
+        "shape_default",
     )
 
-    displayed_variants: list[
-        tuple[
-            str,
-            tuple[str, ...],
-        ]
-    ] = []
-    planned: list[str] = []
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: realizations,
+    )
+
+    plans = {
+        "artwork_default": object(),
+        "shape_default": object(),
+    }
+
+    planned: list[tuple[str, str]] = []
     prepared: list[object] = []
-    displayed_plans: list[object] = []
+    displayed: list[object] = []
+    executed: list[str] = []
 
-    monkeypatch.setattr(
-        cmd_build,
-        "get_available_variant_names",
-        lambda artifact_id, *, project_root: variants,
-        raising=False,
-    )
-
-    monkeypatch.setattr(
-        cmd_build,
-        "display_available_variants",
-        lambda artifact_id, available_variants: displayed_variants.append(
+    def create_plans(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+    ) -> tuple[object, ...]:
+        planned.append(
             (
                 artifact_id,
-                available_variants,
+                realization,
             )
-        ),
-        raising=False,
-    )
+        )
+        return (plans[realization],)
 
     monkeypatch.setattr(
         cmd_build,
         "create_artifact_build_plans",
-        lambda artifact_id, **kwargs: planned.append(artifact_id) or (),
+        create_plans,
     )
 
     monkeypatch.setattr(
         cmd_build,
         "prepare_incremental_build",
         lambda plan: prepared.append(plan),
-        raising=False,
     )
 
     monkeypatch.setattr(
         cmd_build,
         "display_build_plan",
-        displayed_plans.append,
+        displayed.append,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        lambda artifact_id, **kwargs: executed.append(artifact_id),
     )
 
     result = _invoke(
@@ -270,15 +251,20 @@ def test_build_dry_run_without_variant_is_discovery_only(
     )
 
     assert result.exit_code == 0
-    assert displayed_variants == [
-        (
-            "skippy",
-            variants,
-        )
+
+    assert planned == [
+        ("skippy", "artwork_default"),
+        ("skippy", "shape_default"),
     ]
-    assert planned == []
-    assert prepared == []
-    assert displayed_plans == []
+    assert prepared == [
+        plans["artwork_default"],
+        plans["shape_default"],
+    ]
+    assert displayed == [
+        plans["artwork_default"],
+        plans["shape_default"],
+    ]
+    assert executed == []
 
 
 # =========================================================

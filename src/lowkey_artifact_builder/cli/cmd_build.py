@@ -173,8 +173,9 @@ def cli(
         raise click.UsageError("--variant and --all-variants cannot be used together.")
 
     if variant is None and not all_variants:
-        _display_available_variants(
+        _execute_realizations(
             artifact_ids,
+            dry_run=dry_run,
         )
         return
 
@@ -322,6 +323,60 @@ def _display_available_variants(
             )
 
         except ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+
+def _execute_realizations(
+    artifact_ids: tuple[str, ...],
+    *,
+    dry_run: bool,
+) -> None:
+    """
+    Build every effective Realization for the selected Artifacts.
+
+    Normal build execution addresses Artifact + Realization. Effective
+    Realization discovery remains owned by configuration.
+    """
+
+    project_root = Path.cwd()
+
+    for artifact_id in artifact_ids:
+        try:
+            realizations = get_realization_names(
+                artifact_id,
+                project_root=project_root,
+            )
+
+            for realization in realizations:
+                if dry_run:
+                    plans = create_artifact_build_plans(
+                        artifact_id,
+                        realization=realization,
+                        project_root=project_root,
+                    )
+
+                    for plan in plans:
+                        prepare_incremental_build(
+                            plan,
+                        )
+                        display_build_plan(
+                            plan,
+                        )
+
+                    continue
+
+                execute_artifact_build(
+                    artifact_id,
+                    realization=realization,
+                    project_root=project_root,
+                    event_sink=_display_execution_event,
+                )
+
+        except (
+            ConfigError,
+            BuildPlanError,
+            BuildError,
+        ) as exc:
             raise click.ClickException(str(exc)) from exc
 
 
