@@ -111,6 +111,11 @@ from lowkey_artifact_builder.model import (
     is_flag=True,
     help="Display build plans without performing any work.",
 )
+@click.option(
+    "--build-all",
+    is_flag=True,
+    help="Incrementally build every effective Realization of every project Artifact.",
+)
 def cli(
     artifact_ids: tuple[str, ...],
     stage: str | None,
@@ -121,6 +126,7 @@ def cli(
     parameter_bindings: tuple[str, ...],
     output_bindings: tuple[str, ...],
     dry_run: bool,
+    build_all: bool,
 ) -> None:
     """
     Build configured artifacts.
@@ -141,7 +147,7 @@ def cli(
     this independent stage execution mode.
     """
 
-    if not artifact_ids and realization is None:
+    if not artifact_ids and realization is None and not build_all:
         _display_build_status()
         return
 
@@ -173,6 +179,13 @@ def cli(
 
     if variant is not None and all_variants:
         raise click.UsageError("--variant and --all-variants cannot be used together.")
+
+    if build_all:
+        _execute_realizations(
+            artifact_ids,
+            dry_run=dry_run,
+        )
+        return
 
     if realization is not None:
         _execute_realization(

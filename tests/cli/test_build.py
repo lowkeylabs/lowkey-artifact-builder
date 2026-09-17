@@ -2195,3 +2195,88 @@ def test_build_realization_executes_across_project_artifacts(
             "shape_ornament",
         ),
     ]
+
+
+def test_build_all_executes_effective_realizations_across_project(
+    monkeypatch,
+) -> None:
+    """
+    --build-all builds every effective Realization of every project Artifact.
+    """
+
+    monkeypatch.setattr(
+        cmd_build,
+        "list_artifacts",
+        lambda *, project_root: (
+            "skippy",
+            "scooby",
+        ),
+    )
+
+    realizations = {
+        "skippy": (
+            "artwork_default",
+            "shape_default",
+            "shape_ornament",
+        ),
+        "scooby": (
+            "artwork_default",
+            "shape_ornament",
+        ),
+    }
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: realizations[artifact_id],
+    )
+
+    executed: list[tuple[str, str]] = []
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        executed.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "--build-all",
+    )
+
+    assert result.exit_code == 0
+    assert executed == [
+        (
+            "skippy",
+            "artwork_default",
+        ),
+        (
+            "skippy",
+            "shape_default",
+        ),
+        (
+            "skippy",
+            "shape_ornament",
+        ),
+        (
+            "scooby",
+            "artwork_default",
+        ),
+        (
+            "scooby",
+            "shape_ornament",
+        ),
+    ]
