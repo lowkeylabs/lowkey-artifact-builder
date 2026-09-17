@@ -179,6 +179,9 @@ def cli(
     if rebuild_all and dry_run:
         raise click.UsageError("--rebuild-all cannot be combined with --dry-run.")
 
+    if dry_run and not artifact_ids and realization is None and not build_all:
+        raise click.UsageError("--dry-run requires a build scope.")
+
     if not artifact_ids and realization is None and not build_all and not rebuild_all:
         _display_build_status()
         return

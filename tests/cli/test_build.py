@@ -2618,3 +2618,17 @@ def test_rebuild_all_rejects_dry_run() -> None:
 
     assert result.exit_code == 2
     assert "--rebuild-all cannot be combined with --dry-run." in result.output
+
+
+def test_bare_dry_run_requires_build_scope() -> None:
+    """
+    Dry-run describes planned execution and must not silently become
+    the bare project-status operation.
+    """
+
+    result = _invoke(
+        "--dry-run",
+    )
+
+    assert result.exit_code == 2
+    assert "--dry-run requires a build scope." in result.output
