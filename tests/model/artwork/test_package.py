@@ -386,6 +386,9 @@ def test_package_preserves_component_identity_and_printer_assignment(
     component. The printer assignment supplies its semantic physical color
     and RGB.
 
+    The packaged component name combines stable physical component identity
+    with the resolved physical printer-color name.
+
     Artifact RGB remains distinct input information and must not replace
     the printer RGB selected during rasterization.
     """
@@ -500,8 +503,8 @@ def test_package_preserves_component_identity_and_printer_assignment(
     assert captured_components is not None
 
     assert tuple(component.name for component in captured_components) == (
-        "portrait-color-1",
-        "portrait-color-2",
+        "portrait-color-1 - physical-blue",
+        "portrait-color-2 - physical-red",
     )
 
     assert tuple(component.color for component in captured_components) == (
@@ -731,8 +734,11 @@ def test_package_includes_participating_loop_as_independent_component(
     independently printable 3MF component.
 
     Physical component identity is independent of printer-color identity.
-    A Loop may therefore use the same semantic printer color as an Artwork
-    color layer while remaining a distinct printable component.
+    A Loop may therefore use the same physical printer color as an Artwork
+    color layer while remaining a distinctly named printable component.
+
+    Packaged component names combine that stable component identity with the
+    resolved physical printer-color name.
     """
 
     extrude_directory = tmp_path / "extrude"
@@ -859,6 +865,11 @@ def test_package_includes_participating_loop_as_independent_component(
     assert captured_components is not None
     assert len(captured_components) == 2
 
+    assert tuple(component.name for component in captured_components) == (
+        "ornament-color-1 - white",
+        "ornament-loop - white",
+    )
+
     assert captured_components[0].color == PaletteColor(
         name="white",
         rgb=(
@@ -877,8 +888,6 @@ def test_package_includes_participating_loop_as_independent_component(
         ),
     )
 
-    assert captured_components[0].name != captured_components[1].name
-
     assert artifact.is_file()
 
 
@@ -890,8 +899,11 @@ def test_package_includes_participating_outer_ridge_as_independent_component(
     A participating Outer Ridge declared by extrusion is packaged as an
     independently printable 3MF component.
 
-    Packaging preserves the Outer Ridge's resolved semantic physical color
+    Packaging preserves the Outer Ridge's resolved physical printer-color
     identity without requiring Registered Artwork color metadata.
+
+    Packaged component names combine stable component identity with the
+    resolved physical printer-color name.
     """
 
     extrude_directory = tmp_path / "extrude"
@@ -1018,7 +1030,7 @@ def test_package_includes_participating_outer_ridge_as_independent_component(
     assert captured_components is not None
     assert len(captured_components) == 2
 
-    assert captured_components[0].name == "ornament-color-1"
+    assert captured_components[0].name == "ornament-color-1 - white"
 
     assert captured_components[0].color == PaletteColor(
         name="white",
@@ -1029,7 +1041,7 @@ def test_package_includes_participating_outer_ridge_as_independent_component(
         ),
     )
 
-    assert captured_components[1].name == "ornament-outer-ridge"
+    assert captured_components[1].name == "ornament-outer-ridge - test-black"
 
     assert captured_components[1].color == PaletteColor(
         name="test-black",

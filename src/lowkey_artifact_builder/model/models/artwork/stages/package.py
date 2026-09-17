@@ -394,23 +394,23 @@ def _component_name(
     component: ExtrudedComponent,
 ) -> str:
     """
-    Return the semantic 3MF object name for one Artwork component.
+    Return the human-readable 3MF object name for one Artwork component.
 
-    Independently printable components are identified by their extrusion
-    product identity rather than by their assigned printer color.
+    The name combines stable physical component identity with the resolved
+    physical printer-color name supplied by upstream processing.
 
-    The extrusion product filename supplies that physical component identity,
-    while the component's PaletteColor independently preserves its physical
-    printer assignment.
+    Component identity remains independent of printer-color identity. Distinct
+    components therefore remain distinctly named even when they resolve to the
+    same physical color.
 
     For example:
 
-        nydeli-color-1
-        nydeli-color-2
-        nydeli-loop
+        nydeli-color-1 - Fire Engine Red
+        nydeli-color-2 - Mint Green
+        nydeli-loop - Cold White
     """
 
-    return f"{artifact_id}-{component.path.stem}"
+    return f"{artifact_id}-{component.path.stem} - {component.color.name}"
 
 
 __all__ = [
