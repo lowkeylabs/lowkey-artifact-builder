@@ -380,6 +380,9 @@ def test_enabling_loop_does_not_change_hole_geometry() -> None:
 
     Hole remains measured from the size-controlled Artwork boundary rather
     than from Loop geometry extending beyond that boundary.
+
+    Hole and Loop share the Artwork cardinal convention in which position 0
+    is top (+Y), but their planar geometry remains independent.
     """
 
     bounds = Bounds(
@@ -415,19 +418,19 @@ def test_enabling_loop_does_not_change_hole_geometry() -> None:
         15.0,
     )
 
+    assert hole_with_loop.center_y == pytest.approx(
+        11.0,
+    )
+
+    assert hole_with_loop.nearest_edge_y == pytest.approx(
+        14.0,
+    )
+
     loop_outermost_y = loop.center_y + loop.outer_radius
 
     assert loop_outermost_y > bounds.max_y
 
     assert hole_with_loop == hole_without_loop
-
-    assert hole_with_loop.center_y == pytest.approx(
-        -11.0,
-    )
-
-    assert hole_with_loop.nearest_edge_y == pytest.approx(
-        -14.0,
-    )
 
 
 def test_enabling_hole_does_not_change_loop_geometry() -> None:

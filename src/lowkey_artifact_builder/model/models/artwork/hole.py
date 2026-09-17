@@ -53,10 +53,10 @@ def create_hole_geometry(
 
     Cardinal positions use the same orientation as Artwork Loop:
 
-        0       top
-        90      right
-        180     bottom
-        -90     left
+        0       top (+Y)
+        90      right (+X)
+        180     bottom (-Y)
+        -90     left (-X)
 
     Configuration validation owns validity of diameter, edge distance,
     and position. This function resolves already-valid configuration
@@ -73,16 +73,16 @@ def create_hole_geometry(
     nearest_edge_y = center_y
 
     if position == 0:
-        center_y = envelope_bounds.min_y + inset
-        nearest_edge_y = envelope_bounds.min_y + edge_distance
+        center_y = envelope_bounds.max_y - inset
+        nearest_edge_y = envelope_bounds.max_y - edge_distance
 
     elif position == 90:
         center_x = envelope_bounds.max_x - inset
         nearest_edge_x = envelope_bounds.max_x - edge_distance
 
     elif position == 180:
-        center_y = envelope_bounds.max_y - inset
-        nearest_edge_y = envelope_bounds.max_y - edge_distance
+        center_y = envelope_bounds.min_y + inset
+        nearest_edge_y = envelope_bounds.min_y + edge_distance
 
     elif position == -90:
         center_x = envelope_bounds.min_x + inset

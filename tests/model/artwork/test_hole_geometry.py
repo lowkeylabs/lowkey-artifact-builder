@@ -59,9 +59,9 @@ def test_hole_radius_is_half_configured_diameter() -> None:
         "expected_y",
     ),
     (
-        (0, 0.0, -11.0),
+        (0, 0.0, 11.0),
         (90, 16.0, 0.0),
-        (180, 0.0, 11.0),
+        (180, 0.0, -11.0),
         (-90, -16.0, 0.0),
     ),
 )
@@ -73,6 +73,13 @@ def test_hole_center_is_placed_inward_from_cardinal_boundary(
     """
     Hole center lies on the selected cardinal axis through the Artwork
     center.
+
+    Cardinal positions use Artwork physical coordinates:
+
+        0       top (+Y)
+        90      right (+X)
+        180     bottom (-Y)
+        -90     left (-X)
 
     The center is inset from the selected boundary by the Hole radius plus
     the configured edge distance.
@@ -101,9 +108,9 @@ def test_hole_center_is_placed_inward_from_cardinal_boundary(
         "expected_y",
     ),
     (
-        (0, 0.0, -14.0),
+        (0, 0.0, 14.0),
         (90, 19.0, 0.0),
-        (180, 0.0, 14.0),
+        (180, 0.0, -14.0),
         (-90, -19.0, 0.0),
     ),
 )
@@ -143,7 +150,7 @@ def test_hole_nearest_edge_is_configured_distance_from_boundary(
 
 def test_hole_top_placement_uses_actual_vertical_boundary() -> None:
     """
-    Top Hole placement uses the actual Y boundary of a non-square Artwork
+    Top Hole placement uses the actual +Y boundary of non-square Artwork
     rather than assuming artwork_size in both dimensions.
     """
 
@@ -160,15 +167,15 @@ def test_hole_top_placement_uses_actual_vertical_boundary() -> None:
     )
 
     assert geometry.center_x == pytest.approx(0.0)
-    assert geometry.center_y == pytest.approx(-7.0)
+    assert geometry.center_y == pytest.approx(7.0)
 
     assert geometry.nearest_edge_x == pytest.approx(0.0)
-    assert geometry.nearest_edge_y == pytest.approx(-9.0)
+    assert geometry.nearest_edge_y == pytest.approx(9.0)
 
 
 def test_hole_right_placement_uses_actual_horizontal_boundary() -> None:
     """
-    Right Hole placement uses the actual X boundary of a non-square Artwork
+    Right Hole placement uses the actual +X boundary of non-square Artwork
     rather than assuming artwork_size in both dimensions.
     """
 
@@ -203,9 +210,9 @@ def test_hole_right_placement_uses_actual_horizontal_boundary() -> None:
         "expected_y",
     ),
     (
-        (0, 40.0, 14.0),
+        (0, 40.0, 36.0),
         (90, 56.0, 25.0),
-        (180, 40.0, 36.0),
+        (180, 40.0, 14.0),
         (-90, 24.0, 25.0),
     ),
 )
@@ -244,9 +251,9 @@ def test_hole_placement_uses_actual_envelope_center(
         "expected_y",
     ),
     (
-        (0, 40.0, 11.0),
+        (0, 40.0, 39.0),
         (90, 59.0, 25.0),
-        (180, 40.0, 39.0),
+        (180, 40.0, 11.0),
         (-90, 21.0, 25.0),
     ),
 )
