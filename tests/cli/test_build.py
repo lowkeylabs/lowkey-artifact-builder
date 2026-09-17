@@ -2225,3 +2225,181 @@ def test_rebuild_artifact_reports_each_independent_realization_failure(
     assert result.exit_code != 0
     assert "artwork_default rebuild failed" in result.output
     assert "shape_default rebuild failed" in result.output
+
+
+def test_rebuild_all_continues_after_independent_realization_failure(
+    monkeypatch,
+) -> None:
+    """
+    A project-wide rebuild continues independent Realizations and Artifacts
+    after an individual rebuild failure.
+
+    The command reports failure after all requested independent rebuilds
+    have been attempted.
+    """
+
+    artifacts = (
+        "smith-dog",
+        "jones-dog",
+    )
+
+    realizations_by_artifact = {
+        "smith-dog": (
+            "artwork_default",
+            "shape_default",
+        ),
+        "jones-dog": (
+            "artwork_default",
+            "shape_ornament",
+        ),
+    }
+
+    monkeypatch.setattr(
+        cmd_build,
+        "list_artifacts",
+        lambda *, project_root: artifacts,
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: (realizations_by_artifact[artifact_id]),
+    )
+
+    attempted: list[tuple[str, str]] = []
+
+    def rebuild_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        attempted.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+        if artifact_id == "smith-dog" and realization == "shape_default":
+            raise cmd_build.BuildError(
+                "smith-dog shape_default rebuild failed",
+            )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "rebuild_artifact",
+        rebuild_artifact,
+    )
+
+    result = _invoke(
+        "--rebuild-all",
+    )
+
+    assert attempted == [
+        (
+            "smith-dog",
+            "artwork_default",
+        ),
+        (
+            "smith-dog",
+            "shape_default",
+        ),
+        (
+            "jones-dog",
+            "artwork_default",
+        ),
+        (
+            "jones-dog",
+            "shape_ornament",
+        ),
+    ]
+
+    assert result.exit_code != 0
+    assert "smith-dog shape_default rebuild failed" in result.output
+
+
+def test_rebuild_all_continues_after_artifact_realization_discovery_failure(
+    monkeypatch,
+) -> None:
+    """
+    Failure discovering Realizations for one Artifact does not prevent
+    later project Artifacts from being rebuilt.
+    """
+
+    artifacts = (
+        "smith-dog",
+        "jones-dog",
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "list_artifacts",
+        lambda *, project_root: artifacts,
+    )
+
+    discovered: list[str] = []
+
+    def get_realizations(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> tuple[str, ...]:
+        discovered.append(
+            artifact_id,
+        )
+
+        if artifact_id == "smith-dog":
+            raise cmd_build.ConfigError(
+                "smith-dog configuration failed",
+            )
+
+        return ("shape_default",)
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        get_realizations,
+    )
+
+    attempted: list[tuple[str, str]] = []
+
+    def rebuild_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        attempted.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "rebuild_artifact",
+        rebuild_artifact,
+    )
+
+    result = _invoke(
+        "--rebuild-all",
+    )
+
+    assert discovered == [
+        "smith-dog",
+        "jones-dog",
+    ]
+
+    assert attempted == [
+        (
+            "jones-dog",
+            "shape_default",
+        ),
+    ]
+
+    assert result.exit_code != 0
+    assert "smith-dog configuration failed" in result.output

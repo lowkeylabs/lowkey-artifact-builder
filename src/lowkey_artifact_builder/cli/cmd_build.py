@@ -542,18 +542,30 @@ def _rebuild_all(
 ) -> None:
     """
     Rebuild every effective Realization of the selected Artifacts.
+
+    Independent Artifact and Realization rebuilds continue after individual
+    failures. After all requested independent rebuilds have been attempted,
+    any failures are reported together as command failure.
     """
 
     project_root = Path.cwd()
 
-    try:
-        for artifact_id in artifact_ids:
+    failures: list[str] = []
+
+    for artifact_id in artifact_ids:
+        try:
             realizations = get_realization_names(
                 artifact_id,
                 project_root=project_root,
             )
+        except ConfigError as exc:
+            failures.append(
+                str(exc),
+            )
+            continue
 
-            for realization in realizations:
+        for realization in realizations:
+            try:
                 rebuild_artifact(
                     artifact_id,
                     realization=realization,
@@ -561,12 +573,21 @@ def _rebuild_all(
                     event_sink=_display_execution_event,
                 )
 
-    except (
-        ConfigError,
-        BuildPlanError,
-        BuildError,
-    ) as exc:
-        raise click.ClickException(str(exc)) from exc
+            except (
+                ConfigError,
+                BuildPlanError,
+                BuildError,
+            ) as exc:
+                failures.append(
+                    str(exc),
+                )
+
+    if failures:
+        raise click.ClickException(
+            "\n".join(
+                failures,
+            )
+        )
 
 
 # =========================================================
