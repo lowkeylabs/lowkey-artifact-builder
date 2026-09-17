@@ -195,13 +195,19 @@ def cli(
         return
 
     if rebuild:
-        if len(artifact_ids) != 1 or realization is None:
-            raise click.UsageError("--rebuild requires one Artifact and one Realization.")
+        if len(artifact_ids) != 1:
+            raise click.UsageError("--rebuild requires one Artifact.")
 
-        _rebuild_realization(
-            artifact_ids[0],
-            realization=realization,
-        )
+        if realization is not None:
+            _rebuild_realization(
+                artifact_ids[0],
+                realization=realization,
+            )
+        else:
+            _rebuild_realizations(
+                artifact_ids[0],
+            )
+
         return
 
     if realization is not None:
@@ -428,6 +434,37 @@ def _rebuild_realization(
             project_root=Path.cwd(),
             event_sink=_display_execution_event,
         )
+
+    except (
+        ConfigError,
+        BuildPlanError,
+        BuildError,
+    ) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+def _rebuild_realizations(
+    artifact_id: str,
+) -> None:
+    """
+    Rebuild every effective Realization of one Artifact.
+    """
+
+    project_root = Path.cwd()
+
+    try:
+        realizations = get_realization_names(
+            artifact_id,
+            project_root=project_root,
+        )
+
+        for realization in realizations:
+            rebuild_artifact(
+                artifact_id,
+                realization=realization,
+                project_root=project_root,
+                event_sink=_display_execution_event,
+            )
 
     except (
         ConfigError,

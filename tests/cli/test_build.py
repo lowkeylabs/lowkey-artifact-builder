@@ -2325,3 +2325,65 @@ def test_build_artifact_realization_rebuilds_selected_scope(
             "shape_ornament",
         ),
     ]
+
+
+def test_build_artifact_rebuilds_all_effective_realizations(
+    monkeypatch,
+) -> None:
+    """
+    --rebuild without --realization rebuilds every effective Realization
+    of the selected Artifact.
+    """
+
+    rebuilt: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: (
+            "artwork_default",
+            "shape_default",
+            "shape_ornament",
+        ),
+    )
+
+    def rebuild_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        rebuilt.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "rebuild_artifact",
+        rebuild_artifact,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--rebuild",
+    )
+
+    assert result.exit_code == 0
+    assert rebuilt == [
+        (
+            "skippy",
+            "artwork_default",
+        ),
+        (
+            "skippy",
+            "shape_default",
+        ),
+        (
+            "skippy",
+            "shape_ornament",
+        ),
+    ]
