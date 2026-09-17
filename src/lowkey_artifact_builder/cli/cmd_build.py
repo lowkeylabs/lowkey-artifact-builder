@@ -141,9 +141,14 @@ def cli(
     this independent stage execution mode.
     """
 
-    if not artifact_ids:
+    if not artifact_ids and realization is None:
         _display_build_status()
         return
+
+    if not artifact_ids:
+        artifact_ids = list_artifacts(
+            project_root=Path.cwd(),
+        )
 
     if stage is not None:
         _execute_stage(

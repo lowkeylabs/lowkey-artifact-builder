@@ -2138,3 +2138,60 @@ def test_execution_plan_status_preserves_earliest_noncurrent_product_state(
     )
 
     assert cmd_build._execution_plan_status(execution_plan) is state
+
+
+def test_build_realization_executes_across_project_artifacts(
+    monkeypatch,
+) -> None:
+    """
+    A Realization selected without Artifact IDs builds that Realization
+    across the project Artifacts.
+    """
+
+    monkeypatch.setattr(
+        cmd_build,
+        "list_artifacts",
+        lambda *, project_root: (
+            "skippy",
+            "scooby",
+        ),
+    )
+
+    executed: list[tuple[str, str]] = []
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        executed.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "--realization",
+        "shape_ornament",
+    )
+
+    assert result.exit_code == 0
+    assert executed == [
+        (
+            "skippy",
+            "shape_ornament",
+        ),
+        (
+            "scooby",
+            "shape_ornament",
+        ),
+    ]
