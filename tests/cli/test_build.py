@@ -2431,3 +2431,74 @@ def test_rebuild_all_rejects_rebuild() -> None:
 
     assert result.exit_code == 2
     assert "--rebuild-all and --rebuild cannot be used together." in result.output
+
+
+def test_build_requested_realization_does_not_fall_back_to_available_realization(
+    monkeypatch,
+) -> None:
+    """
+    A requested Realization remains the execution coordinate for every
+    selected Artifact.
+
+    The CLI must not substitute another available Realization when the
+    requested one is unavailable for an Artifact.
+    """
+
+    artifacts = (
+        "smith-dog",
+        "jones-dog",
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "list_artifacts",
+        lambda *, project_root: artifacts,
+    )
+
+    attempted: list[tuple[str, str]] = []
+
+    def execute_artifact_build(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        attempted.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+        if artifact_id == "smith-dog":
+            raise cmd_build.ConfigError(
+                "Realization 'shape_ornament' is not available for Artifact 'smith-dog'."
+            )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact_build,
+    )
+
+    result = _invoke(
+        "--realization",
+        "shape_ornament",
+    )
+
+    assert attempted == [
+        (
+            "smith-dog",
+            "shape_ornament",
+        ),
+        (
+            "jones-dog",
+            "shape_ornament",
+        ),
+    ]
+
+    assert result.exit_code != 0
+    assert (
+        "Realization 'shape_ornament' is not available for Artifact 'smith-dog'."
+    ) in result.output
