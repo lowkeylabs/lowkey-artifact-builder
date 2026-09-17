@@ -2403,3 +2403,31 @@ def test_rebuild_all_continues_after_artifact_realization_discovery_failure(
 
     assert result.exit_code != 0
     assert "smith-dog configuration failed" in result.output
+
+
+def test_build_all_rejects_rebuild() -> None:
+    """
+    Project-wide incremental build and narrowed rebuild are distinct modes.
+    """
+
+    result = _invoke(
+        "--build-all",
+        "--rebuild",
+    )
+
+    assert result.exit_code == 2
+    assert "--build-all and --rebuild cannot be used together." in result.output
+
+
+def test_rebuild_all_rejects_rebuild() -> None:
+    """
+    Project-wide rebuild and narrowed rebuild cannot be requested together.
+    """
+
+    result = _invoke(
+        "--rebuild-all",
+        "--rebuild",
+    )
+
+    assert result.exit_code == 2
+    assert "--rebuild-all and --rebuild cannot be used together." in result.output
