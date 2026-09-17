@@ -555,9 +555,19 @@ In particular:
 
 A Realization may contain multiple persistent products and therefore may have multiple underlying ProductStates.
 
-The engine, not the CLI, owns any aggregation required to report one status for an Artifact + Realization pair.
+Realization status is derived from the ordered ExecutionPlan produced by the
+engine.
 
-The CLI must not invent an independent severity ordering or otherwise infer a Realization status from product files.
+The CLI reports the state of the earliest non-current persistent product in
+build order. If all persistent products are current, Realization status is
+`current`.
+
+Stages without persistent products contribute no ProductState to this status.
+
+The CLI must not independently evaluate product files, invent a severity
+ordering, or duplicate the engine's freshness, validity, completeness, or
+existence rules. It derives status only from the ProductStates already present
+in the engine-produced ExecutionPlan.
 
 Conceptually:
 
