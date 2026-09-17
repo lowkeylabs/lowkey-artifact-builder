@@ -375,9 +375,15 @@ def _rebuild_realization(
 ) -> None:
     """
     Rebuild one selected Realization for the selected Artifacts.
+
+    Independent Artifact rebuilds continue after individual failures.
+    After all requested Artifacts have been attempted, any failures are
+    reported together as command failure.
     """
 
     project_root = Path.cwd()
+
+    failures: list[str] = []
 
     for artifact_id in artifact_ids:
         try:
@@ -393,7 +399,16 @@ def _rebuild_realization(
             BuildPlanError,
             BuildError,
         ) as exc:
-            raise click.ClickException(str(exc)) from exc
+            failures.append(
+                str(exc),
+            )
+
+    if failures:
+        raise click.ClickException(
+            "\n".join(
+                failures,
+            )
+        )
 
 
 def _rebuild_realizations(

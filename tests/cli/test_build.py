@@ -1989,3 +1989,113 @@ def test_build_artifacts_continue_after_realization_failure_in_prior_artifact(
 
     assert result.exit_code != 0
     assert "smith-dog shape_default build failed" in result.output
+
+
+def test_rebuild_realization_continues_after_independent_artifact_failure(
+    monkeypatch,
+) -> None:
+    """
+    Failure rebuilding one Artifact does not prevent an independently
+    requested Artifact from rebuilding the same Realization.
+
+    The command reports failure after all requested independent rebuilds
+    have been attempted.
+    """
+
+    attempted: list[tuple[str, str]] = []
+
+    def rebuild_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        attempted.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+        if artifact_id == "smith-dog":
+            raise cmd_build.BuildError(
+                "smith-dog rebuild failed",
+            )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "rebuild_artifact",
+        rebuild_artifact,
+    )
+
+    result = _invoke(
+        "smith-dog",
+        "jones-dog",
+        "--realization",
+        "shape_ornament",
+        "--rebuild",
+    )
+
+    assert attempted == [
+        (
+            "smith-dog",
+            "shape_ornament",
+        ),
+        (
+            "jones-dog",
+            "shape_ornament",
+        ),
+    ]
+
+    assert result.exit_code != 0
+    assert "smith-dog rebuild failed" in result.output
+
+
+def test_rebuild_realization_reports_each_independent_artifact_failure(
+    monkeypatch,
+) -> None:
+    """
+    Failures from multiple independently requested Artifact rebuilds remain
+    visible after all requested work has been attempted.
+    """
+
+    attempted: list[str] = []
+
+    def rebuild_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        attempted.append(
+            artifact_id,
+        )
+
+        raise cmd_build.BuildError(
+            f"{artifact_id} rebuild failed",
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "rebuild_artifact",
+        rebuild_artifact,
+    )
+
+    result = _invoke(
+        "smith-dog",
+        "jones-dog",
+        "--realization",
+        "shape_ornament",
+        "--rebuild",
+    )
+
+    assert attempted == [
+        "smith-dog",
+        "jones-dog",
+    ]
+
+    assert result.exit_code != 0
+    assert "smith-dog rebuild failed" in result.output
+    assert "jones-dog rebuild failed" in result.output
