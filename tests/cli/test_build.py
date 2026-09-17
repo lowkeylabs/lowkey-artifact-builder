@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
 from click.testing import CliRunner
 
 import lowkey_artifact_builder.cli.cmd_build as cmd_build
@@ -2075,3 +2076,71 @@ def test_bare_build_reports_earliest_noncurrent_product_state(
     assert "dog" in result.output
     assert "artwork_default" in result.output
     assert "stale" in result.output
+
+
+def test_execution_plan_status_is_current_when_all_persistent_products_are_current() -> None:
+    """
+    A Realization is current when every persistent product is current.
+    """
+
+    execution_plan = ExecutionPlan(
+        artifact_id="dog",
+        model_name="artwork",
+        realization="artwork_default",
+        stages=(
+            PlannedStageExecution(
+                stage_name="prepare",
+                product_states=(ProductState.CURRENT,),
+            ),
+            PlannedStageExecution(
+                stage_name="raster",
+                product_states=(ProductState.CURRENT,),
+            ),
+            PlannedStageExecution(
+                stage_name="vector",
+                product_states=(ProductState.CURRENT,),
+            ),
+        ),
+    )
+
+    assert cmd_build._execution_plan_status(execution_plan) is ProductState.CURRENT
+
+
+@pytest.mark.parametrize(
+    "state",
+    (
+        ProductState.STALE,
+        ProductState.INVALID,
+        ProductState.INCOMPLETE,
+        ProductState.ABSENT,
+    ),
+)
+def test_execution_plan_status_preserves_earliest_noncurrent_product_state(
+    state: ProductState,
+) -> None:
+    """
+    Realization status preserves the engine's diagnostic ProductState
+    vocabulary without applying a CLI severity ordering.
+    """
+
+    execution_plan = ExecutionPlan(
+        artifact_id="dog",
+        model_name="artwork",
+        realization="artwork_default",
+        stages=(
+            PlannedStageExecution(
+                stage_name="prepare",
+                product_states=(ProductState.CURRENT,),
+            ),
+            PlannedStageExecution(
+                stage_name="raster",
+                product_states=(state,),
+            ),
+            PlannedStageExecution(
+                stage_name="vector",
+                product_states=(ProductState.STALE,),
+            ),
+        ),
+    )
+
+    assert cmd_build._execution_plan_status(execution_plan) is state
