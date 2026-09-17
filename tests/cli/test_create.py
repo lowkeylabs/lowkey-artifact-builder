@@ -1,5 +1,8 @@
 """
 Tests for the artifact create command.
+
+CREATE owns source ingestion into the project's preserved-original registry.
+It does not materialize Artifact workspaces or realize Products.
 """
 # File: tests/cli/test_create.py
 # Copyright 2026 LowKeyLabs LLC
@@ -14,9 +17,6 @@ from click.testing import CliRunner
 
 import lowkey_artifact_builder.cli.cmd_create as cmd_create
 from lowkey_artifact_builder.cli._main import cli
-from lowkey_artifact_builder.config import (
-    load_artifact_config,
-)
 
 
 def _invoke(
@@ -39,24 +39,26 @@ def _invoke(
     )
 
 
-def _create_existing_batch_artifact(
-    tmp_path: Path,
+def _preserve_original(
+    project_root: Path,
     artifact_id: str,
     *,
     content: bytes,
-) -> None:
+) -> Path:
     """
-    Establish an Artifact in the same state produced by successful batch
-    intake.
+    Establish one already-ingested Artifact source directly in originals/.
     """
 
-    source = tmp_path / f"{artifact_id}.png"
-    source.write_bytes(content)
+    originals = project_root / "originals"
+    originals.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
-    result = _invoke()
+    original = originals / f"{artifact_id}.png"
+    original.write_bytes(content)
 
-    assert result.exit_code == 0
-    assert not source.exists()
+    return original
 
 
 # =========================================================
@@ -66,7 +68,7 @@ def _create_existing_batch_artifact(
 
 def test_create_is_a_top_level_command() -> None:
     """
-    Artifact creation is exposed as a distinct lifecycle operation.
+    Artifact source ingestion is exposed as a distinct lifecycle operation.
     """
 
     runner = CliRunner()
@@ -80,14 +82,15 @@ def test_create_is_a_top_level_command() -> None:
     assert "create" in result.output
 
 
-def test_create_without_artifact_id_ingests_root_pngs(
+def test_create_without_artifact_id_ingests_root_pngs_only(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    Bare create treats root-level PNG files as the Artifact intake queue.
+    Bare create ingests the root-level PNG queue into originals/.
 
-    Each PNG filename stem supplies the Artifact ID.
+    Filename stems establish Artifact identities. CREATE consumes successfully
+    ingested batch-owned sources but does not materialize Artifact workspaces.
     """
 
     dog = tmp_path / "smith-dog.png"
@@ -96,77 +99,31 @@ def test_create_without_artifact_id_ingests_root_pngs(
     dog.write_bytes(b"dog")
     cat.write_bytes(b"cat")
 
-    # Files outside the root PNG intake queue are ignored.
-    (tmp_path / "notes.txt").write_text("notes")
+    notes = tmp_path / "notes.txt"
+    notes.write_text("notes")
+
     nested = tmp_path / "incoming"
     nested.mkdir()
-    (nested / "lee-house.png").write_bytes(b"house")
+
+    nested_png = nested / "lee-house.png"
+    nested_png.write_bytes(b"house")
 
     monkeypatch.chdir(tmp_path)
-
-    configured: list[
-        tuple[
-            str,
-            dict[str, Any],
-            dict[str, Path],
-            Path,
-        ]
-    ] = []
-
-    def configure(
-        artifact_id: str,
-        *,
-        values: dict[str, Any],
-        input_files: dict[str, Path],
-        project_root: Path,
-    ) -> None:
-        configured.append(
-            (
-                artifact_id,
-                values,
-                input_files,
-                project_root,
-            )
-        )
-
-    monkeypatch.setattr(
-        cmd_create,
-        "configure_artifact",
-        configure,
-    )
-
-    monkeypatch.setattr(
-        cmd_create,
-        "_display_artifact",
-        lambda *args, **kwargs: None,
-    )
 
     result = _invoke()
 
     assert result.exit_code == 0
 
-    assert configured == [
-        (
-            "jones-cat",
-            {
-                "original": "originals/jones-cat.PNG",
-            },
-            {
-                "artwork": cat,
-            },
-            tmp_path,
-        ),
-        (
-            "smith-dog",
-            {
-                "original": "originals/smith-dog.png",
-            },
-            {
-                "artwork": dog,
-            },
-            tmp_path,
-        ),
-    ]
+    assert not dog.exists()
+    assert not cat.exists()
+
+    assert (tmp_path / "originals" / "smith-dog.png").read_bytes() == b"dog"
+    assert (tmp_path / "originals" / "jones-cat.png").read_bytes() == b"cat"
+
+    assert notes.read_text() == "notes"
+    assert nested_png.read_bytes() == b"house"
+
+    assert not (tmp_path / "artifacts").exists()
 
 
 def test_create_rejects_multiple_explicit_artifact_ids() -> None:
@@ -185,466 +142,173 @@ def test_create_rejects_multiple_explicit_artifact_ids() -> None:
     assert result.exit_code != 0
 
 
-# =========================================================
-# Lifecycle
-# =========================================================
-
-
-def test_create_batch_recognizes_verified_duplicate(
+def test_create_source_requires_explicit_artifact_id(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    Bare batch intake recognizes a verified duplicate and leaves it in the
-    intake queue when the operator accepts the default No cleanup response.
+    --source belongs to explicitly named ingestion, not bare batch intake.
     """
+
+    source = tmp_path / "dog.png"
+    source.write_bytes(b"dog artwork")
 
     monkeypatch.chdir(tmp_path)
 
-    _create_existing_batch_artifact(
-        tmp_path,
-        "smith-cat",
-        content=b"cat artwork",
-    )
-
-    duplicate = tmp_path / "smith-cat.png"
-    duplicate.write_bytes(b"cat artwork")
-
     result = _invoke(
-        input="\n",
+        "--source",
+        "dog.png",
     )
 
-    assert result.exit_code == 0
-    assert "duplicate" in result.output.lower()
-    assert "smith-cat" in result.output.lower()
-    assert duplicate.read_bytes() == b"cat artwork"
+    assert result.exit_code != 0
+    assert "--source" in result.output
+
+    assert source.read_bytes() == b"dog artwork"
+    assert not (tmp_path / "originals").exists()
 
 
-def test_create_batch_can_remove_verified_duplicate_interactively(
+def test_create_clean_requires_bare_batch_intake(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    Bare batch intake offers cleanup for a verified duplicate and removes the
-    intake PNG when the operator explicitly approves.
+    --clean applies only to the bare root-level intake workflow.
     """
+
+    source = tmp_path / "dog.png"
+    source.write_bytes(b"dog artwork")
 
     monkeypatch.chdir(tmp_path)
 
-    _create_existing_batch_artifact(
-        tmp_path,
-        "smith-cat",
-        content=b"cat artwork",
-    )
-
-    duplicate = tmp_path / "smith-cat.png"
-    duplicate.write_bytes(b"cat artwork")
-
     result = _invoke(
-        input="y\n",
-    )
-
-    assert result.exit_code == 0
-
-    assert "smith-cat" in result.output.lower()
-    assert "remove" in result.output.lower()
-    assert not duplicate.exists()
-
-    assert (tmp_path / "originals" / "smith-cat.png").read_bytes() == b"cat artwork"
-
-    assert (tmp_path / "artifacts" / "smith-cat" / "artifact.png").read_bytes() == b"cat artwork"
-
-
-def test_create_batch_clean_removes_duplicate_without_prompt(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    """
-    --clean performs verified duplicate cleanup without requesting interactive
-    approval.
-    """
-
-    monkeypatch.chdir(tmp_path)
-
-    _create_existing_batch_artifact(
-        tmp_path,
-        "smith-cat",
-        content=b"cat artwork",
-    )
-
-    duplicate = tmp_path / "smith-cat.png"
-    duplicate.write_bytes(b"cat artwork")
-
-    result = _invoke(
+        "dog",
+        "--source",
+        "dog.png",
         "--clean",
     )
 
-    assert result.exit_code == 0
-    assert not duplicate.exists()
-
-    assert "remove the duplicate" not in result.output.lower()
-
-
-def test_create_batch_rejects_inconsistent_managed_source(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    """
-    Matching incoming and preserved-original bytes do not establish a
-    duplicate when the managed Artifact source has diverged.
-    """
-
-    monkeypatch.chdir(tmp_path)
-
-    _create_existing_batch_artifact(
-        tmp_path,
-        "smith-cat",
-        content=b"cat artwork",
-    )
-
-    managed = tmp_path / "artifacts" / "smith-cat" / "artifact.png"
-    managed.write_bytes(b"changed managed artwork")
-
-    incoming = tmp_path / "smith-cat.png"
-    incoming.write_bytes(b"cat artwork")
-
-    result = _invoke()
-
     assert result.exit_code != 0
-    assert "smith-cat" in result.output.lower()
+    assert "--clean" in result.output
 
-    assert incoming.read_bytes() == b"cat artwork"
+    assert source.read_bytes() == b"dog artwork"
+    assert not (tmp_path / "originals").exists()
 
 
-def test_create_batch_rejects_inconsistent_preserved_original(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
+def test_create_does_not_expose_general_parameter_configuration() -> None:
     """
-    Matching incoming and managed-source bytes do not establish a duplicate
-    when the preserved original has diverged.
+    CREATE accepts source artwork, not arbitrary Model configuration.
+
+    Model defaults and Variant parameter assignments remain registered reusable
+    configuration rather than CREATE command-line configuration.
     """
-
-    monkeypatch.chdir(tmp_path)
-
-    _create_existing_batch_artifact(
-        tmp_path,
-        "smith-cat",
-        content=b"cat artwork",
-    )
-
-    original = tmp_path / "originals" / "smith-cat.png"
-    original.write_bytes(b"changed original artwork")
-
-    incoming = tmp_path / "smith-cat.png"
-    incoming.write_bytes(b"cat artwork")
-
-    result = _invoke()
-
-    assert result.exit_code != 0
-    assert "smith-cat" in result.output.lower()
-
-    assert incoming.read_bytes() == b"cat artwork"
-
-
-def test_create_batch_rejects_conflicting_input(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    """
-    A new incoming PNG for an existing Artifact is a conflict when it matches
-    neither the preserved original nor the managed source.
-    """
-
-    monkeypatch.chdir(tmp_path)
-
-    _create_existing_batch_artifact(
-        tmp_path,
-        "smith-cat",
-        content=b"original cat artwork",
-    )
-
-    incoming = tmp_path / "smith-cat.png"
-    incoming.write_bytes(b"different cat artwork")
-
-    result = _invoke()
-
-    assert result.exit_code != 0
-    assert "smith-cat" in result.output.lower()
-
-    assert incoming.read_bytes() == b"different cat artwork"
-
-
-def test_create_batch_rejects_incomplete_existing_artifact(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    """
-    An existing Artifact cannot be classified as a duplicate when a required
-    provenance file is missing.
-    """
-
-    monkeypatch.chdir(tmp_path)
-
-    _create_existing_batch_artifact(
-        tmp_path,
-        "smith-cat",
-        content=b"cat artwork",
-    )
-
-    original = tmp_path / "originals" / "smith-cat.png"
-    original.unlink()
-
-    incoming = tmp_path / "smith-cat.png"
-    incoming.write_bytes(b"cat artwork")
-
-    result = _invoke()
-
-    assert result.exit_code != 0
-    assert "smith-cat" in result.output.lower()
-
-    assert incoming.read_bytes() == b"cat artwork"
-
-
-def test_create_batch_duplicate_does_not_block_new_intake(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    """
-    A verified duplicate does not prevent independent NEW intake from being
-    processed when the operator declines duplicate cleanup.
-    """
-
-    monkeypatch.chdir(tmp_path)
-
-    _create_existing_batch_artifact(
-        tmp_path,
-        "smith-cat",
-        content=b"cat artwork",
-    )
-
-    duplicate = tmp_path / "smith-cat.png"
-    new_source = tmp_path / "jones-dog.png"
-
-    duplicate.write_bytes(b"cat artwork")
-    new_source.write_bytes(b"dog artwork")
 
     result = _invoke(
-        input="\n",
+        "--help",
     )
 
     assert result.exit_code == 0
-    assert "duplicate" in result.output.lower()
 
-    # Declining duplicate cleanup leaves the verified duplicate in the queue.
-    assert duplicate.read_bytes() == b"cat artwork"
-
-    # Independent NEW intake is still processed normally.
-    assert not new_source.exists()
-
-    assert (tmp_path / "artifacts" / "jones-dog" / "artifact.png").read_bytes() == b"dog artwork"
-
-    assert (tmp_path / "originals" / "jones-dog.png").read_bytes() == b"dog artwork"
+    assert "--source" in result.output
+    assert "--clean" in result.output
+    assert "--param" not in result.output
 
 
-def test_create_batch_rejects_incomplete_existing_artifact_without_managed_source(
+# =========================================================
+# Explicit ingestion
+# =========================================================
+
+
+def test_create_explicit_artifact_uses_artifact_id_for_preserved_original_only(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    An existing Artifact cannot be classified as a duplicate when its managed
-    source is missing.
+    Explicit ingestion establishes originals/<artifact_id>.png.
+
+    The caller-owned source remains in place, and CREATE does not materialize
+    an Artifact workspace.
     """
 
     monkeypatch.chdir(tmp_path)
 
-    _create_existing_batch_artifact(
-        tmp_path,
-        "smith-cat",
-        content=b"cat artwork",
-    )
-
-    managed = tmp_path / "artifacts" / "smith-cat" / "artifact.png"
-    managed.unlink()
-
-    incoming = tmp_path / "smith-cat.png"
-    incoming.write_bytes(b"cat artwork")
-
-    result = _invoke()
-
-    assert result.exit_code != 0
-    assert "smith-cat" in result.output.lower()
-
-    assert incoming.read_bytes() == b"cat artwork"
-
-
-def test_create_batch_preflights_existing_artifact_before_mutation(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    """
-    A predictable Artifact collision aborts the complete intake batch before
-    unrelated sources are mutated.
-    """
-
-    existing_source = tmp_path / "existing.png"
-    existing_source.write_bytes(b"existing artwork")
-
-    monkeypatch.chdir(tmp_path)
-
-    existing_result = _invoke(
-        "smith-cat",
-        "--source",
-        "existing.png",
-    )
-
-    assert existing_result.exit_code == 0
-
-    # Explicit creation treats its source as caller-owned. Remove that
-    # caller-owned source from the root intake queue so this test isolates the
-    # intended smith-cat Artifact collision.
-    existing_source.unlink()
-
-    # These are the batch intake queue. The first sorts before the collision,
-    # proving that preflight occurs before normal batch mutation.
-    new_source = tmp_path / "jones-dog.png"
-    conflicting_source = tmp_path / "smith-cat.png"
-
-    new_source.write_bytes(b"new dog")
-    conflicting_source.write_bytes(b"different cat")
-
-    result = _invoke()
-
-    assert result.exit_code != 0
-    assert "smith-cat" in result.output.lower()
-
-    # Complete-batch preflight prevents the earlier-sorting NEW source from
-    # being ingested before the later collision is discovered.
-    assert new_source.read_bytes() == b"new dog"
-    assert conflicting_source.read_bytes() == b"different cat"
-
-    assert not (tmp_path / "artifacts" / "jones-dog").exists()
-
-    assert not (tmp_path / "originals" / "jones-dog.png").exists()
-
-
-def test_create_batch_artifact_id_collisions_are_case_insensitive(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    """
-    Artifact identity collisions are detected case-insensitively so project
-    identity remains portable across filesystems.
-    """
-
-    existing_source = tmp_path / "existing.png"
-    existing_source.write_bytes(b"existing artwork")
-
-    monkeypatch.chdir(tmp_path)
-
-    existing_result = _invoke(
-        "smith-cat",
-        "--source",
-        "existing.png",
-    )
-
-    assert existing_result.exit_code == 0
-
-    incoming = tmp_path / "SMITH-CAT.png"
-    incoming.write_bytes(b"different artwork")
-
-    result = _invoke()
-
-    assert result.exit_code != 0
-    assert "smith-cat" in result.output.lower()
-
-    assert incoming.read_bytes() == b"different artwork"
-    assert not (tmp_path / "artifacts" / "SMITH-CAT").exists()
-
-
-def test_create_batch_preflights_original_destination_before_mutation(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    """
-    An unexpected preserved-original collision aborts the complete intake
-    batch before any intake source is mutated.
-    """
-
-    originals = tmp_path / "originals"
-    originals.mkdir()
-
-    preserved = originals / "smith-cat.png"
-    preserved.write_bytes(b"unrelated preserved artwork")
-
-    new_source = tmp_path / "jones-dog.png"
-    conflicting_source = tmp_path / "smith-cat.png"
-
-    new_source.write_bytes(b"new dog")
-    conflicting_source.write_bytes(b"new cat")
-
-    monkeypatch.chdir(tmp_path)
-
-    result = _invoke()
-
-    assert result.exit_code != 0
-    assert "smith-cat" in result.output.lower()
-
-    # Whole-batch preflight prevents the earlier-sorting valid source from
-    # being processed before the later collision is discovered.
-    assert new_source.read_bytes() == b"new dog"
-    assert conflicting_source.read_bytes() == b"new cat"
-
-    assert not (tmp_path / "artifacts" / "jones-dog").exists()
-    assert not (tmp_path / "artifacts" / "smith-cat").exists()
-
-    # Existing project state is untouched.
-    assert preserved.read_bytes() == b"unrelated preserved artwork"
-
-
-def test_create_rejects_existing_artifact(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    """
-    Creation does not silently become configuration of an existing Artifact.
-    """
-
-    existing_source = tmp_path / "existing.png"
-    existing_source.write_bytes(b"existing artwork")
-
-    monkeypatch.chdir(tmp_path)
-
-    first = _invoke(
-        "skippy",
-        "--source",
-        "existing.png",
-    )
-
-    assert first.exit_code == 0
-
-    new_source = tmp_path / "new.png"
-    new_source.write_bytes(b"new artwork")
+    source = tmp_path / "dog.png"
+    source.write_bytes(b"dog artwork")
 
     result = _invoke(
-        "skippy",
+        "smith-dog",
         "--source",
-        "new.png",
+        "dog.png",
     )
 
-    assert result.exit_code != 0
-    assert "skippy" in result.output.lower()
+    assert result.exit_code == 0
 
-    # Rejected creation does not consume or modify the caller-owned source.
-    assert new_source.read_bytes() == b"new artwork"
+    assert source.read_bytes() == b"dog artwork"
 
-    # The existing Artifact remains unchanged.
-    assert (tmp_path / "artifacts" / "skippy" / "artifact.png").read_bytes() == b"existing artwork"
+    assert (tmp_path / "originals" / "smith-dog.png").read_bytes() == b"dog artwork"
+
+    assert not (tmp_path / "originals" / "dog.png").exists()
+
+    assert not (tmp_path / "artifacts" / "smith-dog").exists()
 
 
-# =========================================================
-# Source
-# =========================================================
+def test_create_explicit_source_preserves_without_consuming_source(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    An explicitly supplied source is caller-owned and is copied, not consumed.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    source = tmp_path / "customer-final.png"
+    source.write_bytes(b"customer artwork")
+
+    result = _invoke(
+        "dog",
+        "--source",
+        "customer-final.png",
+    )
+
+    assert result.exit_code == 0
+
+    assert source.read_bytes() == b"customer artwork"
+
+    assert (tmp_path / "originals" / "dog.png").read_bytes() == b"customer artwork"
+
+    assert not (tmp_path / "originals" / "customer-final.png").exists()
+
+    assert not (tmp_path / "artifacts" / "dog").exists()
+
+
+def test_create_interactive_source_preserves_without_consuming_source(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Interactive explicit source selection has the same ownership semantics as
+    --source: the selected source remains caller-owned.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    source = tmp_path / "customer-final.png"
+    source.write_bytes(b"customer artwork")
+
+    result = _invoke(
+        "dog",
+        input="1\n",
+    )
+
+    assert result.exit_code == 0
+
+    assert source.read_bytes() == b"customer artwork"
+
+    assert (tmp_path / "originals" / "dog.png").read_bytes() == b"customer artwork"
+
+    assert not (tmp_path / "originals" / "customer-final.png").exists()
+
+    assert not (tmp_path / "artifacts" / "dog").exists()
 
 
 def test_create_prompts_only_for_png_source(
@@ -652,67 +316,38 @@ def test_create_prompts_only_for_png_source(
     tmp_path: Path,
 ) -> None:
     """
-    Artifact creation collects only the source artwork.
+    Interactive explicit ingestion asks only which root-level PNG to ingest.
 
-    Model configuration and Variant configuration are registered reusable
-    configuration and are not reproduced interactively during creation.
+    CREATE does not enter Model, Variant, or Artifact configuration.
     """
-
-    source = tmp_path / "skippy.png"
-    source.write_bytes(b"artwork")
 
     monkeypatch.chdir(tmp_path)
 
-    configured: list[
-        tuple[
-            dict[str, Any],
-            dict[str, Path],
-        ]
-    ] = []
+    first = tmp_path / "alpha.png"
+    second = tmp_path / "beta.PNG"
+    ignored = tmp_path / "notes.txt"
 
-    def configure(
-        artifact_id: str,
-        *,
-        values: dict[str, Any],
-        input_files: dict[str, Path],
-        project_root: Path,
-    ) -> None:
-        configured.append(
-            (
-                values,
-                input_files,
-            )
-        )
-
-    monkeypatch.setattr(
-        cmd_create,
-        "configure_artifact",
-        configure,
-    )
-
-    monkeypatch.setattr(
-        cmd_create,
-        "_display_artifact",
-        lambda *args, **kwargs: None,
-    )
+    first.write_bytes(b"alpha artwork")
+    second.write_bytes(b"beta artwork")
+    ignored.write_text("notes")
 
     result = _invoke(
-        "skippy",
-        input="1\n",
+        "dog",
+        input="2\n",
     )
 
     assert result.exit_code == 0
 
-    assert configured == [
-        (
-            {
-                "original": "originals/skippy.png",
-            },
-            {
-                "artwork": source,
-            },
-        ),
-    ]
+    assert "alpha.png" in result.output
+    assert "beta.PNG" in result.output
+    assert "notes.txt" not in result.output
+
+    assert first.read_bytes() == b"alpha artwork"
+    assert second.read_bytes() == b"beta artwork"
+
+    assert (tmp_path / "originals" / "dog.png").read_bytes() == b"beta artwork"
+
+    assert not (tmp_path / "artifacts" / "dog").exists()
 
 
 def test_create_source_can_be_supplied_noninteractively(
@@ -720,66 +355,29 @@ def test_create_source_can_be_supplied_noninteractively(
     tmp_path: Path,
 ) -> None:
     """
-    A source supplied on the command line avoids interactive source
-    selection without exposing general Model parameter configuration.
+    --source avoids interactive source selection and ingests that PNG directly.
     """
+
+    monkeypatch.chdir(tmp_path)
 
     source = tmp_path / "skippy.png"
     source.write_bytes(b"artwork")
 
-    monkeypatch.chdir(tmp_path)
-
-    configured: list[
-        tuple[
-            dict[str, Any],
-            dict[str, Path],
-        ]
-    ] = []
-
-    def configure(
-        artifact_id: str,
-        *,
-        values: dict[str, Any],
-        input_files: dict[str, Path],
-        project_root: Path,
-    ) -> None:
-        configured.append(
-            (
-                values,
-                input_files,
-            )
-        )
-
-    monkeypatch.setattr(
-        cmd_create,
-        "configure_artifact",
-        configure,
-    )
-
-    monkeypatch.setattr(
-        cmd_create,
-        "_display_artifact",
-        lambda *args, **kwargs: None,
-    )
-
     result = _invoke(
-        "skippy",
+        "dog",
         "--source",
         "skippy.png",
     )
 
     assert result.exit_code == 0
 
-    assert configured == [
-        (
-            {
-                "original": "originals/skippy.png",
-            },
-            {
-                "artwork": source,
-            },
-        ),
-    ]
+    assert "Available PNG sources" not in result.output
+
+    assert source.read_bytes() == b"artwork"
+
+    assert (tmp_path / "originals" / "dog.png").read_bytes() == b"artwork"
+
+    assert not (tmp_path / "artifacts" / "dog").exists()
 
 
 def test_create_rejects_missing_source_png(
@@ -787,17 +385,21 @@ def test_create_rejects_missing_source_png(
     tmp_path: Path,
 ) -> None:
     """
-    Artifact creation requires source artwork.
+    Explicit ingestion requires an existing PNG source.
     """
 
     monkeypatch.chdir(tmp_path)
 
     result = _invoke(
         "skippy",
+        "--source",
+        "missing.png",
     )
 
     assert result.exit_code != 0
     assert "png" in result.output.lower()
+
+    assert not (tmp_path / "originals").exists()
 
 
 def test_create_rejects_non_png_source(
@@ -805,7 +407,7 @@ def test_create_rejects_non_png_source(
     tmp_path: Path,
 ) -> None:
     """
-    Artifact creation accepts PNG source artwork only.
+    Explicit ingestion accepts PNG source artwork only.
     """
 
     source = tmp_path / "skippy.jpg"
@@ -822,100 +424,135 @@ def test_create_rejects_non_png_source(
     assert result.exit_code != 0
     assert "png" in result.output.lower()
 
-
-def test_create_does_not_expose_general_parameter_configuration() -> None:
-    """
-    Artifact creation accepts source artwork, not arbitrary configuration.
-
-    Model defaults and Variant parameter assignments own reusable
-    configuration; Artifact creation does not reproduce that configuration
-    through generic parameter bindings.
-    """
-
-    result = _invoke(
-        "--help",
-    )
-
-    assert result.exit_code == 0
-
-    assert "--source" in result.output
-    assert "--param" not in result.output
+    assert source.read_bytes() == b"artwork"
+    assert not (tmp_path / "originals").exists()
 
 
-def test_create_persists_artifact_source_and_original_provenance(
+def test_create_rejects_existing_artifact_identity(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    Explicit creation persists both managed source and preserved-original
-    provenance as project-relative Artifact metadata.
-
-    The preserved original retains the caller-supplied filename even when it
-    differs from the Artifact ID.
+    Explicit CREATE does not replace an already-ingested Artifact identity.
     """
 
-    source = tmp_path / "customer-final.png"
-    source.write_bytes(b"artwork")
-
     monkeypatch.chdir(tmp_path)
+
+    existing_source = tmp_path / "existing.png"
+    existing_source.write_bytes(b"existing artwork")
+
+    first = _invoke(
+        "skippy",
+        "--source",
+        "existing.png",
+    )
+
+    assert first.exit_code == 0
+
+    original = tmp_path / "originals" / "skippy.png"
+
+    assert original.read_bytes() == b"existing artwork"
+
+    new_source = tmp_path / "new.png"
+    new_source.write_bytes(b"new artwork")
 
     result = _invoke(
         "skippy",
         "--source",
-        "customer-final.png",
+        "new.png",
     )
 
-    assert result.exit_code == 0
+    assert result.exit_code != 0
+    assert "skippy" in result.output.lower()
 
-    artifact_dir = tmp_path / "artifacts" / "skippy"
+    assert original.read_bytes() == b"existing artwork"
+    assert new_source.read_bytes() == b"new artwork"
 
-    assert (artifact_dir / "artifact.png").read_bytes() == b"artwork"
-    assert (tmp_path / "originals" / "customer-final.png").read_bytes() == b"artwork"
-
-    assert load_artifact_config(
-        "skippy",
-        project_root=tmp_path,
-    ) == {
-        "source": "artifacts/skippy/artifact.png",
-        "original": "originals/customer-final.png",
-    }
+    assert not (tmp_path / "artifacts" / "skippy").exists()
 
 
-def test_create_batch_ingests_root_png_into_artifact_and_originals(
+def test_create_explicit_artifact_id_collision_is_case_insensitive(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    Bare create owns root-level intake PNGs.
-
-    Successful intake preserves the original, creates the Artifact-managed
-    source, and removes the PNG from the root intake queue.
+    Explicit Artifact identity collisions are case-insensitive.
     """
-
-    source = tmp_path / "smith-dog.png"
-    source.write_bytes(b"dog artwork")
 
     monkeypatch.chdir(tmp_path)
 
-    result = _invoke()
+    original = _preserve_original(
+        tmp_path,
+        "dog",
+        content=b"existing artwork",
+    )
 
-    assert result.exit_code == 0
+    source = tmp_path / "new.png"
+    source.write_bytes(b"new artwork")
 
-    artifact_source = tmp_path / "artifacts" / "smith-dog" / "artifact.png"
-    preserved_original = tmp_path / "originals" / "smith-dog.png"
+    result = _invoke(
+        "DOG",
+        "--source",
+        "new.png",
+    )
 
-    assert artifact_source.read_bytes() == b"dog artwork"
-    assert preserved_original.read_bytes() == b"dog artwork"
+    assert result.exit_code != 0
+    assert "dog" in result.output.lower()
 
-    assert not source.exists()
+    assert original.read_bytes() == b"existing artwork"
+    assert source.read_bytes() == b"new artwork"
 
-    assert load_artifact_config(
+    assert not (tmp_path / "originals" / "DOG.png").exists()
+
+    assert not (tmp_path / "artifacts").exists()
+
+
+def test_create_explicit_artifacts_with_identical_content_remain_distinct(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit Artifact identity is authoritative.
+
+    Equal source content does not collapse two explicitly named Artifacts into
+    one identity.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    first_source = tmp_path / "first.png"
+    second_source = tmp_path / "second.png"
+
+    first_source.write_bytes(b"shared artwork")
+    second_source.write_bytes(b"shared artwork")
+
+    first = _invoke(
+        "dog",
+        "--source",
+        "first.png",
+    )
+    second = _invoke(
         "smith-dog",
-        project_root=tmp_path,
-    ) == {
-        "source": "artifacts/smith-dog/artifact.png",
-        "original": "originals/smith-dog.png",
-    }
+        "--source",
+        "second.png",
+    )
+
+    assert first.exit_code == 0
+    assert second.exit_code == 0
+
+    assert (tmp_path / "originals" / "dog.png").read_bytes() == b"shared artwork"
+
+    assert (tmp_path / "originals" / "smith-dog.png").read_bytes() == b"shared artwork"
+
+    assert first_source.read_bytes() == b"shared artwork"
+    assert second_source.read_bytes() == b"shared artwork"
+
+    assert not (tmp_path / "artifacts").exists()
+
+
+# =========================================================
+# Bare batch intake
+# =========================================================
 
 
 def test_create_batch_with_empty_intake_is_successful_no_op(
@@ -931,22 +568,168 @@ def test_create_batch_with_empty_intake_is_successful_no_op(
     result = _invoke()
 
     assert result.exit_code == 0
-    assert not (tmp_path / "artifacts").exists()
     assert not (tmp_path / "originals").exists()
+    assert not (tmp_path / "artifacts").exists()
 
 
-def test_create_batch_clean_removes_verified_duplicate(
+def test_create_batch_recognizes_verified_duplicate_from_originals(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    --clean removes a root-level intake PNG only after it has been positively
-    classified as a verified duplicate.
+    Bare intake recognizes content already preserved for one ingested Artifact.
+
+    Duplicate classification depends on originals/, not on materialized
+    Artifact state.
     """
 
     monkeypatch.chdir(tmp_path)
 
-    _create_existing_batch_artifact(
+    original = _preserve_original(
+        tmp_path,
+        "smith-cat",
+        content=b"cat artwork",
+    )
+
+    duplicate = tmp_path / "smith-cat.png"
+    duplicate.write_bytes(b"cat artwork")
+
+    result = _invoke(
+        input="\n",
+    )
+
+    assert result.exit_code == 0
+    assert "duplicate" in result.output.lower()
+    assert "smith-cat" in result.output.lower()
+
+    assert duplicate.read_bytes() == b"cat artwork"
+    assert original.read_bytes() == b"cat artwork"
+
+    assert not (tmp_path / "artifacts").exists()
+
+
+def test_create_batch_recognizes_duplicate_under_different_filename(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    A unique fingerprint match may identify an existing ingested Artifact even
+    when the incoming filename proposes a different Artifact ID.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    original = _preserve_original(
+        tmp_path,
+        "smith-cat",
+        content=b"cat artwork",
+    )
+
+    incoming = tmp_path / "customer-cat.png"
+    incoming.write_bytes(b"cat artwork")
+
+    result = _invoke(
+        input="\n",
+    )
+
+    assert result.exit_code == 0
+    assert "duplicate" in result.output.lower()
+    assert "smith-cat" in result.output.lower()
+
+    assert incoming.read_bytes() == b"cat artwork"
+    assert original.read_bytes() == b"cat artwork"
+
+    assert not (tmp_path / "originals" / "customer-cat.png").exists()
+
+    assert not (tmp_path / "artifacts").exists()
+
+
+def test_create_batch_duplicate_does_not_block_new_intake(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    A verified duplicate does not prevent independent NEW intake from being
+    processed when duplicate cleanup is declined.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    _preserve_original(
+        tmp_path,
+        "smith-cat",
+        content=b"cat artwork",
+    )
+
+    duplicate = tmp_path / "smith-cat.png"
+    new_source = tmp_path / "jones-dog.png"
+
+    duplicate.write_bytes(b"cat artwork")
+    new_source.write_bytes(b"dog artwork")
+
+    result = _invoke(
+        input="\n",
+    )
+
+    assert result.exit_code == 0
+    assert "duplicate" in result.output.lower()
+
+    # Declining duplicate cleanup retains the verified duplicate.
+    assert duplicate.read_bytes() == b"cat artwork"
+
+    # Independent NEW intake is consumed into originals/.
+    assert not new_source.exists()
+
+    assert (tmp_path / "originals" / "jones-dog.png").read_bytes() == b"dog artwork"
+
+    assert not (tmp_path / "artifacts").exists()
+
+
+def test_create_batch_can_remove_verified_duplicate_interactively(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bare intake may remove a verified duplicate when explicitly approved.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    original = _preserve_original(
+        tmp_path,
+        "smith-cat",
+        content=b"cat artwork",
+    )
+
+    duplicate = tmp_path / "smith-cat.png"
+    duplicate.write_bytes(b"cat artwork")
+
+    result = _invoke(
+        input="y\n",
+    )
+
+    assert result.exit_code == 0
+
+    assert "duplicate" in result.output.lower()
+    assert "remove" in result.output.lower()
+
+    assert not duplicate.exists()
+    assert original.read_bytes() == b"cat artwork"
+
+    assert not (tmp_path / "artifacts").exists()
+
+
+def test_create_batch_clean_removes_duplicate_without_prompt(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    --clean removes a verified duplicate without interactive approval.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    original = _preserve_original(
         tmp_path,
         "smith-cat",
         content=b"cat artwork",
@@ -961,11 +744,11 @@ def test_create_batch_clean_removes_verified_duplicate(
 
     assert result.exit_code == 0
     assert "duplicate" in result.output.lower()
+
     assert not duplicate.exists()
+    assert original.read_bytes() == b"cat artwork"
 
-    assert (tmp_path / "originals" / "smith-cat.png").read_bytes() == b"cat artwork"
-
-    assert (tmp_path / "artifacts" / "smith-cat" / "artifact.png").read_bytes() == b"cat artwork"
+    assert not (tmp_path / "artifacts").exists()
 
 
 def test_create_batch_clean_removes_duplicate_and_ingests_new_intake(
@@ -973,13 +756,12 @@ def test_create_batch_clean_removes_duplicate_and_ingests_new_intake(
     tmp_path: Path,
 ) -> None:
     """
-    Duplicate cleanup does not prevent independent NEW intake from being
-    processed normally.
+    Duplicate cleanup does not prevent independent NEW intake.
     """
 
     monkeypatch.chdir(tmp_path)
 
-    _create_existing_batch_artifact(
+    _preserve_original(
         tmp_path,
         "smith-cat",
         content=b"cat artwork",
@@ -1000,9 +782,150 @@ def test_create_batch_clean_removes_duplicate_and_ingests_new_intake(
     assert not duplicate.exists()
     assert not new_source.exists()
 
-    assert (tmp_path / "artifacts" / "jones-dog" / "artifact.png").read_bytes() == b"dog artwork"
+    assert (tmp_path / "originals" / "smith-cat.png").read_bytes() == b"cat artwork"
 
     assert (tmp_path / "originals" / "jones-dog.png").read_bytes() == b"dog artwork"
+
+    assert not (tmp_path / "artifacts").exists()
+
+
+# =========================================================
+# Registry conflicts and ambiguity
+# =========================================================
+
+
+def test_create_batch_rejects_conflicting_original_identity(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bare intake cannot replace an existing Artifact original with new content.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    original = _preserve_original(
+        tmp_path,
+        "smith-cat",
+        content=b"existing artwork",
+    )
+
+    incoming = tmp_path / "smith-cat.png"
+    incoming.write_bytes(b"different artwork")
+
+    result = _invoke()
+
+    assert result.exit_code != 0
+    assert "smith-cat" in result.output.lower()
+
+    assert original.read_bytes() == b"existing artwork"
+    assert incoming.read_bytes() == b"different artwork"
+
+    assert not (tmp_path / "artifacts").exists()
+
+
+def test_create_batch_rejects_case_insensitive_original_identity_collision(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Preserved Artifact identities collide case-insensitively.
+
+    Different incoming content must not overwrite or establish another spelling
+    of an already-ingested Artifact identity.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    original = _preserve_original(
+        tmp_path,
+        "smith-cat",
+        content=b"existing artwork",
+    )
+
+    incoming = tmp_path / "SMITH-CAT.png"
+    incoming.write_bytes(b"different artwork")
+
+    result = _invoke()
+
+    assert result.exit_code != 0
+    assert "smith-cat" in result.output.lower()
+
+    assert original.read_bytes() == b"existing artwork"
+    assert incoming.read_bytes() == b"different artwork"
+
+    assert not (tmp_path / "originals" / "SMITH-CAT.png").exists()
+
+    assert not (tmp_path / "artifacts").exists()
+
+
+def test_create_batch_rejects_case_insensitive_conflict_between_intake_ids(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    The root intake queue may not propose two Artifact IDs differing only by
+    case.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    first = tmp_path / "dog.png"
+    second = tmp_path / "DOG.PNG"
+
+    first.write_bytes(b"first artwork")
+    second.write_bytes(b"second artwork")
+
+    result = _invoke()
+
+    assert result.exit_code != 0
+    assert "dog" in result.output.lower()
+
+    # Complete preflight occurs before either source is consumed.
+    assert first.read_bytes() == b"first artwork"
+    assert second.read_bytes() == b"second artwork"
+
+    assert not (tmp_path / "originals").exists()
+    assert not (tmp_path / "artifacts").exists()
+
+
+def test_create_batch_preflights_conflict_before_mutation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    A predictable registry conflict aborts the complete intake batch before
+    unrelated sources are mutated.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    original = _preserve_original(
+        tmp_path,
+        "smith-cat",
+        content=b"existing cat",
+    )
+
+    new_source = tmp_path / "jones-dog.png"
+    conflicting_source = tmp_path / "smith-cat.png"
+
+    new_source.write_bytes(b"new dog")
+    conflicting_source.write_bytes(b"different cat")
+
+    result = _invoke()
+
+    assert result.exit_code != 0
+    assert "smith-cat" in result.output.lower()
+
+    # jones-dog sorts first, so these assertions prove complete preflight.
+    assert new_source.read_bytes() == b"new dog"
+    assert conflicting_source.read_bytes() == b"different cat"
+
+    assert original.read_bytes() == b"existing cat"
+
+    assert not (tmp_path / "originals" / "jones-dog.png").exists()
+
+    assert not (tmp_path / "artifacts").exists()
 
 
 def test_create_batch_clean_does_not_mutate_when_batch_contains_conflict(
@@ -1010,215 +933,180 @@ def test_create_batch_clean_does_not_mutate_when_batch_contains_conflict(
     tmp_path: Path,
 ) -> None:
     """
-    --clean does not remove even a verified duplicate when another intake item
-    causes whole-batch preflight to fail.
+    --clean does not make predictable conflicts destructive.
+
+    Even a verified duplicate remains untouched when another intake item makes
+    the complete batch preflight fail.
     """
 
     monkeypatch.chdir(tmp_path)
 
-    _create_existing_batch_artifact(
+    _preserve_original(
         tmp_path,
         "smith-cat",
         content=b"cat artwork",
     )
-
-    _create_existing_batch_artifact(
+    original_dog = _preserve_original(
         tmp_path,
-        "lee-house",
-        content=b"house artwork",
+        "smith-dog",
+        content=b"existing dog",
     )
 
     duplicate = tmp_path / "smith-cat.png"
-    conflicting = tmp_path / "lee-house.png"
+    conflict = tmp_path / "smith-dog.png"
 
     duplicate.write_bytes(b"cat artwork")
-    conflicting.write_bytes(b"different house artwork")
+    conflict.write_bytes(b"different dog")
 
     result = _invoke(
         "--clean",
     )
 
     assert result.exit_code != 0
+    assert "smith-dog" in result.output.lower()
 
-    # Preflight failure prevents duplicate cleanup.
+    # Cleanup occurs only after successful complete-batch preflight.
     assert duplicate.read_bytes() == b"cat artwork"
+    assert conflict.read_bytes() == b"different dog"
 
-    # Genuine conflicting input is never removed.
-    assert conflicting.read_bytes() == b"different house artwork"
+    assert original_dog.read_bytes() == b"existing dog"
+
+    assert not (tmp_path / "artifacts").exists()
 
 
-def test_create_clean_requires_bare_batch_intake(
+def test_create_batch_retains_intake_matching_multiple_originals(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    --clean belongs to bare batch intake and is not an explicit-create
-    overwrite or cleanup operation.
-    """
+    Matching multiple preserved originals is ambiguous.
 
-    source = tmp_path / "customer-final.png"
-    source.write_bytes(b"artwork")
+    Equal content does not collapse distinct Artifact identities, so bare
+    intake cannot infer which existing Artifact owns the incoming PNG.
+    """
 
     monkeypatch.chdir(tmp_path)
 
-    result = _invoke(
+    _preserve_original(
+        tmp_path,
         "dog",
-        "--source",
-        "customer-final.png",
+        content=b"shared artwork",
+    )
+    _preserve_original(
+        tmp_path,
+        "smith-dog",
+        content=b"shared artwork",
+    )
+
+    incoming = tmp_path / "customer-dog.png"
+    incoming.write_bytes(b"shared artwork")
+
+    result = _invoke(
         "--clean",
     )
 
     assert result.exit_code != 0
 
-    # Explicit caller-owned input remains untouched.
-    assert source.read_bytes() == b"artwork"
-    assert not (tmp_path / "artifacts" / "dog").exists()
+    assert "ambiguous" in result.output.lower()
+    assert "dog" in result.output.lower()
+    assert "smith-dog" in result.output.lower()
+
+    # Ambiguous content is never consumed or cleaned.
+    assert incoming.read_bytes() == b"shared artwork"
+
+    # Existing Artifact identities remain independent and unchanged.
+    assert (tmp_path / "originals" / "dog.png").read_bytes() == b"shared artwork"
+
+    assert (tmp_path / "originals" / "smith-dog.png").read_bytes() == b"shared artwork"
+
+    # No identity is inferred from ambiguous content.
+    assert not (tmp_path / "originals" / "customer-dog.png").exists()
+
+    assert not (tmp_path / "artifacts").exists()
 
 
-def test_create_explicit_source_preserves_original_without_consuming_source(
+def test_create_batch_same_identity_is_not_ambiguous_when_content_is_shared(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    Explicit --source creation preserves the caller-owned source under its
-    original filename without removing the supplied source.
+    Exact Artifact identity is stronger evidence than fingerprint inference.
+
+    If an incoming filename names an existing Artifact and has the same bytes
+    as that Artifact's original, it is that Artifact's duplicate even when
+    another preserved Artifact happens to contain the same bytes.
     """
 
     monkeypatch.chdir(tmp_path)
 
-    source = tmp_path / "customer-final.png"
-    source.write_bytes(b"customer artwork")
+    _preserve_original(
+        tmp_path,
+        "dog",
+        content=b"shared artwork",
+    )
+    _preserve_original(
+        tmp_path,
+        "smith-dog",
+        content=b"shared artwork",
+    )
+
+    incoming = tmp_path / "dog.png"
+    incoming.write_bytes(b"shared artwork")
 
     result = _invoke(
-        "dog",
-        "--source",
-        "customer-final.png",
+        input="\n",
     )
 
     assert result.exit_code == 0
+    assert "duplicate" in result.output.lower()
+    assert "dog" in result.output.lower()
 
-    # Explicit creation does not own or consume the caller's source.
-    assert source.read_bytes() == b"customer artwork"
+    # Declining cleanup retains the duplicate intake item.
+    assert incoming.read_bytes() == b"shared artwork"
 
-    # The original is preserved using the supplied filename rather than the
-    # Artifact ID.
-    assert (tmp_path / "originals" / "customer-final.png").read_bytes() == b"customer artwork"
-
-    # The Artifact receives its independent managed working copy.
-    assert (tmp_path / "artifacts" / "dog" / "artifact.png").read_bytes() == b"customer artwork"
+    assert not (tmp_path / "artifacts").exists()
 
 
-def test_create_interactive_source_preserves_original_without_consuming_source(
+def test_create_batch_rejects_case_insensitive_conflict_inside_originals_registry(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    Explicit Artifact creation with interactive source selection treats the
-    selected PNG as caller-owned while preserving an original project copy.
+    originals/ itself may not define two Artifact identities differing only by
+    case.
     """
 
     monkeypatch.chdir(tmp_path)
 
-    source = tmp_path / "customer-final.png"
-    source.write_bytes(b"customer artwork")
+    originals = tmp_path / "originals"
+    originals.mkdir()
 
-    result = _invoke(
-        "dog",
-        input="1\n",
-    )
+    lower = originals / "dog.png"
+    upper = originals / "DOG.PNG"
 
-    assert result.exit_code == 0
+    lower.write_bytes(b"lower artwork")
+    upper.write_bytes(b"upper artwork")
 
-    # Interactive explicit creation has the same ownership semantics as
-    # explicitly supplying --source.
-    assert source.read_bytes() == b"customer artwork"
-
-    assert (tmp_path / "originals" / "customer-final.png").read_bytes() == b"customer artwork"
-
-    assert (tmp_path / "artifacts" / "dog" / "artifact.png").read_bytes() == b"customer artwork"
-
-
-def test_create_batch_preflights_duplicate_inferred_artifact_ids(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    """
-    Bare batch creation rejects conflicting inferred Artifact IDs before
-    mutating any intake item.
-
-    Artifact identity is case-insensitive even when the underlying
-    filesystem permits filenames that differ only by case.
-    """
-
-    dog_lower = tmp_path / "dog.png"
-    dog_upper = tmp_path / "DOG.PNG"
-    cat = tmp_path / "cat.png"
-
-    dog_lower.write_bytes(b"lower dog")
-    dog_upper.write_bytes(b"upper dog")
-    cat.write_bytes(b"cat artwork")
-
-    monkeypatch.chdir(tmp_path)
+    incoming = tmp_path / "cat.png"
+    incoming.write_bytes(b"cat artwork")
 
     result = _invoke()
 
     assert result.exit_code != 0
     assert "dog" in result.output.lower()
 
-    # Complete batch preflight occurs before persistent mutation.
-    assert dog_lower.read_bytes() == b"lower dog"
-    assert dog_upper.read_bytes() == b"upper dog"
-    assert cat.read_bytes() == b"cat artwork"
+    assert lower.read_bytes() == b"lower artwork"
+    assert upper.read_bytes() == b"upper artwork"
+    assert incoming.read_bytes() == b"cat artwork"
+
+    assert not (originals / "cat.png").exists()
 
     assert not (tmp_path / "artifacts").exists()
-    assert not (tmp_path / "originals").exists()
 
 
-def test_create_explicit_artifact_id_collision_is_case_insensitive(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    """
-    Explicit creation rejects an Artifact ID that differs from an existing
-    Artifact ID only by case.
-
-    Artifact identity is case-insensitive even when the underlying filesystem
-    permits distinct directory names that differ only by case.
-    """
-
-    existing_source = tmp_path / "existing.png"
-    existing_source.write_bytes(b"existing artwork")
-
-    monkeypatch.chdir(tmp_path)
-
-    first = _invoke(
-        "dog",
-        "--source",
-        "existing.png",
-    )
-
-    assert first.exit_code == 0
-
-    new_source = tmp_path / "new.png"
-    new_source.write_bytes(b"new artwork")
-
-    result = _invoke(
-        "DOG",
-        "--source",
-        "new.png",
-    )
-
-    assert result.exit_code != 0
-    assert "dog" in result.output.lower()
-
-    # The rejected source remains caller-owned and untouched.
-    assert new_source.read_bytes() == b"new artwork"
-
-    # No second Artifact is created under the conflicting spelling.
-    assert not (tmp_path / "artifacts" / "DOG").exists()
-
-    # The existing Artifact remains intact.
-    assert (tmp_path / "artifacts" / "dog" / "artifact.png").read_bytes() == b"existing artwork"
+# =========================================================
+# Failure safety
+# =========================================================
 
 
 def test_create_batch_preserves_intake_source_when_original_preservation_fails(
@@ -1226,15 +1114,13 @@ def test_create_batch_preserves_intake_source_when_original_preservation_fails(
     tmp_path: Path,
 ) -> None:
     """
-    A runtime failure while preserving the original must not destroy the
+    A runtime failure while preserving an original must not destroy the
     batch-owned intake PNG.
-
-    The managed Artifact source may already have been established, but the
-    root intake source remains available when preservation fails.
     """
 
     source = tmp_path / "dog.png"
     content = b"dog artwork"
+
     source.write_bytes(content)
 
     monkeypatch.chdir(tmp_path)
@@ -1257,95 +1143,9 @@ def test_create_batch_preserves_intake_source_when_original_preservation_fails(
     assert "dog.png" in result.output
     assert "simulated preservation failure" in result.output
 
-    # The batch-owned intake source remains available after failure.
+    # The only known input copy remains available.
     assert source.read_bytes() == content
 
-    # The managed copy established before preservation also remains valid.
-    assert (tmp_path / "artifacts" / "dog" / "artifact.png").read_bytes() == content
-
-
-def test_create_batch_preserves_intake_when_artifact_creation_fails(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    """
-    A runtime failure while creating the managed Artifact must leave the
-    batch-owned intake PNG untouched.
-
-    Original preservation and intake removal occur only after managed
-    Artifact creation succeeds.
-    """
-
-    source = tmp_path / "dog.png"
-    content = b"dog artwork"
-    source.write_bytes(content)
-
-    monkeypatch.chdir(tmp_path)
-
-    def fail_configure(*args: object, **kwargs: object) -> None:
-        raise cmd_create.click.ClickException("simulated artifact creation failure")
-
-    monkeypatch.setattr(
-        cmd_create,
-        "configure_artifact",
-        fail_configure,
-    )
-
-    result = _invoke()
-
-    assert result.exit_code != 0
-    assert "simulated artifact creation failure" in result.output
-
-    # The only known input copy remains untouched.
-    assert source.read_bytes() == content
-
-    # Preservation/removal was never attempted.
     assert not (tmp_path / "originals" / "dog.png").exists()
 
-
-def test_create_batch_duplicate_uses_persisted_original_provenance(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    """
-    Duplicate detection uses the Artifact's persisted original provenance.
-
-    The preserved original filename may differ from the Artifact ID and from
-    a later root-level intake filename that maps to that Artifact.
-    """
-
-    original_source = tmp_path / "customer-final.png"
-    content = b"dog artwork"
-    original_source.write_bytes(content)
-
-    monkeypatch.chdir(tmp_path)
-
-    created = _invoke(
-        "dog",
-        "--source",
-        "customer-final.png",
-    )
-
-    assert created.exit_code == 0
-
-    # Explicit creation leaves its source caller-owned. Remove that caller
-    # copy so the subsequent bare invocation contains only the intake item
-    # under test.
-    original_source.unlink()
-
-    incoming = tmp_path / "dog.png"
-    incoming.write_bytes(content)
-
-    result = _invoke(
-        input="\n",
-    )
-
-    assert result.exit_code == 0
-    assert "duplicate" in result.output.lower()
-
-    # Declining duplicate cleanup leaves the intake item in place.
-    assert incoming.read_bytes() == content
-
-    # Provenance continues to identify the original filename supplied when
-    # the Artifact was explicitly created.
-    assert (tmp_path / "originals" / "customer-final.png").read_bytes() == content
+    assert not (tmp_path / "artifacts").exists()
