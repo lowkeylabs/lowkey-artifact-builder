@@ -2502,3 +2502,35 @@ def test_build_requested_realization_does_not_fall_back_to_available_realization
     assert (
         "Realization 'shape_ornament' is not available for Artifact 'smith-dog'."
     ) in result.output
+
+
+def test_build_all_rejects_stage_execution() -> None:
+    """
+    Project-wide incremental build cannot be combined with independent
+    stage execution.
+    """
+
+    result = _invoke(
+        "--build-all",
+        "--stage",
+        "extrude",
+    )
+
+    assert result.exit_code == 2
+    assert "--build-all cannot be combined with --stage." in result.output
+
+
+def test_rebuild_all_rejects_stage_execution() -> None:
+    """
+    Project-wide rebuild cannot be combined with independent stage
+    execution.
+    """
+
+    result = _invoke(
+        "--rebuild-all",
+        "--stage",
+        "extrude",
+    )
+
+    assert result.exit_code == 2
+    assert "--rebuild-all cannot be combined with --stage." in result.output
