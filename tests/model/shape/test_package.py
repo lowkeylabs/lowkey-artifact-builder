@@ -25,7 +25,11 @@ from lowkey_artifact_builder.engine import (
     execute_builds,
 )
 from lowkey_artifact_builder.engine.bootstrap import build_stage_registry
-from lowkey_artifact_builder.formats.threemf import CORE_NS, load_stl
+from lowkey_artifact_builder.formats.threemf import (
+    CORE_NS,
+    component_name,
+    load_stl,
+)
 from lowkey_artifact_builder.model.models.shape import stages
 from lowkey_artifact_builder.model.models.shape.stages import compose, extrude, package, structure
 
@@ -529,6 +533,8 @@ def test_package_stage_preserves_artwork_fill_component(
     Artwork fill membership and semantic color identity are established by
     extrusion. Packaging carries that component into the final 3MF without
     merging it with the structural base or incorporated Artwork.
+
+    Component presentation is delegated to the shared 3MF naming policy.
     """
 
     component_directory = tmp_path / "extrude"
@@ -605,13 +611,31 @@ def test_package_stage_preserves_artwork_fill_component(
 
     materials_by_id = {material.get("id"): material for material in materials}
 
+    base_name = component_name(
+        "example",
+        "base",
+        "test-white",
+    )
+
+    fill_name = component_name(
+        "example",
+        "artwork-fill",
+        "test-blue",
+    )
+
+    artwork_name = component_name(
+        "example",
+        "artwork-1",
+        "test-red",
+    )
+
     assert set(objects_by_name) == {
-        "example-base-test-white",
-        "example-artwork-fill-test-blue",
-        "example-artwork-1-test-red",
+        base_name,
+        fill_name,
+        artwork_name,
     }
 
-    fill = objects_by_name["example-artwork-fill-test-blue"]
+    fill = objects_by_name[fill_name]
 
     material_id = fill.get(
         "pid",
@@ -629,9 +653,9 @@ def test_package_stage_preserves_artwork_fill_component(
     assert color.get("name") == "test-blue"
     assert color.get("displaycolor") == "#0000FF"
 
-    assert fill.get("id") != objects_by_name["example-base-test-white"].get("id")
+    assert fill.get("id") != objects_by_name[base_name].get("id")
 
-    assert fill.get("id") != objects_by_name["example-artwork-1-test-red"].get("id")
+    assert fill.get("id") != objects_by_name[artwork_name].get("id")
 
 
 def test_package_stage_preserves_component_mesh_geometry(
@@ -727,6 +751,9 @@ def test_package_stage_preserves_relative_component_registration(
     Independently printable Artwork components may occupy different portions
     of the common physical coordinate system. Packaging must preserve those
     relative positions without independently centering or transforming them.
+
+    Component lookup uses the shared 3MF naming policy rather than duplicating
+    its presentation convention.
     """
 
     component_directory = tmp_path / "extrude"
@@ -799,12 +826,24 @@ def test_package_stage_preserves_relative_component_registration(
 
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
 
+    artwork_1_name = component_name(
+        "example",
+        "artwork-1",
+        "test-red",
+    )
+
+    artwork_2_name = component_name(
+        "example",
+        "artwork-2",
+        "test-blue",
+    )
+
     packaged_artwork_1 = _object_vertices(
-        objects_by_name["example-artwork-1-test-red"],
+        objects_by_name[artwork_1_name],
     )
 
     packaged_artwork_2 = _object_vertices(
-        objects_by_name["example-artwork-2-test-blue"],
+        objects_by_name[artwork_2_name],
     )
 
     assert _mesh_bounds(
@@ -930,9 +969,9 @@ def test_package_stage_packages_incorporated_artwork_components(
     )
 
     assert [object_.get("name") for object_ in objects] == [
-        "example-base-test-white",
-        "example-artwork-1-test-red",
-        "example-artwork-2-test-blue",
+        component_name("example", "base", "test-white"),
+        component_name("example", "artwork-1", "test-red"),
+        component_name("example", "artwork-2", "test-blue"),
     ]
 
 
@@ -1021,15 +1060,15 @@ def test_package_stage_preserves_incorporated_artwork_colors(
     materials_by_id = {material.get("id"): material for material in materials}
 
     expected_colors = {
-        "example-base-test-white": (
+        component_name("example", "base", "test-white"): (
             "test-white",
             "#FFFFFF",
         ),
-        "example-artwork-1-test-red": (
+        component_name("example", "artwork-1", "test-red"): (
             "test-red",
             "#FF0000",
         ),
-        "example-artwork-2-test-blue": (
+        component_name("example", "artwork-2", "test-blue"): (
             "test-blue",
             "#0000FF",
         ),
@@ -1171,8 +1210,8 @@ def test_package_stage_packages_single_base_component(
             "utf-8",
         )
 
-    assert "example-base-white" in model
-    assert "example-ridge-white" not in model
+    assert component_name("example", "base", "white") in model
+    assert component_name("example", "ridge", "white") not in model
 
 
 def test_package_stage_packages_all_manifest_components(
@@ -1212,8 +1251,8 @@ def test_package_stage_packages_all_manifest_components(
             "utf-8",
         )
 
-    assert "example-base-white" in model
-    assert "example-ridge-white" in model
+    assert component_name("example", "base", "white") in model
+    assert component_name("example", "ridge", "white") in model
 
 
 def test_package_stage_names_components_with_semantic_color_identity(
@@ -1222,7 +1261,7 @@ def test_package_stage_names_components_with_semantic_color_identity(
     """
     Packaged Shape components expose semantic role and printing-color identity.
 
-    Object naming combines artifact identity, the component role declared by
+    Packaging supplies Artifact identity, the component role declared by
     the manifest, and semantic printing color without depending on physical
     STL filenames.
     """
@@ -1282,8 +1321,8 @@ def test_package_stage_names_components_with_semantic_color_identity(
     )
 
     assert [object_.get("name") for object_ in objects] == [
-        "example-base-test-white",
-        "example-ridge-test-red",
+        component_name("example", "base", "test-white"),
+        component_name("example", "ridge", "test-red"),
     ]
 
     assert all("arbitrary-base-name" not in (object_.get("name") or "") for object_ in objects)
@@ -1348,7 +1387,7 @@ def test_package_stage_preserves_base_component_color(
     )
 
     assert len(objects) == 1
-    assert objects[0].get("name") == "example-base-test-red"
+    assert objects[0].get("name") == component_name("example", "base", "test-red")
 
     assert len(materials) == 1
 
@@ -1434,8 +1473,8 @@ def test_package_stage_preserves_distinct_component_colors(
     )
 
     assert [object_.get("name") for object_ in objects] == [
-        "example-base-test-white",
-        "example-ridge-test-red",
+        component_name("example", "base", "test-white"),
+        component_name("example", "ridge", "test-red"),
     ]
 
     colors = {
@@ -1692,8 +1731,8 @@ def test_package_stage_preserves_shared_component_color(
     )
 
     assert [object_.get("name") for object_ in objects] == [
-        "example-base-test-red",
-        "example-ridge-test-red",
+        component_name("example", "base", "test-red"),
+        component_name("example", "ridge", "test-red"),
     ]
 
     assert len(materials) == 2
@@ -1893,26 +1932,26 @@ def test_package_stage_preserves_mixed_structural_and_artwork_components(
     materials_by_id = {material.get("id"): material for material in materials}
 
     assert set(objects_by_name) == {
-        "example-base-test-white",
-        "example-ridge-test-red",
-        "example-artwork-1-test-red",
-        "example-artwork-2-test-blue",
+        component_name("example", "base", "test-white"),
+        component_name("example", "ridge", "test-red"),
+        component_name("example", "artwork-1", "test-red"),
+        component_name("example", "artwork-2", "test-blue"),
     }
 
     expected_colors = {
-        "example-base-test-white": (
+        component_name("example", "base", "test-white"): (
             "test-white",
             "#FFFFFF",
         ),
-        "example-ridge-test-red": (
+        component_name("example", "ridge", "test-red"): (
             "test-red",
             "#FF0000",
         ),
-        "example-artwork-1-test-red": (
+        component_name("example", "artwork-1", "test-red"): (
             "test-red",
             "#FF0000",
         ),
-        "example-artwork-2-test-blue": (
+        component_name("example", "artwork-2", "test-blue"): (
             "test-blue",
             "#0000FF",
         ),
@@ -1939,9 +1978,9 @@ def test_package_stage_preserves_mixed_structural_and_artwork_components(
             color.get("displaycolor"),
         ) == expected_color
 
-    assert objects_by_name["example-ridge-test-red"].get("id") != objects_by_name[
-        "example-artwork-1-test-red"
-    ].get("id")
+    assert objects_by_name[component_name("example", "ridge", "test-red")].get(
+        "id"
+    ) != objects_by_name[component_name("example", "artwork-1", "test-red")].get("id")
 
 
 @pytest.mark.slow
@@ -2014,7 +2053,7 @@ def test_real_clean_bg_house_package_preserves_artwork_physical_geometry(
         for object_ in model.findall(
             f".//{{{CORE_NS}}}object",
         )
-        if "-artwork-" in (object_.get("name") or "")
+        if (object_.get("name") or "").startswith("artwork-")
     )
 
     assert len(artwork_objects) == len(source_components)
@@ -2363,8 +2402,8 @@ def test_package_stage_does_not_invent_disabled_artwork_fill(
     )
 
     assert {object_.get("name") for object_ in objects} == {
-        "example-base-test-white",
-        "example-artwork-1-test-red",
+        component_name("example", "base", "test-white"),
+        component_name("example", "artwork-1", "test-red"),
     }
 
     resolver.assert_not_called()
@@ -2459,9 +2498,9 @@ def test_package_stage_preserves_same_color_artwork_fill_identity(
     materials_by_id = {material.get("id"): material for material in materials}
 
     assert set(objects_by_name) == {
-        "example-base-test-blue",
-        "example-artwork-fill-test-blue",
-        "example-artwork-1-test-blue",
+        component_name("example", "base", "test-blue"),
+        component_name("example", "artwork-fill", "test-blue"),
+        component_name("example", "artwork-1", "test-blue"),
     }
 
     assert len({objects_by_name[name].get("id") for name in objects_by_name}) == 3

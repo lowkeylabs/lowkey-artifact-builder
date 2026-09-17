@@ -812,6 +812,29 @@ def _format_float(
     )
 
 
+def component_name(
+    artifact_id: str,
+    semantic_name: str,
+    color_name: str,
+) -> str:
+    """
+    Return the human-readable name for a packaged 3MF component.
+
+    Artifact identity, semantic component identity, and resolved physical
+    color identity are supplied to the shared naming policy.
+
+    The current presentation omits Artifact identity because the enclosing
+    3MF product already establishes it. Artifact identity remains part of
+    this interface so future naming policies may include it without requiring
+    changes to Model packaging.
+
+    Color identity is preserved verbatim so the packaged component remains
+    directly traceable to its configuration/catalog color name.
+    """
+
+    return f"{semantic_name} - {color_name}"
+
+
 __all__ = [
     "CONTENT_TYPES_NS",
     "CORE_NS",
@@ -824,4 +847,5 @@ __all__ = [
     "load_stl",
     "write",
     "write_stls",
+    "component_name",
 ]

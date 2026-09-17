@@ -24,6 +24,7 @@ from lowkey_artifact_builder.formats.threemf import (
     Component,
     Mesh,
     ThreeMFError,
+    component_name,
     load_stl,
     write,
     write_stls,
@@ -1229,3 +1230,22 @@ def test_write_associates_each_component_with_its_semantic_color(
             "0",
         ),
     ]
+
+
+def test_component_name_presents_semantic_identity_and_configuration_color() -> None:
+    """
+    Shared 3MF component naming presents Artifact-local semantic identity and
+    the resolved physical color configuration name.
+
+    Artifact identity remains available to the shared naming policy even
+    though the current presentation does not include it.
+    """
+
+    assert (
+        component_name(
+            "customer-with-a-deliberately-long-artifact-id",
+            "artwork-1",
+            "fire-engine-red",
+        )
+        == "artwork-1 - fire-engine-red"
+    )

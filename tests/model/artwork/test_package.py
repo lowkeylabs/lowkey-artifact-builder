@@ -24,7 +24,11 @@ from typing import Any
 import pytest
 
 from lowkey_artifact_builder.colors import PaletteColor
-from lowkey_artifact_builder.formats.threemf import Component, Mesh
+from lowkey_artifact_builder.formats.threemf import (
+    Component,
+    Mesh,
+    component_name,
+)
 from lowkey_artifact_builder.model.models.artwork.stages import package
 
 # =========================================================
@@ -386,8 +390,7 @@ def test_package_preserves_component_identity_and_printer_assignment(
     component. The printer assignment supplies its semantic physical color
     and RGB.
 
-    The packaged component name combines stable physical component identity
-    with the resolved physical printer-color name.
+    Component presentation is delegated to the shared 3MF naming policy.
 
     Artifact RGB remains distinct input information and must not replace
     the printer RGB selected during rasterization.
@@ -503,8 +506,16 @@ def test_package_preserves_component_identity_and_printer_assignment(
     assert captured_components is not None
 
     assert tuple(component.name for component in captured_components) == (
-        "portrait-color-1 - physical-blue",
-        "portrait-color-2 - physical-red",
+        component_name(
+            "portrait",
+            "color-1",
+            "physical-blue",
+        ),
+        component_name(
+            "portrait",
+            "color-2",
+            "physical-red",
+        ),
     )
 
     assert tuple(component.color for component in captured_components) == (
@@ -866,8 +877,8 @@ def test_package_includes_participating_loop_as_independent_component(
     assert len(captured_components) == 2
 
     assert tuple(component.name for component in captured_components) == (
-        "ornament-color-1 - white",
-        "ornament-loop - white",
+        component_name("ornament", "color-1", "white"),
+        component_name("ornament", "loop", "white"),
     )
 
     assert captured_components[0].color == PaletteColor(
@@ -1030,7 +1041,7 @@ def test_package_includes_participating_outer_ridge_as_independent_component(
     assert captured_components is not None
     assert len(captured_components) == 2
 
-    assert captured_components[0].name == "ornament-color-1 - white"
+    assert captured_components[0].name == component_name("ornament", "color-1", "white")
 
     assert captured_components[0].color == PaletteColor(
         name="white",
@@ -1041,7 +1052,7 @@ def test_package_includes_participating_outer_ridge_as_independent_component(
         ),
     )
 
-    assert captured_components[1].name == "ornament-outer-ridge - test-black"
+    assert captured_components[1].name == component_name("ornament", "outer-ridge", "test-black")
 
     assert captured_components[1].color == PaletteColor(
         name="test-black",

@@ -28,6 +28,7 @@ from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.formats.threemf import (
     Component,
     ThreeMFError,
+    component_name,
     load_stl,
     write,
 )
@@ -394,23 +395,14 @@ def _component_name(
     component: ExtrudedComponent,
 ) -> str:
     """
-    Return the human-readable 3MF object name for one Artwork component.
-
-    The name combines stable physical component identity with the resolved
-    physical printer-color name supplied by upstream processing.
-
-    Component identity remains independent of printer-color identity. Distinct
-    components therefore remain distinctly named even when they resolve to the
-    same physical color.
-
-    For example:
-
-        nydeli-color-1 - Fire Engine Red
-        nydeli-color-2 - Mint Green
-        nydeli-loop - Cold White
+    Return the shared 3MF presentation name for one Artwork component.
     """
 
-    return f"{artifact_id}-{component.path.stem} - {component.color.name}"
+    return component_name(
+        artifact_id,
+        component.path.stem,
+        component.color.name,
+    )
 
 
 __all__ = [
