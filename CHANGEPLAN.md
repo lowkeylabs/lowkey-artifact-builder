@@ -222,17 +222,26 @@ and Product identity rather than generated paths.
 
 ### Goal
 
-Complete the Phase 1 production workflow by making preserved Artifact sources
-authoritative and recoverable, and by making packaged 3MF Products convenient
-for the operator to locate.
+Complete the Phase 1 production workflow by establishing a clear lifecycle
+boundary between source ingestion and Artifact/Product materialization.
 
-The established Phase 1 workflow remains:
+The governing distinction is:
+
+```text
+CREATE
+    ingest source PNGs into the authoritative preserved-source registry
+
+BUILD
+    materialize ingested Artifacts and realize their Products
+```
+
+The normal Phase 1 workflow remains:
 
 ```bash
 artifact create
 artifact build
 artifact build --build-all
-````
+```
 
 The following behavior is already established and is not repeated as remaining
 work in this plan:
@@ -247,16 +256,60 @@ work in this plan:
 
 The remaining Phase 1 work is:
 
-1. make `originals/` the durable registry from which baseline Artifact state can
-   be reconstructed; and
-2. materialize convenient Artifact-level copies of successfully packaged 3MF
+1. make `originals/` the authoritative registry of ingested Artifact sources;
+2. restrict `artifact create` to source ingestion;
+3. make `artifact build` discover ingested Artifacts from `originals/` and own
+   materialization of missing baseline Artifact state;
+4. preserve the read-only semantics of bare `artifact build`;
+5. extend executing build scopes to materialize missing Artifact state before
+   realizing Products; and
+6. materialize convenient Artifact-level copies of successfully packaged 3MF
    Products.
 
 ---
 
-### 1.1 Preserved originals and Artifact reconstruction
+### 1.1 Artifact lifecycle boundary
 
-#### Persistent source identity
+The Phase 1 lifecycle is:
+
+```text
+external/root PNG
+        │
+        │ CREATE — ingestion
+        ▼
+originals/<artifact_id>.png
+        │
+        │ BUILD — Artifact materialization
+        ▼
+artifacts/<artifact_id>/
+    artifact.toml
+    artifact.png
+        │
+        │ BUILD — Product realization
+        ▼
+Realizations / Products
+```
+
+These transitions have distinct ownership.
+
+`artifact create` owns only the transition into the preserved-source registry.
+
+`artifact build` owns everything downstream of that registry, including
+materializing baseline Artifact state when necessary and realizing requested
+Products.
+
+CREATE must not create or reconstruct the Artifact workspace merely as a side
+effect of successful ingestion.
+
+BUILD must not ingest arbitrary external or root-level PNGs merely because it
+can discover them.
+
+This boundary keeps source identity decisions separate from deterministic
+materialization and build execution.
+
+---
+
+### 1.2 Preserved originals are the ingested Artifact registry
 
 A preserved original has the canonical project-owned path:
 
@@ -264,7 +317,7 @@ A preserved original has the canonical project-owned path:
 originals/<artifact_id>.png
 ```
 
-The filename stem identifies the Artifact.
+The filename stem identifies the ingested Artifact.
 
 For example:
 
@@ -274,12 +327,31 @@ originals/
     jones-cat.png
 ```
 
-defines the preserved source identities:
+defines the ingested Artifact identities:
 
 ```text
 smith-dog
 jones-cat
 ```
+
+An Artifact therefore becomes known to the project when its canonical preserved
+original exists.
+
+The existence of:
+
+```text
+originals/smith-dog.png
+```
+
+does not require that:
+
+```text
+artifacts/smith-dog/
+```
+
+already exist.
+
+The latter is materialized Artifact state owned by BUILD.
 
 Artifact identity is established by the preserved filename, not by the PNG
 content fingerprint.
@@ -292,7 +364,7 @@ originals/
     smith-dog.png    SHA256 = abc123
 ```
 
-and still represent two independent Artifacts:
+and still represent two independent ingested Artifacts:
 
 ```text
 dog
@@ -302,66 +374,87 @@ smith-dog
 Fingerprint equality must never collapse, alias, rename, or otherwise merge
 existing Artifact identities.
 
-#### Intake normalization
+---
 
-Root-level PNGs remain the un-ingested intake queue.
+### 1.3 CREATE owns ingestion only
 
-Successful ingestion normalizes each source into:
+`artifact create` establishes canonical preserved Artifact sources in:
 
 ```text
-originals/<artifact_id>.png
+originals/
 ```
 
-before establishing the Artifact-managed working source.
+Its responsibility ends at that registry boundary.
+
+Successful CREATE must not establish:
+
+```text
+artifacts/<artifact_id>/artifact.toml
+artifacts/<artifact_id>/artifact.png
+```
+
+Those are BUILD materializations.
+
+Root-level PNGs remain the un-ingested intake queue.
 
 For ordinary filename-derived intake:
 
 ```text
 smith-dog.png
     ↓
-originals/smith-dog.png
+artifact create
     ↓
-artifacts/smith-dog/artifact.png
+originals/smith-dog.png
 ```
 
-For explicitly named creation:
+For explicitly named ingestion:
 
 ```bash
 artifact create smith-dog --source dog.png
 ```
 
-the Artifact ID, rather than the external filename, determines the preserved
-original name:
+the Artifact ID, rather than the external filename, determines the canonical
+preserved-original name:
 
 ```text
 dog.png
     ↓
-originals/smith-dog.png
+artifact create smith-dog --source dog.png
     ↓
-artifacts/smith-dog/artifact.png
+originals/smith-dog.png
 ```
 
 The external source filename is not persistent Artifact identity.
 
-A newly established Artifact therefore conceptually records:
+CREATE does not need to author `artifact.toml` merely to record this identity.
+The canonical preserved filename already establishes:
+
+```text
+artifact_id = smith-dog
+original = originals/smith-dog.png
+```
+
+The materialized Artifact configuration created later by BUILD may record the
+project-relative source relationships required by normal execution:
 
 ```toml
 source = "artifacts/smith-dog/artifact.png"
 original = "originals/smith-dog.png"
 ```
 
-Both paths remain project-relative and are resolved relative to the project
-root.
+Both paths are project-relative and are resolved relative to the project root.
 
 `source` is the Artifact-managed working source consumed by normal Model
 execution.
 
 `original` is the preserved authoritative source from which baseline Artifact
-state can be reconstructed. It remains Artifact-owned provenance rather than a
-Model parameter, Variant parameter, Realization override, feature-participation
-parameter, or generated Product path.
+state can be materialized.
 
-#### Intake ownership and destructive normalization
+Neither is a generated Model/Stage Product path.
+
+---
+
+### 1.4 Intake ownership and destructive normalization
 
 Bare:
 
@@ -374,16 +467,14 @@ owns the root-level PNG intake queue.
 A successfully ingested root-level PNG may therefore be consumed, including
 being moved or renamed into its canonical preserved location.
 
-The behavioral ordering is:
+The conceptual operation is:
 
 ```text
 root intake PNG
     ↓
 establish originals/<artifact_id>.png
     ↓
-establish artifacts/<artifact_id>/artifact.png and artifact.toml
-    ↓
-consume/remove the root intake PNG
+consume/remove root intake PNG
 ```
 
 The implementation need not use a literal filesystem rename if another
@@ -394,8 +485,7 @@ The required invariant is:
 > Intake must never destroy the only known copy of an input PNG.
 
 The root intake PNG must not be consumed until a durable preserved original
-exists and creation has retained enough source state to recover safely from an
-unexpected failure.
+exists.
 
 Explicit source ownership remains distinct from bare batch ownership.
 
@@ -403,117 +493,12 @@ An explicitly supplied source outside the owned root intake workflow is
 caller-owned and must not be deleted merely because it was used to establish
 the canonical preserved original.
 
-#### Reconstruction from preserved originals
+CREATE stops after successful ingestion. It does not subsequently materialize
+the Artifact workspace.
 
-Bare:
+---
 
-```bash
-artifact create
-```
-
-does more than process new root intake. It also ensures that every canonical
-preserved original has corresponding baseline Artifact state.
-
-For example:
-
-```text
-originals/
-    smith-dog.png
-    jones-cat.png
-
-artifacts/
-    smith-dog/
-        artifact.toml
-        artifact.png
-```
-
-causes `artifact create` to reconstruct the missing baseline Artifact:
-
-```text
-artifacts/
-    jones-cat/
-        artifact.toml
-        artifact.png
-```
-
-from:
-
-```text
-originals/jones-cat.png
-```
-
-The preserved original is not moved, renamed, or deleted during reconstruction.
-
-This makes the following development workflow valid:
-
-```bash
-rm -rf artifacts
-artifact create
-artifact build --build-all
-```
-
-After `artifacts/` has been removed, `artifact create` can reconstruct baseline
-Artifact definitions and managed sources for every PNG represented in
-`originals/`.
-
-Reconstruction is driven by preserved filenames and not by fingerprints.
-
-Thus:
-
-```text
-originals/
-    dog.png          SHA256 = abc123
-    smith-dog.png    SHA256 = abc123
-```
-
-with both Artifact directories absent reconstructs both:
-
-```text
-artifacts/
-    dog/
-        artifact.toml
-        artifact.png
-    smith-dog/
-        artifact.toml
-        artifact.png
-```
-
-The two Artifacts remain independent even though their source bytes are
-identical.
-
-Reconstruction restores only state derivable from the preserved original and
-normal Artifact defaults.
-
-It must not imply that arbitrary Artifact-authored customization can be
-recovered after its only persistent representation has been deleted. Once
-later phases introduce Artifact-specific customization, deleting the
-`artifacts/` tree may also delete information that cannot be reconstructed
-from `originals/`.
-
-#### Existing Artifact behavior
-
-When both:
-
-```text
-originals/<artifact_id>.png
-```
-
-and:
-
-```text
-artifacts/<artifact_id>/
-```
-
-already exist, bare `artifact create` must not recreate or overwrite a healthy
-Artifact merely because its preserved original is present.
-
-Existing Artifact state remains subject to integrity validation where needed.
-
-`artifact create` must not interpret changed source content as an implicit
-request to replace an existing Artifact source. Source replacement, if
-supported later, requires separately defined explicit semantics.
-
-#### Duplicate intake across Artifact names
+### 1.5 Duplicate intake across Artifact names
 
 Fingerprinting remains byte-oriented and uses a strong content fingerprint such
 as SHA-256.
@@ -521,9 +506,9 @@ as SHA-256.
 Fingerprints are an on-demand intake and integrity mechanism. They are not
 persisted as Artifact configuration, Artifact metadata, or Model parameters.
 
-Because preserved originals now form the durable source registry, bare intake
-duplicate detection may compare an incoming root PNG against preserved
-originals even when the filenames differ.
+Because preserved originals form the authoritative ingested-source registry,
+bare intake duplicate detection may compare an incoming root PNG against
+preserved originals even when the filenames differ.
 
 For example:
 
@@ -532,11 +517,11 @@ dog.png                         SHA256 = abc123
 originals/smith-dog.png         SHA256 = abc123
 ```
 
-may establish that `dog.png` is a duplicate of the already-preserved source for
+may establish that `dog.png` is a duplicate of the already-ingested source for
 Artifact `smith-dog`.
 
-The filename `dog.png` must not cause creation of a second Artifact named `dog`
-when the intake PNG has been uniquely identified as an already-preserved
+The filename `dog.png` must not cause ingestion of a second Artifact named
+`dog` when the intake PNG has been uniquely identified as an already-preserved
 source.
 
 A unique fingerprint match may therefore report:
@@ -546,10 +531,13 @@ dog.png    DUPLICATE of Artifact 'smith-dog'
 ```
 
 This use of fingerprints is limited to determining whether incoming intake has
-already been preserved. Content equality does not define Artifact identity in
-the persistent source registry.
+already been preserved.
 
-#### Ambiguous duplicate intake
+Content equality does not define persistent Artifact identity.
+
+---
+
+### 1.6 Ambiguous duplicate intake
 
 Multiple preserved Artifact originals are allowed to have the same
 fingerprint.
@@ -587,9 +575,11 @@ A fingerprint may prove content equality. It may identify an existing Artifact
 for duplicate-intake purposes only when the matching preserved Artifact source
 is unique.
 
-#### Duplicate cleanup
+---
 
-The established duplicate-cleanup behavior remains:
+### 1.7 Duplicate cleanup
+
+The established duplicate-cleanup interface remains:
 
 ```bash
 artifact create --clean
@@ -609,13 +599,16 @@ conflicting, or otherwise unverified.
 
 > clean verified duplicate intake files
 
-It does not mean force creation, overwrite existing state, replace Artifact
-sources, or discard ambiguous/conflicting input.
+It does not mean force ingestion, overwrite an existing preserved original,
+replace an Artifact source, materialize an Artifact, or discard
+ambiguous/conflicting input.
 
-#### Preflight and mutation safety
+---
 
-Artifact creation must continue to preflight predictable destructive conflicts
-before normal batch mutation.
+### 1.8 CREATE preflight and mutation safety
+
+CREATE must preflight predictable destructive conflicts before normal batch
+mutation.
 
 Artifact identity comparisons are case-insensitive so projects remain portable
 between case-sensitive and case-insensitive filesystems.
@@ -623,20 +616,16 @@ between case-sensitive and case-insensitive filesystems.
 Preflight must protect at least:
 
 * canonical preserved-original identities;
-* existing Artifact identities;
 * proposed new Artifact identities;
 * canonical `originals/<artifact_id>.png` destinations;
-* existing managed Artifact sources;
 * ambiguous duplicate matches;
-* conflicting input;
-* incomplete or inconsistent existing Artifact state where that state affects
-  safe intake.
+* conflicting input.
 
 A genuine predictable collision must not silently overwrite existing state or
 cause automatic alternate Artifact IDs such as `dog(1)`.
 
 Verified duplicates are resolved intake items rather than genuine collisions
-and do not prevent independent safe intake or reconstruction work.
+and do not prevent independent safe intake.
 
 Unexpected runtime failures must preserve enough source state to ensure that
 the only known copy of an input PNG is not lost.
@@ -645,16 +634,328 @@ CLI output should distinguish at least:
 
 ```text
 NEW
-RECOVERED
 DUPLICATE
 FAILED
 ```
 
-or equivalent human-readable states so batch operation remains auditable.
+or equivalent human-readable states so batch ingestion remains auditable.
+
+Artifact workspace integrity is not CREATE's responsibility merely because an
+Artifact workspace happens to exist. BUILD owns the relationship between an
+ingested preserved source and its materialized Artifact state.
 
 ---
 
-### 1.2 Artifact-level packaged 3MF materialization
+### 1.9 BUILD discovers the ingested Artifact universe
+
+BUILD must not derive the complete Artifact universe solely from existing
+directories under:
+
+```text
+artifacts/
+```
+
+The authoritative inventory of ingested Artifact identities is:
+
+```text
+originals/*.png
+```
+
+For example:
+
+```text
+originals/
+    dog.png
+    cat.png
+
+artifacts/
+    cat/
+        artifact.toml
+        artifact.png
+```
+
+contains two ingested Artifacts:
+
+```text
+dog
+cat
+```
+
+even though only `cat` currently has materialized Artifact state.
+
+Build discovery must therefore be capable of distinguishing:
+
+```text
+ingested Artifact
+    canonical preserved original exists
+
+materialized Artifact
+    baseline Artifact workspace exists
+
+built Realization
+    required Products exist and are current
+```
+
+The filesystem relationship between `originals/` and `artifacts/` should be
+reconciled through shared project-level Artifact discovery/status behavior
+rather than independently reconstructed in multiple CLI commands.
+
+CREATE and BUILD may consume different portions of that shared project state,
+but command modules should not develop conflicting definitions of Artifact
+identity or existence.
+
+---
+
+### 1.10 Bare BUILD remains read-only
+
+Bare:
+
+```bash
+artifact build
+```
+
+remains a status operation.
+
+It must not:
+
+* ingest root-level PNGs;
+* materialize missing Artifact workspaces;
+* execute Stages;
+* rebuild Products; or
+* otherwise mutate persistent project state.
+
+It should, however, report ingested Artifacts whose baseline Artifact state has
+not yet been materialized.
+
+For example:
+
+```text
+originals/
+    dog.png
+    cat.png
+
+artifacts/
+    cat/
+        artifact.toml
+        artifact.png
+```
+
+must not cause `dog` to disappear from build status merely because its Artifact
+workspace is absent.
+
+The output should make the distinction actionable, for example conceptually:
+
+```text
+dog
+    Artifact            ABSENT / NOT MATERIALIZED
+
+cat
+    Artifact            CURRENT
+    artwork_default     CURRENT
+    shape_default       STALE
+    shape_ornament      CURRENT
+```
+
+Exact presentation belongs to the CLI display design, but the semantic
+distinction must remain clear.
+
+BUILD should not pretend that Realization/Product state has been successfully
+resolved for an Artifact whose prerequisite baseline Artifact state does not
+yet exist.
+
+---
+
+### 1.11 Executing BUILD materializes missing Artifact state
+
+An executing build scope owns deterministic materialization of selected
+ingested Artifacts.
+
+For an ingested Artifact:
+
+```text
+originals/smith-dog.png
+```
+
+whose baseline workspace is absent, executing BUILD may establish:
+
+```text
+artifacts/smith-dog/
+    artifact.toml
+    artifact.png
+```
+
+before normal Realization/Product planning and execution.
+
+The materialized baseline Artifact conceptually records:
+
+```toml
+source = "artifacts/smith-dog/artifact.png"
+original = "originals/smith-dog.png"
+```
+
+and copies the preserved source into the Artifact-managed working source:
+
+```text
+originals/smith-dog.png
+        ↓
+artifacts/smith-dog/artifact.png
+```
+
+The preserved original is not moved, renamed, or deleted during
+materialization.
+
+Materialization is driven by the preserved filename and not by fingerprints.
+
+Thus:
+
+```text
+originals/
+    dog.png          SHA256 = abc123
+    smith-dog.png    SHA256 = abc123
+```
+
+with both Artifact directories absent materializes two independent Artifacts:
+
+```text
+artifacts/
+    dog/
+        artifact.toml
+        artifact.png
+    smith-dog/
+        artifact.toml
+        artifact.png
+```
+
+The two Artifacts remain independent even though their source bytes are
+identical.
+
+After materialization, normal configuration resolution supplies canonical
+Realizations without requiring Artifact-specific Realization serialization.
+
+---
+
+### 1.12 BUILD scope and materialization
+
+Materialization participates in the established build scope rather than
+becoming an independent CREATE operation.
+
+For example:
+
+```bash
+artifact build dog
+```
+
+may materialize `dog` from:
+
+```text
+originals/dog.png
+```
+
+when `dog` is selected for execution and its Artifact workspace is absent.
+
+It then proceeds with the normal incremental build of the selected effective
+Realizations.
+
+Likewise:
+
+```bash
+artifact build --build-all
+```
+
+may materialize every selected ingested Artifact whose baseline Artifact state
+is absent and then bring the applicable project build scope current.
+
+BUILD must not materialize unrelated ingested Artifacts outside the requested
+scope merely because they were discovered during project inventory.
+
+Materialization is prerequisite work for build execution, not a separate
+implicit invocation of CREATE.
+
+CREATE remains responsible only for establishing the ingested source registry.
+
+---
+
+### 1.13 Artifact recovery and materialization limits
+
+Because `originals/` is authoritative for ingested source identity, the
+following development workflow is valid:
+
+```bash
+rm -rf artifacts
+artifact build
+```
+
+The bare build reports that the ingested Artifacts require materialization.
+
+Then:
+
+```bash
+artifact build --build-all
+```
+
+materializes their baseline Artifact state and proceeds through the normal
+incremental build graph.
+
+Materialization restores only state derivable from the preserved original and
+normal Artifact defaults.
+
+It must not imply that arbitrary Artifact-authored customization can be
+recovered after its only persistent representation has been deleted.
+
+Once later phases introduce Artifact-specific customization, deleting the
+`artifacts/` tree may also delete information that cannot be reconstructed from
+`originals/`.
+
+Therefore:
+
+```text
+originals/
+```
+
+is authoritative for ingested Artifact source identity, but it is not
+necessarily a backup of all future Artifact-authored configuration.
+
+---
+
+### 1.14 Existing Artifact behavior and integrity
+
+When both:
+
+```text
+originals/<artifact_id>.png
+```
+
+and:
+
+```text
+artifacts/<artifact_id>/
+```
+
+already exist, BUILD must not recreate or overwrite healthy baseline Artifact
+state merely because the preserved original is present.
+
+Normal incremental Product-state semantics continue to determine what build
+work is required.
+
+Incomplete or inconsistent materialized Artifact state must not silently become
+an implicit source-replacement operation.
+
+In particular, BUILD must not interpret changed bytes in a preserved original,
+managed source, or unrelated incoming PNG as an implicit request to replace
+Artifact-authored state.
+
+Source replacement, if supported later, requires separately defined explicit
+semantics.
+
+Before implementing automatic handling of partially materialized Artifact
+directories, define which states are safely reconstructable and which represent
+integrity failures requiring operator attention.
+
+Do not let repair semantics emerge accidentally from filesystem copying.
+
+---
+
+### 1.15 Artifact-level packaged 3MF materialization
 
 The canonical packaged 3MF remains the persistent Product of the Model package
 Stage.
@@ -727,8 +1028,8 @@ current must not independently cause package execution or imply that a new
 Product exists.
 
 The engine remains responsible for the boundary between successful Stage
-execution and Artifact-level materialization. Models continue to produce only
-their declared Products through normal Stage execution.
+execution and Artifact-level convenience materialization. Models continue to
+produce only their declared Products through normal Stage execution.
 
 Before implementation, verify naming behavior for explicitly named
 noncanonical Realizations so convenience filenames cannot collide when
@@ -745,38 +1046,65 @@ merely because it survived changes to canonical Product state.
 
 Phase 1 is complete when:
 
-1. root PNG intake is safely normalized into
-   `originals/<artifact_id>.png`;
-2. every canonical preserved original can reconstruct missing baseline Artifact
-   state through bare `artifact create`;
+1. CREATE safely normalizes root or explicitly selected PNG intake into the
+   authoritative `originals/<artifact_id>.png` registry without materializing
+   Artifact workspaces;
+
+2. Artifact identity is derived from the canonical preserved filename rather
+   than from a content fingerprint;
+
 3. duplicate intake can recognize uniquely matching preserved content even
    when the incoming filename differs from the Artifact ID, without treating
    fingerprints as persistent Artifact identity;
+
 4. identical fingerprints across multiple preserved Artifacts remain valid and
    produce safe ambiguity rather than identity collapse;
-5. bare build status and the established incremental/rebuild workflows continue
-   to operate on every effective Realization; and
-6. successful package execution can materialize an appropriately named
-   convenience 3MF beside `artifact.toml` without changing canonical Product
-   semantics.
 
-The ordinary Phase 1 workflow remains:
+5. BUILD discovers ingested Artifacts from `originals/` even when their
+   `artifacts/<artifact_id>/` workspace does not yet exist;
+
+6. bare `artifact build` remains read-only and reports missing Artifact
+   materialization as part of project build status;
+
+7. executing narrowed and project-wide build scopes materialize missing
+   baseline Artifact state for selected ingested Artifacts before normal
+   Realization/Product execution;
+
+8. deleting reconstructable baseline Artifact state can be recovered through
+   BUILD without re-ingesting sources through CREATE;
+
+9. established incremental/rebuild workflows continue to operate on every
+   effective Realization after Artifact materialization; and
+
+10. successful package execution can materialize an appropriately named
+    convenience 3MF beside `artifact.toml` without changing canonical Product
+    semantics.
+
+The ordinary Phase 1 workflow is:
 
 ```text
-root PNGs
+root/external PNGs
     ↓
 artifact create
     ↓
-canonical preserved originals + reconstructable Artifacts
+originals/<artifact_id>.png
     ↓
 artifact build
     ↓
-inspect build state
+inspect materialization + build state
     ↓
 artifact build --build-all
     ↓
-canonical packaged Products + operator-convenient 3MF copies
+materialized Artifacts
+    +
+canonical packaged Products
+    +
+operator-convenient 3MF copies
 ```
+
+The governing ownership rule is:
+
+> CREATE ingests. BUILD materializes and realizes Products.
 
 ---
 
