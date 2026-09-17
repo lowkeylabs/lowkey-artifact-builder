@@ -349,13 +349,17 @@ def test_show_qualified_variant_uses_effective_variant_configuration(
     ]
 
 
-def test_show_and_build_dry_run_resolve_same_qualified_variant_configuration(
+def test_show_variant_and_build_realization_resolve_same_configuration(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    Show and normal-build dry-run resolve the same effective
-    configuration for a qualified Variant selection.
+    Variant inspection and canonical Realization build resolve the same
+    effective configuration.
+
+    Show selects the Model-owned Variant as a configuration concern.
+    Normal build execution addresses the corresponding canonical
+    Artifact Realization.
     """
 
     write_artifact_config(
@@ -368,8 +372,8 @@ def test_show_and_build_dry_run_resolve_same_qualified_variant_configuration(
 
     monkeypatch.chdir(tmp_path)
 
-    shown: list[tuple[str, str, float, str]] = []
-    planned: list[tuple[str, str, float, str]] = []
+    shown: list[tuple[str, str, str, float, str]] = []
+    planned: list[tuple[str, str, str, float, str]] = []
 
     def capture_show(
         artifact_id: str,
@@ -381,6 +385,7 @@ def test_show_and_build_dry_run_resolve_same_qualified_variant_configuration(
         shown.append(
             (
                 resolver("model"),
+                resolver("realization"),
                 resolver("variant"),
                 resolver("shape_outer_ridge_width"),
                 resolver.source("shape_outer_ridge_width"),
@@ -391,6 +396,7 @@ def test_show_and_build_dry_run_resolve_same_qualified_variant_configuration(
         planned.append(
             (
                 plan.resolver("model"),
+                plan.resolver("realization"),
                 plan.resolver("variant"),
                 plan.resolver("shape_outer_ridge_width"),
                 plan.resolver.source("shape_outer_ridge_width"),
@@ -424,8 +430,8 @@ def test_show_and_build_dry_run_resolve_same_qualified_variant_configuration(
         [
             "build",
             "skippy",
-            "--variant",
-            "shape.ornament",
+            "--realization",
+            "shape_ornament",
             "--dry-run",
         ],
     )
@@ -435,6 +441,7 @@ def test_show_and_build_dry_run_resolve_same_qualified_variant_configuration(
     assert shown == [
         (
             "shape",
+            "shape_ornament",
             "ornament",
             2.0,
             "variant 'ornament'",

@@ -27,9 +27,7 @@ from lowkey_artifact_builder.engine import (
 def _emit_failed_build(
     artifact_id: str,
     *,
-    model_name: str | None = None,
-    variant_name: str | None = None,
-    realization: str | None = None,
+    realization: str,
     project_root: Path,
     event_sink=None,
 ) -> None:
@@ -38,8 +36,7 @@ def _emit_failed_build(
     """
 
     assert artifact_id == "skippy"
-    assert model_name == "artwork"
-    assert variant_name == "default"
+    assert realization == "artwork_default"
     assert event_sink is not None
 
     event_sink(
@@ -47,7 +44,7 @@ def _emit_failed_build(
             kind="build.started",
             artifact_id="skippy",
             model_name="artwork",
-            realization="default",
+            realization="artwork_default",
         )
     )
 
@@ -56,7 +53,7 @@ def _emit_failed_build(
             kind="stage.started",
             artifact_id="skippy",
             model_name="artwork",
-            realization="default",
+            realization="artwork_default",
             stage_name="raster",
         )
     )
@@ -66,7 +63,7 @@ def _emit_failed_build(
             kind="stage.failed",
             artifact_id="skippy",
             model_name="artwork",
-            realization="default",
+            realization="artwork_default",
             stage_name="raster",
         )
     )
@@ -76,7 +73,7 @@ def _emit_failed_build(
             kind="build.failed",
             artifact_id="skippy",
             model_name="artwork",
-            realization="default",
+            realization="artwork_default",
         )
     )
 
@@ -87,7 +84,7 @@ def _invoke_failed_build(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """
-    Invoke one explicitly selected CLI build whose execution fails.
+    Invoke one explicitly selected CLI Realization build whose execution fails.
     """
 
     monkeypatch.setattr(
@@ -101,8 +98,8 @@ def _invoke_failed_build(
         [
             "build",
             "skippy",
-            "--variant",
-            "artwork.default",
+            "--realization",
+            "artwork_default",
         ],
     )
 

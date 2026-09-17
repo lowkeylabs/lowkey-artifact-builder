@@ -26,11 +26,7 @@ from lowkey_artifact_builder.cli.bindings import (
     parse_path_bindings,
 )
 from lowkey_artifact_builder.cli.display import (
-    display_available_variants,
     display_build_plan,
-)
-from lowkey_artifact_builder.cli.variants import (
-    parse_variant_reference,
 )
 from lowkey_artifact_builder.config import (
     ConfigError,
@@ -48,9 +44,6 @@ from lowkey_artifact_builder.engine import (
     execute_artifact_stage,
     prepare_incremental_build,
     rebuild_artifact,
-)
-from lowkey_artifact_builder.model import (
-    build_model_registry,
 )
 
 # =========================================================
@@ -74,17 +67,6 @@ from lowkey_artifact_builder.model import (
     type=str,
     default=None,
     help="Select one artifact realization for independent stage execution.",
-)
-@click.option(
-    "--variant",
-    type=str,
-    default=None,
-    help="Select one artifact Variant.",
-)
-@click.option(
-    "--all-variants",
-    is_flag=True,
-    help="Select all applicable artifact Variants.",
 )
 @click.option(
     "--input",
@@ -131,8 +113,6 @@ def cli(
     artifact_ids: tuple[str, ...],
     stage: str | None,
     realization: str | None,
-    variant: str | None,
-    all_variants: bool,
     input_bindings: tuple[str, ...],
     parameter_bindings: tuple[str, ...],
     output_bindings: tuple[str, ...],
@@ -208,9 +188,6 @@ def cli(
     if output_bindings:
         raise click.UsageError("--output requires --stage.")
 
-    if variant is not None and all_variants:
-        raise click.UsageError("--variant and --all-variants cannot be used together.")
-
     if build_all:
         _execute_realizations(
             artifact_ids,
@@ -248,26 +225,8 @@ def cli(
         )
         return
 
-    if variant is None and not all_variants:
-        _execute_realizations(
-            artifact_ids,
-            dry_run=dry_run,
-        )
-        return
-
-    model_name: str | None = None
-    variant_name: str | None = None
-
-    if variant is not None:
-        model_name, variant_name = parse_variant_reference(
-            variant,
-        )
-
-    _execute_build(
+    _execute_realizations(
         artifact_ids,
-        model_name=model_name,
-        variant_name=variant_name,
-        all_variants=all_variants,
         dry_run=dry_run,
     )
 
@@ -275,35 +234,6 @@ def cli(
 # =========================================================
 # Variant discovery
 # =========================================================
-
-
-def get_available_variant_names(
-    artifact_id: str,
-    *,
-    project_root: Path,
-) -> tuple[str, ...]:
-    """
-    Return the qualified Model Variants available to an Artifact.
-
-    Variant availability is Model-owned. Artifact configuration need
-    not enumerate the registered Variant catalog merely to make those
-    Variants discoverable.
-
-    The Artifact and project-root arguments establish an Artifact-level
-    discovery boundary even though the current Variant catalog is
-    entirely Model-owned.
-    """
-
-    del artifact_id
-    del project_root
-
-    registry = build_model_registry()
-
-    return tuple(
-        f"{model.name}.{variant.name}"
-        for model in registry.all_models()
-        for variant in model.variants
-    )
 
 
 def _display_build_status() -> None:
@@ -375,31 +305,6 @@ def _execution_plan_status(
                 return state
 
     return ProductState.CURRENT
-
-
-def _display_available_variants(
-    artifact_ids: tuple[str, ...],
-) -> None:
-    """
-    Discover and display available Variants without requesting execution.
-    """
-
-    project_root = Path.cwd()
-
-    for artifact_id in artifact_ids:
-        try:
-            variants = get_available_variant_names(
-                artifact_id,
-                project_root=project_root,
-            )
-
-            display_available_variants(
-                artifact_id,
-                variants,
-            )
-
-        except ConfigError as exc:
-            raise click.ClickException(str(exc)) from exc
 
 
 def _execute_realization(

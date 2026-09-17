@@ -31,7 +31,8 @@ def test_shape_ornament_variant_builds_complete_3mf(
     monkeypatch,
 ) -> None:
     """
-    The shape.ornament Variant is applied through the public build path.
+    The canonical shape_ornament Realization applies the shape.ornament
+    Variant through the public build path.
 
     Model defaults remain effective except where the sparse ornament
     Variant overrides them. The Variant's positive outer-ridge width
@@ -59,8 +60,8 @@ def test_shape_ornament_variant_builds_complete_3mf(
         [
             "build",
             "ornament-shape",
-            "--variant",
-            "shape.ornament",
+            "--realization",
+            "shape_ornament",
         ],
     )
 
@@ -133,7 +134,8 @@ def test_shape_ornament_variant_accepts_artifact_customization(
     monkeypatch,
 ) -> None:
     """
-    Artifact customization overlays the selected shape.ornament Variant.
+    Artifact customization overlays the shape.ornament Variant applied by
+    the canonical shape_ornament Realization.
 
     The customization changes the resulting physical Shape without
     creating a new Variant identity.
@@ -161,8 +163,8 @@ def test_shape_ornament_variant_accepts_artifact_customization(
         [
             "build",
             "custom-ornament",
-            "--variant",
-            "shape.ornament",
+            "--realization",
+            "shape_ornament",
         ],
     )
 
@@ -230,6 +232,7 @@ def test_shape_ornament_variant_accepts_artifact_customization(
         80.0,
         abs=0.1,
     )
+
     assert max(y_values) - min(y_values) == pytest.approx(
         80.0,
         abs=0.1,
@@ -237,16 +240,16 @@ def test_shape_ornament_variant_accepts_artifact_customization(
 
 
 @pytest.mark.slow
-def test_shape_variants_have_distinct_persistent_product_identity(
+def test_shape_canonical_realizations_have_distinct_persistent_product_identity(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     """
-    Model Variants have distinct canonical persistent product identity.
+    Canonical Shape Realizations have distinct persistent product identity.
 
-    Building shape.default and shape.ornament for the same Artifact
-    preserves both manufacturing results under their Model-scoped local
-    Variant names.
+    Building shape_default and shape_ornament for the same Artifact
+    preserves both manufacturing results under their canonical
+    Realization identities.
     """
 
     project_root = tmp_path
@@ -270,8 +273,8 @@ def test_shape_variants_have_distinct_persistent_product_identity(
         [
             "build",
             "multi-variant-shape",
-            "--variant",
-            "shape.default",
+            "--realization",
+            "shape_default",
         ],
     )
 
@@ -284,8 +287,8 @@ def test_shape_variants_have_distinct_persistent_product_identity(
         [
             "build",
             "multi-variant-shape",
-            "--variant",
-            "shape.ornament",
+            "--realization",
+            "shape_ornament",
         ],
     )
 
@@ -305,6 +308,7 @@ def test_shape_variants_have_distinct_persistent_product_identity(
     assert zipfile.is_zipfile(
         default_artifact,
     )
+
     assert zipfile.is_zipfile(
         ornament_artifact,
     )
@@ -539,16 +543,16 @@ def test_shape_ornament_variant_reuses_current_artwork_product(
 
 
 @pytest.mark.slow
-def test_explicit_shape_default_variant_preserves_default_manufacturing(
+def test_shape_default_realization_preserves_default_manufacturing(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     """
-    Explicit shape.default preserves default Shape manufacturing.
+    The canonical shape_default Realization preserves default Shape
+    manufacturing.
 
-    Selecting shape.default explicitly applies the Model-owned default
-    manufacturing configuration without enabling specialized ornament
-    behavior.
+    shape_default applies the Model-owned default Variant without
+    enabling specialized ornament behavior.
     """
 
     project_root = tmp_path
@@ -572,7 +576,7 @@ def test_explicit_shape_default_variant_preserves_default_manufacturing(
     )
 
     # -----------------------------------------------------
-    # Build explicit shape.default
+    # Build canonical shape_default Realization
     # -----------------------------------------------------
 
     build_result = runner.invoke(
@@ -580,13 +584,13 @@ def test_explicit_shape_default_variant_preserves_default_manufacturing(
         [
             "build",
             "default-shape",
-            "--variant",
-            "shape.default",
+            "--realization",
+            "shape_default",
         ],
     )
 
     assert build_result.exit_code == 0, (
-        f"Explicit default Shape build failed:\n{build_result.output}\n{build_result.exception!r}"
+        f"Default Shape build failed:\n{build_result.output}\n{build_result.exception!r}"
     )
 
     # -----------------------------------------------------
@@ -672,13 +676,17 @@ def test_explicit_shape_default_variant_preserves_default_manufacturing(
     assert "default-shape-ridge-white" not in object_names
 
 
-def test_show_and_build_dry_run_use_same_qualified_variant_configuration(
+def test_show_variant_and_build_realization_use_same_configuration(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Inspection and build resolve a qualified Variant to the same effective
-    canonical Realization and Model-scoped configuration.
+    Variant inspection and canonical Realization build resolve the same
+    effective Model-scoped configuration.
+
+    Show selects the Model-owned Variant as a configuration concern.
+    Build selects its canonical Artifact Realization as the normal
+    execution coordinate.
     """
 
     import lowkey_artifact_builder.cli.cmd_build as cmd_build
@@ -782,8 +790,8 @@ def test_show_and_build_dry_run_use_same_qualified_variant_configuration(
         [
             "build",
             "example",
-            "--variant",
-            "shape.ornament",
+            "--realization",
+            "shape_ornament",
             "--dry-run",
         ],
     )
