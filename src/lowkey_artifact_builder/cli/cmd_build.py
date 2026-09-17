@@ -157,9 +157,6 @@ def cli(
         )
         return
 
-    if realization is not None:
-        raise click.UsageError("--realization requires --stage.")
-
     if input_bindings:
         raise click.UsageError("--input requires --stage.")
 
@@ -171,6 +168,14 @@ def cli(
 
     if variant is not None and all_variants:
         raise click.UsageError("--variant and --all-variants cannot be used together.")
+
+    if realization is not None:
+        _execute_realization(
+            artifact_ids,
+            realization=realization,
+            dry_run=dry_run,
+        )
+        return
 
     if variant is None and not all_variants:
         _execute_realizations(
@@ -323,6 +328,52 @@ def _display_available_variants(
             )
 
         except ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+
+def _execute_realization(
+    artifact_ids: tuple[str, ...],
+    *,
+    realization: str,
+    dry_run: bool,
+) -> None:
+    """
+    Build one selected Realization for the selected Artifacts.
+    """
+
+    project_root = Path.cwd()
+
+    for artifact_id in artifact_ids:
+        try:
+            if dry_run:
+                plans = create_artifact_build_plans(
+                    artifact_id,
+                    realization=realization,
+                    project_root=project_root,
+                )
+
+                for plan in plans:
+                    prepare_incremental_build(
+                        plan,
+                    )
+                    display_build_plan(
+                        plan,
+                    )
+
+                continue
+
+            execute_artifact_build(
+                artifact_id,
+                realization=realization,
+                project_root=project_root,
+                event_sink=_display_execution_event,
+            )
+
+        except (
+            ConfigError,
+            BuildPlanError,
+            BuildError,
+        ) as exc:
             raise click.ClickException(str(exc)) from exc
 
 

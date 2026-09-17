@@ -789,25 +789,29 @@ def test_build_execution_error_is_reported(
     assert "cannot execute build" in result.output
 
 
-def test_build_rejects_realization_for_normal_build(
+def test_build_artifact_accepts_selected_realization(
     monkeypatch,
 ) -> None:
     """
-    Artifact Realization is not an independent selector for normal builds.
-
-    Normal reusable build selection is expressed through Variant.
+    A selected Realization narrows normal build execution to that
+    Artifact + Realization pair.
     """
 
-    executed: list[str] = []
+    executed: list[tuple[str, str]] = []
 
     def execute_artifact(
         artifact_id: str,
         *,
+        realization: str,
         project_root: Path,
         event_sink=None,
-        **kwargs,
     ) -> None:
-        executed.append(artifact_id)
+        executed.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
 
     monkeypatch.setattr(
         cmd_build,
@@ -818,12 +822,16 @@ def test_build_rejects_realization_for_normal_build(
     result = _invoke(
         "skippy",
         "--realization",
-        "alternate",
+        "shape_ornament",
     )
 
-    assert result.exit_code != 0
-    assert "--realization requires --stage" in result.output
-    assert executed == []
+    assert result.exit_code == 0
+    assert executed == [
+        (
+            "skippy",
+            "shape_ornament",
+        )
+    ]
 
 
 # =========================================================

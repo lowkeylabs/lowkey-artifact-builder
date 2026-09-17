@@ -339,22 +339,6 @@ def test_build_stage_rejects_dry_run(
     assert "dry-run" in result.output.lower()
 
 
-def test_build_realization_requires_stage() -> None:
-    """
-    Realization selection belongs to explicit stage execution.
-    """
-
-    result = _invoke(
-        "skippy",
-        "--realization",
-        "portrait",
-    )
-
-    assert result.exit_code != 0
-
-    assert "realization" in result.output.lower()
-
-
 def test_build_input_requires_stage() -> None:
     """
     Explicit input bindings belong to independent stage execution.
