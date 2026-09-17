@@ -80,9 +80,11 @@ class LoopGeometry:
 
     The Loop is an annulus centered at ``center_x``, ``center_y``.
 
-    ``inner_attachment_point`` is the inward-facing point of the inner circle.
-    By definition that point lies on the selected cardinal boundary of the
-    dimensionalized Artwork envelope.
+    ``inner_attachment_point`` is the inward-facing point of the inner
+    circle. By definition that point lies on the selected cardinal boundary
+    of the dimensionalized Artwork envelope. The Loop center lies outward
+    from that boundary so the inner opening is externally tangent to the
+    envelope.
 
     ``envelope_bounds`` preserves the physical extent of the Artwork proper.
     ``manufactured_bounds`` includes both the Artwork envelope and Loop.
@@ -125,20 +127,6 @@ class LoopGeometry:
         """
 
         return self.outer_radius * 2.0
-
-    @property
-    def inward_overlap(
-        self,
-    ) -> float:
-        """
-        Return the Loop's inward overlap with the Artwork envelope.
-
-        The inner circle touches the Artwork boundary. The annulus extends
-        outward from that inner circle by its radial width, so the annulus
-        overlaps the Artwork envelope inward by exactly that width.
-        """
-
-        return self.width
 
     @property
     def manufactured_bounds(
@@ -196,16 +184,15 @@ def create_loop_geometry(
 
     Supported positions are:
 
-        0       top
-        90      right
-        180     bottom
-        -90     left
+        0       top (+Y)
+        90      right (+X)
+        180     bottom (-Y)
+        -90     left (-X)
 
-    The inward-facing point of the Loop's inner circle lies exactly on the
-    selected boundary of the dimensionalized Artwork envelope.
-
-    Consequently the annulus overlaps the Artwork envelope inward by exactly
-    ``width``.
+    The Loop center lies one inner radius outward from the selected
+    dimensionalized Artwork envelope boundary. The inward-facing point of
+    the inner circle therefore lies exactly on that boundary, making the
+    inner opening externally tangent to the supplied envelope.
     """
 
     if inner_diameter <= 0.0:
@@ -232,13 +219,13 @@ def create_loop_geometry(
 
     if position == 0:
         center_x = envelope_bounds.center_x
-        center_y = envelope_bounds.min_y + inner_radius
+        center_y = envelope_bounds.max_y + inner_radius
 
         attachment_x = envelope_bounds.center_x
-        attachment_y = envelope_bounds.min_y
+        attachment_y = envelope_bounds.max_y
 
     elif position == 90:
-        center_x = envelope_bounds.max_x - inner_radius
+        center_x = envelope_bounds.max_x + inner_radius
         center_y = envelope_bounds.center_y
 
         attachment_x = envelope_bounds.max_x
@@ -246,13 +233,13 @@ def create_loop_geometry(
 
     elif position == 180:
         center_x = envelope_bounds.center_x
-        center_y = envelope_bounds.max_y - inner_radius
+        center_y = envelope_bounds.min_y - inner_radius
 
         attachment_x = envelope_bounds.center_x
-        attachment_y = envelope_bounds.max_y
+        attachment_y = envelope_bounds.min_y
 
     else:
-        center_x = envelope_bounds.min_x + inner_radius
+        center_x = envelope_bounds.min_x - inner_radius
         center_y = envelope_bounds.center_y
 
         attachment_x = envelope_bounds.min_x

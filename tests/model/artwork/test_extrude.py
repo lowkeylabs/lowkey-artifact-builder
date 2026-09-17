@@ -2606,3 +2606,47 @@ def test_explicit_base_and_loop_colors_preserve_independent_physical_identities(
             "blue": 0,
         },
     }
+
+
+def test_envelope_bounds_are_geometric_boundary_not_painted_stroke(
+    tmp_path: Path,
+) -> None:
+    """
+    Artwork envelope bounds describe the geometric envelope boundary.
+
+    A persistent envelope may use a visible stroke to render that boundary.
+    The painted stroke is presentation and must not enlarge the geometric
+    bounds consumed by Artwork dimensionalization.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        """
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 100 100"
+        >
+            <path
+                d="M 0 0 L 100 0 L 100 100 L 0 100 Z"
+                fill="none"
+                stroke="#000000"
+                stroke-width="1"
+            />
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    envelope_bounds = extrude._envelope_bounds(
+        envelope,
+    )
+
+    assert envelope_bounds == pytest.approx(
+        (
+            0.0,
+            0.0,
+            100.0,
+            100.0,
+        )
+    )

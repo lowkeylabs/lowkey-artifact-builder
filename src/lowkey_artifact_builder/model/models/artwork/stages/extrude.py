@@ -27,6 +27,8 @@ only the paths and values supplied through StageContext.
 from __future__ import annotations
 
 import json
+import re
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -56,10 +58,6 @@ from lowkey_artifact_builder.model.models.artwork.outer_ridge_color import (
 from lowkey_artifact_builder.model.models.artwork.vector_manifest import (
     VectorLayer,
     VectorManifest,
-)
-from lowkey_artifact_builder.tools.inkscape import (
-    InkscapeError,
-    query_all,
 )
 from lowkey_artifact_builder.tools.openscad import (
     OpenSCADError,
@@ -425,8 +423,62 @@ def execute(
                 artwork_size=artwork_size,
             )
 
+            attachment_x, attachment_y = _envelope_cardinal_attachment(
+                vector_products.envelope,
+                registered_extent=vector_products.registered_extent,
+                envelope_bounds=envelope_bounds,
+                artwork_size=artwork_size,
+                position=loop_position,
+            )
+
+            #
+            # create_loop_geometry() already owns the simple relationship
+            # between an Artwork boundary and the Loop's inner radius.
+            #
+            # Supply Bounds whose selected cardinal boundary is the actual
+            # envelope intersection rather than the rectangular occupied
+            # extent. The other boundaries remain unchanged because they do
+            # not participate in the selected Loop placement.
+            #
+            if loop_position == 0:
+                loop_envelope_bounds = Bounds(
+                    min_x=physical_envelope_bounds.min_x,
+                    min_y=physical_envelope_bounds.min_y,
+                    max_x=physical_envelope_bounds.max_x,
+                    max_y=attachment_y,
+                )
+
+            elif loop_position == 90:
+                loop_envelope_bounds = Bounds(
+                    min_x=physical_envelope_bounds.min_x,
+                    min_y=physical_envelope_bounds.min_y,
+                    max_x=attachment_x,
+                    max_y=physical_envelope_bounds.max_y,
+                )
+
+            elif loop_position == 180:
+                loop_envelope_bounds = Bounds(
+                    min_x=physical_envelope_bounds.min_x,
+                    min_y=attachment_y,
+                    max_x=physical_envelope_bounds.max_x,
+                    max_y=physical_envelope_bounds.max_y,
+                )
+
+            elif loop_position == -90:
+                loop_envelope_bounds = Bounds(
+                    min_x=attachment_x,
+                    min_y=physical_envelope_bounds.min_y,
+                    max_x=physical_envelope_bounds.max_x,
+                    max_y=physical_envelope_bounds.max_y,
+                )
+
+            else:
+                raise ExtrudeError(
+                    "loop_position must be one of 0, 90, 180, or -90.",
+                )
+
             loop_geometry = create_loop_geometry(
-                envelope_bounds=physical_envelope_bounds,
+                envelope_bounds=loop_envelope_bounds,
                 inner_diameter=loop_inner_diameter,
                 width=loop_width,
                 position=loop_position,
@@ -868,37 +920,32 @@ def _envelope_bounds(
     float,
 ]:
     """
-    Return the occupied bounds of a registered Artwork envelope.
+    Return the geometric bounds of a registered Artwork envelope.
 
     The result is:
 
         min_x, min_y, max_x, max_y
 
-    Bounds are taken across all geometry in the registered envelope,
-    rather than from the SVG page or registered coordinate extent.
+    Artwork envelope SVGs may use presentation attributes such as stroke to
+    render their boundary. Physical Artwork dimensionalization is based on
+    the generated envelope path itself rather than on the painted extent of
+    those presentation attributes.
+
+    The same canonical envelope geometry therefore determines both Artwork
+    dimensionalization and cardinal Loop attachment.
     """
 
-    try:
-        objects = query_all(
-            envelope,
-            millimeters=False,
-        )
+    points = _envelope_path_points(
+        envelope,
+    )
 
-    except InkscapeError as exc:
-        raise ExtrudeError(
-            f"Could not determine registered Artwork envelope bounds: {envelope}"
-        ) from exc
+    min_x = min(x for x, _ in points)
 
-    if not objects:
-        raise ExtrudeError(f"Registered Artwork envelope contains no geometry: {envelope}")
+    min_y = min(y for _, y in points)
 
-    min_x = min(bounds["x"] for bounds in objects.values())
+    max_x = max(x for x, _ in points)
 
-    min_y = min(bounds["y"] for bounds in objects.values())
-
-    max_x = max(bounds["x"] + bounds["width"] for bounds in objects.values())
-
-    max_y = max(bounds["y"] + bounds["height"] for bounds in objects.values())
+    max_y = max(y for _, y in points)
 
     if max_x <= min_x or max_y <= min_y:
         raise ExtrudeError(f"Registered Artwork envelope has invalid bounds: {envelope}")
@@ -960,6 +1007,382 @@ def _physical_envelope_bounds(
         min_y=-physical_height / 2.0,
         max_x=physical_width / 2.0,
         max_y=physical_height / 2.0,
+    )
+
+
+def _envelope_cardinal_attachment(
+    envelope: Path,
+    *,
+    registered_extent: int,
+    envelope_bounds: tuple[
+        float,
+        float,
+        float,
+        float,
+    ],
+    artwork_size: float,
+    position: int,
+) -> tuple[float, float]:
+    """
+    Return the physical Artwork-envelope attachment point for one cardinal
+    Loop position.
+
+    The selected cardinal ray begins at the physical Artwork origin and
+    intersects the actual occupied Artwork envelope. The returned point is
+    the nearest intersection on that outward ray, expressed in the same
+    centered, upward-positive physical coordinate system consumed by
+    LoopGeometry.
+
+    Registered envelope geometry is generated by the Artwork vector pipeline
+    as polygonal SVG path geometry. This operation therefore needs only the
+    line segments forming that envelope; it does not perform general-purpose
+    SVG geometry.
+    """
+
+    if position not in {
+        0,
+        90,
+        180,
+        -90,
+    }:
+        raise ExtrudeError(
+            "loop_position must be one of 0, 90, 180, or -90.",
+        )
+
+    points = _envelope_path_points(
+        envelope,
+    )
+
+    transform = _artwork_transform(
+        registered_extent=registered_extent,
+        envelope_bounds=envelope_bounds,
+    )
+
+    scale = artwork_size / transform.envelope_extent
+
+    physical_points = tuple(
+        (
+            (x - transform.envelope_center_x) * scale,
+            ((registered_extent - y) - transform.envelope_openscad_center_y) * scale,
+        )
+        for x, y in points
+    )
+
+    intersections: list[tuple[float, float]] = []
+
+    for start, end in zip(
+        physical_points,
+        physical_points[1:] + physical_points[:1],
+        strict=True,
+    ):
+        intersection = _cardinal_axis_segment_intersection(
+            start,
+            end,
+            position=position,
+        )
+
+        if intersection is not None:
+            intersections.append(
+                intersection,
+            )
+
+    if position == 0:
+        candidates = [point for point in intersections if point[1] >= 0.0]
+
+    elif position == 90:
+        candidates = [point for point in intersections if point[0] >= 0.0]
+
+    elif position == 180:
+        candidates = [point for point in intersections if point[1] <= 0.0]
+
+    else:
+        candidates = [point for point in intersections if point[0] <= 0.0]
+
+    if not candidates:
+        raise ExtrudeError(
+            "Artwork envelope does not intersect the selected Loop "
+            f"cardinal ray at position {position}.",
+        )
+
+    return min(
+        candidates,
+        key=lambda point: abs(point[0]) + abs(point[1]),
+    )
+
+
+def _envelope_path_points(
+    envelope: Path,
+) -> tuple[tuple[float, float], ...]:
+    """
+    Return polygon vertices from a generated Artwork envelope SVG.
+
+    Artwork envelope paths are generated from straight line segments. The
+    accepted path syntax is therefore intentionally limited to absolute or
+    relative M/L/H/V/Z commands rather than implementing a general SVG path
+    parser.
+    """
+
+    try:
+        root = ET.parse(
+            envelope,
+        ).getroot()
+
+    except (
+        OSError,
+        ET.ParseError,
+    ) as exc:
+        raise ExtrudeError(
+            f"Could not read registered Artwork envelope: {envelope}",
+        ) from exc
+
+    path_data: list[str] = []
+
+    for element in root.iter():
+        if (
+            element.tag.rsplit(
+                "}",
+                1,
+            )[-1]
+            != "path"
+        ):
+            continue
+
+        data = element.get(
+            "d",
+        )
+
+        if data:
+            path_data.append(
+                data,
+            )
+
+    if len(path_data) != 1:
+        raise ExtrudeError(
+            "Registered Artwork envelope must contain exactly one path "
+            f"for Loop attachment geometry: {envelope}",
+        )
+
+    tokens = re.findall(
+        r"[MLHVZmlhvz]|"
+        r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?",
+        path_data[0],
+    )
+
+    points: list[tuple[float, float]] = []
+
+    index = 0
+    command: str | None = None
+    current_x = 0.0
+    current_y = 0.0
+
+    while index < len(tokens):
+        token = tokens[index]
+
+        if token.isalpha():
+            command = token
+            index += 1
+
+            if command in {
+                "Z",
+                "z",
+            }:
+                continue
+
+        if command is None:
+            raise ExtrudeError(
+                f"Registered Artwork envelope contains invalid path geometry: {envelope}",
+            )
+
+        if command in {
+            "M",
+            "L",
+            "m",
+            "l",
+        }:
+            if index + 1 >= len(tokens):
+                raise ExtrudeError(
+                    f"Registered Artwork envelope contains incomplete path geometry: {envelope}",
+                )
+
+            x = float(
+                tokens[index],
+            )
+
+            y = float(
+                tokens[index + 1],
+            )
+
+            index += 2
+
+            if command.islower():
+                x += current_x
+                y += current_y
+
+            current_x = x
+            current_y = y
+
+            points.append(
+                (
+                    current_x,
+                    current_y,
+                )
+            )
+
+            if command == "M":
+                command = "L"
+
+            elif command == "m":
+                command = "l"
+
+            continue
+
+        if command in {
+            "H",
+            "h",
+        }:
+            x = float(
+                tokens[index],
+            )
+
+            index += 1
+
+            if command == "h":
+                x += current_x
+
+            current_x = x
+
+            points.append(
+                (
+                    current_x,
+                    current_y,
+                )
+            )
+
+            continue
+
+        if command in {
+            "V",
+            "v",
+        }:
+            y = float(
+                tokens[index],
+            )
+
+            index += 1
+
+            if command == "v":
+                y += current_y
+
+            current_y = y
+
+            points.append(
+                (
+                    current_x,
+                    current_y,
+                )
+            )
+
+            continue
+
+        raise ExtrudeError(
+            "Registered Artwork envelope contains unsupported path geometry "
+            f"for Loop attachment: {command}",
+        )
+
+    if len(points) < 3:
+        raise ExtrudeError(
+            f"Registered Artwork envelope does not contain a usable closed path: {envelope}",
+        )
+
+    return tuple(
+        points,
+    )
+
+
+def _cardinal_axis_segment_intersection(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    *,
+    position: int,
+) -> tuple[float, float] | None:
+    """
+    Return the intersection between a physical envelope segment and the
+    cardinal axis used by the requested Loop position.
+    """
+
+    x1, y1 = start
+    x2, y2 = end
+
+    if position in {
+        0,
+        180,
+    }:
+        if x1 == 0.0 and x2 == 0.0:
+            if position == 0:
+                return (
+                    0.0,
+                    min(
+                        y1,
+                        y2,
+                    ),
+                )
+
+            return (
+                0.0,
+                max(
+                    y1,
+                    y2,
+                ),
+            )
+
+        if (x1 < 0.0 and x2 < 0.0) or (x1 > 0.0 and x2 > 0.0):
+            return None
+
+        if x1 == x2:
+            return None
+
+        fraction = -x1 / (x2 - x1)
+
+        if not 0.0 <= fraction <= 1.0:
+            return None
+
+        return (
+            0.0,
+            y1 + fraction * (y2 - y1),
+        )
+
+    if y1 == 0.0 and y2 == 0.0:
+        if position == 90:
+            return (
+                min(
+                    x1,
+                    x2,
+                ),
+                0.0,
+            )
+
+        return (
+            max(
+                x1,
+                x2,
+            ),
+            0.0,
+        )
+
+    if (y1 < 0.0 and y2 < 0.0) or (y1 > 0.0 and y2 > 0.0):
+        return None
+
+    if y1 == y2:
+        return None
+
+    fraction = -y1 / (y2 - y1)
+
+    if not 0.0 <= fraction <= 1.0:
+        return None
+
+    return (
+        x1 + fraction * (x2 - x1),
+        0.0,
     )
 
 
