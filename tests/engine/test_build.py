@@ -1804,7 +1804,7 @@ def test_execute_build_publishes_packaged_3mf(
 
     canonical = plan.artifact_dir / "artwork" / "artwork_default" / "50-package" / "artifact.3mf"
 
-    published = plan.artifact_dir / "artwork.artwork_default.3mf"
+    published = plan.artifact_dir / "artwork_default.3mf"
 
     def implementation(
         context: StageContext,
@@ -1865,7 +1865,7 @@ def test_execute_build_does_not_publish_existing_package_when_package_is_not_exe
 
     canonical = plan.artifact_dir / "artwork" / "artwork_default" / "50-package" / "artifact.3mf"
 
-    published = plan.artifact_dir / "artwork.artwork_default.3mf"
+    published = plan.artifact_dir / "artwork_default.3mf"
 
     canonical.parent.mkdir(
         parents=True,
@@ -1907,16 +1907,16 @@ def test_execute_build_does_not_publish_existing_package_when_package_is_not_exe
     assert not published.exists()
 
 
-def test_execute_build_publishes_package_using_model_and_realization_name(
+def test_execute_build_publishes_package_using_realization_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     test_resolver,
 ) -> None:
     """
-    Package publication identifies the Model and Realization in its filename.
+    Package publication uses the Realization name as its filename.
 
-    Publication naming is derived from BuildPlan identity rather than from
-    the canonical Stage Product path.
+    Publication naming is derived from Realization identity rather than
+    Model identity or the canonical Stage Product path.
     """
 
     artifact_dir = tmp_path / "artifacts" / "example"
@@ -1981,7 +1981,7 @@ def test_execute_build_publishes_package_using_model_and_realization_name(
         plan,
     )
 
-    published = artifact_dir / "shape.shape_ornament.3mf"
+    published = artifact_dir / "shape_ornament.3mf"
 
     assert canonical.is_file()
 

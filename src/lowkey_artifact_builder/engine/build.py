@@ -35,6 +35,9 @@ from pathlib import Path
 from .context import (
     _create_resolved_stage_context,
 )
+from .naming import (
+    realization_3mf_filename,
+)
 from .operation import (
     execute_artifact_stage as _execute_artifact_stage,
 )
@@ -201,7 +204,7 @@ def _publish_package(
     """
     Publish the first Product of a successfully executed package stage.
 
-    Publication creates a Realization-qualified convenience copy in the
+    Publication creates a Realization-named convenience copy in the
     Artifact directory. The canonical Stage Product remains unchanged
     and remains the persistent Product authority.
     """
@@ -215,8 +218,8 @@ def _publish_package(
 
     package = stage.products[0]
 
-    published = plan.artifact_dir / (
-        f"{plan.model_name}.{plan.realization_name}{package.path.suffix}"
+    published = plan.artifact_dir / realization_3mf_filename(
+        plan.realization_name,
     )
 
     try:

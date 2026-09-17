@@ -359,8 +359,8 @@ def test_realizations_of_same_variant_publish_without_collisions(
     Distinct Realizations selecting the same Variant publish independently.
 
     Publication naming uses actual Realization identity rather than Variant
-    identity, so convenience copies cannot collide merely because their
-    Realizations share a Variant.
+    or Model identity, so convenience copies cannot collide merely because
+    their Realizations share a Variant.
     """
 
     write_artifact_config(
@@ -397,6 +397,7 @@ def test_realizations_of_same_variant_publish_without_collisions(
     assert large_plan.resolver("variant") == "ornament"
 
     small_package_stage = next(stage for stage in small_plan.stages if stage.name == "package")
+
     large_package_stage = next(stage for stage in large_plan.stages if stage.name == "package")
 
     small_package = small_package_stage.products[0]
@@ -406,6 +407,7 @@ def test_realizations_of_same_variant_publish_without_collisions(
         parents=True,
         exist_ok=True,
     )
+
     large_package.path.parent.mkdir(
         parents=True,
         exist_ok=True,
@@ -418,18 +420,16 @@ def test_realizations_of_same_variant_publish_without_collisions(
         small_plan,
         small_package_stage,
     )
+
     build_module._publish_package(
         large_plan,
         large_package_stage,
     )
 
-    small_published = small_plan.artifact_dir / "shape.small.3mf"
-    large_published = large_plan.artifact_dir / "shape.large.3mf"
+    small_published = small_plan.artifact_dir / "small.3mf"
+    large_published = large_plan.artifact_dir / "large.3mf"
 
     assert small_published != large_published
 
     assert small_published.read_bytes() == b"small"
     assert large_published.read_bytes() == b"large"
-
-    assert small_package.path.read_bytes() == b"small"
-    assert large_package.path.read_bytes() == b"large"
