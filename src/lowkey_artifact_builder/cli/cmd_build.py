@@ -173,6 +173,12 @@ def cli(
     if rebuild and not artifact_ids and realization is None:
         raise click.UsageError("--rebuild requires a narrowed build scope.")
 
+    if rebuild and dry_run:
+        raise click.UsageError("--rebuild cannot be combined with --dry-run.")
+
+    if rebuild_all and dry_run:
+        raise click.UsageError("--rebuild-all cannot be combined with --dry-run.")
+
     if not artifact_ids and realization is None and not build_all and not rebuild_all:
         _display_build_status()
         return

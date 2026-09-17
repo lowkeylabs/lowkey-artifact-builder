@@ -2569,3 +2569,52 @@ def test_realization_rebuild_rejects_stage_execution() -> None:
 
     assert result.exit_code == 2
     assert "--rebuild cannot be combined with --stage." in result.output
+
+
+def test_rebuild_rejects_dry_run() -> None:
+    """
+    Narrowed rebuild must not silently perform work when --dry-run is
+    requested.
+    """
+
+    result = _invoke(
+        "skippy",
+        "--rebuild",
+        "--dry-run",
+    )
+
+    assert result.exit_code == 2
+    assert "--rebuild cannot be combined with --dry-run." in result.output
+
+
+def test_realization_rebuild_rejects_dry_run() -> None:
+    """
+    Realization-scoped rebuild must not silently perform work when
+    --dry-run is requested.
+    """
+
+    result = _invoke(
+        "skippy",
+        "--realization",
+        "shape_ornament",
+        "--rebuild",
+        "--dry-run",
+    )
+
+    assert result.exit_code == 2
+    assert "--rebuild cannot be combined with --dry-run." in result.output
+
+
+def test_rebuild_all_rejects_dry_run() -> None:
+    """
+    Project-wide rebuild must not silently perform work when --dry-run is
+    requested.
+    """
+
+    result = _invoke(
+        "--rebuild-all",
+        "--dry-run",
+    )
+
+    assert result.exit_code == 2
+    assert "--rebuild-all cannot be combined with --dry-run." in result.output
