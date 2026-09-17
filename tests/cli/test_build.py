@@ -2622,3 +2622,67 @@ def test_bare_rebuild_does_not_imply_project_wide_scope(
     assert result.exit_code == 2
     assert "--rebuild requires a narrowed build scope." in result.output
     assert rebuilt == []
+
+
+def test_build_all_rejects_artifact_scope(
+    monkeypatch,
+) -> None:
+    """
+    --build-all is project-wide and cannot be narrowed by Artifact ID.
+    """
+
+    executed = False
+
+    def execute_realizations(
+        artifact_ids: tuple[str, ...],
+        *,
+        dry_run: bool,
+    ) -> None:
+        nonlocal executed
+        executed = True
+
+    monkeypatch.setattr(
+        cmd_build,
+        "_execute_realizations",
+        execute_realizations,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--build-all",
+    )
+
+    assert result.exit_code == 2
+    assert "--build-all cannot be combined with Artifact IDs." in result.output
+    assert executed is False
+
+
+def test_rebuild_all_rejects_artifact_scope(
+    monkeypatch,
+) -> None:
+    """
+    --rebuild-all is project-wide and cannot be narrowed by Artifact ID.
+    """
+
+    rebuilt = False
+
+    def rebuild_all(
+        artifact_ids: tuple[str, ...],
+    ) -> None:
+        nonlocal rebuilt
+        rebuilt = True
+
+    monkeypatch.setattr(
+        cmd_build,
+        "_rebuild_all",
+        rebuild_all,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--rebuild-all",
+    )
+
+    assert result.exit_code == 2
+    assert "--rebuild-all cannot be combined with Artifact IDs." in result.output
+    assert rebuilt is False

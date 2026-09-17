@@ -163,6 +163,12 @@ def cli(
     if build_all and rebuild_all:
         raise click.UsageError("--build-all and --rebuild-all cannot be used together.")
 
+    if build_all and artifact_ids:
+        raise click.UsageError("--build-all cannot be combined with Artifact IDs.")
+
+    if rebuild_all and artifact_ids:
+        raise click.UsageError("--rebuild-all cannot be combined with Artifact IDs.")
+
     if rebuild and not artifact_ids and realization is None:
         raise click.UsageError("--rebuild requires a narrowed build scope.")
 
