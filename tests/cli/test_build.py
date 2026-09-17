@@ -2387,3 +2387,61 @@ def test_build_artifact_rebuilds_all_effective_realizations(
             "shape_ornament",
         ),
     ]
+
+
+def test_build_realization_rebuilds_across_project_artifacts(
+    monkeypatch,
+) -> None:
+    """
+    --realization with --rebuild rebuilds that Realization across
+    the applicable project Artifacts.
+    """
+
+    rebuilt: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        cmd_build,
+        "list_artifacts",
+        lambda *, project_root: (
+            "alpha",
+            "beta",
+        ),
+    )
+
+    def rebuild_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        rebuilt.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "rebuild_artifact",
+        rebuild_artifact,
+    )
+
+    result = _invoke(
+        "--realization",
+        "shape_ornament",
+        "--rebuild",
+    )
+
+    assert result.exit_code == 0
+    assert rebuilt == [
+        (
+            "alpha",
+            "shape_ornament",
+        ),
+        (
+            "beta",
+            "shape_ornament",
+        ),
+    ]
