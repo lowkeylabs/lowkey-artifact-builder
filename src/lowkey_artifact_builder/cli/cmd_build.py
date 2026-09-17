@@ -437,9 +437,15 @@ def _execute_realizations(
 
     Normal build execution addresses Artifact + Realization. Effective
     Realization discovery remains owned by configuration.
+
+    Independent Realization builds continue after individual failures.
+    After all requested independent builds have been attempted, any
+    failures are reported together as command failure.
     """
 
     project_root = Path.cwd()
+
+    failures: list[str] = []
 
     for artifact_id in artifact_ids:
         try:
@@ -447,8 +453,14 @@ def _execute_realizations(
                 artifact_id,
                 project_root=project_root,
             )
+        except ConfigError as exc:
+            failures.append(
+                str(exc),
+            )
+            continue
 
-            for realization in realizations:
+        for realization in realizations:
+            try:
                 if dry_run:
                     plans = create_artifact_build_plans(
                         artifact_id,
@@ -473,12 +485,21 @@ def _execute_realizations(
                     event_sink=_display_execution_event,
                 )
 
-        except (
-            ConfigError,
-            BuildPlanError,
-            BuildError,
-        ) as exc:
-            raise click.ClickException(str(exc)) from exc
+            except (
+                ConfigError,
+                BuildPlanError,
+                BuildError,
+            ) as exc:
+                failures.append(
+                    str(exc),
+                )
+
+    if failures:
+        raise click.ClickException(
+            "\n".join(
+                failures,
+            )
+        )
 
 
 def _rebuild_all(

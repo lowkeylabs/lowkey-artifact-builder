@@ -1797,3 +1797,195 @@ def test_build_realization_dry_run_continues_after_independent_artifact_failure(
 
     assert result.exit_code != 0
     assert "smith-dog planning failed" in result.output
+
+
+def test_build_artifact_continues_after_independent_realization_failure(
+    monkeypatch,
+) -> None:
+    """
+    Failure building one effective Realization does not prevent another
+    independent Realization of the same Artifact from being attempted.
+
+    The command reports failure after all requested independent
+    Realizations have been attempted.
+    """
+
+    realizations = (
+        "artwork_default",
+        "shape_default",
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: realizations,
+    )
+
+    attempted: list[tuple[str, str]] = []
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        attempted.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+        if realization == "artwork_default":
+            raise cmd_build.BuildError(
+                "artwork_default build failed",
+            )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "smith-dog",
+    )
+
+    assert attempted == [
+        (
+            "smith-dog",
+            "artwork_default",
+        ),
+        (
+            "smith-dog",
+            "shape_default",
+        ),
+    ]
+
+    assert result.exit_code != 0
+    assert "artwork_default build failed" in result.output
+
+
+def test_build_artifact_reports_each_independent_realization_failure(
+    monkeypatch,
+) -> None:
+    """
+    Failures from multiple independent Realizations of one Artifact remain
+    visible after all requested Realizations have been attempted.
+    """
+
+    realizations = (
+        "artwork_default",
+        "shape_default",
+    )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: realizations,
+    )
+
+    attempted: list[str] = []
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        attempted.append(
+            realization,
+        )
+
+        raise cmd_build.BuildError(
+            f"{realization} build failed",
+        )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "smith-dog",
+    )
+
+    assert attempted == [
+        "artwork_default",
+        "shape_default",
+    ]
+
+    assert result.exit_code != 0
+    assert "artwork_default build failed" in result.output
+    assert "shape_default build failed" in result.output
+
+
+def test_build_artifacts_continue_after_realization_failure_in_prior_artifact(
+    monkeypatch,
+) -> None:
+    """
+    Failure of a Realization in one Artifact does not prevent independently
+    requested Realizations of a later Artifact from being attempted.
+    """
+
+    realizations_by_artifact = {
+        "smith-dog": (
+            "artwork_default",
+            "shape_default",
+        ),
+        "jones-dog": (
+            "artwork_default",
+            "shape_ornament",
+        ),
+    }
+
+    monkeypatch.setattr(
+        cmd_build,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: realizations_by_artifact[artifact_id],
+    )
+
+    attempted: list[tuple[str, str]] = []
+
+    def execute_artifact(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        event_sink=None,
+    ) -> None:
+        attempted.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+        if artifact_id == "smith-dog" and realization == "shape_default":
+            raise cmd_build.BuildError(
+                "smith-dog shape_default build failed",
+            )
+
+    monkeypatch.setattr(
+        cmd_build,
+        "execute_artifact_build",
+        execute_artifact,
+    )
+
+    result = _invoke(
+        "smith-dog",
+        "jones-dog",
+    )
+
+    assert attempted == [
+        ("smith-dog", "artwork_default"),
+        ("smith-dog", "shape_default"),
+        ("jones-dog", "artwork_default"),
+        ("jones-dog", "shape_ornament"),
+    ]
+
+    assert result.exit_code != 0
+    assert "smith-dog shape_default build failed" in result.output
