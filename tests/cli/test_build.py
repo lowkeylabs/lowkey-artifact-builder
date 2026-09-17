@@ -2534,3 +2534,38 @@ def test_rebuild_all_rejects_stage_execution() -> None:
 
     assert result.exit_code == 2
     assert "--rebuild-all cannot be combined with --stage." in result.output
+
+
+def test_rebuild_rejects_stage_execution() -> None:
+    """
+    Narrowed rebuild cannot be combined with independent stage execution.
+    """
+
+    result = _invoke(
+        "skippy",
+        "--stage",
+        "extrude",
+        "--rebuild",
+    )
+
+    assert result.exit_code == 2
+    assert "--rebuild cannot be combined with --stage." in result.output
+
+
+def test_realization_rebuild_rejects_stage_execution() -> None:
+    """
+    Realization-scoped rebuild cannot be combined with independent
+    stage execution.
+    """
+
+    result = _invoke(
+        "skippy",
+        "--realization",
+        "shape_ornament",
+        "--stage",
+        "extrude",
+        "--rebuild",
+    )
+
+    assert result.exit_code == 2
+    assert "--rebuild cannot be combined with --stage." in result.output

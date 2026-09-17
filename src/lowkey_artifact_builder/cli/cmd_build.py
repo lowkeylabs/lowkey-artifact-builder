@@ -155,6 +155,9 @@ def cli(
     if rebuild_all and stage is not None:
         raise click.UsageError("--rebuild-all cannot be combined with --stage.")
 
+    if rebuild and stage is not None:
+        raise click.UsageError("--rebuild cannot be combined with --stage.")
+
     if build_all and artifact_ids:
         raise click.UsageError("--build-all cannot be combined with Artifact IDs.")
 
