@@ -26,6 +26,7 @@ from lowkey_artifact_builder.model import build_model_registry
 from .config import (
     ConfigError,
     artifact_config_path,
+    get_realization_names,
     update_artifact_config,
     write_artifact_config,
 )
@@ -194,20 +195,35 @@ def configure_artifact(
     )
 
 
+def realization_3mf_filename(
+    realization_name: str,
+) -> str:
+    """
+    Return the Artifact-level convenience 3MF filename for a Realization.
+
+    Realization identity is preserved verbatim. A period is introduced only
+    to separate the Realization name from the 3MF extension.
+    """
+
+    return f"{realization_name}.3mf"
+
+
 def clean_artifact(
     artifact_id: str,
     *,
     project_root: Path | None = None,
 ) -> None:
     """
-    Remove derived products for an artifact.
+    Remove derived products for an Artifact.
 
-    Persistent artifact configuration and artifact-owned source inputs
+    Persistent Artifact configuration and Artifact-owned source inputs
     are preserved.
 
-    Complete generated model silos are removed for every model
-    discovered by the model subsystem. Unknown artifact-owned
-    directories are preserved.
+    Complete generated Model silos are removed for every Model discovered
+    by the Model subsystem. Artifact-level convenience 3MF copies belonging
+    to effective Realizations are also removed.
+
+    Unknown Artifact-owned files and directories are preserved.
     """
 
     root = project_root if project_root is not None else Path.cwd()
@@ -221,25 +237,36 @@ def clean_artifact(
         raise ConfigError(f"Artifact {artifact_id!r} is not defined.")
 
     artifact_dir = config_path.parent
+
+    realization_names = get_realization_names(
+        artifact_id,
+        project_root=root,
+    )
+
     registry = build_model_registry()
 
-    for model in registry.all_models():
-        generated_dir = artifact_dir / model.name
+    generated_paths = [artifact_dir / model.name for model in registry.all_models()]
 
-        if not generated_dir.exists():
+    generated_paths.extend(
+        artifact_dir / realization_3mf_filename(realization_name)
+        for realization_name in realization_names
+    )
+
+    for generated_path in generated_paths:
+        if not generated_path.exists():
             continue
 
         try:
-            if generated_dir.is_dir():
+            if generated_path.is_dir():
                 shutil.rmtree(
-                    generated_dir,
+                    generated_path,
                 )
             else:
-                generated_dir.unlink()
+                generated_path.unlink()
 
         except OSError as exc:
             raise ConfigError(
-                f"Cannot clean artifact {artifact_id!r}: {generated_dir}: {exc}"
+                f"Cannot clean artifact {artifact_id!r}: {generated_path}: {exc}"
             ) from exc
 
 
@@ -499,4 +526,5 @@ __all__ = [
     "discover_artifacts",
     "list_artifacts",
     "materialize_artifact",
+    "realization_3mf_filename",
 ]

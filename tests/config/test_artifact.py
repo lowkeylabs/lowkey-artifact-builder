@@ -14,6 +14,7 @@ import pytest
 from lowkey_artifact_builder.config import (
     ConfigError,
     artifact_config_path,
+    clean_artifact,
     configure_artifact,
     discover_artifacts,
     get_resolver,
@@ -929,3 +930,72 @@ def test_materialize_artifact_does_not_replace_materialized_workspace(
         "[realizations.custom]\n"
         'variant = "shape.ornament"\n'
     )
+
+
+# =========================================================
+# Artifact cleaning
+# =========================================================
+
+
+def test_clean_artifact_removes_published_3mf_convenience_copies(
+    tmp_path: Path,
+) -> None:
+    """
+    Cleaning an Artifact removes its derived convenience 3MF copies.
+
+    Persistent Artifact configuration and managed source state survive.
+    Convenience copies belonging to effective Realizations are derived build
+    materializations and must not survive after their authoritative generated
+    Products are cleaned.
+
+    Unrelated Artifact-owned 3MF files are preserved.
+    """
+
+    _preserve_original(
+        tmp_path,
+        "dog",
+    )
+
+    materialize_artifact(
+        "dog",
+        project_root=tmp_path,
+    )
+
+    configure_artifact(
+        "dog",
+        values={
+            "realizations": {
+                "christmas_ornament": {
+                    "variant": "shape.ornament",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    artifact_dir = tmp_path / "artifacts" / "dog"
+
+    published = (
+        artifact_dir / "artwork_default.3mf",
+        artifact_dir / "shape_default.3mf",
+        artifact_dir / "shape_ornament.3mf",
+        artifact_dir / "christmas_ornament.3mf",
+    )
+
+    for path in published:
+        path.write_bytes(b"published 3mf")
+
+    unrelated = artifact_dir / "reference.3mf"
+    unrelated.write_bytes(b"user-owned 3mf")
+
+    clean_artifact(
+        "dog",
+        project_root=tmp_path,
+    )
+
+    assert (artifact_dir / "artifact.toml").is_file()
+    assert (artifact_dir / "artifact.png").is_file()
+
+    assert all(not path.exists() for path in published)
+
+    assert unrelated.read_bytes() == b"user-owned 3mf"
