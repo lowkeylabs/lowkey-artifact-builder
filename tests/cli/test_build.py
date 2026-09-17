@@ -2519,3 +2519,54 @@ def test_rebuild_all_rebuilds_effective_realizations_across_project(
         ("beta", "shape_default"),
         ("beta", "shape_ornament"),
     ]
+
+
+def test_build_all_rejects_rebuild_all(
+    monkeypatch,
+) -> None:
+    """
+    --build-all and --rebuild-all are mutually exclusive.
+    """
+
+    executed = False
+    rebuilt = False
+
+    def execute_realizations(
+        artifact_ids: tuple[str, ...],
+        *,
+        dry_run: bool,
+    ) -> None:
+        nonlocal executed
+        executed = True
+
+    def rebuild_all(
+        artifact_ids: tuple[str, ...],
+    ) -> None:
+        nonlocal rebuilt
+        rebuilt = True
+
+    monkeypatch.setattr(
+        cmd_build,
+        "list_artifacts",
+        lambda *, project_root: ("alpha",),
+    )
+    monkeypatch.setattr(
+        cmd_build,
+        "_execute_realizations",
+        execute_realizations,
+    )
+    monkeypatch.setattr(
+        cmd_build,
+        "_rebuild_all",
+        rebuild_all,
+    )
+
+    result = _invoke(
+        "--build-all",
+        "--rebuild-all",
+    )
+
+    assert result.exit_code == 2
+    assert "--build-all and --rebuild-all cannot be used together." in result.output
+    assert executed is False
+    assert rebuilt is False

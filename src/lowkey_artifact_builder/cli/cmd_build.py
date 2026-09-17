@@ -160,6 +160,9 @@ def cli(
     this independent stage execution mode.
     """
 
+    if build_all and rebuild_all:
+        raise click.UsageError("--build-all and --rebuild-all cannot be used together.")
+
     if not artifact_ids and realization is None and not build_all and not rebuild_all:
         _display_build_status()
         return
