@@ -101,7 +101,22 @@ def _write_vector_manifest(
     first = path.parent / "color-1.svg"
     second = path.parent / "color-2.svg"
 
-    _write_svg(envelope)
+    envelope.write_text(
+        """
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="100"
+     height="100"
+     viewBox="0 0 100 100">
+  <path
+      d="M 20 10 L 60 10 L 60 40 L 20 40 Z"
+      fill="none"
+      stroke="#000000"
+      stroke-width="1" />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
     _write_svg(first)
     _write_svg(second)
 
@@ -281,11 +296,11 @@ def test_execute_applies_same_hole_geometry_to_every_artwork_layer(
     #     X: -20 .. 20
     #     Y: -15 .. 15
     #
-    # Artwork cardinal orientation defines position 0 as top/min_y.
+    # Artwork cardinal orientation defines position 0 as top/+Y.
     # A top Hole with radius 3 mm and edge distance 1 mm therefore
-    # has center Y = -15 + 3 + 1 = -11 mm.
+    # has center Y = 15 - 3 - 1 = 11 mm.
     assert first.center_x == pytest.approx(0.0)
-    assert first.center_y == pytest.approx(-11.0)
+    assert first.center_y == pytest.approx(11.0)
 
 
 @pytest.mark.slow

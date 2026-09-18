@@ -93,7 +93,22 @@ def _write_vector_manifest(
     first = path.parent / "color-1.svg"
     second = path.parent / "color-2.svg"
 
-    _write_svg(envelope)
+    envelope.write_text(
+        """
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="100"
+     height="100"
+     viewBox="0 0 100 100">
+  <path
+      d="M 20 10 L 60 10 L 60 40 L 20 40 Z"
+      fill="none"
+      stroke="#000000"
+      stroke-width="1" />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
     _write_svg(first)
     _write_svg(second)
 

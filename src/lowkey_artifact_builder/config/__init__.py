@@ -21,6 +21,7 @@ from lowkey_artifact_builder.config.artifact import (
     discover_artifacts,
     list_artifacts,
     materialize_artifact,
+    realization_3mf_filename,
 )
 from lowkey_artifact_builder.config.config import (
     ConfigError,
@@ -56,4 +57,5 @@ __all__ = [
     "update_artifact_config",
     "write_artifact_config",
     "materialize_artifact",
+    "realization_3mf_filename",
 ]

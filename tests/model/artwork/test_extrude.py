@@ -172,11 +172,11 @@ def _write_vector_manifest(
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 {registered_extent} {registered_extent}"
         >
-            <rect
-                x="0"
-                y="0"
-                width="{registered_extent}"
-                height="{registered_extent}"
+            <path
+                d="M 0 0 L {registered_extent} 0 L {registered_extent} {registered_extent} L 0 {registered_extent} Z"
+                fill="none"
+                stroke="#000000"
+                stroke-width="1"
             />
         </svg>
         """,
@@ -841,11 +841,11 @@ def test_extrude_sizes_and_centers_occupied_envelope_in_physical_space(
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 100 100"
         >
-            <rect
-                x="20"
-                y="30"
-                width="40"
-                height="20"
+            <path
+                d="M 20 30 L 60 30 L 60 50 L 20 50 Z"
+                fill="none"
+                stroke="#000000"
+                stroke-width="1"
             />
         </svg>
         """,
@@ -2337,19 +2337,6 @@ def test_base_and_loop_share_artwork_supporting_plane(
         ),
     )
 
-    monkeypatch.setattr(
-        extrude,
-        "query_all",
-        lambda _path, *, millimeters=False: {
-            "svg1": {
-                "x": 0.0,
-                "y": 0.0,
-                "width": 20.0,
-                "height": 20.0,
-            },
-        },
-    )
-
     extrude.execute(context)  # type: ignore[arg-type]
 
     base_bounds = _stl_bounds(
@@ -2457,19 +2444,6 @@ def test_base_and_loop_preserve_independent_raises_above_common_support(
             loop_position=0,
             loop_raise=5.0,
         ),
-    )
-
-    monkeypatch.setattr(
-        extrude,
-        "query_all",
-        lambda _path, *, millimeters=False: {
-            "svg1": {
-                "x": 0.0,
-                "y": 0.0,
-                "width": 20.0,
-                "height": 20.0,
-            },
-        },
     )
 
     extrude.execute(context)  # type: ignore[arg-type]

@@ -32,11 +32,12 @@ import shutil
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
+from lowkey_artifact_builder.config import (
+    realization_3mf_filename,
+)
+
 from .context import (
     _create_resolved_stage_context,
-)
-from .naming import (
-    realization_3mf_filename,
 )
 from .operation import (
     execute_artifact_stage as _execute_artifact_stage,

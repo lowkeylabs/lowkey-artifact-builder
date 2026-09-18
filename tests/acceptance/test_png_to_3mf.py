@@ -17,10 +17,11 @@ import pytest
 from click.testing import CliRunner
 
 from lowkey_artifact_builder.cli._main import cli
+from lowkey_artifact_builder.config import materialize_artifact
 from lowkey_artifact_builder.engine import (
     create_build_plans,
 )
-from lowkey_artifact_builder.formats.threemf import CORE_NS
+from lowkey_artifact_builder.formats.threemf import CORE_NS, component_name
 from lowkey_artifact_builder.model.models.artwork.hole import (
     create_hole_geometry,
 )
@@ -90,6 +91,15 @@ def test_png_builds_complete_3mf(
     )
 
     # -----------------------------------------------------
+    # Materialize Artifact workspace from preserved original
+    # -----------------------------------------------------
+
+    materialize_artifact(
+        "nydeli",
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
     # Verify configuration can be inspected
     # -----------------------------------------------------
 
@@ -152,8 +162,8 @@ def test_png_builds_complete_3mf(
         [
             "build",
             "nydeli",
-            "--variant",
-            "artwork.default",
+            "--realization",
+            "artwork_default",
         ],
     )
 
@@ -250,7 +260,14 @@ def test_png_builds_complete_3mf(
 
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
 
-    expected_names = {f"nydeli-{Path(product['path']).stem}" for product in products}
+    expected_names = {
+        component_name(
+            "nydeli",
+            Path(product["path"]).stem,
+            product["printer_color"]["name"],
+        )
+        for product in products
+    }
 
     assert set(objects_by_name) == expected_names
 
@@ -269,9 +286,13 @@ def test_png_builds_complete_3mf(
         semantic_name = printer_color["name"]
         rgb = printer_color["rgb"]
 
-        component_name = f"nydeli-{Path(product['path']).stem}"
+        object_name = component_name(
+            "nydeli",
+            Path(product["path"]).stem,
+            printer_color["name"],
+        )
 
-        object_ = objects_by_name[component_name]
+        object_ = objects_by_name[object_name]
 
         material = materials_by_id[object_.get("pid")]
 
@@ -344,6 +365,15 @@ def test_png_artwork_with_loop_builds_complete_3mf(
     )
 
     # -----------------------------------------------------
+    # Materialize Artifact workspace from preserved original
+    # -----------------------------------------------------
+
+    materialize_artifact(
+        "nydeli",
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
     # Enable Loop for artwork_default
     # -----------------------------------------------------
 
@@ -395,8 +425,8 @@ loop_position = 0
         [
             "build",
             "nydeli",
-            "--variant",
-            "artwork.default",
+            "--realization",
+            "artwork_default",
         ],
     )
 
@@ -523,7 +553,11 @@ loop_position = 0
         f".//{{{CORE_NS}}}basematerials",
     )
 
-    loop_name = "nydeli-loop"
+    loop_name = component_name(
+        "nydeli",
+        "loop",
+        printer_color["name"],
+    )
 
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
 
@@ -604,6 +638,15 @@ def test_png_artwork_with_base_builds_complete_3mf(
     )
 
     # -----------------------------------------------------
+    # Materialize Artifact workspace from preserved original
+    # -----------------------------------------------------
+
+    materialize_artifact(
+        "nydeli",
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
     # Enable Base on the ordinary artwork_default Realization
     # -----------------------------------------------------
 
@@ -653,8 +696,8 @@ artwork_base_color = "test-black"
         [
             "build",
             "nydeli",
-            "--variant",
-            "artwork.default",
+            "--realization",
+            "artwork_default",
         ],
     )
 
@@ -756,9 +799,15 @@ artwork_base_color = "test-black"
 
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
 
-    assert "nydeli-base" in objects_by_name
+    base_name = component_name(
+        "nydeli",
+        "base",
+        base_product["printer_color"]["name"],
+    )
 
-    base_object = objects_by_name["nydeli-base"]
+    assert base_name in objects_by_name
+
+    base_object = objects_by_name[base_name]
 
     materials_by_id = {material.get("id"): material for material in materials}
 
@@ -833,6 +882,15 @@ def test_png_artwork_with_base_and_loop_builds_complete_3mf(
     )
 
     # -----------------------------------------------------
+    # Materialize Artifact workspace from preserved original
+    # -----------------------------------------------------
+
+    materialize_artifact(
+        "nydeli",
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
     # Enable Base and Loop on ordinary artwork_default
     # -----------------------------------------------------
 
@@ -890,8 +948,8 @@ loop_raise = 3.0
         [
             "build",
             "nydeli",
-            "--variant",
-            "artwork.default",
+            "--realization",
+            "artwork_default",
         ],
     )
 
@@ -1039,7 +1097,14 @@ loop_raise = 3.0
 
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
 
-    expected_names = {f"nydeli-{Path(product['path']).stem}" for product in products}
+    expected_names = {
+        component_name(
+            "nydeli",
+            Path(product["path"]).stem,
+            product["printer_color"]["name"],
+        )
+        for product in products
+    }
 
     assert set(objects_by_name) == expected_names
 
@@ -1055,9 +1120,13 @@ loop_raise = 3.0
         semantic_name = printer_color["name"]
         rgb = printer_color["rgb"]
 
-        component_name = f"nydeli-{Path(product['path']).stem}"
+        object_name = component_name(
+            "nydeli",
+            Path(product["path"]).stem,
+            printer_color["name"],
+        )
 
-        object_ = objects_by_name[component_name]
+        object_ = objects_by_name[object_name]
 
         material = materials_by_id[object_.get("pid")]
 
@@ -1133,6 +1202,15 @@ def test_png_artwork_with_hole_builds_complete_3mf(
     )
 
     # -----------------------------------------------------
+    # Materialize Artifact workspace from preserved original
+    # -----------------------------------------------------
+
+    materialize_artifact(
+        "nydeli",
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
     # Enable Base, Outer Ridge, and Hole
     # -----------------------------------------------------
 
@@ -1194,8 +1272,8 @@ artwork_hole_edge_distance = 1.0
         [
             "build",
             "nydeli",
-            "--variant",
-            "artwork.default",
+            "--realization",
+            "artwork_default",
         ],
     )
 
@@ -1313,13 +1391,40 @@ artwork_hole_edge_distance = 1.0
 
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
 
-    expected_names = {f"nydeli-{Path(product['path']).stem}" for product in products}
+    expected_names = {
+        component_name(
+            "nydeli",
+            Path(product["path"]).stem,
+            product["printer_color"]["name"],
+        )
+        for product in products
+    }
 
     assert set(objects_by_name) == expected_names
 
-    assert "nydeli-base" in objects_by_name
-    assert "nydeli-outer-ridge" in objects_by_name
-    assert "nydeli-hole" not in objects_by_name
+    base_product = next(product for product in products if product["path"] == "base.stl")
+
+    outer_ridge_product = next(
+        product for product in products if product["path"] == "outer-ridge.stl"
+    )
+
+    base_name = component_name(
+        "nydeli",
+        "base",
+        base_product["printer_color"]["name"],
+    )
+
+    outer_ridge_name = component_name(
+        "nydeli",
+        "outer-ridge",
+        outer_ridge_product["printer_color"]["name"],
+    )
+
+    assert base_name in objects_by_name
+    assert outer_ridge_name in objects_by_name
+
+    # Hole remains subtractive geometry and therefore has no packaged object.
+    assert all(not name.startswith("hole - ") for name in objects_by_name if name is not None)
 
     assert len(materials) == len(products)
 
@@ -1335,9 +1440,13 @@ artwork_hole_edge_distance = 1.0
         semantic_name = printer_color["name"]
         rgb = printer_color["rgb"]
 
-        component_name = f"nydeli-{Path(product['path']).stem}"
+        object_name = component_name(
+            "nydeli",
+            Path(product["path"]).stem,
+            printer_color["name"],
+        )
 
-        object_ = objects_by_name[component_name]
+        object_ = objects_by_name[object_name]
 
         material = materials_by_id[object_.get("pid")]
 
@@ -1358,12 +1467,6 @@ artwork_hole_edge_distance = 1.0
     # -----------------------------------------------------
     # Verify configured Feature colors remain authoritative
     # -----------------------------------------------------
-
-    base_product = next(product for product in products if product["path"] == "base.stl")
-
-    outer_ridge_product = next(
-        product for product in products if product["path"] == "outer-ridge.stl"
-    )
 
     assert base_product["printer_color"]["name"] == "test-black"
 
@@ -1423,6 +1526,15 @@ def test_png_artwork_with_hole_preserves_through_hole_in_packaged_geometry(
         f"Artifact configuration failed:\n{config_result.output}\n{config_result.exception!r}"
     )
 
+    # -----------------------------------------------------
+    # Materialize Artifact workspace from preserved original
+    # -----------------------------------------------------
+
+    materialize_artifact(
+        "nydeli",
+        project_root=project_root,
+    )
+
     artifact_config = project_root / "artifacts" / "nydeli" / "artifact.toml"
 
     assert artifact_config.is_file()
@@ -1466,8 +1578,8 @@ artwork_hole_edge_distance = 1.0
         [
             "build",
             "nydeli",
-            "--variant",
-            "artwork.default",
+            "--realization",
+            "artwork_default",
         ],
     )
 

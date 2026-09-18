@@ -113,11 +113,11 @@ def _write_vector_manifest(
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 {registered_extent} {registered_extent}"
         >
-            <rect
-                x="0"
-                y="0"
-                width="{registered_extent}"
-                height="{registered_extent}"
+            <path
+                d="M 0 0 L {registered_extent} 0 L {registered_extent} {registered_extent} L 0 {registered_extent} Z"
+                fill="none"
+                stroke="#000000"
+                stroke-width="1"
             />
         </svg>
         """,

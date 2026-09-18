@@ -23,11 +23,6 @@ import click
 from lowkey_artifact_builder.cli.display import (
     console,
 )
-from lowkey_artifact_builder.config import (
-    ConfigError,
-    configure_artifact,
-    load_artifact_config,
-)
 
 # =========================================================
 # CLI
@@ -404,45 +399,6 @@ def _create_artifact(
 
 
 # =========================================================
-# Legacy materialization
-# =========================================================
-
-
-def _create_artifact_from_source(
-    artifact_id: str,
-    *,
-    source_path: Path,
-    project_root: Path,
-) -> None:
-    """
-    Persist one Artifact from an already resolved PNG source.
-
-    This function is no longer part of the CREATE execution path. Its
-    materialization behavior is retained temporarily for migration to BUILD.
-    """
-
-    try:
-        configure_artifact(
-            artifact_id,
-            values={
-                "original": str(Path("originals") / source_path.name),
-            },
-            input_files={
-                "artwork": source_path,
-            },
-            project_root=project_root,
-        )
-
-    except ConfigError as exc:
-        raise click.ClickException(str(exc)) from exc
-
-    _display_artifact(
-        artifact_id,
-        project_root=project_root,
-    )
-
-
-# =========================================================
 # Source
 # =========================================================
 
@@ -570,35 +526,6 @@ def _sha256(
             digest.update(chunk)
 
     return digest.hexdigest()
-
-
-# =========================================================
-# Legacy Artifact display
-# =========================================================
-
-
-def _display_artifact(
-    artifact_id: str,
-    *,
-    project_root: Path,
-) -> None:
-    """
-    Display a newly materialized Artifact definition.
-
-    This function is retained temporarily with the legacy materialization
-    helper and is no longer part of the CREATE execution path.
-    """
-
-    existing = load_artifact_config(
-        artifact_id,
-        project_root=project_root,
-    )
-
-    if not existing:
-        raise click.ClickException(f"Artifact {artifact_id!r} is not defined.")
-
-    console.print()
-    console.print(f"[bold]Created artifact:[/bold] {artifact_id}")
 
 
 if __name__ == "__main__":
