@@ -1634,16 +1634,16 @@ physical component and its semantic printing-color identity.
 Component names use the form:
 
 ```text
-<artifact-id>-<component-role>-<color>
+<component-role> - <color>
 ```
 
 For example:
 
 ```text
-ornament-base-cold-white
-ornament-ridge-red
-ornament-artwork-black
-ornament-artwork-gold
+base - cold-white
+ridge - red
+artwork - black
+artwork - gold
 ```
 
 The packaged component name does not depend on an intermediate component
@@ -1851,9 +1851,8 @@ A conforming initial Shape implementation satisfies the following:
 57. Required color distinctions remain representable through
     dimensionalization and packaging.
 
-58. Packaged 3MF component names preserve artifact identity, semantic
-    component role, and semantic printing-color identity without relying
-    on intermediate component ordinals.
+58. Packaged 3MF component names preserve semantic component role and semantic 
+    printing-color identity without relying on intermediate component ordinals.
 
 59. Packaging occurs after physical dimensionalization.
 
