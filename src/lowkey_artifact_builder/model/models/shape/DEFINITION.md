@@ -968,7 +968,7 @@ Shape does not consume an Artwork source PNG and does not require a
 completed standalone Artwork 3MF.
 
 Shape consumes registered Artwork produced as an intermediate product by
-another artifact using the `artwork` model.
+the `artwork` model.
 
 The initial Shape model consumes the registered vector representation
 defined by the Artwork model.
