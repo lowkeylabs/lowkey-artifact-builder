@@ -22,7 +22,10 @@ from lowkey_artifact_builder.engine import (
     create_build_plans,
     execute_dependency_build,
 )
-from lowkey_artifact_builder.formats.threemf import CORE_NS
+from lowkey_artifact_builder.formats.threemf import (
+    CORE_NS,
+    component_name,
+)
 
 
 @pytest.mark.slow
@@ -124,8 +127,8 @@ def test_shape_ornament_variant_builds_complete_3mf(
 
     object_names = {object_.get("name") for object_ in objects}
 
-    assert "ornament-shape-base-white" in object_names
-    assert "ornament-shape-ridge-white" in object_names
+    assert component_name("ornament-shape", "base", "white") in object_names
+    assert component_name("ornament-shape", "ridge", "white") in object_names
 
 
 @pytest.mark.slow
@@ -346,11 +349,11 @@ def test_shape_canonical_realizations_have_distinct_persistent_product_identity(
         ornament_artifact,
     )
 
-    assert "multi-variant-shape-base-white" in default_names
-    assert "multi-variant-shape-ridge-white" not in default_names
+    assert component_name("multi-variant-shape", "base", "white") in default_names
+    assert component_name("multi-variant-shape", "ridge", "white") not in default_names
 
-    assert "multi-variant-shape-base-white" in ornament_names
-    assert "multi-variant-shape-ridge-white" in ornament_names
+    assert component_name("multi-variant-shape", "base", "white") in ornament_names
+    assert component_name("multi-variant-shape", "ridge", "white") in ornament_names
 
 
 @pytest.mark.slow
@@ -672,8 +675,8 @@ def test_shape_default_realization_preserves_default_manufacturing(
     # Verify default manufacturing behavior
     # -----------------------------------------------------
 
-    assert "default-shape-base-white" in object_names
-    assert "default-shape-ridge-white" not in object_names
+    assert component_name("default-shape", "base", "white") in object_names
+    assert component_name("default-shape", "ridge", "white") not in object_names
 
 
 def test_show_variant_and_build_realization_use_same_configuration(

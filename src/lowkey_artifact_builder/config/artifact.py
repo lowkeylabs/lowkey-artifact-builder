@@ -438,20 +438,26 @@ def materialize_artifact(
     project_root: Path | None = None,
 ) -> None:
     """
-    Materialize baseline workspace state for one ingested Artifact.
+    Materialize baseline workspace state for one Artifact.
 
-    The canonical preserved original under ``originals/`` establishes
-    Artifact identity and is the authoritative source for materialization.
+    A canonical preserved original under ``originals/`` establishes an
+    Artifact entering through the Artwork ingestion workflow and is the
+    authoritative source for Artwork materialization.
 
-    If the Artifact workspace is absent, materialization creates:
+    Persistent Artifact configuration may independently establish an
+    Artifact whose inputs do not require Artifact-owned Artwork. Such an
+    Artifact requires no Artwork materialization and is left unchanged.
+
+    If an ingested Artifact workspace is absent, materialization creates:
 
         artifacts/<artifact_id>/artifact.toml
         artifacts/<artifact_id>/artifact.png
 
     An already-materialized Artifact is left unchanged.
 
-    A partially existing Artifact workspace is inconsistent baseline state
-    and is rejected rather than silently repaired or replaced.
+    A partially existing ingested Artifact workspace is inconsistent
+    baseline state and is rejected rather than silently repaired or
+    replaced.
 
     Generated Model, Realization, Stage, and Product state is outside this
     operation and remains the responsibility of the planning and execution
@@ -462,9 +468,6 @@ def materialize_artifact(
 
     original_path = root / _ORIGINALS_DIRECTORY / f"{artifact_id}{_ORIGINAL_SUFFIX}"
 
-    if not original_path.is_file():
-        raise ConfigError(f"Artifact {artifact_id!r} has no preserved original.")
-
     config_path = artifact_config_path(
         artifact_id,
         project_root=root,
@@ -472,6 +475,15 @@ def materialize_artifact(
 
     artifact_dir = config_path.parent
     artwork_path = artifact_dir / _ARTWORK_FILENAME
+
+    # Persistent configuration independently establishes an Artifact when
+    # there is no preserved Artwork original. Nothing needs to be
+    # materialized at the Artifact-owned Artwork boundary in that case.
+    if config_path.is_file() and not original_path.is_file():
+        return
+
+    if not original_path.is_file():
+        raise ConfigError(f"Artifact {artifact_id!r} has no preserved original.")
 
     if _artifact_is_materialized(
         artifact_id,

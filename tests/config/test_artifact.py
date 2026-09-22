@@ -21,6 +21,7 @@ from lowkey_artifact_builder.config import (
     list_artifacts,
     load_artifact_config,
     materialize_artifact,
+    write_artifact_config,
 )
 
 # =========================================================
@@ -999,3 +1000,57 @@ def test_clean_artifact_removes_published_3mf_convenience_copies(
     assert all(not path.exists() for path in published)
 
     assert unrelated.read_bytes() == b"user-owned 3mf"
+
+
+def test_materialize_artifact_accepts_configured_artifact_without_preserved_original(
+    tmp_path: Path,
+) -> None:
+    """
+    An already-configured Artifact does not require a preserved Artwork original.
+
+    Preserved originals establish Artifacts entering through the Artwork
+    ingestion workflow. Persistent Artifact configuration may independently
+    establish an Artifact whose inputs are supplied through Product
+    dependencies rather than Artifact-owned Artwork.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "product_dependencies": {
+                "manifest": {
+                    "model": "artwork",
+                    "stage": "vector",
+                    "product": "manifest",
+                    "artifact": "artwork-example",
+                    "realization": "artwork_default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    config_path = artifact_config_path(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    before = config_path.read_text(
+        encoding="utf-8",
+    )
+
+    materialize_artifact(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert (
+        config_path.read_text(
+            encoding="utf-8",
+        )
+        == before
+    )
+
+    assert not (tmp_path / "originals" / "shape-example.png").exists()
+
+    assert not (tmp_path / "artifacts" / "shape-example" / "artifact.png").exists()

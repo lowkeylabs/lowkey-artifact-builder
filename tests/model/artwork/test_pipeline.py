@@ -31,6 +31,7 @@ from lowkey_artifact_builder.engine import (
 )
 from lowkey_artifact_builder.formats.threemf import (
     CORE_NS,
+    component_name,
     load_stl,
 )
 
@@ -856,7 +857,12 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
     assert len(build_items) == len(extrude_products)
 
     expected_component_names = {
-        f"example-{Path(product['path']).stem}" for product in extrude_products
+        component_name(
+            "example",
+            Path(product["path"]).stem,
+            product["printer_color"]["name"],
+        )
+        for product in extrude_products
     }
 
     assert {object_element.get("name") for object_element in objects} == expected_component_names
@@ -1319,10 +1325,14 @@ def test_artwork_pipeline_packages_participating_outer_ridge(
         namespace,
     )
 
+    ridge_name = component_name(
+        "example",
+        "outer-ridge",
+        ridge_products[0]["printer_color"]["name"],
+    )
+
     ridge_objects = [
-        object_element
-        for object_element in objects
-        if object_element.get("name") == "example-outer-ridge"
+        object_element for object_element in objects if object_element.get("name") == ridge_name
     ]
 
     assert len(ridge_objects) == 1

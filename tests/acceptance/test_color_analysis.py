@@ -14,6 +14,7 @@ import pytest
 from click.testing import CliRunner
 
 from lowkey_artifact_builder.cli._main import cli
+from lowkey_artifact_builder.config import materialize_artifact
 from lowkey_artifact_builder.engine import create_build_plans
 
 # =========================================================
@@ -75,6 +76,15 @@ def test_colors_realizes_never_built_registered_artwork_without_standalone_build
 
     assert config_result.exit_code == 0, (
         f"Artifact configuration failed:\n{config_result.output}\n{config_result.exception!r}"
+    )
+
+    # -----------------------------------------------------
+    # Materialize Artifact workspace
+    # -----------------------------------------------------
+
+    materialize_artifact(
+        "nydeli",
+        project_root=project_root,
     )
 
     # -----------------------------------------------------
@@ -213,6 +223,15 @@ def test_colors_rebuilds_stale_registered_artwork_without_standalone_build(
 
     assert config_result.exit_code == 0, (
         f"Artifact configuration failed:\n{config_result.output}\n{config_result.exception!r}"
+    )
+
+    # -----------------------------------------------------
+    # Materialize Artifact workspace
+    # -----------------------------------------------------
+
+    materialize_artifact(
+        "nydeli",
+        project_root=project_root,
     )
 
     # -----------------------------------------------------

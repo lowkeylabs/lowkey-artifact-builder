@@ -18,6 +18,7 @@ from click.testing import CliRunner
 
 from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.config import (
+    materialize_artifact,
     update_artifact_config,
     write_artifact_config,
 )
@@ -25,7 +26,50 @@ from lowkey_artifact_builder.engine import (
     create_build_plans,
     execute_dependency_build,
 )
-from lowkey_artifact_builder.formats.threemf import CORE_NS
+from lowkey_artifact_builder.formats.threemf import (
+    CORE_NS,
+    component_name,
+)
+
+
+def _materialize_artwork_source(
+    artifact_id: str,
+    *,
+    project_root: Path,
+) -> None:
+    """
+    Establish one Artwork-producing Artifact from the acceptance PNG.
+
+    The known-good acceptance artwork is preserved at the canonical
+    ingestion boundary and then materialized into the Artifact workspace
+    before direct engine planning or dependency execution.
+    """
+
+    repository_root = Path(__file__).resolve().parents[2]
+
+    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
+
+    assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
+
+    originals_directory = project_root / "originals"
+
+    originals_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    original = originals_directory / f"{artifact_id}.png"
+
+    shutil.copy2(
+        fixture_source,
+        original,
+    )
+
+    materialize_artifact(
+        artifact_id,
+        project_root=project_root,
+    )
+
 
 # =========================================================
 # Acceptance tests
@@ -188,7 +232,7 @@ def test_shape_builds_complete_3mf_without_artwork(
 
     base_object = objects[0]
 
-    assert base_object.get("name") == "testshape-base-white"
+    assert base_object.get("name") == component_name("testshape", "base", "white")
 
     assert len(materials) == 1
 
@@ -346,9 +390,9 @@ def test_shape_ridge_preserves_distinct_component_colors(
 
     materials_by_id = {material.get("id"): material for material in materials}
 
-    base_object = objects_by_name["colored-shape-base-test-white"]
+    base_object = objects_by_name[component_name("colored-shape", "base", "test-white")]
 
-    ridge_object = objects_by_name["colored-shape-ridge-test-red"]
+    ridge_object = objects_by_name[component_name("colored-shape", "ridge", "test-red")]
 
     assert base_object is not ridge_object
 
@@ -521,7 +565,13 @@ def test_shape_component_colors_do_not_change_geometry(
             if name is None:
                 continue
 
-            component = "base" if "-base-" in name else "ridge" if "-ridge-" in name else None
+            component = (
+                "base"
+                if name.startswith("base - ")
+                else "ridge"
+                if name.startswith("ridge - ")
+                else None
+            )
 
             if component is None:
                 continue
@@ -603,40 +653,11 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
     )
 
     # -----------------------------------------------------
-    # Create canonical Artwork input
+    # Create canonical Artwork producer
     # -----------------------------------------------------
 
-    repository_root = Path(__file__).resolve().parents[2]
-
-    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
-
-    assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
-
-    artwork_directory = project_root / "artifacts" / "source-artwork"
-
-    artwork_directory.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    artwork_input = artwork_directory / "artifact.png"
-
-    shutil.copy2(
-        fixture_source,
-        artwork_input,
-    )
-
-    # -----------------------------------------------------
-    # Configure reusable Artwork producer
-    # -----------------------------------------------------
-
-    write_artifact_config(
+    _materialize_artwork_source(
         "source-artwork",
-        {
-            "source": str(
-                artwork_input,
-            ),
-        },
         project_root=project_root,
     )
 
@@ -795,19 +816,25 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
     # Verify structural and incorporated component identity
     # -----------------------------------------------------
 
-    assert "artwork-shape-base-test-white" in objects_by_name
+    assert component_name("artwork-shape", "base", "test-white") in objects_by_name
 
     artwork_objects = {
         name: object_
         for name, object_ in objects_by_name.items()
         if name is not None
         and name.startswith(
-            "artwork-shape-artwork-",
+            "artwork-",
         )
     }
 
     expected_artwork_object_names = {
-        (f"artwork-shape-artwork-{product['index']}-{product['printer_color']['name']}")
+        (
+            component_name(
+                "artwork-shape",
+                f"artwork-{product['index']}",
+                product["printer_color"]["name"],
+            )
+        )
         for product in artwork_products
     }
 
@@ -819,7 +846,7 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
 
     materials_by_id = {material.get("id"): material for material in materials}
 
-    base_object = objects_by_name["artwork-shape-base-test-white"]
+    base_object = objects_by_name[component_name("artwork-shape", "base", "test-white")]
 
     base_material = materials_by_id[base_object.get("pid")]
 
@@ -844,7 +871,13 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
             f"#{expected_color['red']:02X}{expected_color['green']:02X}{expected_color['blue']:02X}"
         )
 
-        artwork_object = artwork_objects[f"artwork-shape-artwork-{index}-{expected_name}"]
+        artwork_object = artwork_objects[
+            component_name(
+                "artwork-shape",
+                f"artwork-{index}",
+                expected_name,
+            )
+        ]
 
         artwork_material = materials_by_id[artwork_object.get("pid")]
 
@@ -878,40 +911,11 @@ def test_shape_physical_change_reuses_registered_artwork(
     )
 
     # -----------------------------------------------------
-    # Create canonical Artwork input
+    # Create canonical Artwork producer
     # -----------------------------------------------------
 
-    repository_root = Path(__file__).resolve().parents[2]
-
-    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
-
-    assert fixture_source.is_file()
-
-    artwork_directory = project_root / "artifacts" / "source-artwork"
-
-    artwork_directory.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    artwork_input = artwork_directory / "artifact.png"
-
-    shutil.copy2(
-        fixture_source,
-        artwork_input,
-    )
-
-    # -----------------------------------------------------
-    # Configure reusable Artwork producer
-    # -----------------------------------------------------
-
-    write_artifact_config(
+    _materialize_artwork_source(
         "source-artwork",
-        {
-            "source": str(
-                artwork_input,
-            ),
-        },
         project_root=project_root,
     )
 
@@ -1028,8 +1032,6 @@ def test_shape_physical_change_reuses_registered_artwork(
 
     assert resized_component_bytes == initial_component_bytes
 
-    # Standalone Artwork manufacturing remains unnecessary.
-
     assert not (artwork_root / "40-extrude" / "products.json").exists()
 
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
@@ -1072,41 +1074,8 @@ def test_registered_artwork_is_reused_across_different_shapes(
         project_root,
     )
 
-    # -----------------------------------------------------
-    # Create canonical Artwork input
-    # -----------------------------------------------------
-
-    repository_root = Path(__file__).resolve().parents[2]
-
-    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
-
-    assert fixture_source.is_file()
-
-    artwork_directory = project_root / "artifacts" / "source-artwork"
-
-    artwork_directory.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    artwork_input = artwork_directory / "artifact.png"
-
-    shutil.copy2(
-        fixture_source,
-        artwork_input,
-    )
-
-    # -----------------------------------------------------
-    # Configure reusable Artwork producer
-    # -----------------------------------------------------
-
-    write_artifact_config(
+    _materialize_artwork_source(
         "source-artwork",
-        {
-            "source": str(
-                artwork_input,
-            ),
-        },
         project_root=project_root,
     )
 
@@ -1119,10 +1088,6 @@ def test_registered_artwork_is_reused_across_different_shapes(
             "realization": "artwork_default",
         },
     }
-
-    # -----------------------------------------------------
-    # Configure first Shape consumer
-    # -----------------------------------------------------
 
     write_artifact_config(
         "circle-shape",
@@ -1137,10 +1102,6 @@ def test_registered_artwork_is_reused_across_different_shapes(
         },
         project_root=project_root,
     )
-
-    # -----------------------------------------------------
-    # Build first Shape
-    # -----------------------------------------------------
 
     circle_plans = create_build_plans(
         "circle-shape",
@@ -1174,15 +1135,9 @@ def test_registered_artwork_is_reused_across_different_shapes(
 
     assert initial_component_bytes
 
-    # Shape consumption stops at registered Artwork.
-
     assert not (artwork_root / "40-extrude" / "products.json").exists()
 
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
-
-    # -----------------------------------------------------
-    # Configure physically different Shape consumer
-    # -----------------------------------------------------
 
     write_artifact_config(
         "polygon-shape",
@@ -1198,10 +1153,6 @@ def test_registered_artwork_is_reused_across_different_shapes(
         },
         project_root=project_root,
     )
-
-    # -----------------------------------------------------
-    # Build second Shape
-    # -----------------------------------------------------
 
     polygon_plans = create_build_plans(
         "polygon-shape",
@@ -1221,10 +1172,6 @@ def test_registered_artwork_is_reused_across_different_shapes(
         polygon_plan,
     )
 
-    # -----------------------------------------------------
-    # Verify registered Artwork was reused unchanged
-    # -----------------------------------------------------
-
     assert artwork_vector_manifest.read_bytes() == initial_vector_bytes
 
     reused_component_bytes = {
@@ -1233,15 +1180,9 @@ def test_registered_artwork_is_reused_across_different_shapes(
 
     assert reused_component_bytes == initial_component_bytes
 
-    # Neither consumer requires standalone Artwork manufacturing.
-
     assert not (artwork_root / "40-extrude" / "products.json").exists()
 
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
-
-    # -----------------------------------------------------
-    # Verify both Shape artifacts exist
-    # -----------------------------------------------------
 
     for plan in (
         circle_plan,
@@ -1281,41 +1222,8 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
         project_root,
     )
 
-    # -----------------------------------------------------
-    # Create canonical Artwork input
-    # -----------------------------------------------------
-
-    repository_root = Path(__file__).resolve().parents[2]
-
-    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
-
-    assert fixture_source.is_file()
-
-    artwork_directory = project_root / "artifacts" / "source-artwork"
-
-    artwork_directory.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    artwork_input = artwork_directory / "artifact.png"
-
-    shutil.copy2(
-        fixture_source,
-        artwork_input,
-    )
-
-    # -----------------------------------------------------
-    # Configure reusable Artwork producer
-    # -----------------------------------------------------
-
-    write_artifact_config(
+    _materialize_artwork_source(
         "source-artwork",
-        {
-            "source": str(
-                artwork_input,
-            ),
-        },
         project_root=project_root,
     )
 
@@ -1328,10 +1236,6 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
             "realization": "artwork_default",
         },
     }
-
-    # -----------------------------------------------------
-    # Configure two different Shape consumers
-    # -----------------------------------------------------
 
     write_artifact_config(
         "circle-shape",
@@ -1362,10 +1266,6 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
         project_root=project_root,
     )
 
-    # -----------------------------------------------------
-    # Build first Shape and realize registered Artwork
-    # -----------------------------------------------------
-
     circle_plans = create_build_plans(
         "circle-shape",
         model_name="shape",
@@ -1387,14 +1287,8 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
     artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "artwork_default"
 
     assert (artwork_root / "10-prepare" / "trace.svg").is_file()
-
     assert (artwork_root / "20-raster" / "products.json").is_file()
-
     assert (artwork_root / "30-vector" / "products.json").is_file()
-
-    # -----------------------------------------------------
-    # Observe second Shape build
-    # -----------------------------------------------------
 
     events = []
 
@@ -1417,10 +1311,6 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
         event_sink=events.append,
     )
 
-    # -----------------------------------------------------
-    # Registered Artwork is not reexecuted
-    # -----------------------------------------------------
-
     artwork_started = tuple(
         event.stage_name
         for event in events
@@ -1430,10 +1320,6 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
     )
 
     assert artwork_started == ()
-
-    # -----------------------------------------------------
-    # Second Shape manufacturing does execute
-    # -----------------------------------------------------
 
     shape_started = tuple(
         event.stage_name
@@ -1449,10 +1335,6 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
         "extrude",
         "package",
     )
-
-    # -----------------------------------------------------
-    # Standalone Artwork manufacturing remains unnecessary
-    # -----------------------------------------------------
 
     assert not (artwork_root / "40-extrude" / "products.json").exists()
 
@@ -1478,41 +1360,8 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
         project_root,
     )
 
-    # -----------------------------------------------------
-    # Create canonical Artwork input
-    # -----------------------------------------------------
-
-    repository_root = Path(__file__).resolve().parents[2]
-
-    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
-
-    assert fixture_source.is_file()
-
-    artwork_directory = project_root / "artifacts" / "source-artwork"
-
-    artwork_directory.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    artwork_input = artwork_directory / "artifact.png"
-
-    shutil.copy2(
-        fixture_source,
-        artwork_input,
-    )
-
-    # -----------------------------------------------------
-    # Configure reusable Artwork producer
-    # -----------------------------------------------------
-
-    write_artifact_config(
+    _materialize_artwork_source(
         "source-artwork",
-        {
-            "source": str(
-                artwork_input,
-            ),
-        },
         project_root=project_root,
     )
 
@@ -1525,10 +1374,6 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
             "realization": "artwork_default",
         },
     }
-
-    # -----------------------------------------------------
-    # Configure first Shape consumer
-    # -----------------------------------------------------
 
     write_artifact_config(
         "initial-shape",
@@ -1552,10 +1397,6 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
         project_root=project_root,
     )
 
-    # -----------------------------------------------------
-    # Realize registered Artwork through first Shape
-    # -----------------------------------------------------
-
     initial_plans = create_build_plans(
         "initial-shape",
         model_name="shape",
@@ -1577,18 +1418,11 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
     artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "artwork_default"
 
     assert (artwork_root / "10-prepare" / "trace.svg").is_file()
-
     assert (artwork_root / "20-raster" / "products.json").is_file()
-
     assert (artwork_root / "30-vector" / "products.json").is_file()
 
     assert not (artwork_root / "40-extrude" / "products.json").exists()
-
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
-
-    # -----------------------------------------------------
-    # Configure Shape with different downstream policy
-    # -----------------------------------------------------
 
     write_artifact_config(
         "changed-shape",
@@ -1612,10 +1446,6 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
         project_root=project_root,
     )
 
-    # -----------------------------------------------------
-    # Observe second Shape build
-    # -----------------------------------------------------
-
     events = []
 
     changed_plans = create_build_plans(
@@ -1637,10 +1467,6 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
         event_sink=events.append,
     )
 
-    # -----------------------------------------------------
-    # Registered Artwork does not reexecute
-    # -----------------------------------------------------
-
     artwork_started = tuple(
         event.stage_name
         for event in events
@@ -1650,10 +1476,6 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
     )
 
     assert artwork_started == ()
-
-    # -----------------------------------------------------
-    # Changed Shape does execute
-    # -----------------------------------------------------
 
     shape_started = tuple(
         event.stage_name
@@ -1669,10 +1491,6 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
         "extrude",
         "package",
     )
-
-    # -----------------------------------------------------
-    # Standalone Artwork manufacturing remains unnecessary
-    # -----------------------------------------------------
 
     assert not (artwork_root / "40-extrude" / "products.json").exists()
 
@@ -1933,40 +1751,14 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
         project_root,
     )
 
-    # -----------------------------------------------------
-    # Create canonical Artwork input
-    # -----------------------------------------------------
-
-    repository_root = Path(__file__).resolve().parents[2]
-
-    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
-
-    assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
-
-    artwork_directory = project_root / "artifacts" / "fill-source"
-
-    artwork_directory.mkdir(
-        parents=True,
-        exist_ok=True,
+    _materialize_artwork_source(
+        "fill-source",
+        project_root=project_root,
     )
 
-    artwork_source = artwork_directory / "artifact.png"
-
-    shutil.copy2(
-        fixture_source,
-        artwork_source,
-    )
-
-    # -----------------------------------------------------
-    # Configure reusable Artwork producer
-    # -----------------------------------------------------
-
-    write_artifact_config(
+    update_artifact_config(
         "fill-source",
         {
-            "source": str(
-                artwork_source,
-            ),
             "realizations": {
                 "artwork_default": {
                     "artwork_size": 200.0,
@@ -1975,10 +1767,6 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
         },
         project_root=project_root,
     )
-
-    # -----------------------------------------------------
-    # Configure Shape consumer with default no-fill policy
-    # -----------------------------------------------------
 
     write_artifact_config(
         "shape-no-fill",
@@ -2003,10 +1791,6 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
         project_root=project_root,
     )
 
-    # -----------------------------------------------------
-    # Plan and build through dependency-aware orchestration
-    # -----------------------------------------------------
-
     plans = create_build_plans(
         "shape-no-fill",
         model_name="shape",
@@ -2023,18 +1807,12 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
     shape_root = project_root / "artifacts" / "shape-no-fill" / "shape" / "shape_default"
 
     compose_manifest = shape_root / "20-compose" / "products.json"
-
     extrude_manifest = shape_root / "30-extrude" / "products.json"
-
     artifact = shape_root / "40-package" / "artifact.3mf"
 
     assert compose_manifest.is_file()
     assert extrude_manifest.is_file()
     assert artifact.is_file()
-
-    # -----------------------------------------------------
-    # Registered composition contains no fill
-    # -----------------------------------------------------
 
     composition_data = json.loads(
         compose_manifest.read_text(
@@ -2044,10 +1822,6 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
 
     assert composition_data["artwork"] is not None
     assert composition_data["artwork_fill"] is None
-
-    # -----------------------------------------------------
-    # Extrusion does not manufacture fill
-    # -----------------------------------------------------
 
     extrusion_data = json.loads(
         extrude_manifest.read_text(
@@ -2059,12 +1833,7 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
 
     assert "base" in component_names
     assert "artwork-fill" not in component_names
-
     assert any(str(name).startswith("artwork-") for name in component_names)
-
-    # -----------------------------------------------------
-    # Packaging does not manufacture fill
-    # -----------------------------------------------------
 
     with zipfile.ZipFile(
         artifact,
@@ -2088,12 +1857,19 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
         )
     }
 
-    assert "shape-no-fill-base-test-white" in packaged_names
+    assert (
+        component_name(
+            "shape-no-fill",
+            "base",
+            "test-white",
+        )
+        in packaged_names
+    )
 
     assert not any(
         name is not None
         and name.startswith(
-            "shape-no-fill-artwork-fill-",
+            "artwork-fill - ",
         )
         for name in packaged_names
     )
@@ -2101,29 +1877,15 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
     assert any(
         name is not None
         and name.startswith(
-            "shape-no-fill-artwork-",
+            "artwork-",
         )
         for name in packaged_names
     )
-
-    assert any(
-        name is not None
-        and name.startswith(
-            "shape-no-fill-artwork-",
-        )
-        for name in packaged_names
-    )
-
-    # -----------------------------------------------------
-    # Shape consumes only reusable registered Artwork
-    # -----------------------------------------------------
 
     artwork_root = project_root / "artifacts" / "fill-source" / "artwork" / "artwork_default"
 
     assert (artwork_root / "30-vector" / "products.json").is_file()
-
     assert not (artwork_root / "40-extrude" / "products.json").exists()
-
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
 
 
@@ -2147,40 +1909,14 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
         project_root,
     )
 
-    # -----------------------------------------------------
-    # Create canonical Artwork input
-    # -----------------------------------------------------
-
-    repository_root = Path(__file__).resolve().parents[2]
-
-    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
-
-    assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
-
-    artwork_directory = project_root / "artifacts" / "fill-source"
-
-    artwork_directory.mkdir(
-        parents=True,
-        exist_ok=True,
+    _materialize_artwork_source(
+        "fill-source",
+        project_root=project_root,
     )
 
-    artwork_source = artwork_directory / "artifact.png"
-
-    shutil.copy2(
-        fixture_source,
-        artwork_source,
-    )
-
-    # -----------------------------------------------------
-    # Configure reusable Artwork producer
-    # -----------------------------------------------------
-
-    write_artifact_config(
+    update_artifact_config(
         "fill-source",
         {
-            "source": str(
-                artwork_source,
-            ),
             "realizations": {
                 "artwork_default": {
                     "artwork_size": 200.0,
@@ -2189,10 +1925,6 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
         },
         project_root=project_root,
     )
-
-    # -----------------------------------------------------
-    # Configure Shape consumer with enabled fill
-    # -----------------------------------------------------
 
     write_artifact_config(
         "shape-with-fill",
@@ -2218,10 +1950,6 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
         project_root=project_root,
     )
 
-    # -----------------------------------------------------
-    # Plan and build through dependency-aware orchestration
-    # -----------------------------------------------------
-
     plans = create_build_plans(
         "shape-with-fill",
         model_name="shape",
@@ -2238,18 +1966,12 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
     shape_root = project_root / "artifacts" / "shape-with-fill" / "shape" / "shape_default"
 
     compose_manifest = shape_root / "20-compose" / "products.json"
-
     extrude_manifest = shape_root / "30-extrude" / "products.json"
-
     artifact = shape_root / "40-package" / "artifact.3mf"
 
     assert compose_manifest.is_file()
     assert extrude_manifest.is_file()
     assert artifact.is_file()
-
-    # -----------------------------------------------------
-    # Registered composition contains fill
-    # -----------------------------------------------------
 
     composition_data = json.loads(
         compose_manifest.read_text(
@@ -2259,10 +1981,6 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
 
     assert composition_data["artwork"] is not None
     assert composition_data["artwork_fill"] is not None
-
-    # -----------------------------------------------------
-    # Fill is independently dimensionalized
-    # -----------------------------------------------------
 
     extrusion_data = json.loads(
         extrude_manifest.read_text(
@@ -2297,10 +2015,6 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
     assert fill_path.is_file()
     assert fill_path.stat().st_size > 0
 
-    # -----------------------------------------------------
-    # Fill survives final packaging
-    # -----------------------------------------------------
-
     with zipfile.ZipFile(
         artifact,
     ) as archive:
@@ -2325,29 +2039,24 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
     )
 
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
-
     materials_by_id = {material.get("id"): material for material in materials}
 
-    assert "shape-with-fill-base-test-white" in objects_by_name
-    assert "shape-with-fill-artwork-fill-test-blue" in objects_by_name
+    assert component_name("shape-with-fill", "base", "test-white") in objects_by_name
+    assert component_name("shape-with-fill", "artwork-fill", "test-blue") in objects_by_name
 
     artwork_object_names = {
         name
         for name in objects_by_name
         if name is not None
         and name.startswith(
-            "shape-with-fill-artwork-",
+            "artwork-",
         )
-        and name != "shape-with-fill-artwork-fill-test-blue"
+        and name != component_name("shape-with-fill", "artwork-fill", "test-blue")
     }
 
     assert artwork_object_names
 
-    # -----------------------------------------------------
-    # Fill preserves semantic color identity
-    # -----------------------------------------------------
-
-    fill_object = objects_by_name["shape-with-fill-artwork-fill-test-blue"]
+    fill_object = objects_by_name[component_name("shape-with-fill", "artwork-fill", "test-blue")]
 
     fill_material_id = fill_object.get(
         "pid",
@@ -2366,27 +2075,17 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
     assert fill_color.get("displaycolor") == "#0000FF"
     assert fill_object.get("pindex") == "0"
 
-    # -----------------------------------------------------
-    # Fill remains semantically independent
-    # -----------------------------------------------------
-
-    base_object = objects_by_name["shape-with-fill-base-test-white"]
+    base_object = objects_by_name[component_name("shape-with-fill", "base", "test-white")]
 
     assert fill_object.get("id") != base_object.get("id")
 
     for artwork_name in artwork_object_names:
         assert fill_object.get("id") != objects_by_name[artwork_name].get("id")
 
-    # -----------------------------------------------------
-    # Shape consumes only reusable registered Artwork
-    # -----------------------------------------------------
-
     artwork_root = project_root / "artifacts" / "fill-source" / "artwork" / "artwork_default"
 
     assert (artwork_root / "30-vector" / "products.json").is_file()
-
     assert not (artwork_root / "40-extrude" / "products.json").exists()
-
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
 
 
@@ -2409,40 +2108,14 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
         project_root,
     )
 
-    # -----------------------------------------------------
-    # Create canonical Artwork input
-    # -----------------------------------------------------
-
-    repository_root = Path(__file__).resolve().parents[2]
-
-    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
-
-    assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
-
-    artwork_directory = project_root / "artifacts" / "fill-source"
-
-    artwork_directory.mkdir(
-        parents=True,
-        exist_ok=True,
+    _materialize_artwork_source(
+        "fill-source",
+        project_root=project_root,
     )
 
-    artwork_source = artwork_directory / "artifact.png"
-
-    shutil.copy2(
-        fixture_source,
-        artwork_source,
-    )
-
-    # -----------------------------------------------------
-    # Configure reusable Artwork producer
-    # -----------------------------------------------------
-
-    write_artifact_config(
+    update_artifact_config(
         "fill-source",
         {
-            "source": str(
-                artwork_source,
-            ),
             "realizations": {
                 "artwork_default": {
                     "artwork_size": 200.0,
@@ -2451,10 +2124,6 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
         },
         project_root=project_root,
     )
-
-    # -----------------------------------------------------
-    # Configure Shape with shared base/fill color
-    # -----------------------------------------------------
 
     write_artifact_config(
         "shared-color-fill-shape",
@@ -2480,10 +2149,6 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
         project_root=project_root,
     )
 
-    # -----------------------------------------------------
-    # Build through dependency-aware orchestration
-    # -----------------------------------------------------
-
     plans = create_build_plans(
         "shared-color-fill-shape",
         model_name="shape",
@@ -2500,15 +2165,10 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
     shape_root = project_root / "artifacts" / "shared-color-fill-shape" / "shape" / "shape_default"
 
     extrude_manifest = shape_root / "30-extrude" / "products.json"
-
     artifact = shape_root / "40-package" / "artifact.3mf"
 
     assert extrude_manifest.is_file()
     assert artifact.is_file()
-
-    # -----------------------------------------------------
-    # Physical manifest preserves distinct roles
-    # -----------------------------------------------------
 
     extrusion_data = json.loads(
         extrude_manifest.read_text(
@@ -2535,10 +2195,6 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
 
     assert components_by_name["base"]["path"] != components_by_name["artwork-fill"]["path"]
 
-    # -----------------------------------------------------
-    # Final 3MF preserves distinct component identity
-    # -----------------------------------------------------
-
     with zipfile.ZipFile(
         artifact,
     ) as archive:
@@ -2563,18 +2219,15 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
     )
 
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
-
     materials_by_id = {material.get("id"): material for material in materials}
 
-    base_object = objects_by_name["shared-color-fill-shape-base-test-blue"]
+    base_object = objects_by_name[component_name("shared-color-fill-shape", "base", "test-blue")]
 
-    fill_object = objects_by_name["shared-color-fill-shape-artwork-fill-test-blue"]
+    fill_object = objects_by_name[
+        component_name("shared-color-fill-shape", "artwork-fill", "test-blue")
+    ]
 
     assert base_object.get("id") != fill_object.get("id")
-
-    # -----------------------------------------------------
-    # Both components retain the shared semantic color
-    # -----------------------------------------------------
 
     for object_ in (
         base_object,
@@ -2597,32 +2250,22 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
         assert color.get("displaycolor") == "#0000FF"
         assert object_.get("pindex") == "0"
 
-    # -----------------------------------------------------
-    # Incorporated Artwork remains independently present
-    # -----------------------------------------------------
-
     artwork_object_names = {
         name
         for name in objects_by_name
         if name is not None
         and name.startswith(
-            "shared-color-fill-shape-artwork-",
+            "artwork-",
         )
-        and name != "shared-color-fill-shape-artwork-fill-test-blue"
+        and name != component_name("shared-color-fill-shape", "artwork-fill", "test-blue")
     }
 
     assert artwork_object_names
 
-    # -----------------------------------------------------
-    # Standalone Artwork manufacturing remains unnecessary
-    # -----------------------------------------------------
-
     artwork_root = project_root / "artifacts" / "fill-source" / "artwork" / "artwork_default"
 
     assert (artwork_root / "30-vector" / "products.json").is_file()
-
     assert not (artwork_root / "40-extrude" / "products.json").exists()
-
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
 
 
@@ -2653,40 +2296,14 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
         project_root,
     )
 
-    # -----------------------------------------------------
-    # Create canonical Artwork input
-    # -----------------------------------------------------
-
-    repository_root = Path(__file__).resolve().parents[2]
-
-    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
-
-    assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
-
-    artwork_directory = project_root / "artifacts" / "ridge-fill-source"
-
-    artwork_directory.mkdir(
-        parents=True,
-        exist_ok=True,
+    _materialize_artwork_source(
+        "ridge-fill-source",
+        project_root=project_root,
     )
 
-    artwork_source = artwork_directory / "artifact.png"
-
-    shutil.copy2(
-        fixture_source,
-        artwork_source,
-    )
-
-    # -----------------------------------------------------
-    # Configure reusable Artwork producer
-    # -----------------------------------------------------
-
-    write_artifact_config(
+    update_artifact_config(
         "ridge-fill-source",
         {
-            "source": str(
-                artwork_source,
-            ),
             "realizations": {
                 "artwork_default": {
                     "artwork_size": 200.0,
@@ -2695,10 +2312,6 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
         },
         project_root=project_root,
     )
-
-    # -----------------------------------------------------
-    # Configure Shape with physical ridge and fill
-    # -----------------------------------------------------
 
     artifact_id = f"{ridge_style}-ridge-fill-shape"
 
@@ -2735,10 +2348,6 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
         project_root=project_root,
     )
 
-    # -----------------------------------------------------
-    # Build through dependency-aware orchestration
-    # -----------------------------------------------------
-
     plans = create_build_plans(
         artifact_id,
         model_name="shape",
@@ -2762,10 +2371,6 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
 
     assert extrude_manifest.is_file()
     assert artifact.is_file()
-
-    # -----------------------------------------------------
-    # Physical component contract includes ridge and fill
-    # -----------------------------------------------------
 
     extrusion_data = json.loads(
         extrude_manifest.read_text(
@@ -2801,10 +2406,6 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
     assert fill_path.is_file()
     assert fill_path.stat().st_size > 0
 
-    # -----------------------------------------------------
-    # Verify actual physical fill Z interval
-    # -----------------------------------------------------
-
     fill_text = fill_path.read_text(
         encoding="utf-8",
     )
@@ -2837,10 +2438,6 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
         shape_base_raise + shape_artwork_raise,
     )
 
-    # -----------------------------------------------------
-    # Ridge and fill survive packaging independently
-    # -----------------------------------------------------
-
     with zipfile.ZipFile(
         artifact,
     ) as archive:
@@ -2863,9 +2460,9 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
         )
     }
 
-    base_name = f"{artifact_id}-base-test-white"
-    ridge_name = f"{artifact_id}-ridge-test-red"
-    fill_name = f"{artifact_id}-artwork-fill-test-blue"
+    base_name = component_name(artifact_id, "base", "test-white")
+    ridge_name = component_name(artifact_id, "ridge", "test-red")
+    fill_name = component_name(artifact_id, "artwork-fill", "test-blue")
 
     assert base_name in objects_by_name
     assert ridge_name in objects_by_name
@@ -2876,7 +2473,7 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
         for name in objects_by_name
         if name is not None
         and name.startswith(
-            f"{artifact_id}-artwork-",
+            "artwork-",
         )
         and name != fill_name
     }
@@ -2884,9 +2481,7 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
     assert artwork_object_names
 
     base_object = objects_by_name[base_name]
-
     ridge_object = objects_by_name[ridge_name]
-
     fill_object = objects_by_name[fill_name]
 
     assert (
@@ -2899,10 +2494,6 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
         )
         == 3
     )
-
-    # -----------------------------------------------------
-    # Standalone Artwork manufacturing remains unnecessary
-    # -----------------------------------------------------
 
     artwork_root = project_root / "artifacts" / "ridge-fill-source" / "artwork" / "artwork_default"
 
@@ -2933,40 +2524,14 @@ def test_shape_dependency_does_not_realize_standalone_artwork_base(
         project_root,
     )
 
-    # -----------------------------------------------------
-    # Create canonical Artwork input
-    # -----------------------------------------------------
-
-    repository_root = Path(__file__).resolve().parents[2]
-
-    fixture_source = repository_root / "tests" / "assets" / "nydeli-clean.png"
-
-    assert fixture_source.is_file()
-
-    artwork_directory = project_root / "artifacts" / "source-artwork"
-
-    artwork_directory.mkdir(
-        parents=True,
-        exist_ok=True,
+    _materialize_artwork_source(
+        "source-artwork",
+        project_root=project_root,
     )
 
-    artwork_input = artwork_directory / "artifact.png"
-
-    shutil.copy2(
-        fixture_source,
-        artwork_input,
-    )
-
-    # -----------------------------------------------------
-    # Configure Artwork with standalone Base enabled
-    # -----------------------------------------------------
-
-    write_artifact_config(
+    update_artifact_config(
         "source-artwork",
         {
-            "source": str(
-                artwork_input,
-            ),
             "realizations": {
                 "artwork_default": {
                     "artwork_base_raise": 2.0,
@@ -2976,10 +2541,6 @@ def test_shape_dependency_does_not_realize_standalone_artwork_base(
         },
         project_root=project_root,
     )
-
-    # -----------------------------------------------------
-    # Configure Shape to consume registered Artwork
-    # -----------------------------------------------------
 
     write_artifact_config(
         "artwork-shape",
@@ -2997,10 +2558,6 @@ def test_shape_dependency_does_not_realize_standalone_artwork_base(
         project_root=project_root,
     )
 
-    # -----------------------------------------------------
-    # Build Shape through dependency-aware orchestration
-    # -----------------------------------------------------
-
     plans = create_build_plans(
         "artwork-shape",
         model_name="shape",
@@ -3013,10 +2570,6 @@ def test_shape_dependency_does_not_realize_standalone_artwork_base(
     execute_dependency_build(
         plans[0],
     )
-
-    # -----------------------------------------------------
-    # Registered Artwork exists
-    # -----------------------------------------------------
 
     artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "artwork_default"
 
@@ -3034,18 +2587,10 @@ def test_shape_dependency_does_not_realize_standalone_artwork_base(
 
     assert all(product["path"] != "base.stl" for product in vector_data["products"])
 
-    # -----------------------------------------------------
-    # Standalone Base dimensionalization was not required
-    # -----------------------------------------------------
-
     assert not (artwork_root / "40-extrude" / "products.json").exists()
     assert not (artwork_root / "40-extrude" / "base.stl").exists()
 
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
-
-    # -----------------------------------------------------
-    # Shape still builds successfully from registered Artwork
-    # -----------------------------------------------------
 
     shape_root = project_root / "artifacts" / "artwork-shape" / "shape" / "shape_default"
 

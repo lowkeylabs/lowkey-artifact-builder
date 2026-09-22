@@ -17,6 +17,7 @@ from click.testing import CliRunner
 from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.config import (
     clean_artifact,
+    materialize_artifact,
 )
 from lowkey_artifact_builder.engine import (
     BuildPlan,
@@ -35,10 +36,12 @@ def _configure_artifact(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Create the acceptance artifact through the public CLI.
+    Create and materialize the acceptance Artifact.
 
     The repository's known-good nydeli artwork is copied into the
-    isolated project before interactive creation.
+    isolated project, ingested through the public CREATE workflow, and
+    then materialized into its baseline Artifact workspace before direct
+    engine planning.
     """
 
     repository_root = Path(__file__).resolve().parents[2]
@@ -71,6 +74,11 @@ def _configure_artifact(
 
     assert create_result.exit_code == 0, (
         f"Artifact creation failed:\n{create_result.output}\n{create_result.exception!r}"
+    )
+
+    materialize_artifact(
+        "nydeli",
+        project_root=project_root,
     )
 
 

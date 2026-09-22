@@ -22,6 +22,7 @@ from click.testing import CliRunner
 
 from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.config import (
+    materialize_artifact,
     write_artifact_config,
 )
 
@@ -55,7 +56,7 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
     runner = CliRunner()
 
     # -----------------------------------------------------
-    # Create canonical Artwork source
+    # Establish canonical Artwork source
     # -----------------------------------------------------
 
     repository_root = Path(__file__).resolve().parents[2]
@@ -64,31 +65,26 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
 
     assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
 
-    artwork_directory = project_root / "artifacts" / "source-artwork"
+    originals_directory = project_root / "originals"
 
-    artwork_directory.mkdir(
+    originals_directory.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    artwork_input = artwork_directory / "artifact.png"
+    artwork_original = originals_directory / "source-artwork.png"
 
     shutil.copy2(
         fixture_source,
-        artwork_input,
+        artwork_original,
     )
 
     # -----------------------------------------------------
-    # Configure producer Artifact
+    # Materialize producer Artifact
     # -----------------------------------------------------
 
-    write_artifact_config(
+    materialize_artifact(
         "source-artwork",
-        {
-            "source": str(
-                artwork_input,
-            ),
-        },
         project_root=project_root,
     )
 
