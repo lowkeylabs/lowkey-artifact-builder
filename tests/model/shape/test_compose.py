@@ -4798,3 +4798,87 @@ def test_heptagon_structure_boundary_is_origin_centered_regular_polygon(
             expected_distance,
             abs=1.0e-9,
         )
+
+
+def test_irregular_artwork_envelope_centers_within_circular_shape_interior(
+    tmp_path: Path,
+) -> None:
+    """
+    Irregular Artwork occupancy is centered on the circular Shape interior.
+
+    Placement centers the authoritative Artwork envelope bounds rather than
+    the registered extent or any individual Artwork component. A ridge may
+    reduce the available placement radius, but it does not shift the Artwork
+    away from the Shape origin.
+    """
+
+    structure = tmp_path / "structure.svg"
+    composition = tmp_path / "composition.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    _write_registered_structure(
+        structure,
+    )
+
+    compose._compose_ridge(
+        structure,
+        composition,
+        shape_size=100.0,
+        ridge_width=5.0,
+    )
+
+    envelope.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 100 100"
+>
+    <path
+        d="
+            M 20 10
+            L 80 10
+            L 90 35
+            L 75 70
+            L 50 90
+            L 25 70
+            L 10 35
+            Z
+        "
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    artwork = compose.RegisteredArtwork(
+        registered_extent=compose.RegisteredExtent(
+            width=100.0,
+            height=100.0,
+        ),
+        envelope=envelope,
+        components=(),
+    )
+
+    bounds = compose.registered_artwork_envelope_bounds(
+        artwork,
+    )
+
+    transform = compose.fit_registered_artwork_to_shape(
+        artwork,
+        composition=composition,
+    )
+
+    transformed_center_x = (bounds.x + bounds.width / 2.0) * transform.scale + transform.translate_x
+
+    transformed_center_y = (
+        bounds.y + bounds.height / 2.0
+    ) * transform.scale + transform.translate_y
+
+    assert transformed_center_x == pytest.approx(
+        0.0,
+        abs=1.0e-12,
+    )
+    assert transformed_center_y == pytest.approx(
+        0.0,
+        abs=1.0e-12,
+    )
