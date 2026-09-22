@@ -1851,7 +1851,7 @@ A conforming initial Shape implementation satisfies the following:
 57. Required color distinctions remain representable through
     dimensionalization and packaging.
 
-58. Packaged 3MF component names preserve semantic component role and semantic 
+58. Packaged 3MF component names preserve semantic component role and semantic
     printing-color identity without relying on intermediate component ordinals.
 
 59. Packaging occurs after physical dimensionalization.

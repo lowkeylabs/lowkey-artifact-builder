@@ -193,3 +193,75 @@ def test_shape_can_consume_persistent_registered_artwork_without_source(
         "extrude",
         "package",
     )
+
+
+def test_shape_uses_same_artifact_default_artwork_when_available(
+    tmp_path: Path,
+) -> None:
+    """
+    Canonical Shape consumes the same Artifact's canonical Artwork by default.
+
+    An Artifact with a source has canonical Artwork and Shape Realizations.
+    Planning its canonical Shape Realization therefore binds Shape's registered
+    Artwork dependency to the same Artifact's canonical Artwork Realization
+    without requiring an explicit product-dependency binding.
+    """
+
+    artifact_id = "example"
+
+    write_artifact_config(
+        artifact_id,
+        {
+            "source": "artifact.png",
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        artifact_id,
+        realization="shape_default",
+        project_root=tmp_path,
+    )
+
+    assert len(plan.product_dependencies) == 1
+    assert len(plan.product_dependency_bindings) == 1
+    assert len(plan.planned_product_dependencies) == 1
+
+    dependency = plan.planned_product_dependencies[0]
+
+    assert dependency.binding.dependency.model == "artwork"
+    assert dependency.binding.dependency.stage == "vector"
+    assert dependency.binding.dependency.product == "manifest"
+
+    assert dependency.binding.artifact == artifact_id
+    assert dependency.binding.realization == "artwork_default"
+
+
+def test_shape_without_artwork_leaves_artwork_dependency_unbound(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape remains valid when its Artifact has no Artwork source.
+
+    Shape declares an optional registered-Artwork dependency, but planning
+    leaves that dependency unbound when the Artifact has no Artwork to supply.
+    """
+
+    artifact_id = "shape-only"
+
+    write_artifact_config(
+        artifact_id,
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        artifact_id,
+        project_root=tmp_path,
+    )
+
+    assert len(plan.product_dependencies) == 1
+    assert plan.product_dependency_bindings == ()
+    assert plan.planned_product_dependencies == ()

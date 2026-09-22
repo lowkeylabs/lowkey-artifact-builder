@@ -2746,14 +2746,16 @@ def test_shape_registered_artwork_dependency_plans_only_vector_closure(
     assert "package" not in {stage.name for stage in producer_plan.stages}
 
 
-def test_create_build_plan_plans_complete_shape_without_product_dependencies(
+def test_create_build_plan_plans_complete_shape_without_bound_product_dependencies(
     tmp_path: Path,
 ) -> None:
     """
-    Complete baseline Shape planning requires no external product dependency.
+    Complete baseline Shape planning requires no bound Product dependency.
 
-    A Shape without features or dependent artifacts is a complete artifact.
-    Its build consists entirely of the Shape-local stage dependency closure.
+    Shape's complete stage graph declares its optional registered-Artwork
+    Product dependency because compose knows how to consume that Product.
+    A source-less Shape Artifact has no producer bound to that dependency,
+    so its complete build remains entirely Shape-local.
     """
 
     write_artifact_config(
@@ -2778,7 +2780,14 @@ def test_create_build_plan_plans_complete_shape_without_product_dependencies(
         "package",
     )
 
-    assert plan.product_dependencies == ()
+    assert plan.product_dependencies == (
+        ProductDependencySpec(
+            model="artwork",
+            stage="vector",
+            product="manifest",
+        ),
+    )
+
     assert plan.product_dependency_bindings == ()
     assert plan.planned_product_dependencies == ()
 

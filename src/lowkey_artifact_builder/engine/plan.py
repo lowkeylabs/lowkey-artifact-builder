@@ -35,6 +35,7 @@ from lowkey_artifact_builder.config import (
     get_realization_names,
     get_resolver,
     has_product_dependency_binding,
+    load_artifact_config,
 )
 from lowkey_artifact_builder.engine.catalog import (
     build_product_catalog,
@@ -278,8 +279,6 @@ def create_build_plan(
         product_dependencies=product_dependencies,
         project_root=root,
     )
-
-    product_dependencies = tuple(binding.dependency for binding in product_dependency_bindings)
 
     planned_product_dependencies = _plan_product_dependencies(
         bindings=product_dependency_bindings,
@@ -538,43 +537,67 @@ def _resolve_product_dependency_bindings(
     project_root: Path,
 ) -> tuple[ProductDependencyBinding, ...]:
     """
-    Resolve active declarative product dependencies to configured producers.
+    Resolve active declarative product dependencies to concrete producers.
 
-    ProductDependencySpec declares a potential dependency relationship.
-    Only dependencies with configured bindings participate in the current
-    artifact realization.
+    An explicit Artifact product-dependency binding is authoritative.
 
-    Once a binding is present, normal configuration validation remains
-    authoritative. Invalid configured bindings therefore fail planning
-    rather than being treated as absent.
+    Otherwise, an Artifact having its own source may satisfy a declarative
+    dependency from the same Artifact's canonical default Realization for
+    the dependency's producer Model.
+
+    A dependency having neither an explicit binding nor an Artifact-owned
+    source remains unbound. This permits Models to declare optional Product
+    dependencies without making those Products mandatory.
 
     Configuration failures encountered while inspecting or resolving
     bindings are translated to BuildPlanError so callers of the planning
     subsystem receive its public error type.
 
-    Producer existence and producer build planning are intentionally
-    outside this function's responsibility.
+    Producer build planning remains outside this function's responsibility.
     """
 
+    bindings: list[ProductDependencyBinding] = []
+
     try:
-        return tuple(
-            get_product_dependency_binding(
-                artifact_id,
-                dependency,
-                project_root=project_root,
-            )
-            for dependency in product_dependencies
+        artifact_config = load_artifact_config(
+            artifact_id,
+            project_root=project_root,
+        )
+
+        has_artifact_source = "source" in artifact_config
+
+        for dependency in product_dependencies:
             if has_product_dependency_binding(
                 artifact_id,
                 dependency,
                 project_root=project_root,
+            ):
+                bindings.append(
+                    get_product_dependency_binding(
+                        artifact_id,
+                        dependency,
+                        project_root=project_root,
+                    )
+                )
+                continue
+
+            if not has_artifact_source:
+                continue
+
+            bindings.append(
+                ProductDependencyBinding(
+                    dependency=dependency,
+                    artifact=artifact_id,
+                    realization=f"{dependency.model}_default",
+                )
             )
-        )
 
     except ConfigError as exc:
         raise BuildPlanError(
             f"Unable to resolve product dependencies for artifact {artifact_id!r}: {exc}"
         ) from exc
+
+    return tuple(bindings)
 
 
 def _plan_product_dependencies(
