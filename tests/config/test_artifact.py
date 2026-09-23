@@ -16,6 +16,7 @@ from lowkey_artifact_builder.config import (
     artifact_config_path,
     clean_artifact,
     configure_artifact,
+    configure_realization,
     discover_artifacts,
     get_resolver,
     list_artifacts,
@@ -1054,3 +1055,137 @@ def test_materialize_artifact_accepts_configured_artifact_without_preserved_orig
     assert not (tmp_path / "originals" / "shape-example.png").exists()
 
     assert not (tmp_path / "artifacts" / "shape-example" / "artifact.png").exists()
+
+
+# =========================================================
+# Realization configuration
+# =========================================================
+
+
+def test_configure_realization_materializes_canonical_customization(
+    tmp_path: Path,
+) -> None:
+    """
+    Customizing a canonical Realization materializes only its
+    Artifact-specific parameter overrides.
+    """
+
+    configure_artifact(
+        "skippy",
+        values={
+            "source": "artifacts/skippy/artifact.png",
+        },
+        project_root=tmp_path,
+    )
+
+    configure_realization(
+        "skippy",
+        "shape_ornament",
+        parameters={
+            "shape_size": 110,
+        },
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert config == {
+        "source": "artifacts/skippy/artifact.png",
+        "realizations": {
+            "shape_ornament": {
+                "parameters": {
+                    "shape_size": 110,
+                },
+            },
+        },
+    }
+
+
+def test_configure_realization_preserves_unrelated_realizations(
+    tmp_path: Path,
+) -> None:
+    """
+    Updating one Realization preserves unrelated authored
+    Realization declarations.
+    """
+
+    configure_artifact(
+        "skippy",
+        values={
+            "source": "artifacts/skippy/artifact.png",
+            "realizations": {
+                "artwork_default": {
+                    "parameters": {
+                        "artwork_size": 75,
+                    },
+                },
+                "shape_ornament": {
+                    "parameters": {
+                        "shape_base_height": 2,
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    configure_realization(
+        "skippy",
+        "shape_ornament",
+        parameters={
+            "shape_size": 110,
+        },
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert config["realizations"] == {
+        "artwork_default": {
+            "parameters": {
+                "artwork_size": 75,
+            },
+        },
+        "shape_ornament": {
+            "parameters": {
+                "shape_base_height": 2,
+                "shape_size": 110,
+            },
+        },
+    }
+
+
+def test_configure_realization_rejects_unknown_realization(
+    tmp_path: Path,
+) -> None:
+    """
+    Customization cannot implicitly create a noncanonical
+    Realization.
+    """
+
+    configure_artifact(
+        "skippy",
+        values={
+            "source": "artifacts/skippy/artifact.png",
+        },
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_typo",
+    ):
+        configure_realization(
+            "skippy",
+            "shape_typo",
+            parameters={
+                "shape_size": 110,
+            },
+            project_root=tmp_path,
+        )

@@ -27,6 +27,7 @@ from .config import (
     ConfigError,
     artifact_config_path,
     get_realization_names,
+    load_artifact_config,
     update_artifact_config,
     write_artifact_config,
 )
@@ -531,10 +532,117 @@ def materialize_artifact(
         raise ConfigError(f"Cannot materialize artifact {artifact_id!r}: {exc}") from exc
 
 
+def configure_realization(
+    artifact_id: str,
+    realization: str,
+    *,
+    parameters: Mapping[str, Any],
+    project_root: Path | None = None,
+) -> None:
+    """
+    Customize parameters for an existing effective Artifact
+    Realization.
+
+    Canonical Realizations may be customized without first being
+    declared in artifact.toml.
+
+    Updating one Realization preserves unrelated Artifact configuration,
+    unrelated Realizations, and existing parameters of the selected
+    Realization.
+
+    This operation does not create additional named Realizations.
+    """
+
+    root = project_root if project_root is not None else Path.cwd()
+
+    existing = load_artifact_config(
+        artifact_id,
+        project_root=root,
+    )
+
+    if not existing:
+        raise ConfigError(f"Artifact {artifact_id!r} is not defined.")
+
+    realizations = get_realization_names(
+        artifact_id,
+        project_root=root,
+    )
+
+    if realization not in realizations:
+        raise ConfigError(
+            f"Realization {realization!r} is not defined for Artifact {artifact_id!r}."
+        )
+
+    authored_realizations = existing.get(
+        "realizations",
+        {},
+    )
+
+    if not isinstance(
+        authored_realizations,
+        Mapping,
+    ):
+        raise ConfigError("The [realizations] section in artifact.toml must be a TOML table.")
+
+    updated_realizations = {
+        name: dict(value) if isinstance(value, Mapping) else value
+        for name, value in authored_realizations.items()
+    }
+
+    authored_realization = authored_realizations.get(
+        realization,
+        {},
+    )
+
+    if not isinstance(
+        authored_realization,
+        Mapping,
+    ):
+        raise ConfigError(f"Realization {realization!r} must be a TOML table.")
+
+    updated_realization = dict(
+        authored_realization,
+    )
+
+    authored_parameters = authored_realization.get(
+        "parameters",
+        {},
+    )
+
+    if not isinstance(
+        authored_parameters,
+        Mapping,
+    ):
+        raise ConfigError(
+            f"The [realizations.{realization}.parameters] section "
+            "in artifact.toml must be a TOML table."
+        )
+
+    updated_parameters = dict(
+        authored_parameters,
+    )
+
+    updated_parameters.update(
+        parameters,
+    )
+
+    updated_realization["parameters"] = updated_parameters
+    updated_realizations[realization] = updated_realization
+
+    update_artifact_config(
+        artifact_id,
+        {
+            "realizations": updated_realizations,
+        },
+        project_root=root,
+    )
+
+
 __all__ = [
     "ArtifactState",
     "clean_artifact",
     "configure_artifact",
+    "configure_realization",
     "discover_artifacts",
     "list_artifacts",
     "materialize_artifact",

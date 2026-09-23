@@ -14,6 +14,7 @@ from click.testing import CliRunner
 
 import lowkey_artifact_builder.cli.cmd_config as cmd_config
 from lowkey_artifact_builder.cli._main import cli
+from lowkey_artifact_builder.config import ConfigError
 
 # =========================================================
 # Helpers
@@ -284,6 +285,140 @@ def test_config_rejects_unknown_realization(
         "skippy",
         "--realization",
         "shape_typo",
+    )
+
+    assert result.exit_code != 0
+    assert "shape_typo" in result.output
+    assert "realization" in result.output.lower()
+
+
+# =========================================================
+# Realization customization
+# =========================================================
+
+
+def test_config_updates_existing_realization_parameters(
+    monkeypatch,
+) -> None:
+    """
+    Configuration may customize parameters of an existing effective
+    Artifact Realization.
+    """
+
+    configured: list[
+        tuple[
+            str,
+            str,
+            dict[str, object],
+        ]
+    ] = []
+
+    monkeypatch.setattr(
+        cmd_config,
+        "load_artifact_config",
+        lambda *args, **kwargs: {
+            "source": "artifacts/skippy/artifact.png",
+        },
+    )
+
+    monkeypatch.setattr(
+        cmd_config,
+        "get_realization_names",
+        lambda *args, **kwargs: (
+            "artwork_default",
+            "shape_default",
+            "shape_ornament",
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_config,
+        "_configure_realization",
+        lambda artifact_id, realization, parameters, **kwargs: configured.append(
+            (
+                artifact_id,
+                realization,
+                parameters,
+            )
+        ),
+        raising=False,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--realization",
+        "shape_ornament",
+        "--parameters",
+        "shape_size=110",
+    )
+
+    assert result.exit_code == 0
+    assert configured == [
+        (
+            "skippy",
+            "shape_ornament",
+            {
+                "shape_size": 110,
+            },
+        )
+    ]
+
+
+def test_config_realization_parameters_require_realization() -> None:
+    """
+    Realization parameter customization requires an explicit
+    Realization coordinate.
+    """
+
+    result = _invoke(
+        "skippy",
+        "--parameters",
+        "shape_size=110",
+    )
+
+    assert result.exit_code != 0
+    assert "realization" in result.output.lower()
+
+
+def test_config_parameters_do_not_create_unknown_realization(
+    monkeypatch,
+) -> None:
+    """
+    Parameter customization reports configuration-layer rejection of a
+    misspelled or otherwise unknown Realization.
+    """
+
+    monkeypatch.setattr(
+        cmd_config,
+        "load_artifact_config",
+        lambda *args, **kwargs: {
+            "source": "artifacts/skippy/artifact.png",
+        },
+    )
+
+    def reject_unknown_realization(
+        artifact_id: str,
+        realization: str,
+        *,
+        parameters: dict[str, object],
+        **kwargs,
+    ) -> None:
+        raise ConfigError(
+            f"Realization {realization!r} is not defined for Artifact {artifact_id!r}."
+        )
+
+    monkeypatch.setattr(
+        cmd_config,
+        "configure_realization",
+        reject_unknown_realization,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--realization",
+        "shape_typo",
+        "--parameters",
+        "shape_size=110",
     )
 
     assert result.exit_code != 0

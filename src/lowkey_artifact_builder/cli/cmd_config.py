@@ -21,6 +21,9 @@ from typing import Any
 
 import click
 
+from lowkey_artifact_builder.cli.bindings import (
+    parse_parameter_bindings,
+)
 from lowkey_artifact_builder.cli.display import (
     display_artifact_definition,
     display_model_workplans,
@@ -29,6 +32,7 @@ from lowkey_artifact_builder.cli.display import (
 )
 from lowkey_artifact_builder.config import (
     ConfigError,
+    configure_realization,
     get_realization_names,
     load_artifact_config,
 )
@@ -64,7 +68,13 @@ from lowkey_artifact_builder.model import (
 @click.option(
     "--realization",
     type=str,
-    help="Inspect Artifact-authored configuration for one Realization.",
+    help="Inspect or customize one Artifact Realization.",
+)
+@click.option(
+    "--parameters",
+    multiple=True,
+    metavar="NAME=VALUE",
+    help="Customize a parameter for the selected Realization.",
 )
 def cli(
     artifact_ids: tuple[str, ...],
@@ -72,6 +82,7 @@ def cli(
     dump: bool,
     workplan: bool,
     realization: str | None,
+    parameters: tuple[str, ...],
 ) -> None:
     """
     Manage configuration for an existing artifact.
@@ -91,6 +102,9 @@ def cli(
 
         if realization is not None:
             raise click.UsageError("--realization cannot be used with --list-models.")
+
+        if parameters:
+            raise click.UsageError("--parameters cannot be used with --list-models.")
 
         if dump and workplan:
             raise click.UsageError("--dump and --workplan cannot be used together.")
@@ -117,6 +131,9 @@ def cli(
     if workplan:
         raise click.UsageError("--workplan currently requires --list-models.")
 
+    if parameters and realization is None:
+        raise click.UsageError("--parameters requires --realization.")
+
     if not artifact_ids:
         raise click.UsageError("Artifact configuration requires an artifact ID.")
 
@@ -139,10 +156,26 @@ def cli(
         raise click.ClickException(f"Artifact {artifact_id!r} is not defined.")
 
     # =====================================================
-    # Realization display
+    # Realization configuration
     # =====================================================
 
     if realization is not None:
+        if parameters:
+            try:
+                parsed_parameters = parse_parameter_bindings(
+                    parameters,
+                )
+            except ValueError as exc:
+                raise click.ClickException(str(exc)) from exc
+
+            _configure_realization(
+                artifact_id,
+                realization,
+                parsed_parameters,
+                project_root=project_root,
+            )
+            return
+
         _display_realization(
             artifact_id,
             realization,
@@ -253,6 +286,34 @@ def _display_realization(
         realization,
         authored,
     )
+
+
+# =========================================================
+# Realization customization
+# =========================================================
+
+
+def _configure_realization(
+    artifact_id: str,
+    realization: str,
+    parameters: dict[str, object],
+    *,
+    project_root: Path,
+) -> None:
+    """
+    Customize parameters for an existing effective Artifact
+    Realization.
+    """
+
+    try:
+        configure_realization(
+            artifact_id,
+            realization,
+            parameters=parameters,
+            project_root=project_root,
+        )
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 if __name__ == "__main__":
