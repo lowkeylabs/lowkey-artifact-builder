@@ -441,9 +441,7 @@ artifact colors dog
 artifact colors dog --realization shape_ornament
 ```
 
-The display presents one row per relevant independently printable
-
-layer/component and four assignment columns:
+The display presents one row per relevant independently printable color and four assignment columns:
 
 ``` text
 
