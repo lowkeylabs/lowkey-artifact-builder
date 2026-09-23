@@ -134,11 +134,12 @@ def _analysis() -> ArtworkColorAnalysis:
 # =========================================================
 
 
-def test_color_report_displays_three_assignment_scopes(
+def test_color_report_displays_four_assignment_scopes(
     capsys,
 ) -> None:
     """
-    The color report distinguishes printer, library, and catalog assignments.
+    The color report distinguishes system, printer, library, and catalog
+    assignments.
     """
 
     display_color_analysis(
@@ -147,10 +148,16 @@ def test_color_report_displays_three_assignment_scopes(
 
     output = capsys.readouterr().out
 
-    assert "Artifact" in output
+    assert "Layer" in output
+    assert "System" in output
     assert "Printer" in output
     assert "Library" in output
     assert "Catalog" in output
+
+    assert output.index("Layer") < output.index("System")
+    assert output.index("System") < output.index("Printer")
+    assert output.index("Printer") < output.index("Library")
+    assert output.index("Library") < output.index("Catalog")
 
 
 def test_color_report_displays_every_selected_physical_color(
@@ -167,6 +174,9 @@ def test_color_report_displays_every_selected_physical_color(
     output = capsys.readouterr().out
 
     for name in (
+        "system-red",
+        "system-green",
+        "system-blue",
         "printer-red",
         "printer-green",
         "printer-blue",
@@ -193,6 +203,7 @@ def test_three_color_report_displays_three_assignments_per_scope(
 
     output = capsys.readouterr().out
 
+    assert output.count("system-") == 3
     assert output.count("printer-") == 3
     assert output.count("library-") == 3
     assert output.count("catalog-") == 3
@@ -298,6 +309,8 @@ def test_color_report_displays_source_derived_artifact_rgb(
     output = capsys.readouterr().out
 
     assert "(201, 17, 33)" in output
+
+    assert "(245, 5, 5)" not in output
     assert "(255, 0, 0)" not in output
     assert "(220, 20, 20)" not in output
     assert "(190, 10, 10)" not in output
@@ -322,7 +335,9 @@ def test_color_report_displays_individual_assignment_distances(
     output = capsys.readouterr().out
 
     for distance in (
+        "0.50",
         "1.00",
+        "1.50",
         "2.00",
         "3.00",
         "4.00",
@@ -350,6 +365,7 @@ def test_color_report_displays_aggregate_assignment_distances(
 
     assert "Aggregate Distance" in output
 
+    assert "3.00" in output
     assert "6.00" in output
     assert "15.00" in output
     assert "24.00" in output
@@ -378,6 +394,9 @@ def test_color_report_preserves_structured_analysis_order(
     blue = output.index("(10, 10, 250)")
 
     assert red < green < blue
+
+    assert output.index("system-red") < output.index("system-green")
+    assert output.index("system-green") < output.index("system-blue")
 
     assert output.index("printer-red") < output.index("printer-green")
     assert output.index("printer-green") < output.index("printer-blue")

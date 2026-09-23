@@ -34,11 +34,15 @@ def display_color_analysis(
 
     table = create_table()
 
-    table.add_column("Artifact")
+    table.add_column("Layer", no_wrap=True)
+    table.add_column("System")
     table.add_column("Printer")
     table.add_column("Library")
     table.add_column("Catalog")
 
+    system = _assignments_by_index(
+        analysis.system_assignments,
+    )
     printer = _assignments_by_index(
         analysis.printer_assignments,
     )
@@ -56,6 +60,9 @@ def display_color_analysis(
             _format_artifact_color(
                 assignment.measured.index,
                 assignment.measured.rgb,
+            ),
+            _format_assignment(
+                system[index],
             ),
             _format_assignment(
                 printer[index],
@@ -76,6 +83,10 @@ def display_color_analysis(
     totals.add_column("Aggregate Distance")
 
     for scope, result in (
+        (
+            "System",
+            analysis.system_assignments,
+        ),
         (
             "Printer",
             analysis.printer_assignments,
