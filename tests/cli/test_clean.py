@@ -22,6 +22,7 @@ from lowkey_artifact_builder.cli._main import cli
 
 def _invoke(
     *args: str,
+    input: str | None = None,
 ) -> Any:
     """
     Invoke the artifact clean command.
@@ -35,6 +36,7 @@ def _invoke(
             "clean",
             *args,
         ],
+        input=input,
     )
 
 
@@ -43,15 +45,111 @@ def _invoke(
 # =========================================================
 
 
-def test_clean_requires_artifact_id() -> None:
+def test_clean_without_scope_requires_confirmation_before_cleaning(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     """
-    Artifact cleaning requires exactly one artifact ID.
+    Bare clean requires confirmation before generated Products are removed
+    across the project.
     """
 
-    result = _invoke()
+    calls: list[tuple[str, Path]] = []
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_clean,
+        "list_artifacts",
+        lambda *, project_root: (
+            "skippy",
+            "scooby",
+        ),
+    )
+
+    def fake_clean_artifact(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+    ) -> None:
+        calls.append(
+            (
+                artifact_id,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_clean,
+        "clean_artifact",
+        fake_clean_artifact,
+    )
+
+    result = _invoke(
+        input="n\n",
+    )
 
     assert result.exit_code != 0
-    assert "artifact" in result.output.lower()
+    assert "Clean generated Products for all Artifacts?" in result.output
+    assert calls == []
+
+
+def test_clean_force_cleans_all_artifacts_without_confirmation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    --force permits unattended project-wide cleaning without prompting.
+    """
+
+    calls: list[tuple[str, Path]] = []
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_clean,
+        "list_artifacts",
+        lambda *, project_root: (
+            "skippy",
+            "scooby",
+        ),
+    )
+
+    def fake_clean_artifact(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+    ) -> None:
+        calls.append(
+            (
+                artifact_id,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_clean,
+        "clean_artifact",
+        fake_clean_artifact,
+    )
+
+    result = _invoke(
+        "--force",
+    )
+
+    assert result.exit_code == 0
+    assert calls == [
+        (
+            "skippy",
+            tmp_path,
+        ),
+        (
+            "scooby",
+            tmp_path,
+        ),
+    ]
 
 
 def test_clean_rejects_multiple_artifact_ids() -> None:
@@ -259,6 +357,65 @@ def test_clean_realization_without_artifact_ids_delegates_bulk_scope(
                 "scooby",
             ),
             "shape_ornament",
+            tmp_path,
+        ),
+    ]
+
+
+def test_clean_without_scope_cleans_all_artifacts_after_confirmation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bare clean removes generated Products across all Artifacts after
+    explicit confirmation.
+    """
+
+    calls: list[tuple[str, Path]] = []
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_clean,
+        "list_artifacts",
+        lambda *, project_root: (
+            "skippy",
+            "scooby",
+        ),
+    )
+
+    def fake_clean_artifact(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+    ) -> None:
+        calls.append(
+            (
+                artifact_id,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_clean,
+        "clean_artifact",
+        fake_clean_artifact,
+    )
+
+    result = _invoke(
+        input="y\n",
+    )
+
+    assert result.exit_code == 0
+    assert "Clean generated Products for all Artifacts?" in result.output
+    assert calls == [
+        (
+            "skippy",
+            tmp_path,
+        ),
+        (
+            "scooby",
             tmp_path,
         ),
     ]
