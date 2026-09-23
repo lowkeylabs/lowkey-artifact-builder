@@ -28,6 +28,7 @@ from lowkey_artifact_builder.cli.display.config import (
     display_artifact_config,
     display_artifact_definition,
     display_available_variants,
+    display_realization_definition,
 )
 from lowkey_artifact_builder.cli.display.models import (
     display_model,
@@ -48,5 +49,6 @@ __all__ = [
     "display_model_workplans",
     "display_models",
     "display_available_variants",
+    "display_realization_definition",
     "format_value",
 ]

@@ -17,6 +17,7 @@ options.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -24,6 +25,7 @@ from lowkey_artifact_builder.cli.display import (
     display_artifact_definition,
     display_model_workplans,
     display_models,
+    display_realization_definition,
 )
 from lowkey_artifact_builder.config import (
     ConfigError,
@@ -59,11 +61,17 @@ from lowkey_artifact_builder.model import (
     is_flag=True,
     help="Display model stage workplans.",
 )
+@click.option(
+    "--realization",
+    type=str,
+    help="Inspect Artifact-authored configuration for one Realization.",
+)
 def cli(
     artifact_ids: tuple[str, ...],
     list_models: bool,
     dump: bool,
     workplan: bool,
+    realization: str | None,
 ) -> None:
     """
     Manage configuration for an existing artifact.
@@ -80,6 +88,9 @@ def cli(
     if list_models:
         if artifact_ids:
             raise click.UsageError("--list-models cannot be used with artifact IDs.")
+
+        if realization is not None:
+            raise click.UsageError("--realization cannot be used with --list-models.")
 
         if dump and workplan:
             raise click.UsageError("--dump and --workplan cannot be used together.")
@@ -128,6 +139,18 @@ def cli(
         raise click.ClickException(f"Artifact {artifact_id!r} is not defined.")
 
     # =====================================================
+    # Realization display
+    # =====================================================
+
+    if realization is not None:
+        _display_realization(
+            artifact_id,
+            realization,
+            project_root=project_root,
+        )
+        return
+
+    # =====================================================
     # Artifact display
     # =====================================================
 
@@ -174,6 +197,61 @@ def _display_artifact(
         artifact_id,
         existing,
         realizations,
+    )
+
+
+# =========================================================
+# Realization display
+# =========================================================
+
+
+def _display_realization(
+    artifact_id: str,
+    realization: str,
+    *,
+    project_root: Path,
+) -> None:
+    """
+    Display Artifact-authored customization for one effective
+    Realization.
+
+    Canonical Realizations need not have an authored configuration
+    entry. In that case the authored customization is empty.
+    """
+
+    existing = load_artifact_config(
+        artifact_id,
+        project_root=project_root,
+    )
+
+    if not existing:
+        raise click.ClickException(f"Artifact {artifact_id!r} is not defined.")
+
+    try:
+        realizations = get_realization_names(
+            artifact_id,
+            project_root=project_root,
+        )
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    if realization not in realizations:
+        raise click.ClickException(
+            f"Realization {realization!r} is not defined for Artifact {artifact_id!r}."
+        )
+
+    authored_realizations = existing.get("realizations", {})
+
+    authored: dict[str, Any] = {}
+    if isinstance(authored_realizations, dict):
+        candidate = authored_realizations.get(realization, {})
+        if isinstance(candidate, dict):
+            authored = candidate
+
+    display_realization_definition(
+        artifact_id,
+        realization,
+        authored,
     )
 
 

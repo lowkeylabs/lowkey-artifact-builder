@@ -97,3 +97,61 @@ def test_artifact_definition_display_contains_authored_configuration_and_realiza
     assert "artwork_default" in captured.out
     assert "shape_default" in captured.out
     assert "shape_ornament" in captured.out
+
+
+def test_realization_definition_display_contains_only_authored_customization(
+    capsys: object,
+) -> None:
+    """
+    Realization configuration display shows only Artifact-authored
+    customization rather than inherited or resolved Model configuration.
+    """
+
+    from lowkey_artifact_builder.cli.display.config import (
+        display_realization_definition,
+    )
+
+    display_realization_definition(
+        "skippy",
+        "shape_ornament",
+        {
+            "parameters": {
+                "shape_size": 110,
+            },
+        },
+    )
+
+    captured = capsys.readouterr()  # type: ignore[attr-defined]
+
+    assert "skippy" in captured.out
+    assert "shape_ornament" in captured.out
+    assert "shape_size" in captured.out
+    assert "110" in captured.out
+    assert "Resolved parameters" not in captured.out
+
+
+def test_realization_definition_display_reports_no_authored_customization(
+    capsys: object,
+) -> None:
+    """
+    An uncustomized canonical Realization is reported as having no
+    Artifact-specific customization rather than displaying inherited
+    Model or Variant defaults.
+    """
+
+    from lowkey_artifact_builder.cli.display.config import (
+        display_realization_definition,
+    )
+
+    display_realization_definition(
+        "skippy",
+        "shape_ornament",
+        {},
+    )
+
+    captured = capsys.readouterr()  # type: ignore[attr-defined]
+
+    assert "skippy" in captured.out
+    assert "shape_ornament" in captured.out
+    assert "no artifact-specific customization" in captured.out.lower()
+    assert "Resolved parameters" not in captured.out

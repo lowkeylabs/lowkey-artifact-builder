@@ -203,3 +203,89 @@ def test_config_rejects_undefined_artifact(
 
     assert result.exit_code != 0
     assert "not defined" in result.output.lower()
+
+
+# =========================================================
+# Realization configuration inspection
+# =========================================================
+
+
+def test_config_accepts_realization_for_existing_artifact(
+    monkeypatch,
+) -> None:
+    """
+    Configuration may inspect one effective Artifact Realization.
+    """
+
+    displayed: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        cmd_config,
+        "load_artifact_config",
+        lambda *args, **kwargs: {
+            "source": "artifacts/skippy/artifact.png",
+        },
+    )
+
+    monkeypatch.setattr(
+        cmd_config,
+        "_display_realization",
+        lambda artifact_id, realization, **kwargs: displayed.append(
+            (
+                artifact_id,
+                realization,
+            )
+        ),
+        raising=False,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--realization",
+        "shape_ornament",
+    )
+
+    assert result.exit_code == 0
+    assert displayed == [
+        (
+            "skippy",
+            "shape_ornament",
+        )
+    ]
+
+
+def test_config_rejects_unknown_realization(
+    monkeypatch,
+) -> None:
+    """
+    Configuration inspection does not silently interpret an unknown
+    Realization name as a new Realization.
+    """
+
+    monkeypatch.setattr(
+        cmd_config,
+        "load_artifact_config",
+        lambda *args, **kwargs: {
+            "source": "artifacts/skippy/artifact.png",
+        },
+    )
+
+    monkeypatch.setattr(
+        cmd_config,
+        "get_realization_names",
+        lambda *args, **kwargs: (
+            "artwork_default",
+            "shape_default",
+            "shape_ornament",
+        ),
+    )
+
+    result = _invoke(
+        "skippy",
+        "--realization",
+        "shape_typo",
+    )
+
+    assert result.exit_code != 0
+    assert "shape_typo" in result.output
+    assert "realization" in result.output.lower()

@@ -240,6 +240,80 @@ def _display_artifact_parameters(
 
 
 # =========================================================
+# Realization definition
+# =========================================================
+
+
+def display_realization_definition(
+    artifact_id: str,
+    realization: str,
+    configuration: Mapping[str, object],
+) -> None:
+    """
+    Display Artifact-authored customization for one Realization.
+
+    The configuration contains only values explicitly authored for the
+    Realization. Inherited Model and Variant configuration is not
+    resolved or displayed.
+    """
+
+    console.print(f"[bold]{artifact_id} / {realization} Configuration[/bold]")
+
+    console.print()
+
+    summary = create_table(
+        show_header=False,
+    )
+
+    summary.add_column(
+        "Field",
+        style="bold",
+    )
+
+    summary.add_column(
+        "Value",
+    )
+
+    summary.add_row(
+        "Artifact ID",
+        artifact_id,
+    )
+
+    summary.add_row(
+        "Realization",
+        realization,
+    )
+
+    console.print(summary)
+
+    console.print()
+    console.print("[bold]Artifact-specific customization[/bold]")
+    console.print()
+
+    if not configuration:
+        console.print("No Artifact-specific customization.")
+        return
+
+    table = create_table()
+
+    table.add_column(
+        "Parameter",
+    )
+
+    table.add_column(
+        "Value",
+    )
+
+    for name, value in configuration.items():
+        table.add_row(
+            name,
+            _format_parameter_value(value),
+        )
+
+    console.print(table)
+
+
+# =========================================================
 # Available Variants
 # =========================================================
 
@@ -277,4 +351,5 @@ __all__ = [
     "display_artifact_config",
     "display_artifact_definition",
     "display_available_variants",
+    "display_realization_definition",
 ]
