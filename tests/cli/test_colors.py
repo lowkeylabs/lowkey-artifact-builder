@@ -822,3 +822,67 @@ def test_color_analysis_resolves_selected_realization(
             tmp_path,
         )
     ]
+
+
+def test_analyze_artifact_colors_resolves_requested_realization(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Realization-scoped color analysis resolves the requested execution
+    coordinate before interpreting its Model-specific color semantics.
+    """
+
+    selected_plan = SimpleNamespace(
+        resolver=object(),
+        stages=(),
+    )
+
+    resolved: list[
+        tuple[
+            str,
+            str,
+            Path,
+        ]
+    ] = []
+
+    def fake_resolve_color_realization(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+    ) -> object:
+        resolved.append(
+            (
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
+        return selected_plan
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_color_realization",
+        fake_resolve_color_realization,
+    )
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    with pytest.raises(
+        NotImplementedError,
+    ):
+        cmd_color.analyze_artifact_colors(
+            "nydeli",
+            realization="shape_ornament",
+        )
+
+    assert resolved == [
+        (
+            "nydeli",
+            "shape_ornament",
+            tmp_path,
+        )
+    ]

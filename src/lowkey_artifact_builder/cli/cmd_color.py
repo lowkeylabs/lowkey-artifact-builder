@@ -46,11 +46,20 @@ def analyze_artifact_colors(
     registered manifest and realizes the required products through normal
     dependency-aware build orchestration before consuming the manifest.
 
-    A requested Realization is accepted by the application boundary but is not
-    yet interpreted by analysis.
+    A requested Realization is resolved before its Model-specific color
+    semantics are interpreted.
     """
 
     project_root = Path.cwd()
+
+    if realization is not None:
+        _resolve_color_realization(
+            artifact_id,
+            realization=realization,
+            project_root=project_root,
+        )
+
+        raise NotImplementedError("Realization-scoped color analysis is not yet implemented.")
 
     artwork_realization = "artwork_default"
 
