@@ -829,11 +829,9 @@ def test_requested_artwork_realization_dispatches_to_artwork_analysis(
     tmp_path: Path,
 ) -> None:
     """
-    A requested Artwork Realization uses Artwork color analysis.
+    A requested Artwork Realization is dispatched according to its actual
+    Model identity through the Artwork-analysis boundary.
     """
-
-    manifest = tmp_path / "manifest.json"
-    expected_analysis = object()
 
     plan = SimpleNamespace(
         model_name="artwork",
@@ -842,26 +840,44 @@ def test_requested_artwork_realization_dispatches_to_artwork_analysis(
         stages=(),
     )
 
+    expected_analysis = object()
+
     monkeypatch.setattr(
         cmd_color,
         "_resolve_color_realization",
         lambda artifact_id, *, realization, project_root: plan,
     )
+
+    analyzed: list[
+        tuple[
+            str,
+            str,
+            Path,
+        ]
+    ] = []
+
+    def fake_analyze_artwork_colors(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+    ) -> object:
+        analyzed.append(
+            (
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
+
+        return expected_analysis
+
     monkeypatch.setattr(
         cmd_color,
-        "execute_dependency_build",
-        lambda selected_plan: None,
+        "_analyze_artwork_colors",
+        fake_analyze_artwork_colors,
     )
-    monkeypatch.setattr(
-        cmd_color,
-        "_registered_artwork_manifest",
-        lambda selected_plan: manifest,
-    )
-    monkeypatch.setattr(
-        cmd_color,
-        "analyze_registered_artwork_colors",
-        lambda *, manifest, resolver: expected_analysis,
-    )
+
     monkeypatch.chdir(
         tmp_path,
     )
@@ -872,6 +888,14 @@ def test_requested_artwork_realization_dispatches_to_artwork_analysis(
     )
 
     assert analysis is expected_analysis
+
+    assert analyzed == [
+        (
+            "nydeli",
+            "artwork_default",
+            tmp_path,
+        )
+    ]
 
 
 def test_requested_shape_realization_dispatches_to_shape_analysis(
@@ -913,3 +937,128 @@ def test_requested_shape_realization_dispatches_to_shape_analysis(
     )
 
     assert analysis is expected_analysis
+
+
+def test_requested_artwork_realization_targets_registered_manifest(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit Artwork color analysis realizes only the registered Artwork
+    manifest required for analysis.
+
+    Resolving the selected Realization may use a complete plan to discover
+    Model identity, but execution must use a product-targeted Artwork plan
+    rather than executing that complete discovery plan.
+    """
+
+    discovery_plan = SimpleNamespace(
+        artifact_id="nydeli",
+        model_name="artwork",
+        realization_name="artwork_default",
+        resolver=object(),
+        stages=(),
+    )
+
+    manifest = tmp_path / "products.json"
+
+    targeted_plan = SimpleNamespace(
+        resolver=object(),
+        stages=(
+            SimpleNamespace(
+                name="vector",
+                products=(
+                    SimpleNamespace(
+                        name="manifest",
+                        path=manifest,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    planned: list[
+        tuple[
+            str,
+            str,
+            tuple[ProductRef, ...] | None,
+            Path,
+        ]
+    ] = []
+
+    def fake_create_build_plan(
+        artifact_id: str,
+        *,
+        realization: str,
+        targets: tuple[ProductRef, ...] | None = None,
+        project_root: Path,
+    ) -> object:
+        planned.append(
+            (
+                artifact_id,
+                realization,
+                targets,
+                project_root,
+            )
+        )
+
+        if targets is None:
+            return discovery_plan
+
+        return targeted_plan
+
+    executed: list[object] = []
+    expected_analysis = object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_build_plan",
+        fake_create_build_plan,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        executed.append,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        lambda *, manifest, resolver: expected_analysis,
+    )
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    analysis = cmd_color.analyze_artifact_colors(
+        "nydeli",
+        realization="artwork_default",
+    )
+
+    assert analysis is expected_analysis
+
+    assert planned == [
+        (
+            "nydeli",
+            "artwork_default",
+            None,
+            tmp_path,
+        ),
+        (
+            "nydeli",
+            "artwork_default",
+            (
+                ProductRef(
+                    artifact="nydeli",
+                    model="artwork",
+                    realization="artwork_default",
+                    stage="vector",
+                    product="manifest",
+                ),
+            ),
+            tmp_path,
+        ),
+    ]
+
+    assert executed == [
+        targeted_plan,
+    ]

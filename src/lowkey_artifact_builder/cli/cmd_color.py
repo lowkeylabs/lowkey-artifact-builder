@@ -61,17 +61,10 @@ def analyze_artifact_colors(
         )
 
         if plan.model_name == "artwork":
-            execute_dependency_build(
-                plan,
-            )
-
-            manifest = _registered_artwork_manifest(
-                plan,
-            )
-
-            return analyze_registered_artwork_colors(
-                manifest=manifest,
-                resolver=plan.resolver,
+            return _analyze_artwork_colors(
+                artifact_id,
+                realization=plan.realization_name,
+                project_root=project_root,
             )
 
         if plan.model_name == "shape":
@@ -81,34 +74,10 @@ def analyze_artifact_colors(
 
         raise RuntimeError(f"Unsupported color-analysis Model: {plan.model_name!r}.")
 
-    artwork_realization = "artwork_default"
-
-    target = ProductRef(
-        artifact=artifact_id,
-        model="artwork",
-        realization=artwork_realization,
-        stage="vector",
-        product="manifest",
-    )
-
-    plan = create_build_plan(
+    return _analyze_artwork_colors(
         artifact_id,
-        realization=artwork_realization,
-        targets=(target,),
+        realization="artwork_default",
         project_root=project_root,
-    )
-
-    execute_dependency_build(
-        plan,
-    )
-
-    manifest = _registered_artwork_manifest(
-        plan,
-    )
-
-    return analyze_registered_artwork_colors(
-        manifest=manifest,
-        resolver=plan.resolver,
     )
 
 
@@ -130,6 +99,48 @@ def _resolve_color_realization(
         artifact_id,
         realization=realization,
         project_root=project_root,
+    )
+
+
+def _analyze_artwork_colors(
+    artifact_id: str,
+    *,
+    realization: str,
+    project_root: Path,
+) -> ArtworkColorAnalysis:
+    """
+    Analyze one Artwork Realization.
+
+    Color analysis requires only the registered Artwork manifest, so execution
+    uses a product-targeted plan rather than a complete Artwork build plan.
+    """
+
+    target = ProductRef(
+        artifact=artifact_id,
+        model="artwork",
+        realization=realization,
+        stage="vector",
+        product="manifest",
+    )
+
+    plan = create_build_plan(
+        artifact_id,
+        realization=realization,
+        targets=(target,),
+        project_root=project_root,
+    )
+
+    execute_dependency_build(
+        plan,
+    )
+
+    manifest = _registered_artwork_manifest(
+        plan,
+    )
+
+    return analyze_registered_artwork_colors(
+        manifest=manifest,
+        resolver=plan.resolver,
     )
 
 
