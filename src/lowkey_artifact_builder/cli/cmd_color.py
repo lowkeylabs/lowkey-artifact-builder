@@ -83,6 +83,27 @@ def analyze_artifact_colors(
     )
 
 
+def _resolve_color_realization(
+    artifact_id: str,
+    *,
+    realization: str,
+    project_root: Path,
+) -> BuildPlan:
+    """
+    Resolve the Realization selected for color analysis.
+
+    Resolution identifies the selected execution coordinate without assuming
+    which Model owns the Realization or which Model products color analysis
+    will ultimately consume.
+    """
+
+    return create_build_plan(
+        artifact_id,
+        realization=realization,
+        project_root=project_root,
+    )
+
+
 def _registered_artwork_manifest(
     plan: BuildPlan,
 ) -> Path:

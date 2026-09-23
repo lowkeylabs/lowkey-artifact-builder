@@ -757,3 +757,68 @@ def test_colors_accepts_realization_option(
             "shape_ornament",
         )
     ]
+
+
+def test_color_analysis_resolves_selected_realization(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Realization-scoped color analysis resolves the selected execution
+    coordinate without assuming an Artwork Model.
+    """
+
+    selected_plan = SimpleNamespace(
+        model_name="shape",
+        realization_name="shape_ornament",
+        resolver=object(),
+        stages=(),
+    )
+
+    planned: list[
+        tuple[
+            str,
+            str,
+            tuple[ProductRef, ...] | None,
+            Path,
+        ]
+    ] = []
+
+    def fake_create_build_plan(
+        artifact_id: str,
+        *,
+        realization: str,
+        targets: tuple[ProductRef, ...] | None = None,
+        project_root: Path,
+    ) -> object:
+        planned.append(
+            (
+                artifact_id,
+                realization,
+                targets,
+                project_root,
+            )
+        )
+        return selected_plan
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_build_plan",
+        fake_create_build_plan,
+    )
+
+    plan = cmd_color._resolve_color_realization(
+        "nydeli",
+        realization="shape_ornament",
+        project_root=tmp_path,
+    )
+
+    assert plan is selected_plan
+    assert planned == [
+        (
+            "nydeli",
+            "shape_ornament",
+            None,
+            tmp_path,
+        )
+    ]
