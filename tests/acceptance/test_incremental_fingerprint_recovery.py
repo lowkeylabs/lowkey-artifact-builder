@@ -23,7 +23,7 @@ import pytest
 from click.testing import CliRunner
 
 from lowkey_artifact_builder.cli._main import cli
-from lowkey_artifact_builder.config import materialize_artifact
+from lowkey_artifact_builder.config import clean_artifact, materialize_artifact
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     PlannedStage,
@@ -390,3 +390,89 @@ def test_mismatched_recorded_fingerprint_real_rebuild_reconverges(
     )
 
     assert second.required_stages == ()
+
+
+@pytest.mark.slow
+def test_cleaned_realization_requires_and_supports_incremental_rebuild(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Cleaning one Realization makes its generated work pending again, and
+    normal incremental build restores that Realization to current state.
+    """
+
+    project_root = tmp_path
+
+    _configure_artifact(
+        project_root=project_root,
+        monkeypatch=monkeypatch,
+    )
+
+    plan = _create_plan(
+        project_root,
+    )
+
+    # -----------------------------------------------------
+    # Establish a fully current Realization
+    # -----------------------------------------------------
+
+    execute_incremental_artifact_build(
+        plan,
+    )
+
+    assert (
+        _required_stage_names(
+            plan,
+        )
+        == ()
+    )
+
+    package_stage = _stage(
+        plan,
+        "package",
+    )
+
+    package_products = tuple(product.path for product in package_stage.products)
+
+    assert package_products
+    assert all(product.is_file() for product in package_products)
+
+    # -----------------------------------------------------
+    # Clean only this Realization
+    # -----------------------------------------------------
+
+    clean_artifact(
+        "nydeli",
+        realization="artwork_default",
+        project_root=project_root,
+    )
+
+    assert all(not product.exists() for product in package_products)
+
+    required_after_clean = _required_stage_names(
+        plan,
+    )
+
+    assert required_after_clean
+
+    # -----------------------------------------------------
+    # Normal incremental build restores the Realization
+    # -----------------------------------------------------
+
+    rebuilt = execute_incremental_artifact_build(
+        plan,
+    )
+
+    rebuilt_names = tuple(execution.stage_name for execution in rebuilt.required_stages)
+
+    assert rebuilt_names == required_after_clean
+
+    assert all(product.is_file() for product in package_products)
+
+    assert (
+        _required_stage_names(
+            plan,
+        )
+        == ()
+    )
