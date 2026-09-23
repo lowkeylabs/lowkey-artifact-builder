@@ -824,65 +824,92 @@ def test_color_analysis_resolves_selected_realization(
     ]
 
 
-def test_analyze_artifact_colors_resolves_requested_realization(
+def test_requested_artwork_realization_dispatches_to_artwork_analysis(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    Realization-scoped color analysis resolves the requested execution
-    coordinate before interpreting its Model-specific color semantics.
+    A requested Artwork Realization uses Artwork color analysis.
     """
 
-    selected_plan = SimpleNamespace(
+    manifest = tmp_path / "manifest.json"
+    expected_analysis = object()
+
+    plan = SimpleNamespace(
+        model_name="artwork",
+        realization_name="artwork_default",
         resolver=object(),
         stages=(),
     )
 
-    resolved: list[
-        tuple[
-            str,
-            str,
-            Path,
-        ]
-    ] = []
-
-    def fake_resolve_color_realization(
-        artifact_id: str,
-        *,
-        realization: str,
-        project_root: Path,
-    ) -> object:
-        resolved.append(
-            (
-                artifact_id,
-                realization,
-                project_root,
-            )
-        )
-        return selected_plan
-
     monkeypatch.setattr(
         cmd_color,
         "_resolve_color_realization",
-        fake_resolve_color_realization,
+        lambda artifact_id, *, realization, project_root: plan,
     )
-
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda selected_plan: None,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_registered_artwork_manifest",
+        lambda selected_plan: manifest,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        lambda *, manifest, resolver: expected_analysis,
+    )
     monkeypatch.chdir(
         tmp_path,
     )
 
-    with pytest.raises(
-        NotImplementedError,
-    ):
-        cmd_color.analyze_artifact_colors(
-            "nydeli",
-            realization="shape_ornament",
-        )
+    analysis = cmd_color.analyze_artifact_colors(
+        "nydeli",
+        realization="artwork_default",
+    )
 
-    assert resolved == [
-        (
-            "nydeli",
-            "shape_ornament",
-            tmp_path,
-        )
-    ]
+    assert analysis is expected_analysis
+
+
+def test_requested_shape_realization_dispatches_to_shape_analysis(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    A requested Shape Realization is dispatched according to its actual
+    Model identity rather than through Artwork analysis.
+    """
+
+    plan = SimpleNamespace(
+        model_name="shape",
+        realization_name="shape_ornament",
+        resolver=object(),
+        stages=(),
+    )
+
+    expected_analysis = object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_color_realization",
+        lambda artifact_id, *, realization, project_root: plan,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_analyze_shape_colors",
+        lambda selected_plan: expected_analysis,
+        raising=False,
+    )
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    analysis = cmd_color.analyze_artifact_colors(
+        "nydeli",
+        realization="shape_ornament",
+    )
+
+    assert analysis is expected_analysis

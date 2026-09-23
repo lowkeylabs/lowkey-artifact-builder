@@ -42,24 +42,44 @@ def analyze_artifact_colors(
     """
     Analyze physical color assignments for one configured artifact.
 
-    Analysis currently targets the canonical default Artwork Realization's
-    registered manifest and realizes the required products through normal
-    dependency-aware build orchestration before consuming the manifest.
+    Without an explicitly selected Realization, analysis targets the canonical
+    default Artwork Realization's registered manifest and realizes the required
+    products through normal dependency-aware build orchestration before
+    consuming the manifest.
 
-    A requested Realization is resolved before its Model-specific color
-    semantics are interpreted.
+    An explicitly requested Realization is resolved first, then dispatched
+    according to the Model that owns that Realization.
     """
 
     project_root = Path.cwd()
 
     if realization is not None:
-        _resolve_color_realization(
+        plan = _resolve_color_realization(
             artifact_id,
             realization=realization,
             project_root=project_root,
         )
 
-        raise NotImplementedError("Realization-scoped color analysis is not yet implemented.")
+        if plan.model_name == "artwork":
+            execute_dependency_build(
+                plan,
+            )
+
+            manifest = _registered_artwork_manifest(
+                plan,
+            )
+
+            return analyze_registered_artwork_colors(
+                manifest=manifest,
+                resolver=plan.resolver,
+            )
+
+        if plan.model_name == "shape":
+            return _analyze_shape_colors(
+                plan,
+            )
+
+        raise RuntimeError(f"Unsupported color-analysis Model: {plan.model_name!r}.")
 
     artwork_realization = "artwork_default"
 
@@ -111,6 +131,19 @@ def _resolve_color_realization(
         realization=realization,
         project_root=project_root,
     )
+
+
+def _analyze_shape_colors(
+    plan: BuildPlan,
+) -> ArtworkColorAnalysis:
+    """
+    Analyze colors for a Shape Realization.
+
+    Shape-specific color analysis is introduced through this boundary so
+    Shape semantic colors are not interpreted as Artwork color assignments.
+    """
+
+    raise NotImplementedError("Shape color analysis is not yet implemented.")
 
 
 def _registered_artwork_manifest(
