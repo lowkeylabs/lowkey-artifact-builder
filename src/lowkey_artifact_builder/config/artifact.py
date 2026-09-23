@@ -654,6 +654,9 @@ def create_realization(
 
     Existing Artifact configuration and unrelated Realization
     declarations are preserved.
+
+    Creation requires a registered qualified Variant and does not
+    overwrite an already-authored Realization.
     """
 
     root = project_root if project_root is not None else Path.cwd()
@@ -676,6 +679,27 @@ def create_realization(
         Mapping,
     ):
         raise ConfigError("The [realizations] section in artifact.toml must be a TOML table.")
+
+    existing_realizations = get_realization_names(
+        artifact_id,
+        project_root=root,
+    )
+
+    if realization in existing_realizations:
+        raise ConfigError(
+            f"Realization {realization!r} is already defined for Artifact {artifact_id!r}."
+        )
+
+    registry = build_model_registry()
+
+    variant_exists = any(
+        variant == f"{model.name}.{candidate.name}"
+        for model in registry.all_models()
+        for candidate in model.variants
+    )
+
+    if not variant_exists:
+        raise ConfigError(f"Unknown qualified Variant {variant!r}.")
 
     updated_realizations = {
         name: dict(value) if isinstance(value, Mapping) else value

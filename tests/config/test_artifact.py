@@ -1287,3 +1287,136 @@ def test_create_realization_preserves_unrelated_realizations(
             },
         },
     }
+
+
+def test_create_realization_rejects_unknown_variant(
+    tmp_path: Path,
+) -> None:
+    """
+    An additional named Realization must originate from a registered
+    qualified Variant.
+    """
+
+    configure_artifact(
+        "skippy",
+        values={
+            "source": "artifacts/skippy/artifact.png",
+        },
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="shape\\.typo",
+    ):
+        create_realization(
+            "skippy",
+            "large-ornament",
+            variant="shape.typo",
+            parameters={
+                "shape_size": 125,
+            },
+            project_root=tmp_path,
+        )
+
+    config = load_artifact_config(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert "large-ornament" not in config.get(
+        "realizations",
+        {},
+    )
+
+
+def test_create_realization_rejects_existing_named_realization(
+    tmp_path: Path,
+) -> None:
+    """
+    Creation does not overwrite an already-authored named
+    Realization.
+    """
+
+    configure_artifact(
+        "skippy",
+        values={
+            "source": "artifacts/skippy/artifact.png",
+            "realizations": {
+                "large-ornament": {
+                    "variant": "shape.ornament",
+                    "parameters": {
+                        "shape_size": 110,
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="large-ornament",
+    ):
+        create_realization(
+            "skippy",
+            "large-ornament",
+            variant="shape.ornament",
+            parameters={
+                "shape_size": 125,
+            },
+            project_root=tmp_path,
+        )
+
+    config = load_artifact_config(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert config["realizations"]["large-ornament"] == {
+        "variant": "shape.ornament",
+        "parameters": {
+            "shape_size": 110,
+        },
+    }
+
+
+def test_create_realization_rejects_canonical_realization(
+    tmp_path: Path,
+) -> None:
+    """
+    Canonical Realizations already exist and cannot be created
+    as additional named Realizations.
+    """
+
+    configure_artifact(
+        "skippy",
+        values={
+            "source": "artifacts/skippy/artifact.png",
+        },
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_ornament",
+    ):
+        create_realization(
+            "skippy",
+            "shape_ornament",
+            variant="shape.ornament",
+            parameters={
+                "shape_size": 125,
+            },
+            project_root=tmp_path,
+        )
+
+    config = load_artifact_config(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert "shape_ornament" not in config.get(
+        "realizations",
+        {},
+    )
