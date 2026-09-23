@@ -720,12 +720,79 @@ def create_realization(
     )
 
 
+def create_realization_across_artifacts(
+    artifact_ids: tuple[str, ...],
+    realization: str,
+    *,
+    variant: str,
+    parameters: Mapping[str, Any],
+    project_root: Path | None = None,
+) -> None:
+    """
+    Define the same additional named Realization across Artifacts.
+
+    The complete Artifact scope is validated before any persistent
+    configuration is changed. If any Artifact cannot accept the new
+    Realization, the operation fails without mutating any Artifact.
+    """
+
+    root = project_root if project_root is not None else Path.cwd()
+
+    # -----------------------------------------------------
+    # Preflight the complete scope
+    # -----------------------------------------------------
+
+    registry = build_model_registry()
+
+    variant_exists = any(
+        variant == f"{model.name}.{candidate.name}"
+        for model in registry.all_models()
+        for candidate in model.variants
+    )
+
+    if not variant_exists:
+        raise ConfigError(f"Unknown qualified Variant {variant!r}.")
+
+    for artifact_id in artifact_ids:
+        existing = load_artifact_config(
+            artifact_id,
+            project_root=root,
+        )
+
+        if not existing:
+            raise ConfigError(f"Artifact {artifact_id!r} is not defined.")
+
+        existing_realizations = get_realization_names(
+            artifact_id,
+            project_root=root,
+        )
+
+        if realization in existing_realizations:
+            raise ConfigError(
+                f"Realization {realization!r} is already defined for Artifact {artifact_id!r}."
+            )
+
+    # -----------------------------------------------------
+    # Mutate only after successful preflight
+    # -----------------------------------------------------
+
+    for artifact_id in artifact_ids:
+        create_realization(
+            artifact_id,
+            realization,
+            variant=variant,
+            parameters=parameters,
+            project_root=root,
+        )
+
+
 __all__ = [
     "ArtifactState",
     "clean_artifact",
     "configure_artifact",
     "configure_realization",
     "create_realization",
+    "create_realization_across_artifacts",
     "discover_artifacts",
     "list_artifacts",
     "materialize_artifact",

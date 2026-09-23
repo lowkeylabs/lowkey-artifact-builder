@@ -515,3 +515,57 @@ def test_config_create_realization_requires_variant(
 
     assert result.exit_code != 0
     assert "variant" in result.output.lower()
+
+
+def test_config_create_realization_across_all_artifacts(
+    monkeypatch,
+) -> None:
+    """
+    Omitting Artifact IDs selects all Artifacts for bulk Realization
+    creation.
+    """
+
+    created: list[
+        tuple[
+            tuple[str, ...],
+            str,
+            str,
+            dict[str, object],
+        ]
+    ] = []
+
+    monkeypatch.setattr(
+        cmd_config,
+        "_create_realization_scope",
+        lambda artifact_ids, realization, variant, parameters, **kwargs: created.append(
+            (
+                artifact_ids,
+                realization,
+                variant,
+                parameters,
+            )
+        ),
+        raising=False,
+    )
+
+    result = _invoke(
+        "--realization",
+        "large-ornament",
+        "--create",
+        "--parameters",
+        "variant=shape.ornament",
+        "--parameters",
+        "shape_size=125",
+    )
+
+    assert result.exit_code == 0
+    assert created == [
+        (
+            (),
+            "large-ornament",
+            "shape.ornament",
+            {
+                "shape_size": 125,
+            },
+        )
+    ]

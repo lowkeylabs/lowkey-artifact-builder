@@ -18,6 +18,7 @@ from lowkey_artifact_builder.config import (
     configure_artifact,
     configure_realization,
     create_realization,
+    create_realization_across_artifacts,
     discover_artifacts,
     get_resolver,
     list_artifacts,
@@ -1417,6 +1418,67 @@ def test_create_realization_rejects_canonical_realization(
     )
 
     assert "shape_ornament" not in config.get(
+        "realizations",
+        {},
+    )
+
+
+def test_create_realization_across_artifacts_preflights_before_mutation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bulk Realization creation validates the complete Artifact scope
+    before mutating any Artifact.
+    """
+
+    configure_artifact(
+        "skippy",
+        values={
+            "source": "artifacts/skippy/artifact.png",
+        },
+        project_root=tmp_path,
+    )
+
+    configure_artifact(
+        "scooby",
+        values={
+            "source": "artifacts/scooby/artifact.png",
+            "realizations": {
+                "large-ornament": {
+                    "variant": "shape.ornament",
+                    "parameters": {
+                        "shape_size": 110,
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="large-ornament",
+    ):
+        create_realization_across_artifacts(
+            (
+                "skippy",
+                "scooby",
+            ),
+            "large-ornament",
+            variant="shape.ornament",
+            parameters={
+                "shape_size": 125,
+            },
+            project_root=tmp_path,
+        )
+
+    skippy = load_artifact_config(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert "large-ornament" not in skippy.get(
         "realizations",
         {},
     )

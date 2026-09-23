@@ -34,7 +34,9 @@ from lowkey_artifact_builder.config import (
     ConfigError,
     configure_realization,
     create_realization,
+    create_realization_across_artifacts,
     get_realization_names,
+    list_artifacts,
     load_artifact_config,
 )
 from lowkey_artifact_builder.model import (
@@ -147,14 +149,48 @@ def cli(
     if parameters and realization is None:
         raise click.UsageError("--parameters requires --realization.")
 
+    project_root = Path.cwd()
+
+    # =====================================================
+    # Bulk Realization creation
+    # =====================================================
+
     if not artifact_ids:
-        raise click.UsageError("Artifact configuration requires an artifact ID.")
+        if realization is None or not create:
+            raise click.UsageError("Artifact configuration requires an artifact ID.")
+
+        try:
+            parsed_parameters = parse_parameter_bindings(
+                parameters,
+            )
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        variant = parsed_parameters.pop(
+            "variant",
+            None,
+        )
+
+        if not isinstance(variant, str) or not variant:
+            raise click.UsageError("--create requires variant=<model>.<variant> in --parameters.")
+
+        _create_realization_scope(
+            artifact_ids,
+            realization,
+            variant,
+            parsed_parameters,
+            project_root=project_root,
+        )
+        return
+
+    # =====================================================
+    # Single Artifact
+    # =====================================================
 
     if len(artifact_ids) != 1:
         raise click.UsageError("Artifact configuration requires exactly one artifact ID.")
 
     artifact_id = artifact_ids[0]
-    project_root = Path.cwd()
 
     # =====================================================
     # Existing artifact
@@ -372,6 +408,46 @@ def _create_realization(
     try:
         create_realization(
             artifact_id,
+            realization,
+            variant=variant,
+            parameters=parameters,
+            project_root=project_root,
+        )
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+# =========================================================
+# Bulk Realization creation
+# =========================================================
+
+
+def _create_realization_scope(
+    artifact_ids: tuple[str, ...],
+    realization: str,
+    variant: str,
+    parameters: dict[str, object],
+    *,
+    project_root: Path,
+) -> None:
+    """
+    Create an additional named Realization across an Artifact scope.
+
+    An empty explicit scope selects all existing Artifacts.
+    """
+
+    selected_artifacts = artifact_ids
+
+    if not selected_artifacts:
+        selected_artifacts = tuple(
+            list_artifacts(
+                project_root=project_root,
+            )
+        )
+
+    try:
+        create_realization_across_artifacts(
+            selected_artifacts,
             realization,
             variant=variant,
             parameters=parameters,
