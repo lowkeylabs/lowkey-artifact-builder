@@ -582,13 +582,53 @@ structural components merely because they are not Artwork color regions.
 
 The operator-facing display should account for every relevant printable component while presenting one row per relevant independently printable color and preserving the semantic source and component usage of that color.
 
-Before implementation, settle the display and recolor behavior when a
+A Model-owned semantic printing color is the authoritative color identity
+of its component. That identity is preserved in the packaged 3MF and is
+not replaced merely because the same color is absent from a System,
+Printer, Library, or Catalog candidate palette.
 
-Model-owned semantic color is not present in a candidate printer or
+System, Printer, Library, and Catalog comparison may calculate and display
+the nearest available candidate color and perceptual distance for a
+Model-owned semantic color. These results are advisory comparisons to the
+semantic color; they are not physical-color assignments and do not rename
+or otherwise replace the component's semantic color identity.
 
-library palette. Do not silently substitute another color through
+For example, if a Shape base has the semantic printing color `orange` and
+the effective Printer palette does not contain orange, color analysis may
+report the nearest available Printer color and its perceptual distance.
+The Shape base nevertheless remains semantically `orange` and remains
+labeled as orange in the packaged 3MF. The final mapping of that semantic
+color to available filament may therefore be made later during printing.
 
-Artwork assignment policy.
+Artwork's global one-to-one physical-color assignment policy does not apply
+to these Model-owned semantic-color comparisons. Each structural semantic
+color is compared independently with the candidate colors in each scope.
+Multiple structural semantic colors may therefore report the same nearest
+candidate color.
+
+This distinction is:
+
+```text
+Artwork-derived color
+    measured Artifact color
+        ↓
+    physical-color assignment
+        ↓
+    packaged component color identity
+
+Model-owned structural color
+    semantic printing color
+        ↓
+    packaged component color identity
+        ↓
+    advisory System / Printer / Library / Catalog comparisons
+```
+
+Recoloring printer_colors changes the palettes against which structural
+semantic colors are compared. It does not rewrite Model-owned semantic
+color parameters such as `shape_base_color`, `shape_outer_ridge_color`, or
+`shape_artwork_fill_color`.
+
 
 ------------------------------------------------------------------------
 

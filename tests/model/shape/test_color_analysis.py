@@ -150,3 +150,34 @@ def test_shape_color_analysis_includes_artwork_fill_semantic_color() -> None:
 
     assert fill_color.color == "black"
     assert fill_color.used_by == ("artwork-fill",)
+
+
+def test_shape_color_analysis_groups_all_components_using_same_color() -> None:
+    """
+    All participating Shape-owned components sharing one semantic physical
+    color occupy one color row.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_base_color": "white",
+            "shape_outer_ridge_width": 2.0,
+            "shape_outer_ridge_color": "white",
+            "shape_artwork_fill_color": "white",
+        }
+    )
+
+    analysis = analyze_shape_colors(
+        resolver=resolver,
+    )
+
+    assert len(analysis.colors) == 1
+
+    color = analysis.colors[0]
+
+    assert color.color == "white"
+    assert color.used_by == (
+        "base",
+        "outer-ridge",
+        "artwork-fill",
+    )
