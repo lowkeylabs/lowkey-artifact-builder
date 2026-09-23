@@ -444,3 +444,58 @@ def test_artwork_configuration_has_no_fill_color(
         match="Unknown configuration value 'artwork_fill_color'",
     ):
         resolver("artwork_fill_color")
+
+
+def test_system_printer_colors_remain_available_after_artifact_override(
+    tmp_path: Path,
+) -> None:
+    """
+    System printer colors remain available independently of the effective
+    resolved printer colors.
+
+    Artifact overrides affect normal resolution but do not replace the
+    underlying system-default printer palette.
+    """
+
+    system_resolver = get_resolver(
+        "system-reference",
+        model="artwork",
+        project_root=tmp_path,
+    )
+
+    system_printer_colors = system_resolver(
+        "printer_colors",
+    )
+
+    write_artifact_config(
+        "nydeli",
+        {
+            "model": "artwork",
+            "printer_colors": [
+                "black",
+                "white",
+                "red",
+            ],
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "nydeli",
+        project_root=tmp_path,
+    )
+
+    assert resolver(
+        "printer_colors",
+    ) == [
+        "black",
+        "white",
+        "red",
+    ]
+
+    assert (
+        resolver.system_value(
+            "printer_colors",
+        )
+        == system_printer_colors
+    )

@@ -1731,4 +1731,3 @@ broader configuration explanation.
 provides both the operator's color comparison and the explicit, optional
 
 recolor selection.
-

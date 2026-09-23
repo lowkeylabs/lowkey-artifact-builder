@@ -74,10 +74,22 @@ def _assignment_result(
 
 def _analysis() -> ArtworkColorAnalysis:
     """
-    Return representative three-scope Artwork analysis.
+    Return representative four-scope Artwork analysis.
     """
 
     return ArtworkColorAnalysis(
+        system_assignments=_assignment_result(
+            names=(
+                "system-red",
+                "system-green",
+                "system-blue",
+            ),
+            distances=(
+                0.5,
+                1.0,
+                1.5,
+            ),
+        ),
         printer_assignments=_assignment_result(
             names=(
                 "printer-red",
@@ -225,6 +237,19 @@ def test_color_report_displays_source_derived_artifact_rgb(
     )
 
     analysis = ArtworkColorAnalysis(
+        system_assignments=ColorAssignmentResult(
+            assignments=(
+                ColorAssignment(
+                    measured=measured,
+                    color=PaletteColor(
+                        name="system-red",
+                        rgb=(245, 5, 5),
+                    ),
+                    distance=0.5,
+                ),
+            ),
+            distance=0.5,
+        ),
         printer_assignments=ColorAssignmentResult(
             assignments=(
                 ColorAssignment(

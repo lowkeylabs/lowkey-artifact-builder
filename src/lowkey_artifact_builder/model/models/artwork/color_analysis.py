@@ -1,6 +1,7 @@
 """
 Artwork color-assignment analysis.
 """
+
 # File: src/lowkey_artifact_builder/model/models/artwork/color_analysis.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
@@ -38,6 +39,11 @@ class ColorAnalysisResolver(Protocol):
         name: str,
     ) -> object: ...
 
+    def system_value(
+        self,
+        name: str,
+    ) -> object: ...
+
     @property
     def colors(
         self,
@@ -57,9 +63,13 @@ class ArtworkColorAnalysis:
     """
     Color-assignment analysis for registered Artwork.
 
+    system_assignments:
+        Optimal one-to-one assignment from persistent Artifact colors
+        to the system-default printer colors.
+
     printer_assignments:
         Optimal one-to-one assignment from persistent Artifact colors
-        to the colors configured for the printer.
+        to the effective colors configured for the printer.
 
     library_assignments:
         Optimal one-to-one assignment from persistent Artifact colors
@@ -69,6 +79,8 @@ class ArtworkColorAnalysis:
         Optimal one-to-one assignment from persistent Artifact colors
         to all physical colors in the color catalog.
     """
+
+    system_assignments: ColorAssignmentResult
 
     printer_assignments: ColorAssignmentResult
 
@@ -223,11 +235,15 @@ def analyze_registered_artwork_colors(
     resolver: ColorAnalysisResolver,
 ) -> ArtworkColorAnalysis:
     """
-    Analyze registered Artwork against three color-availability scopes.
+    Analyze registered Artwork against four color-availability scopes.
 
     Persistent Artifact colors are the measured colors for every scope.
 
-    Printer candidates are selected by resolved printer configuration.
+    System candidates are selected from the unresolved system-default
+    printer_colors configuration.
+
+    Printer candidates are selected from the effective resolved
+    printer_colors configuration.
 
     Library candidates are selected by resolved filament-library
     configuration.
@@ -244,14 +260,28 @@ def analyze_registered_artwork_colors(
         manifest,
     )
 
+    system_colors = _resolve_catalog_colors(
+        resolver,
+        "printer_colors",
+        resolver.system_value(
+            "printer_colors",
+        ),
+    )
+
     printer_colors = _resolve_catalog_colors(
         resolver,
         "printer_colors",
+        resolver(
+            "printer_colors",
+        ),
     )
 
     library_colors = _resolve_catalog_colors(
         resolver,
         "library_colors",
+        resolver(
+            "library_colors",
+        ),
     )
 
     catalog_colors = tuple(
@@ -263,6 +293,11 @@ def analyze_registered_artwork_colors(
         if _is_physical_catalog_color(
             entry,
         )
+    )
+
+    system_assignments = assign_colors(
+        artwork_colors,
+        system_colors,
     )
 
     printer_assignments = assign_colors(
@@ -282,6 +317,7 @@ def analyze_registered_artwork_colors(
     )
 
     return ArtworkColorAnalysis(
+        system_assignments=system_assignments,
         printer_assignments=printer_assignments,
         library_assignments=library_assignments,
         catalog_assignments=catalog_assignments,
@@ -291,14 +327,11 @@ def analyze_registered_artwork_colors(
 def _resolve_catalog_colors(
     resolver: ColorAnalysisResolver,
     parameter: str,
+    names: object,
 ) -> tuple[PaletteColor, ...]:
     """
     Resolve catalog colors selected by an availability parameter.
     """
-
-    names = resolver(
-        parameter,
-    )
 
     if not isinstance(
         names,

@@ -32,6 +32,11 @@ from lowkey_artifact_builder.model.models.artwork.color_analysis import (
 class StubColorResolver:
     """
     Resolver-compatible configuration and color-catalog source.
+
+    Normal resolution returns effective parameter values. System resolution
+    returns unresolved system-default values. When no separate system values
+    are supplied, system resolution uses the effective values so existing
+    tests remain concise.
     """
 
     def __init__(
@@ -39,8 +44,10 @@ class StubColorResolver:
         *,
         values: Mapping[str, object],
         colors: Mapping[str, object],
+        system_values: Mapping[str, object] | None = None,
     ) -> None:
         self._values = values
+        self._system_values = system_values if system_values is not None else values
         self._colors = colors
 
     def __call__(
@@ -48,6 +55,12 @@ class StubColorResolver:
         name: str,
     ) -> object:
         return self._values[name]
+
+    def system_value(
+        self,
+        name: str,
+    ) -> object:
+        return self._system_values[name]
 
     @property
     def colors(
@@ -305,19 +318,82 @@ def test_registered_artwork_analysis_uses_artifact_rgb_not_printer_rgb(
 # =========================================================
 
 
-def test_artwork_color_analysis_uses_assignment_scope_names() -> None:
+def test_artwork_color_analysis_exposes_system_and_resolved_printer_assignments() -> None:
     """
-    Artwork color analysis exposes the assignment-set identities defined
-    by the permanent Artwork model.
+    Artwork color analysis exposes system and resolved printer assignments
+    independently.
+
+    System represents assignment against the unresolved printer_colors
+    defaults. Printer represents assignment against the effective resolved
+    printer_colors for the Artifact or Realization.
     """
 
     fields = tuple(field.name for field in dataclasses.fields(ArtworkColorAnalysis))
 
     assert fields == (
+        "system_assignments",
         "printer_assignments",
         "library_assignments",
         "catalog_assignments",
     )
+
+
+def test_registered_artwork_analysis_assigns_system_and_printer_independently(
+    tmp_path: Path,
+) -> None:
+    """
+    System and Printer assignments use independent printer-color palettes.
+
+    System uses the unresolved printer_colors defaults. Printer uses the
+    effective resolved printer_colors for the Artifact or Realization.
+    """
+
+    manifest = tmp_path / "products.json"
+
+    _write_registered_artwork_manifest(
+        manifest,
+        products=[
+            _registered_artwork_product(
+                index=1,
+                artifact_rgb=(250, 0, 0),
+                printer_name="old-printer-red",
+                printer_rgb=(200, 0, 0),
+                distance=5.0,
+            ),
+        ],
+    )
+
+    resolver = StubColorResolver(
+        values={
+            "printer_colors": ["override-red"],
+            "library_colors": ["library-red"],
+        },
+        system_values={
+            "printer_colors": ["system-red"],
+        },
+        colors={
+            "system-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(200, 0, 0),
+            ),
+            "override-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(245, 0, 0),
+            ),
+            "library-red": _catalog_color(
+                manufacturer="eSUN",
+                rgb=(240, 0, 0),
+            ),
+        },
+    )
+
+    analysis = analyze_registered_artwork_colors(
+        manifest=manifest,
+        resolver=resolver,
+    )
+
+    assert analysis.system_assignments.assignments[0].color.name == "system-red"
+    assert analysis.printer_assignments.assignments[0].color.name == "override-red"
 
 
 # =========================================================

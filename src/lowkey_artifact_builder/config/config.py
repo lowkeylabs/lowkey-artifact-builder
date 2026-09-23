@@ -156,6 +156,7 @@ class Resolver:
         *,
         derivations: Derivations | None = None,
         colors: Mapping[str, Any] | None = None,
+        system_values: Mapping[str, Any] | None = None,
     ) -> None:
         """
         Construct a resolver.
@@ -163,6 +164,8 @@ class Resolver:
 
         self._values = dict(values)
         self._provenance = dict(provenance)
+
+        self._system_values = dict(system_values or {})
 
         self._derivations = dict(derivations or {})
 
@@ -231,6 +234,24 @@ class Resolver:
 
         return value
 
+    def system_value(
+        self,
+        name: str,
+    ) -> Any:
+        """
+        Return the system-configured value of a parameter.
+
+        System values are the unresolved parameter defaults loaded from the
+        packaged system configuration. Later configuration scopes do not affect
+        this value.
+        """
+
+        try:
+            return self._system_values[name]
+
+        except KeyError as exc:
+            raise ConfigError(f"Unknown system configuration value {name!r}.") from exc
+
     def with_values(
         self,
         values: Mapping[str, Any],
@@ -270,6 +291,7 @@ class Resolver:
             provenance=resolved_provenance,
             derivations=self._derivations,
             colors=self._colors,
+            system_values=self._system_values,
         )
 
     # =====================================================
@@ -730,6 +752,7 @@ def get_resolver(
         provenance,
         derivations=derivations,
         colors=colors,
+        system_values=system_parameters,
     )
 
 
