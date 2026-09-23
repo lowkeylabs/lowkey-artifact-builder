@@ -124,7 +124,7 @@ def test_clean_delegates_to_artifact_api(
     monkeypatch.setattr(
         cmd_clean,
         "clean_artifact",
-        lambda artifact_id, *, project_root: calls.append(
+        lambda artifact_id, *, realization=None, project_root: calls.append(
             (
                 artifact_id,
                 project_root,
@@ -140,6 +140,65 @@ def test_clean_delegates_to_artifact_api(
     assert calls == [
         (
             "skippy",
+            tmp_path,
+        ),
+    ]
+
+
+def test_clean_realization_delegates_to_artifact_api(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    The CLI delegates Realization-scoped cleaning to the Artifact lifecycle API.
+
+    Filesystem ownership and deletion semantics belong below the CLI
+    boundary.
+    """
+
+    calls: list[tuple[str, str | None, Path]] = []
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_clean,
+        "load_artifact_config",
+        lambda *args, **kwargs: {
+            "model": "artwork",
+        },
+    )
+
+    def fake_clean_artifact(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+    ) -> None:
+        calls.append(
+            (
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_clean,
+        "clean_artifact",
+        fake_clean_artifact,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--realization",
+        "shape_ornament",
+    )
+
+    assert result.exit_code == 0
+    assert calls == [
+        (
+            "skippy",
+            "shape_ornament",
             tmp_path,
         ),
     ]

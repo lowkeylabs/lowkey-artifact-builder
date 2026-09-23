@@ -421,3 +421,117 @@ def test_clean_preserves_unknown_artifact_directories(
     )
 
     assert persistent.is_file()
+
+
+def test_clean_realization_removes_only_selected_realization_products(
+    tmp_path: Path,
+) -> None:
+    """
+    Realization-scoped cleaning removes generated Products belonging to
+    the selected Realization while preserving unrelated Realizations.
+    """
+
+    artifact_dir = _define_artifact(
+        tmp_path,
+        "skippy",
+    )
+
+    default_product = _write_product(
+        artifact_dir,
+        "shape/shape_default/40-package/artifact.3mf",
+    )
+
+    ornament_product = _write_product(
+        artifact_dir,
+        "shape/shape_ornament/40-package/artifact.3mf",
+    )
+
+    clean_artifact(
+        "skippy",
+        realization="shape_ornament",
+        project_root=tmp_path,
+    )
+
+    assert default_product.is_file()
+    assert not ornament_product.exists()
+
+
+def test_clean_named_realization_uses_realization_identity(
+    tmp_path: Path,
+) -> None:
+    """
+    Realization-scoped cleaning uses the Realization's own identity.
+
+    An additional named Realization may originate from a Variant whose name
+    differs from the Realization name. Cleaning that Realization removes its
+    generated Products without removing Products belonging to the canonical
+    Realization of the same Variant.
+    """
+
+    artifact_dir = _define_artifact(
+        tmp_path,
+        "skippy",
+    )
+
+    config_path = artifact_dir / "artifact.toml"
+    config_path.write_text(
+        "\n".join(
+            (
+                'model = "artwork"',
+                "",
+                "[realizations.large-ornament]",
+                'variant = "shape.ornament"',
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    canonical_product = _write_product(
+        artifact_dir,
+        "shape/shape_ornament/40-package/artifact.3mf",
+    )
+
+    named_product = _write_product(
+        artifact_dir,
+        "shape/large-ornament/40-package/artifact.3mf",
+    )
+
+    clean_artifact(
+        "skippy",
+        realization="large-ornament",
+        project_root=tmp_path,
+    )
+
+    assert canonical_product.is_file()
+    assert not named_product.exists()
+
+
+def test_clean_realization_removes_only_selected_published_3mf(
+    tmp_path: Path,
+) -> None:
+    """
+    Realization-scoped cleaning removes the selected Realization's published
+    convenience 3MF while preserving published 3MFs belonging to unrelated
+    Realizations.
+    """
+
+    artifact_dir = _define_artifact(
+        tmp_path,
+        "skippy",
+    )
+
+    selected = artifact_dir / "shape_ornament.3mf"
+    selected.write_bytes(b"ornament")
+
+    unrelated = artifact_dir / "shape_default.3mf"
+    unrelated.write_bytes(b"default")
+
+    clean_artifact(
+        "skippy",
+        realization="shape_ornament",
+        project_root=tmp_path,
+    )
+
+    assert not selected.exists()
+    assert unrelated.read_bytes() == b"default"

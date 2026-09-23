@@ -30,11 +30,21 @@ from lowkey_artifact_builder.config import (
     "artifact_ids",
     nargs=-1,
 )
+@click.option(
+    "--realization",
+    type=str,
+    default=None,
+    help="Clean generated Products for one Realization.",
+)
 def cli(
     artifact_ids: tuple[str, ...],
+    realization: str | None,
 ) -> None:
     """
     Remove derived products for an existing artifact.
+
+    When --realization is provided, only generated Products belonging to
+    that Realization are removed.
     """
 
     if not artifact_ids:
@@ -57,6 +67,7 @@ def cli(
     try:
         clean_artifact(
             artifact_id,
+            realization=realization,
             project_root=project_root,
         )
 

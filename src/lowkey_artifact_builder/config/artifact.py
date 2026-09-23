@@ -27,6 +27,7 @@ from .config import (
     ConfigError,
     artifact_config_path,
     get_realization_names,
+    get_resolver,
     load_artifact_config,
     update_artifact_config,
     write_artifact_config,
@@ -212,17 +213,23 @@ def realization_3mf_filename(
 def clean_artifact(
     artifact_id: str,
     *,
+    realization: str | None = None,
     project_root: Path | None = None,
 ) -> None:
     """
-    Remove derived products for an Artifact.
+    Remove derived products for an Artifact or one Realization.
 
     Persistent Artifact configuration and Artifact-owned source inputs
     are preserved.
 
-    Complete generated Model silos are removed for every Model discovered
-    by the Model subsystem. Artifact-level convenience 3MF copies belonging
-    to effective Realizations are also removed.
+    When a Realization is selected, only generated Products belonging to
+    that Realization are removed. Generated Products belonging to unrelated
+    Realizations are preserved.
+
+    Without a Realization selection, complete generated Model silos are
+    removed for every Model discovered by the Model subsystem. Artifact-level
+    convenience 3MF copies belonging to effective Realizations are also
+    removed.
 
     Unknown Artifact-owned files and directories are preserved.
     """
@@ -244,14 +251,52 @@ def clean_artifact(
         project_root=root,
     )
 
-    registry = build_model_registry()
+    # -----------------------------------------------------
+    # Realization-scoped cleaning
+    # -----------------------------------------------------
 
-    generated_paths = [artifact_dir / model.name for model in registry.all_models()]
+    if realization is not None:
+        if realization not in realization_names:
+            raise ConfigError(
+                f"Realization {realization!r} is not defined for Artifact {artifact_id!r}."
+            )
 
-    generated_paths.extend(
-        artifact_dir / realization_3mf_filename(realization_name)
-        for realization_name in realization_names
-    )
+        resolver = get_resolver(
+            artifact_id,
+            realization=realization,
+            project_root=root,
+        )
+
+        model_name = resolver("model")
+
+        if not isinstance(model_name, str) or not model_name:
+            raise ConfigError(
+                f"Realization {realization!r} for Artifact "
+                f"{artifact_id!r} does not resolve to a Model."
+            )
+
+        generated_paths = [
+            artifact_dir / model_name / realization,
+            artifact_dir / realization_3mf_filename(realization),
+        ]
+
+    # -----------------------------------------------------
+    # Artifact-scoped cleaning
+    # -----------------------------------------------------
+
+    else:
+        registry = build_model_registry()
+
+        generated_paths = [artifact_dir / model.name for model in registry.all_models()]
+
+        generated_paths.extend(
+            artifact_dir / realization_3mf_filename(realization_name)
+            for realization_name in realization_names
+        )
+
+    # -----------------------------------------------------
+    # Remove generated state
+    # -----------------------------------------------------
 
     for generated_path in generated_paths:
         if not generated_path.exists():
