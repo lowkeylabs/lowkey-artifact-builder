@@ -17,6 +17,7 @@ from __future__ import annotations
 from lowkey_artifact_builder.config.artifact import (
     ArtifactState,
     clean_artifact,
+    clean_realization_across_artifacts,
     configure_artifact,
     configure_realization,
     configure_realization_across_artifacts,
@@ -50,6 +51,7 @@ __all__ = [
     "Resolver",
     "artifact_config_path",
     "clean_artifact",
+    "clean_realization_across_artifacts",
     "configure_artifact",
     "configure_realization",
     "configure_realization_across_artifacts",

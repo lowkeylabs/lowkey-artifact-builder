@@ -316,6 +316,57 @@ def clean_artifact(
             ) from exc
 
 
+def clean_realization_across_artifacts(
+    artifact_ids: tuple[str, ...],
+    realization: str,
+    *,
+    project_root: Path | None = None,
+) -> None:
+    """
+    Clean the same existing Realization across Artifacts.
+
+    The complete Artifact scope is validated before any generated Products
+    are removed. If any Artifact does not provide the requested Realization,
+    the operation fails without cleaning any Artifact.
+    """
+
+    root = project_root if project_root is not None else Path.cwd()
+
+    # -----------------------------------------------------
+    # Preflight the complete scope
+    # -----------------------------------------------------
+
+    for artifact_id in artifact_ids:
+        config_path = artifact_config_path(
+            artifact_id,
+            project_root=root,
+        )
+
+        if not config_path.is_file():
+            raise ConfigError(f"Artifact {artifact_id!r} is not defined.")
+
+        realization_names = get_realization_names(
+            artifact_id,
+            project_root=root,
+        )
+
+        if realization not in realization_names:
+            raise ConfigError(
+                f"Realization {realization!r} is not defined for Artifact {artifact_id!r}."
+            )
+
+    # -----------------------------------------------------
+    # Clean only after successful preflight
+    # -----------------------------------------------------
+
+    for artifact_id in artifact_ids:
+        clean_artifact(
+            artifact_id,
+            realization=realization,
+            project_root=root,
+        )
+
+
 # =========================================================
 # Artifact discovery
 # =========================================================
@@ -888,6 +939,7 @@ def configure_realization_across_artifacts(
 __all__ = [
     "ArtifactState",
     "clean_artifact",
+    "clean_realization_across_artifacts",
     "configure_artifact",
     "configure_realization",
     "create_realization",

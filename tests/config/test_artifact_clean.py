@@ -16,6 +16,7 @@ import lowkey_artifact_builder.config.artifact as artifact_services
 from lowkey_artifact_builder.config import (
     ConfigError,
     clean_artifact,
+    clean_realization_across_artifacts,
 )
 
 # =========================================================
@@ -535,3 +536,62 @@ def test_clean_realization_removes_only_selected_published_3mf(
 
     assert not selected.exists()
     assert unrelated.read_bytes() == b"default"
+
+
+def test_clean_realization_across_artifacts_validates_complete_scope_before_cleaning(
+    tmp_path: Path,
+) -> None:
+    """
+    Bulk Realization cleaning validates the complete Artifact scope before
+    removing generated Products from any Artifact.
+    """
+
+    skippy_dir = _define_artifact(
+        tmp_path,
+        "skippy",
+    )
+
+    scooby_dir = _define_artifact(
+        tmp_path,
+        "scooby",
+    )
+
+    skippy_config = skippy_dir / "artifact.toml"
+    skippy_config.write_text(
+        "\n".join(
+            (
+                'model = "artwork"',
+                "",
+                "[realizations.large-ornament]",
+                'variant = "shape.ornament"',
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    skippy_product = _write_product(
+        skippy_dir,
+        "shape/large-ornament/40-package/artifact.3mf",
+    )
+
+    scooby_product = _write_product(
+        scooby_dir,
+        "shape/shape_default/40-package/artifact.3mf",
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="large-ornament",
+    ):
+        clean_realization_across_artifacts(
+            (
+                "skippy",
+                "scooby",
+            ),
+            "large-ornament",
+            project_root=tmp_path,
+        )
+
+    assert skippy_product.is_file()
+    assert scooby_product.is_file()

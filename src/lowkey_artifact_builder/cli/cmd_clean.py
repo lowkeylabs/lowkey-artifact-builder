@@ -17,6 +17,8 @@ import click
 from lowkey_artifact_builder.config import (
     ConfigError,
     clean_artifact,
+    clean_realization_across_artifacts,
+    list_artifacts,
     load_artifact_config,
 )
 
@@ -45,16 +47,47 @@ def cli(
 
     When --realization is provided, only generated Products belonging to
     that Realization are removed.
+
+    When --realization is provided without an Artifact ID, that Realization
+    is cleaned across all existing Artifacts.
     """
 
+    project_root = Path.cwd()
+
+    # =====================================================
+    # All-Artifact Realization scope
+    # =====================================================
+
     if not artifact_ids:
-        raise click.UsageError("Artifact cleaning requires an artifact ID.")
+        if realization is None:
+            raise click.UsageError("Artifact cleaning requires an artifact ID.")
+
+        selected_artifacts = tuple(
+            list_artifacts(
+                project_root=project_root,
+            )
+        )
+
+        try:
+            clean_realization_across_artifacts(
+                selected_artifacts,
+                realization,
+                project_root=project_root,
+            )
+
+        except ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        return
+
+    # =====================================================
+    # Single Artifact scope
+    # =====================================================
 
     if len(artifact_ids) != 1:
         raise click.UsageError("Artifact cleaning requires exactly one artifact ID.")
 
     artifact_id = artifact_ids[0]
-    project_root = Path.cwd()
 
     existing = load_artifact_config(
         artifact_id,

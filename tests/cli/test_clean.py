@@ -202,3 +202,63 @@ def test_clean_realization_delegates_to_artifact_api(
             tmp_path,
         ),
     ]
+
+
+def test_clean_realization_without_artifact_ids_delegates_bulk_scope(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    clean --realization delegates the complete Artifact scope to the
+    validation-atomic bulk cleaning service.
+    """
+
+    calls: list[tuple[tuple[str, ...], str, Path]] = []
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_clean,
+        "list_artifacts",
+        lambda *, project_root: (
+            "skippy",
+            "scooby",
+        ),
+    )
+
+    def fake_clean_realization_across_artifacts(
+        artifact_ids: tuple[str, ...],
+        realization: str,
+        *,
+        project_root: Path,
+    ) -> None:
+        calls.append(
+            (
+                artifact_ids,
+                realization,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_clean,
+        "clean_realization_across_artifacts",
+        fake_clean_realization_across_artifacts,
+    )
+
+    result = _invoke(
+        "--realization",
+        "shape_ornament",
+    )
+
+    assert result.exit_code == 0
+    assert calls == [
+        (
+            (
+                "skippy",
+                "scooby",
+            ),
+            "shape_ornament",
+            tmp_path,
+        ),
+    ]
