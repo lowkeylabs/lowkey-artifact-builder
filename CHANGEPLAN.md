@@ -5,7 +5,7 @@
 This change plan streamlines the user-facing workflow of
 `lowkey-artifact-builder` around the common production path:
 
-```text
+``` text
 raw PNGs
     ↓
 create
@@ -16,73 +16,83 @@ build
     ↓
 3MF Products
     ↓
-recolor
+colors
     ↓
 operator-ready 3MFs
     ↓
 PrusaSlicer / printer
 ```
 
-The CLI should optimize this common case while preserving the architectural
-distinction between Models, Variants, Artifacts, Realizations, Stages, and
-Products.
+The CLI should optimize this common case while preserving the
+architectural distinction between Models, Variants, Artifacts,
+Realizations, Stages, and Products.
 
 The central CLI principle is:
 
 > Users normally address Artifacts and Realizations. Variants provide
-> Model-owned reusable configuration from which Realizations are derived.
+> Model-owned reusable configuration from which Realizations are
+> derived.
 
-Configuration is therefore exceptional in the ordinary production workflow.
-Canonical Realizations permit a newly created Artifact to use every registered
-Model Variant without requiring Artifact-specific configuration.
+Configuration is therefore exceptional in the ordinary production
+workflow. Canonical Realizations permit a newly created Artifact to use
+every registered Model Variant without requiring Artifact-specific
+configuration.
 
 The intended routine batch workflow is:
 
-```text
+``` text
 artifact create
 artifact build
 artifact build --build-all
-# artifact recolor --colors printer
+artifact colors
 ```
 
-Artifact-specific configuration is required only when a canonical Realization
-must be customized or an additional named Realization must be defined.
+`artifact colors` is the single user-facing color operation. Without
+`--recolor`, it is read-only analysis. With `--recolor`, it explicitly
+applies an operator-selected physical-color assignment to existing final
+3MFs.
 
----
+Artifact-specific configuration is required only when a canonical
+Realization must be customized, an additional named Realization must be
+defined, or an operator intentionally persists a color selection.
+
+------------------------------------------------------------------------
 
 # Development Method
 
 This plan is subordinate to:
 
-```text
+``` text
 ARCHITECTURE.md
 src/lowkey_artifact_builder/model/models/<model>/DEFINITION.md
 prompts/NEW_THREAD.md
 prompts/TEST_DRIVEN_DEVELOPMENT.md
 ```
 
-The permanent specifications define intended behavior. Repository HEAD defines
-the current implementation. This file describes a route between them.
+The permanent specifications define intended behavior. Repository HEAD
+defines the current implementation. This file describes a route between
+them.
 
-At the beginning of each development thread and before selecting each new TDD
-slice:
+At the beginning of each development thread and before selecting each
+new TDD slice:
 
-1. review the permanent specifications relevant to the work;
-2. review `prompts/TEST_DRIVEN_DEVELOPMENT.md`;
-3. review current repository HEAD;
-4. review existing tests;
-5. determine which work described here HEAD already satisfies;
-6. identify meaningful discrepancies rather than silently resolving them;
-7. select the next coherent unmet behavioral slice.
+1.  review the permanent specifications relevant to the work;
+2.  review `prompts/TEST_DRIVEN_DEVELOPMENT.md`;
+3.  review current repository HEAD;
+4.  review existing tests;
+5.  determine which work described here HEAD already satisfies;
+6.  identify meaningful discrepancies rather than silently resolving
+    them;
+7.  select the next coherent unmet behavioral slice.
 
-Phase and subsection ordering in this document does not override that process.
-
-Work listed here must not be repeated merely because it remains listed. Credit
-behavior already satisfied by HEAD and proceed to the next unmet requirement.
+Phase and subsection ordering in this document does not override that
+process. Work listed here must not be repeated merely because it remains
+listed. Credit behavior already satisfied by HEAD and proceed to the
+next unmet requirement.
 
 Each behavioral change follows:
 
-```text
+``` text
 resolve semantics
     ↓
 write coherent tests
@@ -102,15 +112,16 @@ commit
 reevaluate HEAD
 ```
 
-CLI tests should protect user intent, option interpretation, useful errors, and
-translation into application operations. They should not duplicate engine,
-configuration, color-assignment, or Model semantics already protected at a
-lower level.
+CLI tests should protect user intent, option interpretation, useful
+errors, and translation into application operations. They should not
+duplicate engine, configuration, color-assignment, or Model semantics
+already protected at a lower level.
 
-Each phase below is intended to leave the application in a coherent and usable
-state. A phase may contain multiple independently committed TDD slices.
+Each phase below is intended to leave the application in a coherent and
+usable state. A phase may contain multiple independently committed TDD
+slices.
 
----
+------------------------------------------------------------------------
 
 # Cross-Phase CLI Semantics
 
@@ -118,26 +129,27 @@ state. A phase may contain multiple independently committed TDD slices.
 
 Normal CLI execution addresses:
 
-```text
+``` text
 Artifact + Realization
 ```
 
 not:
 
-```text
+``` text
 Artifact + Variant
 ```
 
 A Variant is a Model-owned reusable configuration.
 
-A Realization is the application of that Variant to an Artifact, optionally
-with Artifact-specific customization.
+A Realization is the application of that Variant to an Artifact,
+optionally with Artifact-specific customization.
 
-Multiple Realizations may originate from the same Variant, so Variant identity
-is not a sufficient general execution coordinate.
+Multiple Realizations may originate from the same Variant, so Variant
+identity is not a sufficient general execution coordinate.
 
-Normal user-facing build, inspection, cleaning, and recoloring operations
-should therefore use Realization names.
+Normal user-facing build, inspection, cleaning, and color operations
+should therefore use Realization names where Realization-specific scope
+is requested.
 
 ## Canonical Realizations require no Artifact configuration
 
@@ -146,14 +158,14 @@ Artifact according to the architecture.
 
 Examples include:
 
-```text
+``` text
 artwork.default  -> artwork_default
 shape.default    -> shape_default
 shape.ornament   -> shape_ornament
 ```
 
-A newly created Artifact therefore does not need to declare those Realizations
-in `artifact.toml`.
+A newly created Artifact therefore does not need to declare those
+Realizations in `artifact.toml`.
 
 Artifact configuration should contain only source metadata and actual
 Artifact-specific customization.
@@ -162,7 +174,7 @@ Artifact-specific customization.
 
 Where applicable, commands use the same scope convention:
 
-```text
+``` text
 <command>
     all applicable Artifacts
 
@@ -176,33 +188,50 @@ Where applicable, commands use the same scope convention:
     that Realization of dog
 ```
 
-Commands must define sensible behavior when a requested Realization is not
-available for one or more selected Artifacts rather than silently changing the
-meaning of the request.
+Commands must define sensible behavior when a requested Realization is
+not available for one or more selected Artifacts rather than silently
+changing the meaning of the request.
+
+For color mutation, scope also determines where a persisted
+`printer_colors` selection belongs:
+
+``` text
+artifact colors dog --recolor=library
+    persist Artifact-level printer_colors
+    update all applicable final Realization 3MFs for dog
+
+artifact colors dog --realization shape_ornament --recolor=library
+    persist Realization-specific printer_colors
+    update only dog/shape_ornament
+```
+
+An Artifact-level color mutation does not erase explicit
+Realization-specific `printer_colors` overrides. Normal configuration
+precedence remains authoritative.
 
 ## Project-owned paths
 
-Artifact-owned managed inputs may be referenced from Artifact configuration
-using paths relative to the project root.
+Artifact-owned managed inputs may be referenced from Artifact
+configuration using paths relative to the project root.
 
-Such paths are resolved relative to the project root, not the process working
-directory and not the directory containing `artifact.toml`.
+Such paths are resolved relative to the project root, not the process
+working directory and not the directory containing `artifact.toml`.
 
 For example:
 
-```toml
+``` toml
 source = "artifacts/dog/artifact.png"
 original = "originals/dog.png"
 ```
 
 These are persistent references to Artifact-owned source resources.
 
-Generated Model, Stage, and Product filesystem paths must not be persisted in
-Artifact configuration.
+Generated Model, Stage, and Product filesystem paths must not be
+persisted in Artifact configuration.
 
 The distinction is:
 
-```text
+``` text
 Artifact-owned managed input
     persistent source/configuration resource
     may be referenced by project-relative path
@@ -212,235 +241,138 @@ generated Model/Stage Product
     must not be persisted as Artifact configuration
 ```
 
-The filesystem may materialize generated Products, but Artifact configuration
-must continue to address manufacturing behavior through logical configuration
-and Product identity rather than generated paths.
+The filesystem may materialize generated Products, but Artifact
+configuration must continue to address manufacturing behavior through
+logical configuration and Product identity rather than generated paths.
 
----
+------------------------------------------------------------------------
 
-# Phase 1 - complete
-
----
-
-# Phase 2 — Customization and Reset
+# Phase 1 --- Color Analysis and Operator Recoloring
 
 ## Goal
 
-At the end of Phase 2, the user can customize Realizations when the canonical
-configuration is insufficient and can discard generated work safely.
+At the end of Phase 1, `artifact colors` provides one coherent workflow
+for:
 
-The established CREATE and BUILD workflow remains the ordinary workflow.
-
-Phase 2 adds new workflows:
-
-```text
-artifact config
-artifact clean
+``` text
+inspect
+    ↓
+compare
+    ↓
+select, when desired
+    ↓
+persist the selected printer palette
+    ↓
+update existing final 3MF operator-facing color presentation
 ```
 
----
+There is no separate `artifact recolor` command.
 
-## 2.1 Authored configuration
+By default, `artifact colors` is read-only. Mutation occurs only when
+`--recolor` is explicitly supplied.
 
-Define:
-
-```text
-config = authored/persistent configuration
-```
-
-`config` must not become another view of fully resolved Model configuration.
-
-For example:
-
-```text
-artifact config dog --realization shape_ornament
-```
-
-shows only Artifact-authored customization for that Realization.
-
-If the canonical Realization has no Artifact-specific customization, report
-that condition clearly rather than dumping inherited Model/Variant defaults.
-
----
-
-## 2.2 Realization customization
-
-Support:
-
-```text
-artifact config dog \
-    --realization shape_ornament \
-    --parameters shape_size=110
-```
-
-This materializes or updates Artifact-specific customization of an already
-existing canonical Realization.
-
-Customizing a canonical Realization does not require `--create`.
-
-Parameter validation and resolution remain owned by the existing
-configuration/Model infrastructure. CLI code should not duplicate
-Model-specific parameter semantics.
-
----
-
-## 2.3 Additional named Realizations
-
-Permit an Artifact to define an additional named Realization when required.
-
-For example:
-
-```text
-artifact config dog \
-    --realization large-ornament \
-    --create \
-    --parameters variant=shape.ornament shape_size=125
-```
-
-CLI configuration treats `variant=shape.ornament` as a configuration
-assignment rather than introducing a separate normal `--variant` execution
-coordinate.
-
-Required semantics:
-
-* `--create` permits creation of a noncanonical Realization name;
-* canonical Realizations already exist and do not require `--create`;
-* a misspelled/nonexistent noncanonical Realization must not silently become a
-  new Realization without `--create`;
-* updating one Realization must preserve unrelated Realization declarations;
-* configuration persistence must support safe nested Realization updates rather
-  than replacing the entire `[realizations]` table.
-
-Before implementing bulk configuration across Artifacts, explicitly settle
-mixed-state and atomicity behavior when some selected Artifacts already contain
-the named Realization and others do not.
-
----
-
-## 2.4 Bulk customization
-
-Once single-Artifact mutation is sound, support the normal scope convention
-where useful.
-
-For example:
-
-```text
-artifact config \
-    --realization large-ornament \
-    --create \
-    --parameters variant=shape.ornament shape_size=125
-```
-
-may define the same additional Realization across the selected Artifact scope.
-
-Bulk mutation must have explicit failure/atomicity semantics before tests are
-written.
-
-Do not let batch behavior emerge accidentally from a loop around a
-single-Artifact mutator.
-
----
-
-## 2.5 Clean
-
-Align `clean` with Artifact/Realization execution coordinates.
-
-Support:
-
-```text
-artifact clean dog --realization shape_ornament
-```
-
-to remove derived Products belonging to that Realization while preserving:
-
-* `artifact.toml`;
-* managed source inputs;
-* preserved originals;
-* unrelated Realizations.
-
-Also support the broader scopes where safe and useful:
-
-```text
-artifact clean dog
-artifact clean --realization shape_ornament
-artifact clean
-```
-
-Because broad cleaning is destructive, define confirmation/explicitness policy
-before implementing the no-argument form.
-
-Cleaning removes generated Products. It does not remove the Artifact or its
-authored configuration.
-
-After cleaning, `artifact build` should report the affected Realizations as
-requiring work, and the normal build commands should be capable of restoring
-them.
-
----
-
-## Phase 2 completion criterion
-
-The Phase 1 workflow still works unchanged.
-
-Additionally, the user can customize an existing canonical Realization or
-define an additional named Realization, build it through the normal
-Realization-oriented build interface, clean its generated Products, and rebuild
-it.
-
-No manual TOML editing is required for ordinary customization.
-
----
-
-# Phase 3 — Recolor for Printer Operation
-
-## Goal
-
-At the end of Phase 3, built 3MFs can optionally be transformed quickly into
-operator-friendly 3MFs whose component color metadata and presentation
-communicate the intended physical filament assignment.
+Recoloring does not create parallel `.printer.3mf` or `.library.3mf`
+Products. Each Realization continues to have one final 3MF. Recoloring
+updates operator-facing metadata in that existing final 3MF.
 
 No geometry work is repeated.
 
-Add:
+------------------------------------------------------------------------
 
-```text
-artifact recolor
+## 1.1 Color comparison
+
+Support:
+
+``` text
+artifact colors dog
+artifact colors dog --realization shape_ornament
 ```
 
-The production workflow becomes:
+The display presents one row per relevant independently printable
+layer/component and four assignment columns:
 
-```text
-artifact create
-artifact build
-artifact build --build-all
-artifact recolor --colors printer
+``` text
+Layer | System | Printer | Library | Catalog
 ```
 
----
+The columns mean:
 
-## 3.1 Recolor operates on packaged component color semantics
+### System
 
-`recolor` operates downstream of ordinary geometry generation.
+The assignment obtained from the system `printer_colors` defined by
+system `parameters.toml`, without Artifact- or Realization-specific
+`printer_colors` customization.
 
-It must not rerun:
+This is a baseline/reference assignment.
 
-* source preparation;
-* tracing;
-* rasterization;
-* vectorization;
-* geometry composition;
-* extrusion; or
-* other geometry-producing operations.
+### Printer
 
-Recolor operates on independently printable components already represented by
-a packaged 3MF and on the semantic color information preserved for those
-components.
+The current assignment obtained from the effective resolved
+`printer_colors` for the selected Artifact + Realization.
 
-Packaged components may obtain their color semantics in different ways.
+This represents the currently configured physical printer-color choice.
+
+### Library
+
+The best assignment using the established `library_colors` semantics for
+filament physically available in the configured library.
+
+This is a selectable alternative.
+
+### Catalog
+
+The best assignment using the complete known color catalog.
+
+This is advisory only. It answers how much color fidelity could improve
+if additional filament were acquired.
+
+`catalog` must never be accepted as a recolor target.
+
+For Artwork-derived color components, the comparison must reuse the
+established Artwork assignment semantics, including globally optimal
+one-to-one assignment and perceptual-distance calculations. Do not
+implement a second nearest-color algorithm in CLI or 3MF infrastructure.
+
+Where useful, display individual perceptual distance with the assigned
+color, for example:
+
+``` text
+Fire Engine Red (ΔE 5.8)
+```
+
+and provide aggregate comparison information sufficient to answer:
+
+> How much could this Artwork improve using filament already in the
+> library?
+
+and:
+
+> How much further could it improve if another known catalog color were
+> purchased?
+
+Useful derived comparisons include:
+
+``` text
+library improvement =
+    printer aggregate distance - library aggregate distance
+
+purchase improvement =
+    library aggregate distance - catalog aggregate distance
+```
+
+Catalog analysis must not mutate configuration or Products.
+
+------------------------------------------------------------------------
+
+## 1.2 Component color semantics
+
+Color analysis and recoloring operate on independently printable
+components and must preserve the distinction between Artwork-derived
+color assignment and Model-owned structural color semantics.
 
 For Artwork-derived color components:
 
-```text
+``` text
 measured Artifact color
     ↓
 Artwork physical-color assignment
@@ -448,9 +380,10 @@ Artwork physical-color assignment
 packaged component
 ```
 
-For Model-owned structural components, such as Shape base or outer ridge:
+For Model-owned structural components, such as Shape base or outer
+ridge:
 
-```text
+``` text
 Model-owned semantic printing color
     ↓
 packaged component
@@ -462,69 +395,145 @@ Artwork assignment policy applies to Artifact colors. It must not be
 indiscriminately reapplied to Model-owned structural colors that already
 identify intended semantic physical colors.
 
-Likewise, recoloring a complete Shape 3MF must not ignore structural components
-merely because they are not Artwork color regions.
+Likewise, analysis or recoloring of a complete Shape 3MF must not ignore
+structural components merely because they are not Artwork color regions.
 
-Recolor should therefore preserve both:
+The operator-facing display should provide a useful row for every
+relevant printable component while preserving the semantic source of its
+color.
 
-* stable independently printable component identity; and
-* the semantic source and meaning of that component's printing color.
+Before implementation, settle the display and recolor behavior when a
+Model-owned semantic color is not present in a candidate printer or
+library palette. Do not silently substitute another color through
+Artwork assignment policy.
 
-Prefer reusable, Model-independent 3MF metadata transformation where the
-operation is purely mechanical. Do not move Artwork assignment policy or Shape
-color policy into generic 3MF infrastructure.
+------------------------------------------------------------------------
 
----
+## 1.3 Recolor selection
 
-## 3.2 Recolor existing 3MF Products
+Permit:
 
-Recolor transforms an existing packaged manufacturing Product into an
-operator-facing representation.
+``` text
+--recolor=printer
+--recolor=library
+--recolor=reset
+```
 
-Preserve the canonical built 3MF and produce a distinct recolored output unless
-a later explicit design decision changes this policy.
+Reject other values, including:
 
-Recoloring should be deterministic and idempotent.
+``` text
+--recolor=catalog
+```
 
-Repeated recoloring must not accumulate presentation labels.
+Catalog is advisory only.
+
+### `--recolor=printer`
+
+Use the current effective `printer_colors` and established printer
+assignment to update the selected existing final 3MF layer/component
+names.
+
+This does not change `printer_colors`.
+
+It is useful for restoring or refreshing operator-facing presentation
+from the currently configured printer assignment.
+
+### `--recolor=library`
+
+Compute the Library assignment independently for the selected Artifact
+scope.
+
+Persist the colors selected by that assignment as `printer_colors` at
+the selected configuration scope, then update the applicable existing
+final 3MFs to reflect the newly effective printer-color choice.
+
+Without `--realization`:
+
+``` text
+artifact colors dog --recolor=library
+```
+
+the resulting `printer_colors` are persisted at Artifact scope.
+
+With `--realization`:
+
+``` text
+artifact colors dog \
+    --realization shape_ornament \
+    --recolor=library
+```
+
+the resulting `printer_colors` are persisted as customization of that
+Realization.
+
+The persistence representation must follow the current flattened
+Artifact and Realization configuration semantics. Do not introduce or
+restore a nested `parameters` table merely for color configuration.
+
+### `--recolor=reset`
+
+Remove the `printer_colors` override at the selected configuration
+scope.
+
+Do not copy inherited values into `artifact.toml`.
+
+After removing the override, resolve configuration normally and update
+the applicable existing final 3MFs using the newly effective printer
+assignment.
+
+Without `--realization`:
+
+``` text
+artifact colors dog --recolor=reset
+```
+
+remove the Artifact-level `printer_colors` override.
+
+With `--realization`:
+
+``` text
+artifact colors dog \
+    --realization shape_ornament \
+    --recolor=reset
+```
+
+remove only that Realization's `printer_colors` override.
+
+`reset` means restore inheritance at the selected scope. It does not
+mean "copy system `printer_colors`."
+
+------------------------------------------------------------------------
+
+## 1.4 Recolor existing final 3MFs in place
+
+Recoloring operates downstream of ordinary geometry generation.
+
+It must not rerun:
+
+-   source preparation;
+-   tracing;
+-   rasterization;
+-   vectorization;
+-   geometry composition;
+-   extrusion; or
+-   other geometry-producing operations.
+
+Recoloring modifies the existing final 3MF for the selected Realization.
+It does not create another manufacturing Product merely to represent a
+different operator-facing color label.
 
 The transformation must preserve manufacturing geometry, including:
 
-* mesh coordinates;
-* component geometry;
-* component partitioning; and
-* build composition.
+-   mesh coordinates;
+-   component geometry;
+-   component partitioning; and
+-   build composition.
 
-Only operator-facing color/material metadata and presentation information
-required by the selected physical color realization should change.
+Stable component identity must also be preserved.
 
----
+For example, operator-facing names may become:
 
-## 3.3 Printer recoloring
-
-Support:
-
-```text
-artifact recolor --colors printer
-```
-
-For Artwork color components, printer recoloring uses the established Artwork
-`printer_assignments` semantics: the globally optimal one-to-one assignment
-between Artifact colors and configured printer colors.
-
-For Model-owned structural components, the Model's already-resolved semantic
-printing color remains authoritative.
-
-Recolor must not reinterpret an explicit Shape color, for example, as a
-measured Artwork color merely because another printer color has a closer RGB
-value.
-
-The resulting 3MF should make component identity and intended physical color
-immediately understandable in PrusaSlicer.
-
-Conceptually:
-
-```text
+``` text
 dog-color-1 - Fire Engine Red
 dog-color-2 - Cold White
 dog-color-3 - Pine Green
@@ -532,158 +541,188 @@ dog-base - Cold White
 dog-outer-ridge - Gold
 ```
 
-Do not replace stable component identity merely with a color name.
+Do not replace stable component identity merely with a color name. The
+operator must be able to identify both:
 
-The operator must be able to identify both:
+-   what component this is; and
+-   what physical color is intended.
 
-* what component this is; and
-* what physical color is intended.
+The transformation must be deterministic and idempotent. Repeated
+recoloring must replace/update the presentation color rather than
+accumulating labels.
 
-Before implementation, settle how a Model-owned semantic color that is not
-currently present in `printer_colors` should be represented to the operator.
-Do not silently substitute another color through Artwork assignment policy.
+Prefer reusable, Model-independent 3MF metadata transformation where the
+operation is purely mechanical. Do not move Artwork assignment policy or
+Shape color policy into generic 3MF infrastructure.
 
----
+Only existing applicable final 3MFs should be recolored.
+`artifact colors --recolor=...` must not implicitly trigger expensive
+geometry generation merely because a final 3MF is absent. Missing build
+prerequisites should be reported clearly.
 
-## 3.4 Library recoloring
+------------------------------------------------------------------------
 
-Support:
+## 1.5 Artifact and Realization recolor scope
 
-```text
-artifact recolor --colors library
+For a named Artifact, absence of `--realization` means Artifact-level
+color configuration and all applicable final Realization 3MFs:
+
+``` text
+artifact colors dog --recolor=library
+artifact colors dog --recolor=printer
+artifact colors dog --recolor=reset
 ```
 
-For Artwork color components, library recoloring uses the established Artwork
-`library_assignments` semantics: the globally optimal one-to-one assignment
-from filament physically present in the configured library.
+A Realization selection narrows both configuration mutation and 3MF
+mutation:
 
-For Model-owned structural components, preserve the owning Model's semantic
-printing-color intent.
-
-Before implementation, settle the operator-facing behavior when an explicitly
-requested structural color is absent from the library. This is an availability
-question about an already selected semantic color, not automatically an
-Artwork color-matching problem.
-
-This mode allows the operator to determine which loaded filament should remain
-and which filament swaps from owned inventory are warranted before printing.
-
-Recolor must reuse established Artwork color-assignment semantics rather than
-implementing another nearest-color algorithm.
-
----
-
-## 3.5 Catalog improvement analysis
-
-Artwork color analysis already distinguishes:
-
-```text
-printer_assignments
-library_assignments
-catalog_assignments
+``` text
+artifact colors dog \
+    --realization shape_ornament \
+    --recolor=library
 ```
 
-and defines individual and aggregate perceptual distance.
+Artifact-level recoloring must respect existing Realization-specific
+`printer_colors` overrides.
 
-Recolor should be capable of presenting those existing comparisons as
-production guidance for Artwork-derived color components.
+For example, after changing Artifact-level `printer_colors`, each
+applicable Realization must be resolved independently before its final
+3MF is updated. A Realization-specific override remains authoritative
+and may therefore produce a different effective Printer assignment from
+the new Artifact-level value.
 
-Catalog assignment is diagnostic rather than an assertion that the user owns
-those colors.
+The CLI must not assume that all Realizations of an Artifact necessarily
+share the same effective printer palette.
 
-For Artwork colors, report individual and aggregate perceptual distance
-sufficiently to answer:
+------------------------------------------------------------------------
 
-> How much could this Artwork improve using filament already in the library?
+## 1.6 Bulk color analysis and recoloring
 
-and:
+Support the normal broad scope where useful:
 
-> How much further could it improve if another known catalog color were
-> purchased?
+``` text
+artifact colors
+artifact colors --realization shape_ornament
+
+artifact colors --recolor=library
+artifact colors --realization shape_ornament --recolor=library
+
+artifact colors --recolor=printer
+artifact colors --realization shape_ornament --recolor=printer
+
+artifact colors --recolor=reset
+artifact colors --realization shape_ornament --recolor=reset
+```
+
+Bulk analysis and recoloring must operate independently for every
+selected Artifact.
+
+In particular, Library and Catalog assignments must be recomputed for
+each Artifact. A color assignment calculated for one Artifact must never
+be reused as the assignment for another Artifact merely because both
+participate in the same bulk command.
 
 Conceptually:
 
-```text
-Layer    Selected          Distance    Best catalog       Distance
-1        Fire Engine Red      5.8      Cardinal Red          1.0
-2        Cold White           1.2      Polar White           0.8
-3        Pine Green           3.7      Forest Green          1.5
+``` text
+dog
+    analyze dog colors
+    compute dog printer/library/catalog assignments
+
+cat
+    analyze cat colors
+    compute cat printer/library/catalog assignments
+
+logo
+    analyze logo colors
+    compute logo printer/library/catalog assignments
 ```
 
-Useful derived comparisons include:
+When `--realization` is supplied, the effective unit is Artifact +
+Realization, and resolution must occur independently for every selected
+pair.
 
-```text
-printer improvement = printer aggregate distance - library aggregate distance
+Bulk mutation is validation-atomic.
 
-purchase improvement = library aggregate distance - catalog aggregate distance
+Before mutating any Artifact configuration or final 3MF:
+
+1.  resolve the complete selected Artifact/Realization scope;
+2.  verify the requested Realizations are applicable;
+3.  verify required final 3MFs exist;
+4.  verify the requested recolor source is usable;
+5.  compute the required assignments independently for every selected
+    scope;
+6.  determine the configuration mutations and 3MF metadata mutations
+    that would result.
+
+Only after the complete selected scope validates should persistent
+configuration or 3MF files be changed.
+
+Do not let bulk recoloring emerge accidentally from a loop around a
+mutating single-Artifact operation.
+
+------------------------------------------------------------------------
+
+## 1.7 Minimum analysis dependency closure
+
+Read-only `artifact colors` analysis may require persistent Artwork
+analysis products that are not yet current.
+
+Where color analysis requires only persistent registered Artwork
+products, build only the minimum missing dependency closure required for
+that analysis.
+
+Do not require standalone Artwork packaging merely to inspect color
+quality.
+
+This limited analysis support does not weaken the recolor rule: mutation
+of a final 3MF requires that final 3MF to already exist and must not
+trigger a geometry build implicitly.
+
+------------------------------------------------------------------------
+
+## Phase 1 completion criterion
+
+The user can use one command surface to inspect, compare, select,
+persist, and apply physical color choices:
+
+``` text
+artifact colors dog
+artifact colors dog --recolor=library
+artifact colors dog --recolor=printer
+artifact colors dog --recolor=reset
 ```
 
-These calculations apply to Artwork assignment semantics.
+The comparison exposes System, effective Printer, Library, and advisory
+Catalog assignments.
 
-Do not automatically treat a Model-owned structural semantic color as another
-measured Artwork color participating in the global Artwork assignment.
+Artifact-level recoloring is the default when an Artifact is named
+without a Realization. Realization-specific recoloring is available
+explicitly through `--realization`.
 
-Catalog analysis must not silently mutate:
+Bulk operations recompute color analysis independently for each selected
+Artifact or Artifact + Realization and validate the complete selected
+scope before mutation.
 
-* `printer_colors`;
-* `library_colors`;
-* Artifact configuration;
-* Model-owned structural color configuration; or
-* the canonical manufacturing Product.
+`--recolor=catalog` is not permitted.
 
----
+Recoloring updates the one existing final 3MF for each affected
+Realization without creating parallel recolored Products and without
+rebuilding geometry.
 
-## 3.6 Recolor scope
+------------------------------------------------------------------------
 
-Apply the normal scope convention:
-
-```text
-artifact recolor dog --realization shape_ornament --colors printer
-artifact recolor dog --colors printer
-artifact recolor --realization shape_ornament --colors printer
-artifact recolor --colors printer
-```
-
-Only existing applicable packaged Products should be recolored.
-
-Recolor must not implicitly trigger an expensive geometry build merely because
-a requested 3MF is absent. Missing build prerequisites should be reported
-clearly.
-
----
-
-## Phase 3 completion criterion
-
-The user can take built Artifacts and rapidly generate operator-ready 3MFs
-using the intended physical filament assignments.
-
-For Artwork-derived components, the user can choose assignments based on:
-
-* colors currently available to the printer; or
-* colors physically available in the filament library.
-
-The user also receives quantitative Artwork color analysis indicating how much
-color fidelity could improve using library or catalog colors.
-
-Model-owned structural components retain the semantic printing colors defined
-by their owning Models rather than being incorrectly absorbed into Artwork's
-color-matching policy.
-
-No geometry is rebuilt during recoloring.
-
----
-
-# Phase 4 — Inspection
+# Phase 2 --- Inspection
 
 ## Goal
 
-At the end of Phase 4, the user can answer distinct questions without
+At the end of Phase 2, the user can answer distinct questions without
 confusing authored configuration, effective configuration, addressable
 objects, and color analysis.
 
 The commands are:
 
-```text
+``` text
 artifact list
 artifact config
 artifact show
@@ -692,7 +731,7 @@ artifact colors
 
 Their responsibilities are intentionally distinct:
 
-```text
+``` text
 list
     What exists / what can I address?
 
@@ -703,16 +742,21 @@ show
     What configuration will actually be used?
 
 colors
-    Why did the Artwork color system make these assignments?
+    What physical color assignments are available, why were they selected,
+    and which assignment is currently configured for printing?
 ```
 
----
+`colors` is already established in Phase 1 as both a read-only analysis
+command and, only when `--recolor` is supplied, the explicit
+color-selection mutation surface.
 
-## 4.1 List
+------------------------------------------------------------------------
+
+## 2.1 List
 
 Define:
 
-```text
+``` text
 artifact list
 ```
 
@@ -720,188 +764,212 @@ to list defined Artifact IDs.
 
 Define:
 
-```text
+``` text
 artifact list dog
 ```
 
-to list the effective Realizations addressable for `dog`, including canonical
-Realizations and explicitly declared additional Realizations.
+to list the effective Realizations addressable for `dog`, including
+canonical Realizations and explicitly declared additional Realizations.
 
 Listing should use the authoritative Realization catalog rather than
 reconstructing it independently in CLI code.
 
 `list` reports identity and availability, not complete configuration.
 
----
+------------------------------------------------------------------------
 
-## 4.2 Show
+## 2.2 Show
 
 Make `show` Realization-oriented.
 
 For example:
 
-```text
+``` text
 artifact show dog --realization shape_ornament
 ```
 
-shows the fully resolved configuration that would actually be used for that
-Realization.
+shows the fully resolved configuration that would actually be used for
+that Realization.
 
-It should resolve the Realization directly through configuration semantics
-rather than detouring through Variant-oriented build planning merely to obtain
-a resolver.
+It should resolve the Realization directly through configuration
+semantics rather than detouring through Variant-oriented build planning
+merely to obtain a resolver.
 
-Resolved output may include useful provenance where that helps explain whether
-a value came from:
+Resolved output may include useful provenance where that helps explain
+whether a value came from:
 
-* Model defaults;
-* Variant overrides;
-* Workspace configuration;
-* Artifact configuration; or
-* Realization customization.
+-   Model defaults;
+-   Variant overrides;
+-   Workspace configuration;
+-   Artifact configuration; or
+-   Realization customization.
 
 Do not make `show` synonymous with `config`.
 
----
+------------------------------------------------------------------------
 
-## 4.3 Colors
+## 2.3 Colors integration
 
-Retain `colors` as the detailed Artwork color-analysis command.
+`artifact colors` owns color-assignment inspection and operator color
+selection.
 
-It should expose the established Artwork color analysis across:
+Do not reintroduce a separate `artifact recolor` command.
 
-```text
-printer
-library
-catalog
+Inspection must continue to expose the established Artwork assignment
+semantics and quantitative comparison established in Phase 1.
+
+Mutation remains explicit through:
+
+``` text
+--recolor=printer
+--recolor=library
+--recolor=reset
 ```
 
-including individual and aggregate perceptual distances.
+Catalog remains advisory and cannot be selected for recoloring.
 
-`recolor` is the production operation that prepares packaged components for
-operator use.
+Model-owned structural printing colors are not Artifact color regions
+and must not be silently included in Artwork's global one-to-one color
+analysis, even though they should be represented appropriately in the
+operator-facing component display.
 
-`colors` is the Artwork color-assignment inspection/diagnostic operation.
+------------------------------------------------------------------------
 
-The two should share the applicable underlying Artwork color-analysis semantics
-rather than developing parallel assignment implementations.
+## 2.4 Remove misplaced inspection responsibilities
 
-Where color analysis requires only persistent registered Artwork products,
-build only the minimum missing dependency closure required for that analysis.
-Do not require standalone Artwork packaging merely to inspect color quality.
-
-Model-owned structural printing colors are not Artifact color regions and
-should not be silently included in Artwork's global one-to-one color analysis.
-
----
-
-## 4.4 Remove misplaced inspection responsibilities
-
-As the new command responsibilities become established, remove or relocate
+As the command responsibilities become established, remove or relocate
 legacy CLI behavior that no longer belongs to its command.
 
 In particular, Model catalog/workplan inspection currently attached to
 Artifact configuration should not force `config` to serve two unrelated
 purposes.
 
-Before moving or deleting developer-oriented capabilities, determine whether
-they remain useful and choose an explicit home for them rather than silently
-discarding them.
+Before moving or deleting developer-oriented capabilities, determine
+whether they remain useful and choose an explicit home for them rather
+than silently discarding them.
 
----
+------------------------------------------------------------------------
 
-## Phase 4 completion criterion
+## Phase 2 completion criterion
 
-Without editing files or invoking developer internals, a user can determine:
+Without editing files or invoking developer internals, a user can
+determine:
 
-* which Artifacts exist;
-* which Realizations are available;
-* what Artifact-specific configuration was authored;
-* what effective configuration a Realization will use;
-* whether builds are current;
-* and why Artwork physical colors were selected.
+-   which Artifacts exist;
+-   which Realizations are available;
+-   what Artifact-specific configuration was authored;
+-   what effective configuration a Realization will use;
+-   whether builds are current;
+-   what System, Printer, Library, and Catalog color assignments are
+    available;
+-   why Artwork physical colors were selected; and
+-   which printer palette is currently configured.
 
-The production workflow established in Phases 1–3 remains unchanged.
+The production workflow established in Phase 1 remains unchanged.
 
----
+------------------------------------------------------------------------
 
-# Phase 5 — CLI Consolidation and Production Polish
+# Phase 3 --- CLI Consolidation and Production Polish
 
 ## Goal
 
 Complete the transition from the historical CLI to the streamlined
-Artifact/Realization-oriented workflow without retaining contradictory command
-semantics.
+Artifact/Realization-oriented workflow without retaining contradictory
+command semantics.
 
 This phase should contain no speculative new manufacturing capability.
 
 It consolidates behavior already proven useful in the preceding phases.
 
----
+------------------------------------------------------------------------
 
-## 5.1 Retire obsolete normal-workflow syntax
+## 3.1 Retire obsolete normal-workflow syntax
 
 Review remaining public options and remove or clearly isolate obsolete
 Variant-oriented normal execution syntax such as:
 
-```text
+``` text
 --variant
 --all-variants
 ```
 
-where Realization-oriented equivalents now define the intended user workflow.
+where Realization-oriented equivalents now define the intended user
+workflow.
 
-Do not remove internal Model/Variant coordinates merely because they are no
-longer ordinary CLI coordinates.
+Do not remove internal Model/Variant coordinates merely because they are
+no longer ordinary CLI coordinates.
 
 Variants remain architecturally essential configuration identities.
 
----
+Remove or reject the obsolete standalone:
 
-## 5.2 Developer and Stage operations
+``` text
+artifact recolor
+```
 
-Review independent Stage execution and other developer-oriented operations.
+command once `artifact colors --recolor=...` is established as the sole
+public color-mutation surface.
+
+------------------------------------------------------------------------
+
+## 3.2 Developer and Stage operations
+
+Review independent Stage execution and other developer-oriented
+operations.
 
 Preserve the architectural ability to execute a Stage through a complete
 `StageContext`.
 
-Do not force specialized Stage execution into the ordinary production command
-semantics merely to reduce the number of top-level commands.
+Do not force specialized Stage execution into the ordinary production
+command semantics merely to reduce the number of top-level commands.
 
 If developer operations require a separate command surface, make that
 separation explicit.
 
----
+------------------------------------------------------------------------
 
-## 5.3 Output consistency
+## 3.3 Output consistency
 
 Make routine command output consistent around:
 
-```text
+``` text
 Artifact
 Realization
 state/action
 Product where relevant
 ```
 
-Avoid exposing implementation-oriented Model/Variant coordinates when they do
-not help the user perform the requested operation.
+Avoid exposing implementation-oriented Model/Variant coordinates when
+they do not help the user perform the requested operation.
 
-Errors should identify the actionable Artifact/Realization scope that failed.
+Errors should identify the actionable Artifact/Realization scope that
+failed.
 
-Batch operations should summarize successful, skipped/current, and failed work
-without obscuring the underlying error.
+Batch operations should summarize successful, skipped/current, and
+failed work without obscuring the underlying error.
 
----
+Color output should use consistent terminology for:
 
-## 5.4 End-to-end production acceptance
+``` text
+System
+Printer
+Library
+Catalog
+```
 
-Protect the final common workflow with a small number of meaningful acceptance
-tests.
+and clearly distinguish read-only analysis from a requested recolor
+mutation.
+
+------------------------------------------------------------------------
+
+## 3.4 End-to-end production acceptance
+
+Protect the final common workflow with a small number of meaningful
+acceptance tests.
 
 A representative workflow should establish that the user can:
 
-```text
+``` text
 place PNGs in intake
     ↓
 artifact create
@@ -912,34 +980,57 @@ inspect pending build state
     ↓
 artifact build --build-all
     ↓
-artifact recolor --colors printer
+artifact colors
     ↓
-obtain operator-ready 3MF Products
+optionally artifact colors --recolor=library
+    ↓
+obtain operator-ready final 3MF Products
 ```
 
-A customization acceptance path should establish only the additional behavior
-that matters:
+A customization acceptance path should establish only the additional
+behavior that matters:
 
-```text
+``` text
 create
     ↓
 config one Realization
     ↓
 build that Realization
     ↓
-recolor
+inspect colors
+    ↓
+optionally recolor that Realization through artifact colors
 ```
 
-Do not duplicate detailed Model geometry, configuration resolution, build
-graph, or color-assignment assertions already protected by focused tests.
+A reset acceptance path should establish that:
 
----
+``` text
+select library colors
+    ↓
+persist printer_colors at the selected scope
+    ↓
+recolor final 3MF
+    ↓
+--recolor=reset
+    ↓
+remove that scope's printer_colors override
+    ↓
+restore inherited effective printer assignment
+    ↓
+update final 3MF presentation
+```
 
-## Phase 5 completion criterion
+Do not duplicate detailed Model geometry, configuration resolution,
+build graph, or color-assignment assertions already protected by focused
+tests.
+
+------------------------------------------------------------------------
+
+## Phase 3 completion criterion
 
 The normal user-facing CLI presents one coherent mental model:
 
-```text
+``` text
 create    ingest customer sources
 
 build     inspect build state or make selected work current
@@ -948,31 +1039,30 @@ config    author Artifact/Realization exceptions
 
 clean     discard generated work
 
-recolor   prepare built 3MFs for physical filament choices
+colors    inspect color assignments and explicitly select/reset
+          operator-facing physical colors
 
 list      discover addressable Artifacts and Realizations
 
 show      inspect effective resolved configuration
-
-colors    inspect Artwork color-assignment quality
 ```
 
 Variants remain Model-owned reusable configuration.
 
 Realizations remain the Artifact-scoped execution coordinate.
 
-The common production workflow requires no manual configuration when Model
-Variants already describe the desired products.
+The common production workflow requires no manual configuration when
+Model Variants and inherited color configuration already describe the
+desired products.
 
----
+------------------------------------------------------------------------
 
 # Target Production Workflow
 
 For a routine batch:
 
-```text
+``` text
 # Customer PNGs are placed in the project root.
-
 artifact create
 
 # See what the new intake or configuration changes require.
@@ -981,32 +1071,52 @@ artifact build
 # Bring the project current.
 artifact build --build-all
 
+# Inspect current and alternative physical color assignments.
+artifact colors
 ```
 
 When filament swaps from owned inventory are acceptable:
 
-```text
-artifact recolor --colors library
+``` text
+artifact colors --recolor=library
 ```
 
-When one Artifact requires an exception:
+Each Artifact's Library assignment is computed independently before
+mutation.
 
-```text
-artifact config smith-dog \
-    --realization shape_ornament \
-    --parameters shape_size=110
+When one Artifact should use its current configured printer assignment:
 
-artifact build smith-dog --realization shape_ornament
-
-artifact recolor smith-dog \
-    --realization shape_ornament \
-    --colors printer
+``` text
+artifact colors smith-dog --recolor=printer
 ```
 
-Inspection and maintenance remain available without complicating the ordinary
-path:
+When one Artifact should select its best owned-library colors for all
+applicable Realizations:
 
-```text
+``` text
+artifact colors smith-dog --recolor=library
+```
+
+When only one Realization requires a color exception:
+
+``` text
+artifact colors smith-dog \
+    --realization shape_ornament \
+    --recolor=library
+```
+
+When that color exception should be removed:
+
+``` text
+artifact colors smith-dog \
+    --realization shape_ornament \
+    --recolor=reset
+```
+
+Inspection and maintenance remain available without complicating the
+ordinary path:
+
+``` text
 artifact list
 artifact list smith-dog
 
@@ -1014,25 +1124,30 @@ artifact config smith-dog --realization shape_ornament
 artifact show smith-dog --realization shape_ornament
 
 artifact colors smith-dog
+artifact colors smith-dog --realization shape_ornament
 
 artifact clean smith-dog --realization shape_ornament
 ```
 
 The desired steady-state workflow is therefore:
 
-```text
-create → build → recolor → print
+``` text
+create → build → colors → print
 ```
 
 with:
 
-```text
+``` text
 config
 clean
 list
 show
-colors
 ```
 
 used when the ordinary path requires customization, maintenance, or
-explanation.
+broader configuration explanation.
+
+`colors` remains part of the ordinary production path because it
+provides both the operator's color comparison and the explicit, optional
+recolor selection.
+
