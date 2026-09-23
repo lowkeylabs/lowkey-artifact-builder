@@ -36,30 +36,35 @@ from lowkey_artifact_builder.model.models.artwork.color_analysis import (
 
 def analyze_artifact_colors(
     artifact_id: str,
+    *,
+    realization: str | None = None,
 ) -> ArtworkColorAnalysis:
     """
     Analyze physical color assignments for one configured artifact.
 
-    Analysis targets the canonical default Artwork Realization's registered
-    manifest and realizes the required products through normal dependency-aware
-    build orchestration before consuming the manifest.
+    Analysis currently targets the canonical default Artwork Realization's
+    registered manifest and realizes the required products through normal
+    dependency-aware build orchestration before consuming the manifest.
+
+    A requested Realization is accepted by the application boundary but is not
+    yet interpreted by analysis.
     """
 
     project_root = Path.cwd()
 
-    realization = "artwork_default"
+    artwork_realization = "artwork_default"
 
     target = ProductRef(
         artifact=artifact_id,
         model="artwork",
-        realization=realization,
+        realization=artwork_realization,
         stage="vector",
         product="manifest",
     )
 
     plan = create_build_plan(
         artifact_id,
-        realization=realization,
+        realization=artwork_realization,
         targets=(target,),
         project_root=project_root,
     )
@@ -106,8 +111,15 @@ def _registered_artwork_manifest(
     "artifact_id",
     required=True,
 )
+@click.option(
+    "--realization",
+    type=str,
+    default=None,
+    help="Analyze a specific Realization.",
+)
 def cli(
     artifact_id: str,
+    realization: str | None,
 ) -> None:
     """
     Report color diagnostics for registered Artwork.
@@ -115,6 +127,7 @@ def cli(
 
     analysis = analyze_artifact_colors(
         artifact_id,
+        realization=realization,
     )
 
     display_color_analysis(

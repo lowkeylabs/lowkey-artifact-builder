@@ -69,7 +69,11 @@ def test_colors_command_analyzes_and_displays_artifact(
 
     def fake_analyze_artifact_colors(
         artifact_id: str,
+        *,
+        realization: str | None = None,
     ) -> object:
+        assert realization is None
+
         analyzed.append(
             artifact_id,
         )
@@ -699,3 +703,57 @@ def test_analyze_artifact_colors_propagates_realization_failure(
     )
 
     analyze.assert_not_called()
+
+
+def test_colors_accepts_realization_option(
+    monkeypatch,
+) -> None:
+    """
+    Color analysis may be scoped to a named Realization.
+    """
+
+    analyzed: list[tuple[str, str | None]] = []
+
+    expected_analysis = object()
+
+    def fake_analyze_artifact_colors(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+    ) -> object:
+        analyzed.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+        return expected_analysis
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.analyze_artifact_colors",
+        fake_analyze_artifact_colors,
+    )
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli.cmd_color.display_color_analysis",
+        lambda analysis: None,
+    )
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [
+            "colors",
+            "nydeli",
+            "--realization",
+            "shape_ornament",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert analyzed == [
+        (
+            "nydeli",
+            "shape_ornament",
+        )
+    ]

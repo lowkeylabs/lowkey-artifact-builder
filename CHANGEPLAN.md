@@ -580,11 +580,7 @@ Likewise, analysis or recoloring of a complete Shape 3MF must not ignore
 
 structural components merely because they are not Artwork color regions.
 
-The operator-facing display should provide a useful row for every
-
-relevant printable component while preserving the semantic source of its
-
-color.
+The operator-facing display should account for every relevant printable component while presenting one row per relevant independently printable color and preserving the semantic source and component usage of that color.
 
 Before implementation, settle the display and recolor behavior when a
 
