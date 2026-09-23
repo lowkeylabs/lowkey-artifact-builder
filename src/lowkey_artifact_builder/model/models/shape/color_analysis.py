@@ -110,6 +110,24 @@ def analyze_shape_colors(
             "outer-ridge",
         )
 
+    artwork_fill_color = resolver(
+        "shape_artwork_fill_color",
+    )
+
+    if artwork_fill_color is not None and artwork_fill_color != "none":
+        if not isinstance(
+            artwork_fill_color,
+            str,
+        ):
+            raise TypeError("shape_artwork_fill_color must resolve to a color name or none.")
+
+        usage.setdefault(
+            artwork_fill_color,
+            [],
+        ).append(
+            "artwork-fill",
+        )
+
     return ShapeColorAnalysis(
         colors=tuple(
             ShapeColor(

@@ -89,3 +89,64 @@ def test_shape_color_analysis_groups_components_using_same_color() -> None:
         "base",
         "outer-ridge",
     )
+
+
+def test_shape_color_analysis_separates_distinct_semantic_colors() -> None:
+    """
+    Participating Shape components with different semantic physical colors
+    occupy separate color rows.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_base_color": "white",
+            "shape_outer_ridge_width": 2.0,
+            "shape_outer_ridge_color": "red",
+            "shape_artwork_fill_color": "none",
+        }
+    )
+
+    analysis = analyze_shape_colors(
+        resolver=resolver,
+    )
+
+    assert len(analysis.colors) == 2
+
+    base_color = analysis.colors[0]
+    ridge_color = analysis.colors[1]
+
+    assert base_color.color == "white"
+    assert base_color.used_by == ("base",)
+
+    assert ridge_color.color == "red"
+    assert ridge_color.used_by == ("outer-ridge",)
+
+
+def test_shape_color_analysis_includes_artwork_fill_semantic_color() -> None:
+    """
+    A participating Shape-owned Artwork fill contributes its semantic
+    physical color to the color analysis.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_base_color": "white",
+            "shape_outer_ridge_width": 0.0,
+            "shape_artwork_fill_color": "black",
+        }
+    )
+
+    analysis = analyze_shape_colors(
+        resolver=resolver,
+    )
+
+    assert len(analysis.colors) == 2
+
+    base_color = analysis.colors[0]
+    fill_color = analysis.colors[1]
+
+    assert base_color.color == "white"
+    assert base_color.used_by == ("base",)
+
+    assert fill_color.color == "black"
+    assert fill_color.used_by == ("artwork-fill",)
