@@ -424,3 +424,94 @@ def test_config_parameters_do_not_create_unknown_realization(
     assert result.exit_code != 0
     assert "shape_typo" in result.output
     assert "realization" in result.output.lower()
+
+
+def test_config_create_named_realization(
+    monkeypatch,
+) -> None:
+    """
+    --create permits definition of an additional named Realization.
+    """
+
+    created: list[
+        tuple[
+            str,
+            str,
+            str,
+            dict[str, object],
+        ]
+    ] = []
+
+    monkeypatch.setattr(
+        cmd_config,
+        "load_artifact_config",
+        lambda *args, **kwargs: {
+            "source": "artifacts/skippy/artifact.png",
+        },
+    )
+
+    monkeypatch.setattr(
+        cmd_config,
+        "_create_realization",
+        lambda artifact_id, realization, variant, parameters, **kwargs: created.append(
+            (
+                artifact_id,
+                realization,
+                variant,
+                parameters,
+            )
+        ),
+        raising=False,
+    )
+
+    result = _invoke(
+        "skippy",
+        "--realization",
+        "large-ornament",
+        "--create",
+        "--parameters",
+        "variant=shape.ornament",
+        "--parameters",
+        "shape_size=125",
+    )
+
+    assert result.exit_code == 0
+    assert created == [
+        (
+            "skippy",
+            "large-ornament",
+            "shape.ornament",
+            {
+                "shape_size": 125,
+            },
+        )
+    ]
+
+
+def test_config_create_realization_requires_variant(
+    monkeypatch,
+) -> None:
+    """
+    Creating an additional named Realization requires an originating
+    qualified Variant.
+    """
+
+    monkeypatch.setattr(
+        cmd_config,
+        "load_artifact_config",
+        lambda *args, **kwargs: {
+            "source": "artifacts/skippy/artifact.png",
+        },
+    )
+
+    result = _invoke(
+        "skippy",
+        "--realization",
+        "large-ornament",
+        "--create",
+        "--parameters",
+        "shape_size=125",
+    )
+
+    assert result.exit_code != 0
+    assert "variant" in result.output.lower()

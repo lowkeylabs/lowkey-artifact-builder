@@ -17,6 +17,7 @@ from lowkey_artifact_builder.config import (
     clean_artifact,
     configure_artifact,
     configure_realization,
+    create_realization,
     discover_artifacts,
     get_resolver,
     list_artifacts,
@@ -1189,3 +1190,100 @@ def test_configure_realization_rejects_unknown_realization(
             },
             project_root=tmp_path,
         )
+
+
+# =========================================================
+# Additional named Realizations
+# =========================================================
+
+
+def test_create_realization_defines_named_realization(
+    tmp_path: Path,
+) -> None:
+    """
+    An Artifact may define an additional named Realization from a
+    registered qualified Variant.
+    """
+
+    configure_artifact(
+        "skippy",
+        values={
+            "source": "artifacts/skippy/artifact.png",
+        },
+        project_root=tmp_path,
+    )
+
+    create_realization(
+        "skippy",
+        "large-ornament",
+        variant="shape.ornament",
+        parameters={
+            "shape_size": 125,
+        },
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert config["realizations"]["large-ornament"] == {
+        "variant": "shape.ornament",
+        "parameters": {
+            "shape_size": 125,
+        },
+    }
+
+
+def test_create_realization_preserves_unrelated_realizations(
+    tmp_path: Path,
+) -> None:
+    """
+    Defining an additional named Realization preserves existing
+    Realization declarations.
+    """
+
+    configure_artifact(
+        "skippy",
+        values={
+            "source": "artifacts/skippy/artifact.png",
+            "realizations": {
+                "artwork_default": {
+                    "parameters": {
+                        "artwork_size": 75,
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    create_realization(
+        "skippy",
+        "large-ornament",
+        variant="shape.ornament",
+        parameters={
+            "shape_size": 125,
+        },
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert config["realizations"] == {
+        "artwork_default": {
+            "parameters": {
+                "artwork_size": 75,
+            },
+        },
+        "large-ornament": {
+            "variant": "shape.ornament",
+            "parameters": {
+                "shape_size": 125,
+            },
+        },
+    }

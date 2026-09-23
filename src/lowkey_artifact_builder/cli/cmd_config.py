@@ -33,6 +33,7 @@ from lowkey_artifact_builder.cli.display import (
 from lowkey_artifact_builder.config import (
     ConfigError,
     configure_realization,
+    create_realization,
     get_realization_names,
     load_artifact_config,
 )
@@ -71,6 +72,11 @@ from lowkey_artifact_builder.model import (
     help="Inspect or customize one Artifact Realization.",
 )
 @click.option(
+    "--create",
+    is_flag=True,
+    help="Create an additional named Artifact Realization.",
+)
+@click.option(
     "--parameters",
     multiple=True,
     metavar="NAME=VALUE",
@@ -82,6 +88,7 @@ def cli(
     dump: bool,
     workplan: bool,
     realization: str | None,
+    create: bool,
     parameters: tuple[str, ...],
 ) -> None:
     """
@@ -102,6 +109,9 @@ def cli(
 
         if realization is not None:
             raise click.UsageError("--realization cannot be used with --list-models.")
+
+        if create:
+            raise click.UsageError("--create cannot be used with --list-models.")
 
         if parameters:
             raise click.UsageError("--parameters cannot be used with --list-models.")
@@ -130,6 +140,9 @@ def cli(
 
     if workplan:
         raise click.UsageError("--workplan currently requires --list-models.")
+
+    if create and realization is None:
+        raise click.UsageError("--create requires --realization.")
 
     if parameters and realization is None:
         raise click.UsageError("--parameters requires --realization.")
@@ -168,6 +181,26 @@ def cli(
             except ValueError as exc:
                 raise click.ClickException(str(exc)) from exc
 
+            if create:
+                variant = parsed_parameters.pop(
+                    "variant",
+                    None,
+                )
+
+                if not isinstance(variant, str) or not variant:
+                    raise click.UsageError(
+                        "--create requires variant=<model>.<variant> in --parameters."
+                    )
+
+                _create_realization(
+                    artifact_id,
+                    realization,
+                    variant,
+                    parsed_parameters,
+                    project_root=project_root,
+                )
+                return
+
             _configure_realization(
                 artifact_id,
                 realization,
@@ -175,6 +208,9 @@ def cli(
                 project_root=project_root,
             )
             return
+
+        if create:
+            raise click.UsageError("--create requires variant=<model>.<variant> in --parameters.")
 
         _display_realization(
             artifact_id,
@@ -309,6 +345,35 @@ def _configure_realization(
         configure_realization(
             artifact_id,
             realization,
+            parameters=parameters,
+            project_root=project_root,
+        )
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+# =========================================================
+# Realization creation
+# =========================================================
+
+
+def _create_realization(
+    artifact_id: str,
+    realization: str,
+    variant: str,
+    parameters: dict[str, object],
+    *,
+    project_root: Path,
+) -> None:
+    """
+    Create an additional named Artifact Realization.
+    """
+
+    try:
+        create_realization(
+            artifact_id,
+            realization,
+            variant=variant,
             parameters=parameters,
             project_root=project_root,
         )

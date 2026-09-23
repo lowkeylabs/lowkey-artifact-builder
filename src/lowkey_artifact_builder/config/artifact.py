@@ -638,11 +638,70 @@ def configure_realization(
     )
 
 
+def create_realization(
+    artifact_id: str,
+    realization: str,
+    *,
+    variant: str,
+    parameters: Mapping[str, Any],
+    project_root: Path | None = None,
+) -> None:
+    """
+    Define an additional named Artifact Realization.
+
+    The new Realization originates from the supplied qualified Variant
+    and may provide Artifact-specific parameter customization.
+
+    Existing Artifact configuration and unrelated Realization
+    declarations are preserved.
+    """
+
+    root = project_root if project_root is not None else Path.cwd()
+
+    existing = load_artifact_config(
+        artifact_id,
+        project_root=root,
+    )
+
+    if not existing:
+        raise ConfigError(f"Artifact {artifact_id!r} is not defined.")
+
+    authored_realizations = existing.get(
+        "realizations",
+        {},
+    )
+
+    if not isinstance(
+        authored_realizations,
+        Mapping,
+    ):
+        raise ConfigError("The [realizations] section in artifact.toml must be a TOML table.")
+
+    updated_realizations = {
+        name: dict(value) if isinstance(value, Mapping) else value
+        for name, value in authored_realizations.items()
+    }
+
+    updated_realizations[realization] = {
+        "variant": variant,
+        "parameters": dict(parameters),
+    }
+
+    update_artifact_config(
+        artifact_id,
+        {
+            "realizations": updated_realizations,
+        },
+        project_root=root,
+    )
+
+
 __all__ = [
     "ArtifactState",
     "clean_artifact",
     "configure_artifact",
     "configure_realization",
+    "create_realization",
     "discover_artifacts",
     "list_artifacts",
     "materialize_artifact",
