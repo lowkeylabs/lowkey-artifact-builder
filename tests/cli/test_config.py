@@ -569,3 +569,51 @@ def test_config_create_realization_across_all_artifacts(
             },
         )
     ]
+
+
+def test_config_customizes_realization_across_all_artifacts(
+    monkeypatch,
+) -> None:
+    """
+    Omitting Artifact IDs selects all Artifacts for bulk Realization
+    customization.
+    """
+
+    configured: list[
+        tuple[
+            tuple[str, ...],
+            str,
+            dict[str, object],
+        ]
+    ] = []
+
+    monkeypatch.setattr(
+        cmd_config,
+        "_configure_realization_scope",
+        lambda artifact_ids, realization, parameters, **kwargs: configured.append(
+            (
+                artifact_ids,
+                realization,
+                parameters,
+            )
+        ),
+        raising=False,
+    )
+
+    result = _invoke(
+        "--realization",
+        "shape_ornament",
+        "--parameters",
+        "shape_size=125",
+    )
+
+    assert result.exit_code == 0
+    assert configured == [
+        (
+            (),
+            "shape_ornament",
+            {
+                "shape_size": 125,
+            },
+        )
+    ]

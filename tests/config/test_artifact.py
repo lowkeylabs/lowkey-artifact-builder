@@ -11,12 +11,14 @@ from pathlib import Path
 
 import pytest
 
+import lowkey_artifact_builder.config.artifact as artifact_config
 from lowkey_artifact_builder.config import (
     ConfigError,
     artifact_config_path,
     clean_artifact,
     configure_artifact,
     configure_realization,
+    configure_realization_across_artifacts,
     create_realization,
     create_realization_across_artifacts,
     discover_artifacts,
@@ -1482,3 +1484,79 @@ def test_create_realization_across_artifacts_preflights_before_mutation(
         "realizations",
         {},
     )
+
+
+def test_configure_realization_across_artifacts_preflights_before_mutation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bulk Realization customization validates the complete Artifact scope
+    before mutating any Artifact.
+    """
+
+    configure_artifact(
+        "skippy",
+        values={
+            "source": "artifacts/skippy/artifact.png",
+        },
+        project_root=tmp_path,
+    )
+
+    configure_artifact(
+        "scooby",
+        values={
+            "source": "artifacts/scooby/artifact.png",
+        },
+        project_root=tmp_path,
+    )
+
+    def fake_get_realization_names(
+        artifact_id: str,
+        **kwargs,
+    ) -> tuple[str, ...]:
+        if artifact_id == "scooby":
+            return (
+                "artwork_default",
+                "shape_default",
+            )
+
+        return (
+            "artwork_default",
+            "shape_default",
+            "shape_ornament",
+        )
+
+    monkeypatch.setattr(
+        artifact_config,
+        "get_realization_names",
+        fake_get_realization_names,
+    )
+
+    before = load_artifact_config(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_ornament",
+    ):
+        configure_realization_across_artifacts(
+            (
+                "skippy",
+                "scooby",
+            ),
+            "shape_ornament",
+            parameters={
+                "shape_size": 125,
+            },
+            project_root=tmp_path,
+        )
+
+    after = load_artifact_config(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert after == before

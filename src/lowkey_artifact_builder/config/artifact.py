@@ -786,12 +786,67 @@ def create_realization_across_artifacts(
         )
 
 
+def configure_realization_across_artifacts(
+    artifact_ids: tuple[str, ...],
+    realization: str,
+    *,
+    parameters: Mapping[str, Any],
+    project_root: Path | None = None,
+) -> None:
+    """
+    Customize the same existing Realization across Artifacts.
+
+    The complete Artifact scope is validated before any persistent
+    configuration is changed. If any Artifact does not provide the
+    requested Realization, the operation fails without mutating any
+    Artifact.
+    """
+
+    root = project_root if project_root is not None else Path.cwd()
+
+    # -----------------------------------------------------
+    # Preflight the complete scope
+    # -----------------------------------------------------
+
+    for artifact_id in artifact_ids:
+        existing = load_artifact_config(
+            artifact_id,
+            project_root=root,
+        )
+
+        if not existing:
+            raise ConfigError(f"Artifact {artifact_id!r} is not defined.")
+
+        existing_realizations = get_realization_names(
+            artifact_id,
+            project_root=root,
+        )
+
+        if realization not in existing_realizations:
+            raise ConfigError(
+                f"Realization {realization!r} is not defined for Artifact {artifact_id!r}."
+            )
+
+    # -----------------------------------------------------
+    # Mutate only after successful preflight
+    # -----------------------------------------------------
+
+    for artifact_id in artifact_ids:
+        configure_realization(
+            artifact_id,
+            realization,
+            parameters=parameters,
+            project_root=root,
+        )
+
+
 __all__ = [
     "ArtifactState",
     "clean_artifact",
     "configure_artifact",
     "configure_realization",
     "create_realization",
+    "configure_realization_across_artifacts",
     "create_realization_across_artifacts",
     "discover_artifacts",
     "list_artifacts",
