@@ -943,6 +943,45 @@ def run_colors(
                 for selected_artifact_id in artifact_ids
             )
 
+        if recolor == "reset-all-realizations":
+            if realization is not None:
+                raise ValueError(
+                    "--recolor=reset-all-realizations cannot be combined with --realization."
+                )
+
+            prepared_artifacts = _prepare_bulk_recolor(
+                artifact_ids,
+                realization=None,
+                project_root=project_root,
+            )
+
+            for (
+                selected_artifact_id,
+                scope_plan,
+                prepared_plans,
+            ) in prepared_artifacts:
+                assert scope_plan is None
+
+                _reset_all_realization_printer_colors(
+                    selected_artifact_id,
+                    project_root=project_root,
+                )
+
+                for prepared_plan in prepared_plans:
+                    _recolor_existing_final(
+                        selected_artifact_id,
+                        realization=prepared_plan.realization_name,
+                        project_root=project_root,
+                    )
+
+            return tuple(
+                analyze_artifact_colors(
+                    selected_artifact_id,
+                    realization=None,
+                )
+                for selected_artifact_id in artifact_ids
+            )
+
         if recolor not in {
             "printer",
             "library",

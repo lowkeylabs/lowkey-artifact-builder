@@ -1599,3 +1599,220 @@ def test_bulk_reset_updates_all_artifacts_only_after_complete_preparation(
             "artwork_default",
         ),
     ]
+
+
+def test_bulk_reset_all_realizations_prepares_all_artifacts_before_any_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bulk reset-all-realizations validates every selected Artifact before
+    removing any Realization configuration or changing any final 3MF.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_color_artifact_ids",
+        lambda *, project_root: (
+            "cat",
+            "dog",
+        ),
+    )
+
+    cat_plan = Mock(spec=BuildPlan)
+    cat_plan.realization_name = "shape_ornament"
+
+    mutations: list[tuple[object, ...]] = []
+
+    def fake_prepare_artifact_recolor(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> tuple[BuildPlan, ...]:
+        if artifact_id == "dog":
+            raise FileNotFoundError("dog final 3MF is missing")
+
+        return (cat_plan,)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        fake_prepare_artifact_recolor,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_reset_all_realization_printer_colors",
+        lambda *args, **kwargs: mutations.append(
+            (
+                "reset-all-realizations",
+                args,
+                kwargs,
+            )
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_recolor_existing_final",
+        lambda *args, **kwargs: mutations.append(
+            (
+                "recolor-final",
+                args,
+                kwargs,
+            )
+        ),
+    )
+
+    with pytest.raises(
+        FileNotFoundError,
+        match="dog final 3MF is missing",
+    ):
+        cmd_color.run_colors(
+            None,
+            recolor="reset-all-realizations",
+        )
+
+    assert mutations == []
+
+
+def test_bulk_reset_all_realizations_updates_only_after_complete_preparation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Successful bulk reset-all-realizations validates every selected Artifact
+    before removing Realization-specific printer_colors overrides.
+
+    After complete preparation, each Artifact has all Realization overrides
+    removed and its previously validated existing finals are recolored through
+    normal post-reset configuration resolution.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_color_artifact_ids",
+        lambda *, project_root: (
+            "cat",
+            "dog",
+        ),
+    )
+
+    cat_plan = Mock(spec=BuildPlan)
+    cat_plan.artifact_id = "cat"
+    cat_plan.realization_name = "shape_ornament"
+
+    dog_plan = Mock(spec=BuildPlan)
+    dog_plan.artifact_id = "dog"
+    dog_plan.realization_name = "artwork_default"
+
+    prepared_plans = {
+        "cat": (cat_plan,),
+        "dog": (dog_plan,),
+    }
+
+    events: list[tuple[object, ...]] = []
+
+    def fake_prepare_artifact_recolor(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> tuple[BuildPlan, ...]:
+        events.append(
+            (
+                "prepare-artifact",
+                artifact_id,
+            )
+        )
+
+        return prepared_plans[artifact_id]
+
+    def fake_reset_all_realization_printer_colors(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> None:
+        events.append(
+            (
+                "reset-all-realizations",
+                artifact_id,
+            )
+        )
+
+    def fake_recolor_existing_final(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+    ) -> None:
+        events.append(
+            (
+                "recolor-final",
+                artifact_id,
+                realization,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        fake_prepare_artifact_recolor,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_reset_all_realization_printer_colors",
+        fake_reset_all_realization_printer_colors,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_recolor_existing_final",
+        fake_recolor_existing_final,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        lambda artifact_id, *, realization=None: Mock(
+            spec=ArtworkColorAnalysis,
+        ),
+    )
+
+    cmd_color.run_colors(
+        None,
+        recolor="reset-all-realizations",
+    )
+
+    assert events == [
+        (
+            "prepare-artifact",
+            "cat",
+        ),
+        (
+            "prepare-artifact",
+            "dog",
+        ),
+        (
+            "reset-all-realizations",
+            "cat",
+        ),
+        (
+            "recolor-final",
+            "cat",
+            "shape_ornament",
+        ),
+        (
+            "reset-all-realizations",
+            "dog",
+        ),
+        (
+            "recolor-final",
+            "dog",
+            "artwork_default",
+        ),
+    ]
