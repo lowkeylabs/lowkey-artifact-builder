@@ -40,20 +40,23 @@ def test_colors_is_a_top_level_command() -> None:
     assert "colors" in result.output
 
 
-def test_colors_requires_an_artifact_id() -> None:
+def test_colors_does_not_require_an_artifact_id() -> None:
     """
-    Color analysis identifies the artifact whose registered Artwork is analyzed.
+    Color analysis without an Artifact ID selects the bulk Artifact scope.
     """
 
     runner = CliRunner()
 
     result = runner.invoke(
         cli,
-        ["colors"],
+        [
+            "colors",
+            "--help",
+        ],
     )
 
-    assert result.exit_code != 0
-    assert "ARTIFACT_ID" in result.output
+    assert result.exit_code == 0
+    assert "[ARTIFACT_ID]" in result.output
 
 
 def test_colors_command_analyzes_and_displays_artifact(

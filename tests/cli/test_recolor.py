@@ -11,9 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
+from click.testing import CliRunner
 
 import lowkey_artifact_builder.cli.cmd_color as cmd_color
 from lowkey_artifact_builder.colors import (
@@ -3779,4 +3780,107 @@ def test_colors_without_artifact_id_analyzes_selected_realization_for_each_artif
             "dog",
             "shape_ornament",
         ),
+    ]
+
+
+def test_colors_cli_without_artifact_id_runs_bulk_analysis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    `artifact colors` without an Artifact ID requests bulk read-only
+    color analysis.
+    """
+
+    analyses = (
+        object(),
+        object(),
+    )
+
+    run_colors = Mock(
+        return_value=analyses,
+    )
+    display = Mock()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "run_colors",
+        run_colors,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "display_color_analysis",
+        display,
+    )
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cmd_color.cli,
+        [],
+    )
+
+    assert result.exit_code == 0
+
+    run_colors.assert_called_once_with(
+        None,
+        realization=None,
+        recolor=None,
+    )
+
+    assert display.call_args_list == [
+        call(analyses[0]),
+        call(analyses[1]),
+    ]
+
+
+def test_colors_cli_without_artifact_id_applies_realization_to_bulk_analysis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    `artifact colors --realization NAME` without an Artifact ID requests
+    that Realization across the selected Artifact scope.
+    """
+
+    analyses = (
+        object(),
+        object(),
+    )
+
+    run_colors = Mock(
+        return_value=analyses,
+    )
+    display = Mock()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "run_colors",
+        run_colors,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "display_color_analysis",
+        display,
+    )
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cmd_color.cli,
+        [
+            "--realization",
+            "shape_ornament",
+        ],
+    )
+
+    assert result.exit_code == 0
+
+    run_colors.assert_called_once_with(
+        None,
+        realization="shape_ornament",
+        recolor=None,
+    )
+
+    assert display.call_args_list == [
+        call(analyses[0]),
+        call(analyses[1]),
     ]

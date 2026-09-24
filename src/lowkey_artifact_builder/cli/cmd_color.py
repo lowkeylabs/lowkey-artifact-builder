@@ -1032,7 +1032,7 @@ def run_colors(
 @click.command("colors")
 @click.argument(
     "artifact_id",
-    required=True,
+    required=False,
 )
 @click.option(
     "--realization",
@@ -1055,7 +1055,7 @@ def run_colors(
     help="Select and persist an operator color assignment.",
 )
 def cli(
-    artifact_id: str,
+    artifact_id: str | None,
     realization: str | None,
     recolor: str | None,
 ) -> None:
@@ -1078,7 +1078,11 @@ def cli(
         analysis,
         tuple,
     ):
-        raise RuntimeError("Bulk color analysis is not exposed through the CLI yet.")
+        for artifact_analysis in analysis:
+            display_color_analysis(
+                artifact_analysis,
+            )
+        return
 
     display_color_analysis(
         analysis,
