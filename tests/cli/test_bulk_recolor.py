@@ -131,6 +131,20 @@ def test_bulk_realization_printer_recolor_prepares_all_artifacts_before_any_muta
         fake_resolve_recolor_scope,
     )
 
+    existing_final = tmp_path / "existing.3mf"
+    existing_final.touch()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_existing_final_path",
+        lambda plan: existing_final,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_validate_existing_recolor_source",
+        lambda plan: None,
+    )
+
     monkeypatch.setattr(
         cmd_color,
         "_persist_printer_colors",
@@ -466,6 +480,9 @@ def test_bulk_realization_printer_recolor_computes_all_artifacts_before_any_muta
     )
     dog_plan.stages = (dog_package_stage,)
 
+    cat_final.touch()
+    dog_final.touch()
+
     cat_colors: dict[str, PaletteColor] = {
         "artwork-0": Mock(spec=PaletteColor),
     }
@@ -531,6 +548,12 @@ def test_bulk_realization_printer_recolor_computes_all_artifacts_before_any_muta
         cmd_color,
         "_resolve_recolor_scope",
         fake_resolve_recolor_scope,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_validate_existing_recolor_source",
+        lambda plan: None,
     )
 
     monkeypatch.setattr(
@@ -775,6 +798,20 @@ def test_bulk_realization_library_recolor_prepares_all_artifacts_before_any_muta
         cmd_color,
         "_resolve_recolor_scope",
         fake_resolve_recolor_scope,
+    )
+
+    existing_final = tmp_path / "existing.3mf"
+    existing_final.touch()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_existing_final_path",
+        lambda plan: existing_final,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_validate_existing_recolor_source",
+        lambda plan: None,
     )
 
     monkeypatch.setattr(
@@ -1121,6 +1158,9 @@ def test_bulk_realization_library_recolor_computes_all_artifacts_before_any_muta
     cat_plan.resolver.return_value = cat_library_colors
     dog_plan.resolver.return_value = dog_library_colors
 
+    cat_final.touch()
+    dog_final.touch()
+
     cat_colors: dict[str, PaletteColor] = {
         "artwork-0": Mock(spec=PaletteColor),
     }
@@ -1186,6 +1226,12 @@ def test_bulk_realization_library_recolor_computes_all_artifacts_before_any_muta
         cmd_color,
         "_resolve_recolor_scope",
         fake_resolve_recolor_scope,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_validate_existing_recolor_source",
+        lambda plan: None,
     )
     monkeypatch.setattr(
         cmd_color,
@@ -1409,6 +1455,20 @@ def test_bulk_realization_reset_prepares_all_artifacts_before_any_mutation(
         cmd_color,
         "_resolve_recolor_scope",
         fake_resolve_recolor_scope,
+    )
+
+    existing_final = tmp_path / "existing.3mf"
+    existing_final.touch()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_existing_final_path",
+        lambda plan: existing_final,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_validate_existing_recolor_source",
+        lambda plan: None,
     )
     monkeypatch.setattr(
         cmd_color,
@@ -1816,3 +1876,83 @@ def test_bulk_reset_all_realizations_updates_only_after_complete_preparation(
             "artwork_default",
         ),
     ]
+
+
+def test_bulk_realization_reset_requires_all_existing_finals_before_any_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bulk Realization reset validates every selected Realization's existing
+    final 3MF before removing any printer_colors override.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_color_artifact_ids",
+        lambda *, project_root: (
+            "cat",
+            "dog",
+        ),
+    )
+
+    cat_plan = Mock(spec=BuildPlan)
+    cat_plan.artifact_id = "cat"
+    cat_plan.realization_name = "shape_ornament"
+
+    dog_plan = Mock(spec=BuildPlan)
+    dog_plan.artifact_id = "dog"
+    dog_plan.realization_name = "shape_ornament"
+
+    mutations: list[tuple[object, ...]] = []
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_recolor_scope",
+        lambda artifact_id, *, realization, project_root: {
+            "cat": cat_plan,
+            "dog": dog_plan,
+        }[artifact_id],
+    )
+
+    def fake_existing_final_path(
+        plan: BuildPlan,
+    ) -> Path:
+        if plan is cat_plan:
+            path = tmp_path / "cat.3mf"
+            path.touch()
+            return path
+
+        return tmp_path / "missing-dog.3mf"
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_existing_final_path",
+        fake_existing_final_path,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_reset_printer_colors",
+        lambda *args, **kwargs: mutations.append(
+            (
+                "reset",
+                args,
+                kwargs,
+            )
+        ),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="existing final 3MF",
+    ):
+        cmd_color.run_colors(
+            None,
+            realization="shape_ornament",
+            recolor="reset",
+        )
+
+    assert mutations == []

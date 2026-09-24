@@ -759,55 +759,74 @@ def _prepare_bulk_recolor(
     """
     Validate the complete bulk recolor scope before mutation.
 
-    The first pass resolves and validates every selected Artifact before any
-    prospective recolor is computed. This preserves the bulk atomicity
-    boundary: failure anywhere in the selected scope occurs before persistent
-    configuration or final 3MF metadata can be changed.
+    Artifact-scoped preparation delegates to _prepare_artifact_recolor(), which
+    validates every applicable final Realization for each Artifact.
 
-    Artifact-scoped preparation retains all applicable final Realization
-    plans. Realization-scoped preparation retains the explicitly selected
-    Realization plan.
+    Realization-scoped preparation is deliberately staged across the complete
+    selected scope:
+
+    1. resolve every Artifact + Realization coordinate;
+    2. verify every required existing final 3MF;
+    3. verify every existing recolor source.
+
+    No persistent configuration or final 3MF metadata is changed during
+    preparation.
     """
 
-    prepared_artifacts: list[
-        tuple[
-            str,
-            BuildPlan | None,
-            tuple[BuildPlan, ...],
-        ]
-    ] = []
-
-    for artifact_id in artifact_ids:
-        if realization is None:
-            prepared_plans = _prepare_artifact_recolor(
+    if realization is None:
+        return tuple(
+            (
                 artifact_id,
-                project_root=project_root,
-            )
-
-            prepared_artifacts.append(
-                (
+                None,
+                _prepare_artifact_recolor(
                     artifact_id,
-                    None,
-                    prepared_plans,
-                )
+                    project_root=project_root,
+                ),
             )
-            continue
+            for artifact_id in artifact_ids
+        )
 
+    scope_plans: list[tuple[str, BuildPlan]] = []
+
+    # Pass 1: resolve the complete Artifact + Realization scope.
+    for artifact_id in artifact_ids:
         scope_plan = _resolve_recolor_scope(
             artifact_id,
             realization=realization,
             project_root=project_root,
         )
 
-        prepared_artifacts.append(
+        scope_plans.append(
             (
                 artifact_id,
                 scope_plan,
-                (),
             )
         )
 
-    return tuple(prepared_artifacts)
+    # Pass 2: every selected Realization must already have a final 3MF.
+    for _, scope_plan in scope_plans:
+        final_path = _existing_final_path(
+            scope_plan,
+        )
+
+        if not final_path.is_file():
+            raise RuntimeError(f"Recoloring requires an existing final 3MF: {final_path}")
+
+    # Pass 3: every selected Realization must have a usable existing
+    # recolor source.
+    for _, scope_plan in scope_plans:
+        _validate_existing_recolor_source(
+            scope_plan,
+        )
+
+    return tuple(
+        (
+            artifact_id,
+            scope_plan,
+            (),
+        )
+        for artifact_id, scope_plan in scope_plans
+    )
 
 
 def _existing_final_path(
