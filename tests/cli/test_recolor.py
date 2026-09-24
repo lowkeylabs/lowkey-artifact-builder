@@ -1,0 +1,218 @@
+"""
+Tests for operator recoloring through the colors command.
+"""
+# File: tests/cli/test_recolor.py
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
+
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+import lowkey_artifact_builder.cli.cmd_color as cmd_color
+
+# =========================================================
+# Printer recolor
+# =========================================================
+
+
+def test_recolor_printer_persists_system_palette_at_artifact_scope(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    printer recolor pins the system/default printer palette at Artifact scope.
+
+    The selected palette comes from unresolved system configuration rather
+    than the Artifact's currently effective printer_colors.
+    """
+
+    resolver = Mock()
+    resolver.system_value.return_value = [
+        "system-black",
+        "system-white",
+        "system-red",
+    ]
+    resolver.return_value = [
+        "artifact-black",
+        "artifact-white",
+        "artifact-blue",
+    ]
+
+    plan = SimpleNamespace(
+        resolver=resolver,
+    )
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_recolor_scope",
+        lambda artifact_id, *, realization, project_root: plan,
+        raising=False,
+    )
+
+    persisted: list[
+        tuple[
+            str,
+            str | None,
+            tuple[str, ...],
+            Path,
+        ]
+    ] = []
+
+    def fake_persist_printer_colors(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        printer_colors: tuple[str, ...],
+        project_root: Path,
+    ) -> None:
+        persisted.append(
+            (
+                artifact_id,
+                realization,
+                printer_colors,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        fake_persist_printer_colors,
+        raising=False,
+    )
+
+    expected_analysis = object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        lambda artifact_id, *, realization: expected_analysis,
+    )
+
+    analysis = cmd_color.run_colors(
+        "nydeli",
+        recolor="printer",
+    )
+
+    assert analysis is expected_analysis
+
+    resolver.system_value.assert_called_once_with(
+        "printer_colors",
+    )
+
+    resolver.assert_not_called()
+
+    assert persisted == [
+        (
+            "nydeli",
+            None,
+            (
+                "system-black",
+                "system-white",
+                "system-red",
+            ),
+            tmp_path,
+        )
+    ]
+
+
+def test_recolor_printer_persists_system_palette_at_realization_scope(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Realization-scoped printer recolor pins the system/default printer palette
+    only at the selected Realization scope.
+    """
+
+    resolver = Mock()
+    resolver.system_value.return_value = [
+        "system-black",
+        "system-white",
+        "system-red",
+    ]
+
+    plan = SimpleNamespace(
+        resolver=resolver,
+    )
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_recolor_scope",
+        lambda artifact_id, *, realization, project_root: plan,
+        raising=False,
+    )
+
+    persisted: list[
+        tuple[
+            str,
+            str | None,
+            tuple[str, ...],
+            Path,
+        ]
+    ] = []
+
+    def fake_persist_printer_colors(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        printer_colors: tuple[str, ...],
+        project_root: Path,
+    ) -> None:
+        persisted.append(
+            (
+                artifact_id,
+                realization,
+                printer_colors,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        fake_persist_printer_colors,
+        raising=False,
+    )
+
+    expected_analysis = object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        lambda artifact_id, *, realization: expected_analysis,
+    )
+
+    analysis = cmd_color.run_colors(
+        "nydeli",
+        realization="shape_ornament",
+        recolor="printer",
+    )
+
+    assert analysis is expected_analysis
+
+    resolver.system_value.assert_called_once_with(
+        "printer_colors",
+    )
+
+    assert persisted == [
+        (
+            "nydeli",
+            "shape_ornament",
+            (
+                "system-black",
+                "system-white",
+                "system-red",
+            ),
+            tmp_path,
+        )
+    ]

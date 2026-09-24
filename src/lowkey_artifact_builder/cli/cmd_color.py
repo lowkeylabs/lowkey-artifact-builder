@@ -247,6 +247,46 @@ def _registered_artwork_manifest(
 # =========================================================
 
 
+def _resolve_recolor_scope(
+    artifact_id: str,
+    *,
+    realization: str | None,
+    project_root: Path,
+) -> BuildPlan:
+    """
+    Resolve the configuration scope used by a recolor operation.
+    """
+
+    if realization is not None:
+        return create_build_plan(
+            artifact_id,
+            realization=realization,
+            project_root=project_root,
+        )
+
+    return create_build_plan(
+        artifact_id,
+        realization="artwork_default",
+        project_root=project_root,
+    )
+
+
+def _persist_printer_colors(
+    artifact_id: str,
+    *,
+    realization: str | None,
+    printer_colors: tuple[str, ...],
+    project_root: Path,
+) -> None:
+    """
+    Persist printer colors at the selected Artifact or Realization scope.
+
+    Configuration persistence is implemented by a subsequent TDD slice.
+    """
+
+    raise NotImplementedError("Printer-color persistence is not implemented.")
+
+
 def run_colors(
     artifact_id: str,
     *,
@@ -256,20 +296,47 @@ def run_colors(
     """
     Run one color operation for an Artifact or Realization.
 
-    Read-only operation delegates to normal color analysis.
+    Read-only operation delegates directly to normal color analysis.
 
-    Recolor selections are accepted at this application boundary so the CLI
-    vocabulary is independent of the eventual persistence implementation.
-    Recolor mutation semantics are introduced by subsequent TDD slices.
+    Printer recoloring pins the unresolved system/default printer palette at
+    the selected Artifact or Realization scope, then performs normal color
+    analysis against the newly persisted configuration.
     """
 
-    if recolor is not None:
-        raise NotImplementedError(f"Recolor operation {recolor!r} is not implemented.")
+    if recolor is None:
+        return analyze_artifact_colors(
+            artifact_id,
+            realization=realization,
+        )
 
-    return analyze_artifact_colors(
-        artifact_id,
-        realization=realization,
-    )
+    if recolor == "printer":
+        project_root = Path.cwd()
+
+        plan = _resolve_recolor_scope(
+            artifact_id,
+            realization=realization,
+            project_root=project_root,
+        )
+
+        printer_colors = tuple(
+            plan.resolver.system_value(
+                "printer_colors",
+            )
+        )
+
+        _persist_printer_colors(
+            artifact_id,
+            realization=realization,
+            printer_colors=printer_colors,
+            project_root=project_root,
+        )
+
+        return analyze_artifact_colors(
+            artifact_id,
+            realization=realization,
+        )
+
+    raise NotImplementedError(f"Recolor operation {recolor!r} is not implemented.")
 
 
 # =========================================================
