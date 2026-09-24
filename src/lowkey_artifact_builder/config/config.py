@@ -1169,6 +1169,70 @@ def update_artifact_config(
     return path
 
 
+def update_realization_config(
+    artifact_id: str,
+    realization: str,
+    values: Mapping[str, Any],
+    *,
+    project_root: Path | str | None = None,
+) -> Path:
+    """
+    Update selected values in an explicit Realization configuration.
+
+    Existing Artifact values, other Realizations, and Realization values not
+    present in values are preserved.
+
+    Existing artifact.toml formatting, comments, and ordering are preserved
+    by tomlkit wherever possible.
+
+    Returns the artifact.toml path.
+    """
+
+    path = artifact_config_path(
+        artifact_id,
+        project_root=project_root,
+    )
+
+    if path.exists():
+        document = _load_artifact_document(path)
+    else:
+        document = tomlkit.document()
+
+    realizations = document.get(
+        "realizations",
+    )
+
+    if not isinstance(
+        realizations,
+        MutableMapping,
+    ):
+        raise ConfigError("Artifact does not define explicit Realizations.")
+
+    realization_document = realizations.get(
+        realization,
+    )
+
+    if not isinstance(
+        realization_document,
+        MutableMapping,
+    ):
+        raise ConfigError(f"Artifact does not define Realization {realization!r}.")
+
+    for name, value in values.items():
+        realization_document[name] = value
+
+    _validate_artifact_document(
+        document.unwrap(),
+    )
+
+    _write_artifact_document_atomic(
+        path,
+        document,
+    )
+
+    return path
+
+
 # =========================================================
 # Artifact validation
 # =========================================================

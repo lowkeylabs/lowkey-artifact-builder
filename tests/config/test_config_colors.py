@@ -14,6 +14,8 @@ import pytest
 from lowkey_artifact_builder.config import (
     ConfigError,
     get_resolver,
+    load_artifact_config,
+    update_realization_config,
     write_artifact_config,
 )
 
@@ -94,6 +96,139 @@ def test_artifact_can_override_printer_colors(
     ]
 
     assert resolver.source("printer_colors") == "artifact"
+
+
+# =========================================================
+# Printer-color persistence
+# =========================================================
+
+
+def test_update_realization_config_updates_printer_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Updating Realization printer colors changes only the selected Realization.
+    """
+
+    write_artifact_config(
+        "nydeli",
+        {
+            "model": "artwork",
+            "source": "nydeli.png",
+            "printer_colors": [
+                "artifact-black",
+                "artifact-white",
+            ],
+            "realizations": {
+                "shape_default": {
+                    "variant": "shape.default",
+                    "printer_colors": [
+                        "default-black",
+                        "default-white",
+                    ],
+                },
+                "shape_ornament": {
+                    "variant": "shape.ornament",
+                    "shape_size": 95.0,
+                    "printer_colors": [
+                        "ornament-black",
+                        "ornament-red",
+                    ],
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    update_realization_config(
+        "nydeli",
+        "shape_ornament",
+        {
+            "printer_colors": [
+                "system-black",
+                "system-white",
+                "system-red",
+            ],
+        },
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "nydeli",
+        project_root=tmp_path,
+    )
+
+    assert config["printer_colors"] == [
+        "artifact-black",
+        "artifact-white",
+    ]
+
+    assert config["realizations"]["shape_default"]["printer_colors"] == [
+        "default-black",
+        "default-white",
+    ]
+
+    assert config["realizations"]["shape_ornament"] == {
+        "variant": "shape.ornament",
+        "shape_size": 95.0,
+        "printer_colors": [
+            "system-black",
+            "system-white",
+            "system-red",
+        ],
+    }
+
+
+def test_update_realization_printer_colors_preserves_document_presentation(
+    tmp_path: Path,
+) -> None:
+    """
+    Updating Realization printer colors preserves existing Artifact and
+    Realization comments.
+    """
+
+    path = tmp_path / "artifacts" / "nydeli" / "artifact.toml"
+
+    path.parent.mkdir(
+        parents=True,
+    )
+
+    path.write_text(
+        """
+model = "artwork"
+
+# Preserve this source explanation.
+source = "nydeli.png"
+
+[realizations.shape_ornament]
+# Preserve this Realization explanation.
+variant = "shape.ornament"
+printer_colors = ["ornament-black", "ornament-red"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    update_realization_config(
+        "nydeli",
+        "shape_ornament",
+        {
+            "printer_colors": [
+                "system-black",
+                "system-white",
+                "system-red",
+            ],
+        },
+        project_root=tmp_path,
+    )
+
+    text = path.read_text(
+        encoding="utf-8",
+    )
+
+    assert "# Preserve this source explanation." in text
+    assert "# Preserve this Realization explanation." in text
+    assert 'source = "nydeli.png"' in text
+    assert 'variant = "shape.ornament"' in text
 
 
 # =========================================================

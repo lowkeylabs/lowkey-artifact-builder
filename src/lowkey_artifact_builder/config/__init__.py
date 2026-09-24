@@ -40,6 +40,7 @@ from lowkey_artifact_builder.config.config import (
     has_product_dependency_binding,
     load_artifact_config,
     update_artifact_config,
+    update_realization_config,
     write_artifact_config,
 )
 
@@ -65,6 +66,7 @@ __all__ = [
     "list_artifacts",
     "load_artifact_config",
     "update_artifact_config",
+    "update_realization_config",
     "write_artifact_config",
     "materialize_artifact",
     "realization_3mf_filename",
