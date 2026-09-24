@@ -709,6 +709,180 @@ def _add_mesh_object(
 # =========================================================
 
 
+def update_component_colors(
+    path: Path,
+    *,
+    artifact_id: str,
+    colors: dict[str, PaletteColor],
+) -> None:
+    """
+    Update component color presentation in an existing 3MF package.
+
+    Components are addressed by stable semantic identity rather than their
+    complete current operator-facing names. Recoloring replaces the current
+    presentation color while preserving object identity, geometry, build
+    composition, and material association.
+
+    Raises:
+        ThreeMFError:
+            If the 3MF cannot be read or written, a requested component does
+            not exist, or its associated material cannot be identified.
+    """
+
+    path = Path(
+        path,
+    )
+
+    try:
+        with zipfile.ZipFile(
+            path,
+            mode="r",
+        ) as package:
+            members = {
+                info.filename: (
+                    info,
+                    package.read(info.filename),
+                )
+                for info in package.infolist()
+            }
+
+    except (
+        OSError,
+        zipfile.BadZipFile,
+        KeyError,
+    ) as exc:
+        raise ThreeMFError(f"Could not read 3MF document {path}: {exc}") from exc
+
+    model_member = members.get(
+        "3D/3dmodel.model",
+    )
+
+    if model_member is None:
+        raise ThreeMFError(f"3MF document does not contain a primary model: {path}")
+
+    model_info, model_data = model_member
+
+    try:
+        model = ET.fromstring(
+            model_data,
+        )
+
+    except ET.ParseError as exc:
+        raise ThreeMFError(f"Could not parse 3MF model {path}: {exc}") from exc
+
+    materials = {
+        material.get("id"): material
+        for material in model.findall(
+            f".//{{{CORE_NS}}}basematerials",
+        )
+    }
+
+    found_components: set[str] = set()
+
+    for object_element in model.findall(
+        f".//{{{CORE_NS}}}object",
+    ):
+        current_name = object_element.get(
+            "name",
+        )
+
+        if current_name is None:
+            continue
+
+        for semantic_name, color in colors.items():
+            prefix = f"{semantic_name} - "
+
+            if not current_name.startswith(
+                prefix,
+            ):
+                continue
+
+            found_components.add(
+                semantic_name,
+            )
+
+            object_element.set(
+                "name",
+                component_name(
+                    artifact_id,
+                    semantic_name,
+                    color.name,
+                ),
+            )
+
+            material_id = object_element.get(
+                "pid",
+            )
+
+            material = materials.get(
+                material_id,
+            )
+
+            if material is None:
+                raise ThreeMFError(
+                    f"3MF component {semantic_name!r} does not reference a material."
+                )
+
+            material_base = material.find(
+                f"{{{CORE_NS}}}base",
+            )
+
+            if material_base is None:
+                raise ThreeMFError(
+                    f"3MF component {semantic_name!r} does not reference a base material."
+                )
+
+            material_base.set(
+                "name",
+                color.name,
+            )
+
+            material_base.set(
+                "displaycolor",
+                "#{:02X}{:02X}{:02X}".format(
+                    *color.rgb,
+                ),
+            )
+
+            break
+
+    missing_components = tuple(
+        semantic_name for semantic_name in colors if semantic_name not in found_components
+    )
+
+    if missing_components:
+        missing = ", ".join(
+            missing_components,
+        )
+
+        raise ThreeMFError(f"3MF document does not contain component(s): {missing}")
+
+    members["3D/3dmodel.model"] = (
+        model_info,
+        _serialize_xml(
+            model,
+            CORE_NS,
+        ),
+    )
+
+    try:
+        with zipfile.ZipFile(
+            path,
+            mode="w",
+        ) as package:
+            for info, data in members.values():
+                package.writestr(
+                    info,
+                    data,
+                )
+
+    except (
+        OSError,
+        zipfile.BadZipFile,
+    ) as exc:
+        raise ThreeMFError(f"Could not update 3MF document {path}: {exc}") from exc
+
+
 def update_component_names(
     path: Path,
     names: dict[str, str],
@@ -966,5 +1140,6 @@ __all__ = [
     "write",
     "write_stls",
     "component_name",
+    "update_component_colors",
     "update_component_names",
 ]

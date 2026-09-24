@@ -26,6 +26,7 @@ from lowkey_artifact_builder.formats.threemf import (
     ThreeMFError,
     component_name,
     load_stl,
+    update_component_colors,
     update_component_names,
     write,
     write_stls,
@@ -1505,3 +1506,295 @@ def test_update_component_names_is_atomic_when_component_is_missing(
         )
 
     assert path.read_bytes() == before
+
+
+def test_update_component_colors_replaces_presentation_color_idempotently(
+    tmp_path: Path,
+) -> None:
+    """
+    Component recoloring preserves stable semantic identity and replaces the
+    operator-facing color presentation on repeated recoloring.
+    """
+
+    path = tmp_path / "artifact.3mf"
+
+    write(
+        (
+            Component(
+                name=component_name(
+                    "dog",
+                    "artwork-1",
+                    "old-red",
+                ),
+                mesh=_mesh(),
+                color=PaletteColor(
+                    name="old-red",
+                    rgb=(200, 0, 0),
+                ),
+            ),
+        ),
+        path,
+    )
+
+    update_component_colors(
+        path,
+        artifact_id="dog",
+        colors={
+            "artwork-1": PaletteColor(
+                name="fire-engine-red",
+                rgb=(220, 38, 38),
+            ),
+        },
+    )
+
+    update_component_colors(
+        path,
+        artifact_id="dog",
+        colors={
+            "artwork-1": PaletteColor(
+                name="deep-red",
+                rgb=(180, 20, 20),
+            ),
+        },
+    )
+
+    model = _read_model(
+        path,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    assert len(objects) == 1
+
+    assert objects[0].get("id") == "1"
+    assert objects[0].get("name") == "artwork-1 - deep-red"
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials/{{{CORE_NS}}}base",
+    )
+
+    assert len(materials) == 1
+
+    assert materials[0].get("name") == "deep-red"
+    assert materials[0].get("displaycolor") == "#B41414"
+
+
+def test_update_component_colors_is_atomic_when_component_is_missing(
+    tmp_path: Path,
+) -> None:
+    """
+    A failed component-color update leaves the existing 3MF unchanged.
+    """
+
+    path = tmp_path / "artifact.3mf"
+
+    write(
+        (
+            Component(
+                name=component_name(
+                    "dog",
+                    "artwork-1",
+                    "old-red",
+                ),
+                mesh=_mesh(),
+                color=PaletteColor(
+                    name="old-red",
+                    rgb=(200, 0, 0),
+                ),
+            ),
+        ),
+        path,
+    )
+
+    before = path.read_bytes()
+
+    with pytest.raises(
+        ThreeMFError,
+        match="missing-component",
+    ):
+        update_component_colors(
+            path,
+            artifact_id="dog",
+            colors={
+                "artwork-1": PaletteColor(
+                    name="fire-engine-red",
+                    rgb=(220, 38, 38),
+                ),
+                "missing-component": PaletteColor(
+                    name="green",
+                    rgb=(0, 128, 0),
+                ),
+            },
+        )
+
+    assert path.read_bytes() == before
+
+
+def test_update_component_colors_preserves_manufacturing_structure(
+    tmp_path: Path,
+) -> None:
+    """
+    Recoloring changes only operator-facing color metadata while preserving
+    existing manufacturing structure and unrelated package members.
+    """
+
+    path = tmp_path / "artifact.3mf"
+
+    write(
+        (
+            Component(
+                name=component_name(
+                    "dog",
+                    "artwork-1",
+                    "old-red",
+                ),
+                mesh=_mesh(),
+                color=PaletteColor(
+                    name="old-red",
+                    rgb=(200, 0, 0),
+                ),
+            ),
+            Component(
+                name=component_name(
+                    "dog",
+                    "artwork-2",
+                    "blue",
+                ),
+                mesh=Mesh(
+                    vertices=(
+                        (0.0, 0.0, 1.0),
+                        (10.0, 0.0, 1.0),
+                        (0.0, 10.0, 1.0),
+                    ),
+                    triangles=((0, 1, 2),),
+                ),
+                color=PaletteColor(
+                    name="blue",
+                    rgb=(0, 0, 255),
+                ),
+            ),
+        ),
+        path,
+    )
+
+    with zipfile.ZipFile(
+        path,
+        mode="a",
+    ) as package:
+        package.writestr(
+            "Metadata/operator-data.txt",
+            b"preserve exactly",
+        )
+
+    before = _read_model(
+        path,
+    )
+
+    before_objects = before.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    before_geometry: list[
+        tuple[
+            str | None,
+            bytes,
+        ]
+    ] = []
+
+    for element in before_objects:
+        mesh = element.find(
+            f"{{{CORE_NS}}}mesh",
+        )
+
+        assert mesh is not None
+
+        before_geometry.append(
+            (
+                element.get("id"),
+                ET.tostring(
+                    mesh,
+                ),
+            )
+        )
+
+    before_build = [
+        dict(item.attrib)
+        for item in before.findall(
+            f".//{{{CORE_NS}}}build/{{{CORE_NS}}}item",
+        )
+    ]
+
+    with zipfile.ZipFile(
+        path,
+        mode="r",
+    ) as package:
+        before_other_members = {
+            name: package.read(name) for name in package.namelist() if name != "3D/3dmodel.model"
+        }
+
+    update_component_colors(
+        path,
+        artifact_id="dog",
+        colors={
+            "artwork-1": PaletteColor(
+                name="fire-engine-red",
+                rgb=(220, 38, 38),
+            ),
+        },
+    )
+
+    after = _read_model(
+        path,
+    )
+
+    after_objects = after.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    after_geometry: list[
+        tuple[
+            str | None,
+            bytes,
+        ]
+    ] = []
+
+    for element in after_objects:
+        mesh = element.find(
+            f"{{{CORE_NS}}}mesh",
+        )
+
+        assert mesh is not None
+
+        after_geometry.append(
+            (
+                element.get("id"),
+                ET.tostring(
+                    mesh,
+                ),
+            )
+        )
+
+    after_build = [
+        dict(item.attrib)
+        for item in after.findall(
+            f".//{{{CORE_NS}}}build/{{{CORE_NS}}}item",
+        )
+    ]
+
+    with zipfile.ZipFile(
+        path,
+        mode="r",
+    ) as package:
+        after_other_members = {
+            name: package.read(name) for name in package.namelist() if name != "3D/3dmodel.model"
+        }
+
+    assert [element.get("id") for element in after_objects] == [
+        element.get("id") for element in before_objects
+    ]
+
+    assert after_geometry == before_geometry
+    assert after_build == before_build
+    assert after_other_members == before_other_members
