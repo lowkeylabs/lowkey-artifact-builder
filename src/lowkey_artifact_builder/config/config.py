@@ -2233,6 +2233,126 @@ def _project_root(
 
 
 # =========================================================
+# Removals / resets
+# =========================================================
+
+
+def remove_artifact_config_value(
+    artifact_id: str,
+    name: str,
+    *,
+    project_root: Path | str | None = None,
+) -> Path:
+    """
+    Remove one value from Artifact-specific configuration.
+
+    Other Artifact values and Realization-specific configuration are
+    preserved.
+
+    Existing artifact.toml formatting, comments, and ordering are preserved
+    by tomlkit wherever possible.
+
+    Returns the artifact.toml path.
+    """
+
+    path = artifact_config_path(
+        artifact_id,
+        project_root=project_root,
+    )
+
+    if path.exists():
+        document = _load_artifact_document(path)
+    else:
+        document = tomlkit.document()
+
+    document.pop(
+        name,
+        None,
+    )
+
+    _validate_artifact_document(
+        document.unwrap(),
+    )
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    _write_artifact_document_atomic(
+        path,
+        document,
+    )
+
+    return path
+
+
+def remove_realization_config_value(
+    artifact_id: str,
+    realization: str,
+    name: str,
+    *,
+    project_root: Path | str | None = None,
+) -> Path:
+    """
+    Remove one value from an explicit Realization configuration.
+
+    Artifact values, sibling Realizations, and other values in the selected
+    Realization are preserved.
+
+    Returns the artifact.toml path.
+    """
+
+    path = artifact_config_path(
+        artifact_id,
+        project_root=project_root,
+    )
+
+    if not path.exists():
+        return path
+
+    document = _load_artifact_document(
+        path,
+    )
+
+    realizations = document.get(
+        "realizations",
+    )
+
+    if not isinstance(
+        realizations,
+        MutableMapping,
+    ):
+        return path
+
+    realization_document = realizations.get(
+        realization,
+    )
+
+    if not isinstance(
+        realization_document,
+        MutableMapping,
+    ):
+        return path
+
+    realization_document.pop(
+        name,
+        None,
+    )
+
+    _validate_artifact_document(
+        document.unwrap(),
+    )
+
+    _write_artifact_document_atomic(
+        path,
+        document,
+    )
+
+    return path
+
+
+# =========================================================
 # Exports
 # =========================================================
 
@@ -2246,6 +2366,8 @@ __all__ = [
     "get_realization_names",
     "get_resolver",
     "load_artifact_config",
+    "remove_artifact_config_value",
+    "remove_realization_config_value",
     "update_artifact_config",
     "write_artifact_config",
 ]

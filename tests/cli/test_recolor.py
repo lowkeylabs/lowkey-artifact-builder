@@ -594,3 +594,136 @@ printer_colors = ["old-black", "old-white"]
     assert "# Preserve this source explanation." in text
     assert "# Existing printer selection." in text
     assert 'source = "nydeli.png"' in text
+
+
+def test_recolor_reset_removes_artifact_printer_colors(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-scoped reset removes the Artifact printer_colors override and
+    restores normal inheritance.
+    """
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    reset: list[
+        tuple[
+            str,
+            str | None,
+            Path,
+        ]
+    ] = []
+
+    def fake_reset_printer_colors(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        project_root: Path,
+    ) -> None:
+        reset.append(
+            (
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_reset_printer_colors",
+        fake_reset_printer_colors,
+        raising=False,
+    )
+
+    expected_analysis = object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        lambda artifact_id, *, realization: expected_analysis,
+    )
+
+    analysis = cmd_color.run_colors(
+        "nydeli",
+        recolor="reset",
+    )
+
+    assert analysis is expected_analysis
+
+    assert reset == [
+        (
+            "nydeli",
+            None,
+            tmp_path,
+        )
+    ]
+
+
+def test_recolor_reset_removes_realization_printer_colors(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Realization-scoped reset removes only the selected Realization's
+    printer_colors override and restores inheritance for that Realization.
+    """
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    reset: list[
+        tuple[
+            str,
+            str | None,
+            Path,
+        ]
+    ] = []
+
+    def fake_reset_printer_colors(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        project_root: Path,
+    ) -> None:
+        reset.append(
+            (
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_reset_printer_colors",
+        fake_reset_printer_colors,
+        raising=False,
+    )
+
+    expected_analysis = object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        lambda artifact_id, *, realization: expected_analysis,
+    )
+
+    analysis = cmd_color.run_colors(
+        "nydeli",
+        realization="shape_ornament",
+        recolor="reset",
+    )
+
+    assert analysis is expected_analysis
+
+    assert reset == [
+        (
+            "nydeli",
+            "shape_ornament",
+            tmp_path,
+        )
+    ]

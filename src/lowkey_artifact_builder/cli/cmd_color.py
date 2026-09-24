@@ -17,6 +17,8 @@ from lowkey_artifact_builder.cli.display import (
     display_color_analysis,
 )
 from lowkey_artifact_builder.config import (
+    remove_artifact_config_value,
+    remove_realization_config_value,
     update_artifact_config,
     update_realization_config,
 )
@@ -316,6 +318,34 @@ def _persist_printer_colors(
     )
 
 
+def _reset_printer_colors(
+    artifact_id: str,
+    *,
+    realization: str | None,
+    project_root: Path,
+) -> None:
+    """
+    Remove printer_colors at the selected Artifact or Realization scope.
+
+    Removing the override restores normal configuration inheritance.
+    """
+
+    if realization is not None:
+        remove_realization_config_value(
+            artifact_id,
+            realization,
+            "printer_colors",
+            project_root=project_root,
+        )
+        return
+
+    remove_artifact_config_value(
+        artifact_id,
+        "printer_colors",
+        project_root=project_root,
+    )
+
+
 def run_colors(
     artifact_id: str,
     *,
@@ -389,6 +419,20 @@ def run_colors(
             artifact_id,
             realization=realization,
             printer_colors=printer_colors,
+            project_root=project_root,
+        )
+
+        return analyze_artifact_colors(
+            artifact_id,
+            realization=realization,
+        )
+
+    if recolor == "reset":
+        project_root = Path.cwd()
+
+        _reset_printer_colors(
+            artifact_id,
+            realization=realization,
             project_root=project_root,
         )
 

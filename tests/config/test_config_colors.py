@@ -15,6 +15,8 @@ from lowkey_artifact_builder.config import (
     ConfigError,
     get_resolver,
     load_artifact_config,
+    remove_artifact_config_value,
+    remove_realization_config_value,
     update_realization_config,
     write_artifact_config,
 )
@@ -761,3 +763,120 @@ def test_system_printer_colors_remain_available_after_artifact_override(
         )
         == system_printer_colors
     )
+
+
+def test_remove_artifact_config_value_removes_printer_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Removing an Artifact configuration value restores inheritance while
+    preserving unrelated Artifact and Realization configuration.
+    """
+
+    write_artifact_config(
+        "nydeli",
+        {
+            "model": "artwork",
+            "source": "nydeli.png",
+            "artwork_size": 90.0,
+            "printer_colors": [
+                "artifact-black",
+                "artifact-white",
+            ],
+            "realizations": {
+                "shape_ornament": {
+                    "printer_colors": [
+                        "ornament-black",
+                        "ornament-red",
+                    ],
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    remove_artifact_config_value(
+        "nydeli",
+        "printer_colors",
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "nydeli",
+        project_root=tmp_path,
+    )
+
+    assert "printer_colors" not in config
+
+    assert config["model"] == "artwork"
+    assert config["source"] == "nydeli.png"
+    assert config["artwork_size"] == 90.0
+
+    assert config["realizations"]["shape_ornament"]["printer_colors"] == [
+        "ornament-black",
+        "ornament-red",
+    ]
+
+
+def test_remove_realization_config_value_removes_printer_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Removing a Realization configuration value restores inheritance only for
+    that Realization while preserving its other customization and sibling
+    Realizations.
+    """
+
+    write_artifact_config(
+        "nydeli",
+        {
+            "model": "artwork",
+            "source": "nydeli.png",
+            "printer_colors": [
+                "artifact-black",
+                "artifact-white",
+            ],
+            "realizations": {
+                "shape_default": {
+                    "printer_colors": [
+                        "default-black",
+                        "default-white",
+                    ],
+                },
+                "shape_ornament": {
+                    "shape_size": 95.0,
+                    "printer_colors": [
+                        "ornament-black",
+                        "ornament-red",
+                    ],
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    remove_realization_config_value(
+        "nydeli",
+        "shape_ornament",
+        "printer_colors",
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "nydeli",
+        project_root=tmp_path,
+    )
+
+    assert config["printer_colors"] == [
+        "artifact-black",
+        "artifact-white",
+    ]
+
+    assert config["realizations"]["shape_default"]["printer_colors"] == [
+        "default-black",
+        "default-white",
+    ]
+
+    assert config["realizations"]["shape_ornament"] == {
+        "shape_size": 95.0,
+    }
