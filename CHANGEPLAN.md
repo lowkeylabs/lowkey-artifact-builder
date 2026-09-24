@@ -1069,18 +1069,26 @@ Before mutating any Artifact configuration or final 3MF:
     `--recolor=reset-all-realizations` when `--realization` is supplied;
 4.  verify required final 3MFs exist;
 5.  verify the requested recolor source is usable;
-6.  compute the required assignments independently for every selected
-    scope;
-7.  determine the configuration mutations and 3MF metadata mutations
-    that would result.
+6. for printer and library recoloring, compute the required assignments
+   independently for every selected scope and determine the configuration
+   and final-3MF metadata mutations that would result;
+7. for reset operations, complete all validation before mutation, then
+   remove the selected override or overrides and recolor the previously
+   validated existing finals through ordinary post-reset configuration
+   resolution.
 
 Only after the complete selected scope validates should persistent
-
 configuration or 3MF files be changed.
 
-Do not let bulk recoloring emerge accidentally from a loop around a
+Printer and Library bulk recoloring compute prospective final-3MF
+mutations before that mutation boundary.
 
-mutating single-Artifact operation.
+Reset and reset-all-realizations instead cross the mutation boundary only
+after complete preflight validation. They then remove the applicable
+printer_colors overrides and use ordinary configuration resolution to
+determine the newly effective printer assignment for each previously
+validated existing final.
+
 
 ------------------------------------------------------------------------
 
