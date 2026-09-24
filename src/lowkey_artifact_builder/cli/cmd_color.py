@@ -856,6 +856,10 @@ def run_colors(
     and compute every prospective final-3MF color mutation before any
     persistent configuration or final-3MF mutation occurs.
 
+    Bulk Artifact-scoped reset validates the complete selected scope before
+    removing any Artifact-level printer_colors override. Existing finals are
+    then recolored through normal post-reset configuration resolution.
+
     After persistence, normal color analysis runs against the newly persisted
     configuration.
     """
@@ -887,6 +891,57 @@ def run_colors(
         artifact_ids = _resolve_color_artifact_ids(
             project_root=project_root,
         )
+
+        if recolor == "reset":
+            prepared_artifacts = _prepare_bulk_recolor(
+                artifact_ids,
+                realization=realization,
+                project_root=project_root,
+            )
+
+            for (
+                selected_artifact_id,
+                scope_plan,
+                prepared_plans,
+            ) in prepared_artifacts:
+                _reset_printer_colors(
+                    selected_artifact_id,
+                    realization=realization,
+                    project_root=project_root,
+                )
+
+                if realization is None:
+                    assert scope_plan is None
+
+                    _report_retained_printer_color_overrides(
+                        selected_artifact_id,
+                        project_root=project_root,
+                    )
+
+                    for prepared_plan in prepared_plans:
+                        _recolor_existing_final(
+                            selected_artifact_id,
+                            realization=prepared_plan.realization_name,
+                            project_root=project_root,
+                        )
+
+                    continue
+
+                assert scope_plan is not None
+
+                _recolor_existing_final(
+                    selected_artifact_id,
+                    realization=scope_plan.realization_name,
+                    project_root=project_root,
+                )
+
+            return tuple(
+                analyze_artifact_colors(
+                    selected_artifact_id,
+                    realization=realization,
+                )
+                for selected_artifact_id in artifact_ids
+            )
 
         if recolor not in {
             "printer",
