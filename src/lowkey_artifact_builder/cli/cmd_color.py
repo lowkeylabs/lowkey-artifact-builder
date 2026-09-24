@@ -204,19 +204,13 @@ def _prepare_artifact_recolor(
     artifact_id: str,
     *,
     project_root: Path,
-    printer_colors: tuple[str, ...] | None = None,
 ) -> tuple[BuildPlan, ...]:
     """
     Resolve and validate the complete Artifact recolor scope.
 
     Preparation is read-only. Every applicable Realization is resolved and
     validated before any configuration or final-3MF mutation may occur.
-
-    When projected Artifact-level printer_colors are supplied, prospective
-    final-3MF recolors are also computed for every applicable Realization
-    before preparation succeeds.
     """
-
     realizations = _resolve_artifact_recolor_realizations(
         artifact_id,
         project_root=project_root,
@@ -275,18 +269,6 @@ def _prepare_artifact_recolor(
             f"Recoloring requires usable existing recolor sources for every "
             f"applicable Realization: {details}"
         )
-
-    if printer_colors is not None:
-        for plan in plans:
-            effective_printer_colors = printer_colors
-
-            if plan.resolver.source("printer_colors").startswith("realization "):
-                effective_printer_colors = tuple(plan.resolver("printer_colors"))
-
-            _prepare_existing_final_recolor(
-                plan,
-                printer_colors=effective_printer_colors,
-            )
 
     return plans
 
@@ -759,6 +741,10 @@ def run_colors(
     Library recoloring pins the effective Library palette as printer_colors at
     the selected Artifact or Realization scope.
 
+    Artifact-scoped printer recoloring computes every prospective final-3MF
+    color mutation before persistent configuration is changed, then applies
+    those retained mutations directly to the existing finals.
+
     After persistence, normal color analysis runs against the newly persisted
     configuration.
     """
@@ -784,12 +770,51 @@ def run_colors(
             )
         )
 
-        prepared_plans: tuple[BuildPlan, ...] = ()
+        prepared_recolors: tuple[
+            tuple[
+                BuildPlan,
+                dict[str, PaletteColor],
+            ],
+            ...,
+        ] = ()
 
         if realization is None:
             prepared_plans = _prepare_artifact_recolor(
                 artifact_id,
                 project_root=project_root,
+            )
+
+            prospective_recolors: list[
+                tuple[
+                    BuildPlan,
+                    dict[str, PaletteColor],
+                ]
+            ] = []
+
+            for prepared_plan in prepared_plans:
+                effective_printer_colors = printer_colors
+
+                if prepared_plan.resolver.source("printer_colors").startswith("realization "):
+                    effective_printer_colors = tuple(
+                        prepared_plan.resolver(
+                            "printer_colors",
+                        )
+                    )
+
+                component_colors = _prepare_existing_final_recolor(
+                    prepared_plan,
+                    printer_colors=effective_printer_colors,
+                )
+
+                prospective_recolors.append(
+                    (
+                        prepared_plan,
+                        component_colors,
+                    )
+                )
+
+            prepared_recolors = tuple(
+                prospective_recolors,
             )
 
         _persist_printer_colors(
@@ -805,11 +830,22 @@ def run_colors(
                 project_root=project_root,
             )
 
-            for prepared_plan in prepared_plans:
-                _recolor_existing_final(
-                    artifact_id,
-                    realization=prepared_plan.realization_name,
-                    project_root=project_root,
+            for prepared_plan, component_colors in prepared_recolors:
+                if not component_colors:
+                    continue
+
+                package_stage = next(
+                    stage for stage in prepared_plan.stages if stage.name == "package"
+                )
+
+                final_product = next(
+                    product for product in package_stage.products if product.name == "artifact"
+                )
+
+                update_component_colors(
+                    final_product.path,
+                    artifact_id=artifact_id,
+                    colors=component_colors,
                 )
 
         else:
