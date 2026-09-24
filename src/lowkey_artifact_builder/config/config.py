@@ -1177,10 +1177,14 @@ def update_realization_config(
     project_root: Path | str | None = None,
 ) -> Path:
     """
-    Update selected values in an explicit Realization configuration.
+    Update selected values in a Realization configuration.
 
     Existing Artifact values, other Realizations, and Realization values not
     present in values are preserved.
+
+    A canonical default Realization may be materialized as a sparse
+    Realization-specific customization when it is not already declared in
+    artifact.toml. Arbitrary undeclared Realizations are not created.
 
     Existing artifact.toml formatting, comments, and ordering are preserved
     by tomlkit wherever possible.
@@ -1202,21 +1206,51 @@ def update_realization_config(
         "realizations",
     )
 
-    if not isinstance(
+    if realizations is None:
+        registry = build_model_registry()
+
+        if (
+            _default_realization_selection(
+                realization,
+                registry,
+            )
+            is None
+        ):
+            raise ConfigError(f"Artifact does not define Realization {realization!r}.")
+
+        realizations = tomlkit.table()
+        document["realizations"] = realizations
+
+    elif not isinstance(
         realizations,
         MutableMapping,
     ):
-        raise ConfigError("Artifact does not define explicit Realizations.")
+        raise ConfigError("The [realizations] section in artifact.toml must be a TOML table.")
 
     realization_document = realizations.get(
         realization,
     )
 
-    if not isinstance(
+    if realization_document is None:
+        registry = build_model_registry()
+
+        if (
+            _default_realization_selection(
+                realization,
+                registry,
+            )
+            is None
+        ):
+            raise ConfigError(f"Artifact does not define Realization {realization!r}.")
+
+        realization_document = tomlkit.table()
+        realizations[realization] = realization_document
+
+    elif not isinstance(
         realization_document,
         MutableMapping,
     ):
-        raise ConfigError(f"Artifact does not define Realization {realization!r}.")
+        raise ConfigError(f"Realization {realization!r} must be a TOML table.")
 
     for name, value in values.items():
         realization_document[name] = value

@@ -231,6 +231,133 @@ printer_colors = ["ornament-black", "ornament-red"]
     assert 'variant = "shape.ornament"' in text
 
 
+def test_update_realization_config_materializes_canonical_realization(
+    tmp_path: Path,
+) -> None:
+    """
+    Updating an implicit canonical Realization materializes only its sparse
+    Realization-specific customization.
+    """
+
+    write_artifact_config(
+        "nydeli",
+        {
+            "model": "artwork",
+            "source": "nydeli.png",
+            "printer_colors": [
+                "artifact-black",
+                "artifact-white",
+            ],
+        },
+        project_root=tmp_path,
+    )
+
+    update_realization_config(
+        "nydeli",
+        "shape_ornament",
+        {
+            "printer_colors": [
+                "system-black",
+                "system-white",
+                "system-red",
+            ],
+        },
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "nydeli",
+        project_root=tmp_path,
+    )
+
+    assert config["model"] == "artwork"
+    assert config["source"] == "nydeli.png"
+
+    assert config["printer_colors"] == [
+        "artifact-black",
+        "artifact-white",
+    ]
+
+    assert config["realizations"] == {
+        "shape_ornament": {
+            "printer_colors": [
+                "system-black",
+                "system-white",
+                "system-red",
+            ],
+        },
+    }
+
+
+def test_update_realization_config_materializes_missing_canonical_realization(
+    tmp_path: Path,
+) -> None:
+    """
+    Updating an implicit canonical Realization materializes it alongside
+    existing explicit Realization customizations.
+    """
+
+    write_artifact_config(
+        "nydeli",
+        {
+            "model": "artwork",
+            "source": "nydeli.png",
+            "printer_colors": [
+                "artifact-black",
+                "artifact-white",
+            ],
+            "realizations": {
+                "shape_default": {
+                    "printer_colors": [
+                        "default-black",
+                        "default-white",
+                    ],
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    update_realization_config(
+        "nydeli",
+        "shape_ornament",
+        {
+            "printer_colors": [
+                "system-black",
+                "system-white",
+                "system-red",
+            ],
+        },
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "nydeli",
+        project_root=tmp_path,
+    )
+
+    assert config["printer_colors"] == [
+        "artifact-black",
+        "artifact-white",
+    ]
+
+    assert config["realizations"] == {
+        "shape_default": {
+            "printer_colors": [
+                "default-black",
+                "default-white",
+            ],
+        },
+        "shape_ornament": {
+            "printer_colors": [
+                "system-black",
+                "system-white",
+                "system-red",
+            ],
+        },
+    }
+
+
 # =========================================================
 # Library colors
 # =========================================================
