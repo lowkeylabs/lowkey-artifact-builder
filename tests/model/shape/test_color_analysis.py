@@ -7,7 +7,17 @@ Tests for Shape color analysis.
 
 from __future__ import annotations
 
+from lowkey_artifact_builder.colors import (
+    ColorAssignment,
+    ColorAssignmentResult,
+    MeasuredColor,
+    PaletteColor,
+)
+from lowkey_artifact_builder.model.models.artwork.color_analysis import (
+    ArtworkColorAnalysis,
+)
 from lowkey_artifact_builder.model.models.shape.color_analysis import (
+    ShapeColorAnalysis,
     analyze_shape_colors,
 )
 
@@ -452,3 +462,111 @@ def test_shape_color_analysis_compares_physical_catalog_independently() -> None:
 
     assert color.catalog_candidate.name == "physical-green"
     assert color.catalog_candidate.distance > 0.0
+
+
+def test_shape_color_analysis_preserves_artwork_assignment_analysis() -> None:
+    """
+    Artwork-derived colors participating in a Shape Realization retain their
+    Artwork assignment semantics rather than becoming structural semantic-color
+    comparisons.
+    """
+
+    measured = MeasuredColor(
+        index=1,
+        rgb=(240, 80, 40),
+    )
+
+    def assignment_result(
+        name: str,
+        distance: float,
+    ) -> ColorAssignmentResult:
+        return ColorAssignmentResult(
+            assignments=(
+                ColorAssignment(
+                    measured=measured,
+                    color=PaletteColor(
+                        name=name,
+                        rgb=measured.rgb,
+                    ),
+                    distance=distance,
+                ),
+            ),
+            distance=distance,
+        )
+
+    artwork = ArtworkColorAnalysis(
+        system_assignments=assignment_result(
+            "system-red",
+            1.0,
+        ),
+        printer_assignments=assignment_result(
+            "printer-red",
+            2.0,
+        ),
+        library_assignments=assignment_result(
+            "library-red",
+            3.0,
+        ),
+        catalog_assignments=assignment_result(
+            "catalog-red",
+            4.0,
+        ),
+    )
+
+    analysis = ShapeColorAnalysis(
+        colors=(),
+        artwork=artwork,
+    )
+
+    assert analysis.artwork is artwork
+
+
+def test_shape_color_analysis_preserves_supplied_artwork_analysis() -> None:
+    """
+    Shape color analysis preserves participating Artwork analysis separately
+    from Shape-owned structural semantic-color comparisons.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_base_color": "white",
+            "shape_outer_ridge_width": 0.0,
+            "shape_artwork_fill_color": "none",
+        }
+    )
+
+    measured = MeasuredColor(
+        index=1,
+        rgb=(240, 80, 40),
+    )
+
+    def assignment_result(
+        name: str,
+    ) -> ColorAssignmentResult:
+        return ColorAssignmentResult(
+            assignments=(
+                ColorAssignment(
+                    measured=measured,
+                    color=PaletteColor(
+                        name=name,
+                        rgb=measured.rgb,
+                    ),
+                    distance=0.0,
+                ),
+            ),
+            distance=0.0,
+        )
+
+    artwork = ArtworkColorAnalysis(
+        system_assignments=assignment_result("system-red"),
+        printer_assignments=assignment_result("printer-red"),
+        library_assignments=assignment_result("library-red"),
+        catalog_assignments=assignment_result("catalog-red"),
+    )
+
+    analysis = analyze_shape_colors(
+        resolver=resolver,
+        artwork=artwork,
+    )
+
+    assert analysis.artwork is artwork

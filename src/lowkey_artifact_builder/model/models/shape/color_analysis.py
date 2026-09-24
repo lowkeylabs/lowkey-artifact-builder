@@ -24,6 +24,9 @@ from lowkey_artifact_builder.colors import (
     resolve_palette,
     resolve_palette_color,
 )
+from lowkey_artifact_builder.model.models.artwork.color_analysis import (
+    ArtworkColorAnalysis,
+)
 
 
 class ShapeColorResolver(Protocol):
@@ -87,14 +90,20 @@ class ShapeColor:
 class ShapeColorAnalysis:
     """
     Color analysis for one Shape Realization.
+
+    Shape-owned structural colors retain their semantic-color comparison
+    semantics. Artwork-derived colors retain their Artwork physical-color
+    assignment semantics.
     """
 
     colors: tuple[ShapeColor, ...]
+    artwork: ArtworkColorAnalysis | None = None
 
 
 def analyze_shape_colors(
     *,
     resolver: ShapeColorResolver,
+    artwork: ArtworkColorAnalysis | None = None,
 ) -> ShapeColorAnalysis:
     """
     Analyze semantic colors for one Shape Realization.
@@ -108,6 +117,9 @@ def analyze_shape_colors(
     System, effective Printer, Library, and Catalog colors are compared
     independently with each semantic Shape color. The nearest candidate in
     each scope is advisory and does not replace the semantic color identity.
+
+    Participating Artwork analysis is preserved separately so that Artwork
+    colors retain their global physical-color assignment semantics.
 
     Catalog-wide comparison includes physical catalog colors only.
     """
@@ -235,6 +247,7 @@ def analyze_shape_colors(
             )
             for color, used_by in usage.items()
         ),
+        artwork=artwork,
     )
 
 
