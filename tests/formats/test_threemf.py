@@ -26,6 +26,7 @@ from lowkey_artifact_builder.formats.threemf import (
     ThreeMFError,
     component_name,
     load_stl,
+    update_component_names,
     write,
     write_stls,
 )
@@ -1249,3 +1250,258 @@ def test_component_name_presents_semantic_identity_and_configuration_color() -> 
         )
         == "artwork-1 - fire-engine-red"
     )
+
+
+def test_update_component_names_changes_only_requested_component_metadata(
+    tmp_path: Path,
+) -> None:
+    """
+    Existing 3MF component names can be updated in place without changing
+    component identity or mesh geometry.
+    """
+
+    path = tmp_path / "artifact.3mf"
+
+    write(
+        (
+            Component(
+                name="artwork-1 - old-red",
+                mesh=_mesh(),
+                color=PaletteColor(
+                    name="old-red",
+                    rgb=(255, 0, 0),
+                ),
+            ),
+            Component(
+                name="artwork-2 - blue",
+                mesh=Mesh(
+                    vertices=(
+                        (0.0, 0.0, 1.0),
+                        (10.0, 0.0, 1.0),
+                        (0.0, 10.0, 1.0),
+                    ),
+                    triangles=((0, 1, 2),),
+                ),
+                color=PaletteColor(
+                    name="blue",
+                    rgb=(0, 0, 255),
+                ),
+            ),
+        ),
+        path,
+    )
+
+    before = _read_model(path)
+
+    before_objects = before.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    before_geometry: list[
+        tuple[
+            str | None,
+            bytes,
+        ]
+    ] = []
+
+    for element in before_objects:
+        mesh = element.find(
+            f"{{{CORE_NS}}}mesh",
+        )
+
+        assert mesh is not None
+
+        before_geometry.append(
+            (
+                element.get("id"),
+                ET.tostring(
+                    mesh,
+                ),
+            )
+        )
+
+    update_component_names(
+        path,
+        {
+            "artwork-1 - old-red": "artwork-1 - fire-engine-red",
+        },
+    )
+
+    after = _read_model(path)
+
+    after_objects = after.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    assert [
+        (
+            element.get("id"),
+            element.get("name"),
+        )
+        for element in after_objects
+    ] == [
+        (
+            "1",
+            "artwork-1 - fire-engine-red",
+        ),
+        (
+            "2",
+            "artwork-2 - blue",
+        ),
+    ]
+
+    after_geometry: list[
+        tuple[
+            str | None,
+            bytes,
+        ]
+    ] = []
+
+    for element in after_objects:
+        mesh = element.find(
+            f"{{{CORE_NS}}}mesh",
+        )
+
+        assert mesh is not None
+
+        after_geometry.append(
+            (
+                element.get("id"),
+                ET.tostring(
+                    mesh,
+                ),
+            )
+        )
+
+    assert after_geometry == before_geometry
+
+
+def test_update_component_names_preserves_other_package_members(
+    tmp_path: Path,
+) -> None:
+    """
+    Updating component names preserves unrelated members of the existing
+    3MF package.
+    """
+
+    path = tmp_path / "artifact.3mf"
+
+    write(
+        (
+            Component(
+                name="artwork-1 - old-red",
+                mesh=_mesh(),
+                color=PaletteColor(
+                    name="old-red",
+                    rgb=(255, 0, 0),
+                ),
+            ),
+        ),
+        path,
+    )
+
+    with zipfile.ZipFile(
+        path,
+        mode="a",
+    ) as package:
+        package.writestr(
+            "Metadata/operator-data.txt",
+            b"preserve exactly",
+        )
+
+    with zipfile.ZipFile(
+        path,
+        mode="r",
+    ) as package:
+        before = {
+            name: package.read(name) for name in package.namelist() if name != "3D/3dmodel.model"
+        }
+
+    update_component_names(
+        path,
+        {
+            "artwork-1 - old-red": "artwork-1 - fire-engine-red",
+        },
+    )
+
+    with zipfile.ZipFile(
+        path,
+        mode="r",
+    ) as package:
+        after = {
+            name: package.read(name) for name in package.namelist() if name != "3D/3dmodel.model"
+        }
+
+    assert after == before
+
+
+def test_update_component_names_rejects_missing_component(
+    tmp_path: Path,
+) -> None:
+    """
+    A requested component rename fails when the existing 3MF does not contain
+    that component identity.
+    """
+
+    path = tmp_path / "artifact.3mf"
+
+    write(
+        (
+            Component(
+                name="artwork-1 - old-red",
+                mesh=_mesh(),
+            ),
+        ),
+        path,
+    )
+
+    with pytest.raises(
+        ThreeMFError,
+        match="missing-component",
+    ):
+        update_component_names(
+            path,
+            {
+                "missing-component": "missing-component - red",
+            },
+        )
+
+
+def test_update_component_names_is_atomic_when_component_is_missing(
+    tmp_path: Path,
+) -> None:
+    """
+    A failed component-name update leaves the existing 3MF unchanged.
+    """
+
+    path = tmp_path / "artifact.3mf"
+
+    write(
+        (
+            Component(
+                name="artwork-1 - old-red",
+                mesh=_mesh(),
+            ),
+            Component(
+                name="artwork-2 - blue",
+                mesh=_mesh(),
+            ),
+        ),
+        path,
+    )
+
+    before = path.read_bytes()
+
+    with pytest.raises(
+        ThreeMFError,
+        match="missing-component",
+    ):
+        update_component_names(
+            path,
+            {
+                "artwork-1 - old-red": "artwork-1 - fire-engine-red",
+                "missing-component": "missing-component - green",
+            },
+        )
+
+    assert path.read_bytes() == before

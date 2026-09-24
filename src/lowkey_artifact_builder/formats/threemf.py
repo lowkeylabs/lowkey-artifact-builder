@@ -705,6 +705,124 @@ def _add_mesh_object(
 
 
 # =========================================================
+# 3MF metadata updates
+# =========================================================
+
+
+def update_component_names(
+    path: Path,
+    names: dict[str, str],
+) -> None:
+    """
+    Update component names in an existing 3MF package.
+
+    Components are identified by their current names. Only the object name
+    metadata in the primary model document is changed. Existing object
+    identity, geometry, build composition, materials, and other package
+    members are preserved.
+
+    Raises:
+        ThreeMFError:
+            If the 3MF package cannot be read or written, or a requested
+            component does not exist.
+    """
+
+    path = Path(
+        path,
+    )
+
+    try:
+        with zipfile.ZipFile(
+            path,
+            mode="r",
+        ) as package:
+            members = {
+                info.filename: (
+                    info,
+                    package.read(info.filename),
+                )
+                for info in package.infolist()
+            }
+
+    except (
+        OSError,
+        zipfile.BadZipFile,
+        KeyError,
+    ) as exc:
+        raise ThreeMFError(f"Could not read 3MF document {path}: {exc}") from exc
+
+    model_member = members.get(
+        "3D/3dmodel.model",
+    )
+
+    if model_member is None:
+        raise ThreeMFError(f"3MF document does not contain a primary model: {path}")
+
+    model_info, model_data = model_member
+
+    try:
+        model = ET.fromstring(
+            model_data,
+        )
+
+    except ET.ParseError as exc:
+        raise ThreeMFError(f"Could not parse 3MF model {path}: {exc}") from exc
+
+    found_names: set[str] = set()
+
+    for object_element in model.findall(
+        f".//{{{CORE_NS}}}object",
+    ):
+        current_name = object_element.get(
+            "name",
+        )
+
+        if current_name in names:
+            found_names.add(
+                current_name,
+            )
+
+            object_element.set(
+                "name",
+                names[current_name],
+            )
+
+    missing_names = tuple(name for name in names if name not in found_names)
+
+    if missing_names:
+        missing = ", ".join(
+            missing_names,
+        )
+
+        raise ThreeMFError(f"3MF document does not contain component(s): {missing}")
+
+    members["3D/3dmodel.model"] = (
+        model_info,
+        _serialize_xml(
+            model,
+            CORE_NS,
+        ),
+    )
+
+    try:
+        with zipfile.ZipFile(
+            path,
+            mode="w",
+        ) as package:
+            for info, data in members.values():
+                package.writestr(
+                    info,
+                    data,
+                )
+
+    except (
+        OSError,
+        zipfile.BadZipFile,
+    ) as exc:
+        raise ThreeMFError(f"Could not update 3MF document {path}: {exc}") from exc
+
+
+# =========================================================
 # Package metadata
 # =========================================================
 
@@ -848,4 +966,5 @@ __all__ = [
     "write",
     "write_stls",
     "component_name",
+    "update_component_names",
 ]
