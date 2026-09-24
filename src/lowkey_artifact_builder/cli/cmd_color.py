@@ -29,6 +29,9 @@ from lowkey_artifact_builder.config import (
     update_artifact_config,
     update_realization_config,
 )
+from lowkey_artifact_builder.config.artifact import (
+    list_artifacts,
+)
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     create_build_plan,
@@ -724,12 +727,35 @@ def _analyze_existing_shape_artwork_colors(
     )
 
 
+def _resolve_color_artifact_ids(
+    *,
+    project_root: Path,
+) -> tuple[str, ...]:
+    """
+    Resolve the Artifact scope for a bulk color operation.
+
+    Artifact discovery is delegated to the authoritative Artifact lifecycle
+    service rather than inferred from workspace layout.
+    """
+
+    return list_artifacts(
+        project_root=project_root,
+    )
+
+
 def run_colors(
-    artifact_id: str,
+    artifact_id: str | None,
     *,
     realization: str | None = None,
     recolor: str | None = None,
-) -> ArtworkColorAnalysis | ShapeColorAnalysis:
+) -> (
+    ArtworkColorAnalysis
+    | ShapeColorAnalysis
+    | tuple[
+        ArtworkColorAnalysis | ShapeColorAnalysis,
+        ...,
+    ]
+):
     """
     Run one color operation for an Artifact or Realization.
 
@@ -750,10 +776,28 @@ def run_colors(
     """
 
     if recolor is None:
-        return analyze_artifact_colors(
-            artifact_id,
-            realization=realization,
+        if artifact_id is not None:
+            return analyze_artifact_colors(
+                artifact_id,
+                realization=realization,
+            )
+
+        project_root = Path.cwd()
+
+        artifact_ids = _resolve_color_artifact_ids(
+            project_root=project_root,
         )
+
+        return tuple(
+            analyze_artifact_colors(
+                selected_artifact_id,
+                realization=realization,
+            )
+            for selected_artifact_id in artifact_ids
+        )
+
+    if artifact_id is None:
+        raise ValueError("Bulk recoloring is not supported yet.")
 
     if recolor == "printer":
         project_root = Path.cwd()
@@ -1029,6 +1073,12 @@ def cli(
         realization=realization,
         recolor=recolor,
     )
+
+    if isinstance(
+        analysis,
+        tuple,
+    ):
+        raise RuntimeError("Bulk color analysis is not exposed through the CLI yet.")
 
     display_color_analysis(
         analysis,

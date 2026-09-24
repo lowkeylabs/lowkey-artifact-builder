@@ -3624,3 +3624,159 @@ def test_prepare_existing_final_recolor_shape_without_artwork_is_empty(
     assert analyzed_plan.resolver is projected_resolver
 
     assert result == {}
+
+
+def test_colors_without_artifact_id_analyzes_each_artifact_independently(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    colors without an Artifact id analyzes every applicable Artifact
+    independently rather than treating one Artifact's analysis as shared
+    bulk state.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_color_artifact_ids",
+        lambda *, project_root: (
+            "cat",
+            "dog",
+        ),
+        raising=False,
+    )
+
+    cat_analysis = object()
+    dog_analysis = object()
+
+    analyses = {
+        "cat": cat_analysis,
+        "dog": dog_analysis,
+    }
+
+    observed: list[
+        tuple[
+            str,
+            str | None,
+        ]
+    ] = []
+
+    def fake_analyze_artifact_colors(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+    ) -> object:
+        observed.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+        return analyses[artifact_id]
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        fake_analyze_artifact_colors,
+    )
+
+    result = cmd_color.run_colors(
+        None,
+    )
+
+    assert result == (
+        cat_analysis,
+        dog_analysis,
+    )
+
+    assert observed == [
+        (
+            "cat",
+            None,
+        ),
+        (
+            "dog",
+            None,
+        ),
+    ]
+
+
+def test_colors_without_artifact_id_analyzes_selected_realization_for_each_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bulk color analysis with --realization resolves and analyzes that
+    Realization independently for every selected Artifact.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_color_artifact_ids",
+        lambda *, project_root: (
+            "cat",
+            "dog",
+        ),
+        raising=False,
+    )
+
+    cat_analysis = object()
+    dog_analysis = object()
+
+    analyses = {
+        "cat": cat_analysis,
+        "dog": dog_analysis,
+    }
+
+    observed: list[
+        tuple[
+            str,
+            str | None,
+        ]
+    ] = []
+
+    def fake_analyze_artifact_colors(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+    ) -> object:
+        observed.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+        return analyses[artifact_id]
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        fake_analyze_artifact_colors,
+    )
+
+    result = cmd_color.run_colors(
+        None,
+        realization="shape_ornament",
+    )
+
+    assert result == (
+        cat_analysis,
+        dog_analysis,
+    )
+
+    assert observed == [
+        (
+            "cat",
+            "shape_ornament",
+        ),
+        (
+            "dog",
+            "shape_ornament",
+        ),
+    ]
