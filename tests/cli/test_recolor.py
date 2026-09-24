@@ -4511,3 +4511,639 @@ def test_bulk_realization_printer_recolor_computes_all_artifacts_before_any_muta
         dog_final,
         dog_colors,
     ) in events
+
+
+def test_bulk_library_recolor_prepares_all_artifacts_before_any_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bulk Artifact-scoped Library recoloring validates every selected Artifact
+    before changing any configuration or final 3MF.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_color_artifact_ids",
+        lambda *, project_root: (
+            "cat",
+            "dog",
+        ),
+    )
+
+    cat_plan = Mock(spec=BuildPlan)
+    cat_plan.realization_name = "artwork_default"
+
+    mutations: list[tuple[object, ...]] = []
+
+    def fake_prepare_artifact_recolor(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> tuple[BuildPlan, ...]:
+        if artifact_id == "dog":
+            raise FileNotFoundError("dog final 3MF is missing")
+
+        return (cat_plan,)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        fake_prepare_artifact_recolor,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        lambda *args, **kwargs: mutations.append(
+            (
+                "persist",
+                args,
+                kwargs,
+            )
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "update_component_colors",
+        lambda *args, **kwargs: mutations.append(
+            (
+                "update-final",
+                args,
+                kwargs,
+            )
+        ),
+    )
+
+    with pytest.raises(
+        FileNotFoundError,
+        match="dog final 3MF is missing",
+    ):
+        cmd_color.run_colors(
+            None,
+            recolor="library",
+        )
+
+    assert mutations == []
+
+
+def test_bulk_realization_library_recolor_prepares_all_artifacts_before_any_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bulk Library recoloring of one selected Realization validates every
+    Artifact + Realization pair before changing configuration or final 3MF.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_color_artifact_ids",
+        lambda *, project_root: (
+            "cat",
+            "dog",
+        ),
+    )
+
+    cat_plan = Mock(spec=BuildPlan)
+    cat_plan.artifact_id = "cat"
+    cat_plan.realization_name = "shape_ornament"
+
+    observed: list[tuple[str, str | None]] = []
+    mutations: list[tuple[object, ...]] = []
+
+    def fake_resolve_recolor_scope(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        project_root: Path,
+    ) -> BuildPlan:
+        observed.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+        if artifact_id == "dog":
+            raise ValueError("shape_ornament is not applicable to dog")
+
+        return cat_plan
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_recolor_scope",
+        fake_resolve_recolor_scope,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        lambda *args, **kwargs: mutations.append(
+            (
+                "persist",
+                args,
+                kwargs,
+            )
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "update_component_colors",
+        lambda *args, **kwargs: mutations.append(
+            (
+                "update-final",
+                args,
+                kwargs,
+            )
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="shape_ornament is not applicable to dog",
+    ):
+        cmd_color.run_colors(
+            None,
+            realization="shape_ornament",
+            recolor="library",
+        )
+
+    assert observed == [
+        (
+            "cat",
+            "shape_ornament",
+        ),
+        (
+            "dog",
+            "shape_ornament",
+        ),
+    ]
+
+    assert mutations == []
+
+
+def test_bulk_library_recolor_computes_all_artifacts_before_any_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Successful bulk Artifact-scoped Library recoloring independently computes
+    each Artifact's Library-selected printer palette and prospective final-3MF
+    mutation before changing any configuration or final 3MF.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_color_artifact_ids",
+        lambda *, project_root: (
+            "cat",
+            "dog",
+        ),
+    )
+
+    cat_final = tmp_path / "cat-artwork-default.3mf"
+
+    cat_product = Mock()
+    cat_product.name = "artifact"
+    cat_product.path = cat_final
+
+    cat_package_stage = Mock()
+    cat_package_stage.name = "package"
+    cat_package_stage.products = (cat_product,)
+
+    cat_plan = Mock(spec=BuildPlan)
+    cat_plan.artifact_id = "cat"
+    cat_plan.realization_name = "artwork_default"
+    cat_plan.stages = (cat_package_stage,)
+    cat_plan.resolver = Mock()
+    cat_plan.resolver.source.return_value = "artifact"
+
+    dog_final = tmp_path / "dog-artwork-default.3mf"
+
+    dog_product = Mock()
+    dog_product.name = "artifact"
+    dog_product.path = dog_final
+
+    dog_package_stage = Mock()
+    dog_package_stage.name = "package"
+    dog_package_stage.products = (dog_product,)
+
+    dog_plan = Mock(spec=BuildPlan)
+    dog_plan.artifact_id = "dog"
+    dog_plan.realization_name = "artwork_default"
+    dog_plan.stages = (dog_package_stage,)
+    dog_plan.resolver = Mock()
+    dog_plan.resolver.source.return_value = "artifact"
+
+    prepared_plans = {
+        "cat": (cat_plan,),
+        "dog": (dog_plan,),
+    }
+
+    cat_library_colors = (
+        "cat-red",
+        "cat-white",
+    )
+    dog_library_colors = (
+        "dog-blue",
+        "dog-white",
+    )
+
+    cat_plan.resolver.return_value = cat_library_colors
+    dog_plan.resolver.return_value = dog_library_colors
+
+    cat_colors: dict[str, PaletteColor] = {
+        "artwork-0": Mock(spec=PaletteColor),
+    }
+    dog_colors: dict[str, PaletteColor] = {
+        "artwork-0": Mock(spec=PaletteColor),
+    }
+
+    events: list[tuple[object, ...]] = []
+
+    def fake_prepare_artifact_recolor(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> tuple[BuildPlan, ...]:
+        events.append(
+            (
+                "prepare-artifact",
+                artifact_id,
+            )
+        )
+
+        return prepared_plans[artifact_id]
+
+    def fake_prepare_existing_final_recolor(
+        plan: BuildPlan,
+        *,
+        printer_colors: tuple[str, ...],
+    ) -> dict[str, PaletteColor]:
+        artifact_id = plan.artifact_id
+
+        events.append(
+            (
+                "prepare-final",
+                artifact_id,
+                printer_colors,
+            )
+        )
+
+        return cat_colors if artifact_id == "cat" else dog_colors
+
+    def fake_persist_printer_colors(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        printer_colors: tuple[str, ...],
+        project_root: Path,
+    ) -> None:
+        events.append(
+            (
+                "persist",
+                artifact_id,
+                printer_colors,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        fake_prepare_artifact_recolor,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_existing_final_recolor",
+        fake_prepare_existing_final_recolor,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        fake_persist_printer_colors,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_report_retained_printer_color_overrides",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "update_component_colors",
+        lambda path, **kwargs: events.append(
+            (
+                "update-final",
+                kwargs["artifact_id"],
+                path,
+                kwargs["colors"],
+            )
+        ),
+    )
+
+    cat_analysis = object()
+    dog_analysis = object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        lambda artifact_id, *, realization=None: (
+            cat_analysis if artifact_id == "cat" else dog_analysis
+        ),
+    )
+
+    result = cmd_color.run_colors(
+        None,
+        recolor="library",
+    )
+
+    assert result == (
+        cat_analysis,
+        dog_analysis,
+    )
+
+    first_mutation = next(
+        index
+        for index, event in enumerate(events)
+        if event[0]
+        in {
+            "persist",
+            "update-final",
+        }
+    )
+
+    assert (
+        "prepare-final",
+        "cat",
+        cat_library_colors,
+    ) in events[:first_mutation]
+
+    assert (
+        "prepare-final",
+        "dog",
+        dog_library_colors,
+    ) in events[:first_mutation]
+
+    assert (
+        "persist",
+        "cat",
+        cat_library_colors,
+    ) in events
+
+    assert (
+        "persist",
+        "dog",
+        dog_library_colors,
+    ) in events
+
+    assert (
+        "update-final",
+        "cat",
+        cat_final,
+        cat_colors,
+    ) in events
+
+    assert (
+        "update-final",
+        "dog",
+        dog_final,
+        dog_colors,
+    ) in events
+
+
+def test_bulk_realization_library_recolor_computes_all_artifacts_before_any_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Successful bulk Library recoloring of one selected Realization
+    independently computes each Artifact + Realization Library-selected
+    printer palette and prospective final-3MF mutation before changing any
+    configuration or final 3MF.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_color_artifact_ids",
+        lambda *, project_root: (
+            "cat",
+            "dog",
+        ),
+    )
+
+    cat_final = tmp_path / "cat-shape-ornament.3mf"
+
+    cat_product = Mock()
+    cat_product.name = "artifact"
+    cat_product.path = cat_final
+
+    cat_package_stage = Mock()
+    cat_package_stage.name = "package"
+    cat_package_stage.products = (cat_product,)
+
+    cat_plan = Mock(spec=BuildPlan)
+    cat_plan.artifact_id = "cat"
+    cat_plan.realization_name = "shape_ornament"
+    cat_plan.stages = (cat_package_stage,)
+    cat_plan.resolver = Mock()
+
+    dog_final = tmp_path / "dog-shape-ornament.3mf"
+
+    dog_product = Mock()
+    dog_product.name = "artifact"
+    dog_product.path = dog_final
+
+    dog_package_stage = Mock()
+    dog_package_stage.name = "package"
+    dog_package_stage.products = (dog_product,)
+
+    dog_plan = Mock(spec=BuildPlan)
+    dog_plan.artifact_id = "dog"
+    dog_plan.realization_name = "shape_ornament"
+    dog_plan.stages = (dog_package_stage,)
+    dog_plan.resolver = Mock()
+
+    cat_library_colors = (
+        "cat-red",
+        "cat-white",
+    )
+    dog_library_colors = (
+        "dog-blue",
+        "dog-white",
+    )
+
+    cat_plan.resolver.return_value = cat_library_colors
+    dog_plan.resolver.return_value = dog_library_colors
+
+    cat_colors: dict[str, PaletteColor] = {
+        "artwork-0": Mock(spec=PaletteColor),
+    }
+    dog_colors: dict[str, PaletteColor] = {
+        "artwork-0": Mock(spec=PaletteColor),
+    }
+
+    events: list[tuple[object, ...]] = []
+
+    def fake_resolve_recolor_scope(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        project_root: Path,
+    ) -> BuildPlan:
+        events.append(
+            (
+                "resolve",
+                artifact_id,
+                realization,
+            )
+        )
+
+        assert realization == "shape_ornament"
+
+        return cat_plan if artifact_id == "cat" else dog_plan
+
+    def fake_prepare_existing_final_recolor(
+        plan: BuildPlan,
+        *,
+        printer_colors: tuple[str, ...],
+    ) -> dict[str, PaletteColor]:
+        artifact_id = plan.artifact_id
+
+        events.append(
+            (
+                "prepare-final",
+                artifact_id,
+                plan.realization_name,
+                printer_colors,
+            )
+        )
+
+        return cat_colors if artifact_id == "cat" else dog_colors
+
+    def fake_persist_printer_colors(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        printer_colors: tuple[str, ...],
+        project_root: Path,
+    ) -> None:
+        events.append(
+            (
+                "persist",
+                artifact_id,
+                realization,
+                printer_colors,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_recolor_scope",
+        fake_resolve_recolor_scope,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_existing_final_recolor",
+        fake_prepare_existing_final_recolor,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        fake_persist_printer_colors,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "update_component_colors",
+        lambda path, **kwargs: events.append(
+            (
+                "update-final",
+                kwargs["artifact_id"],
+                path,
+                kwargs["colors"],
+            )
+        ),
+    )
+
+    cat_analysis = object()
+    dog_analysis = object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        lambda artifact_id, *, realization=None: (
+            cat_analysis if artifact_id == "cat" else dog_analysis
+        ),
+    )
+
+    result = cmd_color.run_colors(
+        None,
+        realization="shape_ornament",
+        recolor="library",
+    )
+
+    assert result == (
+        cat_analysis,
+        dog_analysis,
+    )
+
+    first_mutation = next(
+        index
+        for index, event in enumerate(events)
+        if event[0]
+        in {
+            "persist",
+            "update-final",
+        }
+    )
+
+    assert (
+        "prepare-final",
+        "cat",
+        "shape_ornament",
+        cat_library_colors,
+    ) in events[:first_mutation]
+
+    assert (
+        "prepare-final",
+        "dog",
+        "shape_ornament",
+        dog_library_colors,
+    ) in events[:first_mutation]
+
+    assert (
+        "persist",
+        "cat",
+        "shape_ornament",
+        cat_library_colors,
+    ) in events
+
+    assert (
+        "persist",
+        "dog",
+        "shape_ornament",
+        dog_library_colors,
+    ) in events
+
+    assert (
+        "update-final",
+        "cat",
+        cat_final,
+        cat_colors,
+    ) in events
+
+    assert (
+        "update-final",
+        "dog",
+        dog_final,
+        dog_colors,
+    ) in events

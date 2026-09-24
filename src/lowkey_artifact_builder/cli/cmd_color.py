@@ -743,7 +743,7 @@ def _resolve_color_artifact_ids(
     )
 
 
-def _prepare_bulk_printer_recolor(
+def _prepare_bulk_recolor(
     artifact_ids: tuple[str, ...],
     *,
     realization: str | None,
@@ -757,7 +757,7 @@ def _prepare_bulk_printer_recolor(
     ...,
 ]:
     """
-    Validate the complete bulk printer-recolor scope before mutation.
+    Validate the complete bulk recolor scope before mutation.
 
     The first pass resolves and validates every selected Artifact before any
     prospective recolor is computed. This preserves the bulk atomicity
@@ -852,9 +852,9 @@ def run_colors(
     Library recoloring pins the effective Library palette as printer_colors at
     the selected Artifact or Realization scope.
 
-    Bulk printer recoloring validates the complete selected scope and computes
-    every prospective final-3MF color mutation before any persistent
-    configuration or final-3MF mutation occurs.
+    Bulk printer and Library recoloring validate the complete selected scope
+    and compute every prospective final-3MF color mutation before any
+    persistent configuration or final-3MF mutation occurs.
 
     After persistence, normal color analysis runs against the newly persisted
     configuration.
@@ -888,10 +888,13 @@ def run_colors(
             project_root=project_root,
         )
 
-        if recolor != "printer":
+        if recolor not in {
+            "printer",
+            "library",
+        }:
             raise ValueError("Bulk recoloring mutation is not implemented yet.")
 
-        prepared_artifacts = _prepare_bulk_printer_recolor(
+        prepared_artifacts = _prepare_bulk_recolor(
             artifact_ids,
             realization=realization,
             project_root=project_root,
@@ -919,11 +922,18 @@ def run_colors(
             if realization is not None:
                 assert scope_plan is not None
 
-                printer_colors = tuple(
-                    scope_plan.resolver.system_value(
-                        "printer_colors",
+                if recolor == "printer":
+                    printer_colors = tuple(
+                        scope_plan.resolver.system_value(
+                            "printer_colors",
+                        )
                     )
-                )
+                else:
+                    printer_colors = tuple(
+                        scope_plan.resolver(
+                            "library_colors",
+                        )
+                    )
 
                 component_colors = _prepare_existing_final_recolor(
                     scope_plan,
@@ -947,11 +957,18 @@ def run_colors(
             if not prepared_plans:
                 continue
 
-            printer_colors = tuple(
-                prepared_plans[0].resolver.system_value(
-                    "printer_colors",
+            if recolor == "printer":
+                printer_colors = tuple(
+                    prepared_plans[0].resolver.system_value(
+                        "printer_colors",
+                    )
                 )
-            )
+            else:
+                printer_colors = tuple(
+                    prepared_plans[0].resolver(
+                        "library_colors",
+                    )
+                )
 
             prospective_recolors: list[
                 tuple[
