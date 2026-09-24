@@ -1298,3 +1298,142 @@ def test_shape_artwork_analysis_uses_bound_artwork_dependency(
     assert executed == [
         artwork_plan,
     ]
+
+
+@pytest.mark.parametrize(
+    "recolor",
+    (
+        "printer",
+        "library",
+        "reset",
+        "reset-all-realizations",
+    ),
+)
+def test_colors_accepts_supported_recolor_selections(
+    monkeypatch,
+    recolor: str,
+) -> None:
+    """
+    The colors command accepts every supported operator recolor selection.
+    """
+
+    requested: list[
+        tuple[
+            str,
+            str | None,
+            str | None,
+        ]
+    ] = []
+
+    expected_analysis = object()
+
+    def fake_run_colors(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        recolor: str | None,
+    ) -> object:
+        requested.append(
+            (
+                artifact_id,
+                realization,
+                recolor,
+            )
+        )
+
+        return expected_analysis
+
+    monkeypatch.setattr(
+        cmd_color,
+        "run_colors",
+        fake_run_colors,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "display_color_analysis",
+        lambda analysis: None,
+    )
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [
+            "colors",
+            "nydeli",
+            f"--recolor={recolor}",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert requested == [
+        (
+            "nydeli",
+            None,
+            recolor,
+        )
+    ]
+
+
+def test_colors_rejects_catalog_as_recolor_selection() -> None:
+    """
+    Catalog color analysis is advisory and cannot be selected for recoloring.
+    """
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [
+            "colors",
+            "nydeli",
+            "--recolor=catalog",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "catalog" in result.output
+
+
+def test_colors_rejects_unknown_recolor_selection() -> None:
+    """
+    Recolor accepts only the explicitly supported operator selections.
+    """
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [
+            "colors",
+            "nydeli",
+            "--recolor=unknown",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "unknown" in result.output
+
+
+def test_colors_rejects_reset_all_realizations_with_realization() -> None:
+    """
+    reset-all-realizations cannot be combined with one selected Realization.
+    """
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [
+            "colors",
+            "nydeli",
+            "--realization",
+            "shape_ornament",
+            "--recolor=reset-all-realizations",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "reset-all-realizations" in result.output
+    assert "--realization" in result.output

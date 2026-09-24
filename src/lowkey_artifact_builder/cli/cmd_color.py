@@ -243,6 +243,36 @@ def _registered_artwork_manifest(
 
 
 # =========================================================
+# Operation
+# =========================================================
+
+
+def run_colors(
+    artifact_id: str,
+    *,
+    realization: str | None = None,
+    recolor: str | None = None,
+) -> ArtworkColorAnalysis | ShapeColorAnalysis:
+    """
+    Run one color operation for an Artifact or Realization.
+
+    Read-only operation delegates to normal color analysis.
+
+    Recolor selections are accepted at this application boundary so the CLI
+    vocabulary is independent of the eventual persistence implementation.
+    Recolor mutation semantics are introduced by subsequent TDD slices.
+    """
+
+    if recolor is not None:
+        raise NotImplementedError(f"Recolor operation {recolor!r} is not implemented.")
+
+    return analyze_artifact_colors(
+        artifact_id,
+        realization=realization,
+    )
+
+
+# =========================================================
 # CLI
 # =========================================================
 
@@ -258,17 +288,38 @@ def _registered_artwork_manifest(
     default=None,
     help="Analyze a specific Realization.",
 )
+@click.option(
+    "--recolor",
+    type=click.Choice(
+        (
+            "printer",
+            "library",
+            "reset",
+            "reset-all-realizations",
+        ),
+        case_sensitive=True,
+    ),
+    default=None,
+    help="Select and persist an operator color assignment.",
+)
 def cli(
     artifact_id: str,
     realization: str | None,
+    recolor: str | None,
 ) -> None:
     """
     Report color diagnostics for an Artifact or Realization.
     """
 
-    analysis = analyze_artifact_colors(
+    if realization is not None and recolor == "reset-all-realizations":
+        raise click.UsageError(
+            "--recolor=reset-all-realizations cannot be combined with --realization."
+        )
+
+    analysis = run_colors(
         artifact_id,
         realization=realization,
+        recolor=recolor,
     )
 
     display_color_analysis(
