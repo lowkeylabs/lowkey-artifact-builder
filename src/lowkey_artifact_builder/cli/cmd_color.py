@@ -743,6 +743,35 @@ def _resolve_color_artifact_ids(
     )
 
 
+def _prepare_bulk_printer_recolor(
+    artifact_ids: tuple[str, ...],
+    *,
+    realization: str | None,
+    project_root: Path,
+) -> None:
+    """
+    Validate the complete bulk printer-recolor scope before mutation.
+
+    Preparation is intentionally read-only. Persistent configuration and
+    final 3MF metadata must not be changed until every selected Artifact
+    has prepared successfully.
+    """
+
+    for artifact_id in artifact_ids:
+        if realization is None:
+            _prepare_artifact_recolor(
+                artifact_id,
+                project_root=project_root,
+            )
+            continue
+
+        _resolve_recolor_scope(
+            artifact_id,
+            realization=realization,
+            project_root=project_root,
+        )
+
+
 def run_colors(
     artifact_id: str | None,
     *,
@@ -797,7 +826,20 @@ def run_colors(
         )
 
     if artifact_id is None:
-        raise ValueError("Bulk recoloring is not supported yet.")
+        project_root = Path.cwd()
+
+        artifact_ids = _resolve_color_artifact_ids(
+            project_root=project_root,
+        )
+
+        if recolor == "printer":
+            _prepare_bulk_printer_recolor(
+                artifact_ids,
+                realization=realization,
+                project_root=project_root,
+            )
+
+        raise ValueError("Bulk recoloring mutation is not implemented yet.")
 
     if recolor == "printer":
         project_root = Path.cwd()

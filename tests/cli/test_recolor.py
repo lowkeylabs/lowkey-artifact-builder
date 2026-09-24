@@ -3884,3 +3884,148 @@ def test_colors_cli_without_artifact_id_applies_realization_to_bulk_analysis(
         call(analyses[0]),
         call(analyses[1]),
     ]
+
+
+def test_bulk_printer_recolor_prepares_all_artifacts_before_any_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bulk printer recoloring validates the complete Artifact scope before
+    mutating configuration or final 3MF metadata.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_color_artifact_ids",
+        lambda *, project_root: (
+            "cat",
+            "dog",
+        ),
+    )
+
+    mutations: list[str] = []
+
+    def fake_prepare_artifact_recolor(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> tuple[BuildPlan, ...]:
+        if artifact_id == "dog":
+            raise FileNotFoundError("dog final 3MF is missing")
+
+        return ()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        fake_prepare_artifact_recolor,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        lambda *args, **kwargs: mutations.append("config"),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "update_component_colors",
+        lambda *args, **kwargs: mutations.append("3mf"),
+    )
+
+    with pytest.raises(
+        FileNotFoundError,
+        match="dog final 3MF is missing",
+    ):
+        cmd_color.run_colors(
+            None,
+            recolor="printer",
+        )
+
+    assert mutations == []
+
+
+def test_bulk_realization_printer_recolor_prepares_all_artifacts_before_any_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bulk recoloring of a selected Realization validates that Realization
+    independently for every Artifact before any mutation occurs.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_color_artifact_ids",
+        lambda *, project_root: (
+            "cat",
+            "dog",
+        ),
+    )
+
+    mutations: list[str] = []
+    observed: list[tuple[str, str | None]] = []
+
+    def fake_resolve_recolor_scope(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        project_root: Path,
+    ) -> BuildPlan:
+        observed.append(
+            (
+                artifact_id,
+                realization,
+            )
+        )
+
+        if artifact_id == "dog":
+            raise ValueError("shape_ornament is not applicable to dog")
+
+        return Mock()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_recolor_scope",
+        fake_resolve_recolor_scope,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        lambda *args, **kwargs: mutations.append("config"),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "update_component_colors",
+        lambda *args, **kwargs: mutations.append("3mf"),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="shape_ornament is not applicable to dog",
+    ):
+        cmd_color.run_colors(
+            None,
+            realization="shape_ornament",
+            recolor="printer",
+        )
+
+    assert observed == [
+        (
+            "cat",
+            "shape_ornament",
+        ),
+        (
+            "dog",
+            "shape_ornament",
+        ),
+    ]
+
+    assert mutations == []
