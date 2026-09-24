@@ -71,6 +71,12 @@ def test_recolor_printer_persists_system_palette_at_artifact_scope(
         raising=False,
     )
 
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        lambda artifact_id, *, project_root: (),
+    )
+
     persisted: list[
         tuple[
             str,
@@ -434,6 +440,12 @@ def test_recolor_library_persists_library_palette_at_artifact_scope(
         cmd_color,
         "_persist_printer_colors",
         fake_persist_printer_colors,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        lambda artifact_id, *, project_root: (),
     )
 
     expected_analysis = object()
@@ -854,6 +866,12 @@ def test_artifact_recolor_reports_retained_realization_printer_colors(
 
     monkeypatch.setattr(
         cmd_color,
+        "_prepare_artifact_recolor",
+        lambda artifact_id, *, project_root: (),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
         "_persist_printer_colors",
         lambda artifact_id, *, realization, printer_colors, project_root: None,
     )
@@ -934,6 +952,12 @@ def test_artifact_library_recolor_reports_retained_realization_printer_colors(
         cmd_color,
         "_persist_printer_colors",
         lambda artifact_id, *, realization, printer_colors, project_root: None,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        lambda artifact_id, *, project_root: (),
     )
 
     reported: list[str] = []
@@ -2486,4 +2510,401 @@ def test_prepare_artifact_recolor_rejects_missing_recolor_source_before_mutation
         "artwork_default",
         "shape_default",
         "shape_ornament",
+    ]
+
+
+def test_recolor_printer_at_artifact_scope_prepares_before_persisting_and_recoloring(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-scoped printer recoloring validates the complete Realization scope
+    before mutating Artifact configuration or any existing final 3MF.
+
+    After successful preparation, Artifact printer_colors are persisted once
+    and every prepared Realization is recolored independently.
+    """
+
+    resolver = Mock()
+    resolver.system_value.return_value = [
+        "system-black",
+        "system-white",
+        "system-red",
+    ]
+
+    recolor_scope = SimpleNamespace(
+        resolver=resolver,
+    )
+
+    prepared_plans = (
+        cast(
+            BuildPlan,
+            SimpleNamespace(
+                realization_name="artwork_default",
+            ),
+        ),
+        cast(
+            BuildPlan,
+            SimpleNamespace(
+                realization_name="shape_default",
+            ),
+        ),
+        cast(
+            BuildPlan,
+            SimpleNamespace(
+                realization_name="shape_ornament",
+            ),
+        ),
+    )
+
+    events: list[tuple[object, ...]] = []
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_recolor_scope",
+        lambda artifact_id, *, realization, project_root: recolor_scope,
+    )
+
+    def fake_prepare_artifact_recolor(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> tuple[BuildPlan, ...]:
+        events.append(
+            (
+                "prepare",
+                artifact_id,
+                project_root,
+            )
+        )
+        return prepared_plans
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        fake_prepare_artifact_recolor,
+    )
+
+    def fake_persist_printer_colors(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        printer_colors: tuple[str, ...],
+        project_root: Path,
+    ) -> None:
+        events.append(
+            (
+                "persist",
+                artifact_id,
+                realization,
+                printer_colors,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        fake_persist_printer_colors,
+    )
+
+    def fake_recolor_existing_final(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+    ) -> None:
+        events.append(
+            (
+                "recolor",
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_recolor_existing_final",
+        fake_recolor_existing_final,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_report_retained_printer_color_overrides",
+        lambda artifact_id, *, project_root: None,
+    )
+
+    expected_analysis = object()
+
+    def fake_analyze_artifact_colors(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+    ) -> object:
+        events.append(
+            (
+                "analyze",
+                artifact_id,
+                realization,
+            )
+        )
+        return expected_analysis
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        fake_analyze_artifact_colors,
+    )
+
+    result = cmd_color.run_colors(
+        "dog",
+        recolor="printer",
+    )
+
+    assert result is expected_analysis
+
+    assert events == [
+        (
+            "prepare",
+            "dog",
+            tmp_path,
+        ),
+        (
+            "persist",
+            "dog",
+            None,
+            (
+                "system-black",
+                "system-white",
+                "system-red",
+            ),
+            tmp_path,
+        ),
+        (
+            "recolor",
+            "dog",
+            "artwork_default",
+            tmp_path,
+        ),
+        (
+            "recolor",
+            "dog",
+            "shape_default",
+            tmp_path,
+        ),
+        (
+            "recolor",
+            "dog",
+            "shape_ornament",
+            tmp_path,
+        ),
+        (
+            "analyze",
+            "dog",
+            None,
+        ),
+    ]
+
+
+def test_recolor_library_at_artifact_scope_prepares_before_persisting_and_recoloring(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-scoped Library recoloring validates the complete Realization scope
+    before mutating Artifact configuration or any existing final 3MF.
+
+    After successful preparation, the Library palette is persisted once as
+    Artifact printer_colors and every prepared Realization is recolored
+    independently.
+    """
+
+    resolver = Mock()
+    resolver.return_value = [
+        "library-black",
+        "library-white",
+        "library-red",
+    ]
+
+    recolor_scope = SimpleNamespace(
+        resolver=resolver,
+    )
+
+    prepared_plans = (
+        cast(
+            BuildPlan,
+            SimpleNamespace(
+                realization_name="artwork_default",
+            ),
+        ),
+        cast(
+            BuildPlan,
+            SimpleNamespace(
+                realization_name="shape_default",
+            ),
+        ),
+        cast(
+            BuildPlan,
+            SimpleNamespace(
+                realization_name="shape_ornament",
+            ),
+        ),
+    )
+
+    events: list[tuple[object, ...]] = []
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_recolor_scope",
+        lambda artifact_id, *, realization, project_root: recolor_scope,
+    )
+
+    def fake_prepare_artifact_recolor(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> tuple[BuildPlan, ...]:
+        events.append(
+            (
+                "prepare",
+                artifact_id,
+                project_root,
+            )
+        )
+        return prepared_plans
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        fake_prepare_artifact_recolor,
+    )
+
+    def fake_persist_printer_colors(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        printer_colors: tuple[str, ...],
+        project_root: Path,
+    ) -> None:
+        events.append(
+            (
+                "persist",
+                artifact_id,
+                realization,
+                printer_colors,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        fake_persist_printer_colors,
+    )
+
+    def fake_recolor_existing_final(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+    ) -> None:
+        events.append(
+            (
+                "recolor",
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_recolor_existing_final",
+        fake_recolor_existing_final,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_report_retained_printer_color_overrides",
+        lambda artifact_id, *, project_root: None,
+    )
+
+    expected_analysis = object()
+
+    def fake_analyze_artifact_colors(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+    ) -> object:
+        events.append(
+            (
+                "analyze",
+                artifact_id,
+                realization,
+            )
+        )
+        return expected_analysis
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        fake_analyze_artifact_colors,
+    )
+
+    result = cmd_color.run_colors(
+        "dog",
+        recolor="library",
+    )
+
+    assert result is expected_analysis
+
+    assert events == [
+        (
+            "prepare",
+            "dog",
+            tmp_path,
+        ),
+        (
+            "persist",
+            "dog",
+            None,
+            (
+                "library-black",
+                "library-white",
+                "library-red",
+            ),
+            tmp_path,
+        ),
+        (
+            "recolor",
+            "dog",
+            "artwork_default",
+            tmp_path,
+        ),
+        (
+            "recolor",
+            "dog",
+            "shape_default",
+            tmp_path,
+        ),
+        (
+            "recolor",
+            "dog",
+            "shape_ornament",
+            tmp_path,
+        ),
+        (
+            "analyze",
+            "dog",
+            None,
+        ),
     ]
