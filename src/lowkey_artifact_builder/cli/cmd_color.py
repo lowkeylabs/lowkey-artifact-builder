@@ -748,28 +748,84 @@ def _prepare_bulk_printer_recolor(
     *,
     realization: str | None,
     project_root: Path,
-) -> None:
+) -> tuple[
+    tuple[
+        str,
+        BuildPlan | None,
+        tuple[BuildPlan, ...],
+    ],
+    ...,
+]:
     """
     Validate the complete bulk printer-recolor scope before mutation.
 
-    Preparation is intentionally read-only. Persistent configuration and
-    final 3MF metadata must not be changed until every selected Artifact
-    has prepared successfully.
+    The first pass resolves and validates every selected Artifact before any
+    prospective recolor is computed. This preserves the bulk atomicity
+    boundary: failure anywhere in the selected scope occurs before persistent
+    configuration or final 3MF metadata can be changed.
+
+    Artifact-scoped preparation retains all applicable final Realization
+    plans. Realization-scoped preparation retains the explicitly selected
+    Realization plan.
     """
+
+    prepared_artifacts: list[
+        tuple[
+            str,
+            BuildPlan | None,
+            tuple[BuildPlan, ...],
+        ]
+    ] = []
 
     for artifact_id in artifact_ids:
         if realization is None:
-            _prepare_artifact_recolor(
+            prepared_plans = _prepare_artifact_recolor(
                 artifact_id,
                 project_root=project_root,
             )
+
+            prepared_artifacts.append(
+                (
+                    artifact_id,
+                    None,
+                    prepared_plans,
+                )
+            )
             continue
 
-        _resolve_recolor_scope(
+        scope_plan = _resolve_recolor_scope(
             artifact_id,
             realization=realization,
             project_root=project_root,
         )
+
+        prepared_artifacts.append(
+            (
+                artifact_id,
+                scope_plan,
+                (),
+            )
+        )
+
+    return tuple(prepared_artifacts)
+
+
+def _existing_final_path(
+    plan: BuildPlan,
+) -> Path:
+    """
+    Return the existing final 3MF path for one resolved Realization.
+
+    The caller is responsible for validating existence before mutation.
+    """
+
+    package_stage = next(stage for stage in plan.stages if stage.name == "package")
+
+    final_product = next(
+        product for product in package_stage.products if product.name == "artifact"
+    )
+
+    return final_product.path
 
 
 def run_colors(
@@ -796,9 +852,9 @@ def run_colors(
     Library recoloring pins the effective Library palette as printer_colors at
     the selected Artifact or Realization scope.
 
-    Artifact-scoped printer recoloring computes every prospective final-3MF
-    color mutation before persistent configuration is changed, then applies
-    those retained mutations directly to the existing finals.
+    Bulk printer recoloring validates the complete selected scope and computes
+    every prospective final-3MF color mutation before any persistent
+    configuration or final-3MF mutation occurs.
 
     After persistence, normal color analysis runs against the newly persisted
     configuration.
@@ -832,14 +888,149 @@ def run_colors(
             project_root=project_root,
         )
 
-        if recolor == "printer":
-            _prepare_bulk_printer_recolor(
-                artifact_ids,
+        if recolor != "printer":
+            raise ValueError("Bulk recoloring mutation is not implemented yet.")
+
+        prepared_artifacts = _prepare_bulk_printer_recolor(
+            artifact_ids,
+            realization=realization,
+            project_root=project_root,
+        )
+
+        prospective_artifacts: list[
+            tuple[
+                str,
+                tuple[str, ...],
+                tuple[
+                    tuple[
+                        BuildPlan,
+                        dict[str, PaletteColor],
+                    ],
+                    ...,
+                ],
+            ]
+        ] = []
+
+        for (
+            selected_artifact_id,
+            scope_plan,
+            prepared_plans,
+        ) in prepared_artifacts:
+            if realization is not None:
+                assert scope_plan is not None
+
+                printer_colors = tuple(
+                    scope_plan.resolver.system_value(
+                        "printer_colors",
+                    )
+                )
+
+                component_colors = _prepare_existing_final_recolor(
+                    scope_plan,
+                    printer_colors=printer_colors,
+                )
+
+                prospective_artifacts.append(
+                    (
+                        selected_artifact_id,
+                        printer_colors,
+                        (
+                            (
+                                scope_plan,
+                                component_colors,
+                            ),
+                        ),
+                    )
+                )
+                continue
+
+            if not prepared_plans:
+                continue
+
+            printer_colors = tuple(
+                prepared_plans[0].resolver.system_value(
+                    "printer_colors",
+                )
+            )
+
+            prospective_recolors: list[
+                tuple[
+                    BuildPlan,
+                    dict[str, PaletteColor],
+                ]
+            ] = []
+
+            for prepared_plan in prepared_plans:
+                effective_printer_colors = printer_colors
+
+                if prepared_plan.resolver.source(
+                    "printer_colors",
+                ).startswith("realization "):
+                    effective_printer_colors = tuple(
+                        prepared_plan.resolver(
+                            "printer_colors",
+                        )
+                    )
+
+                component_colors = _prepare_existing_final_recolor(
+                    prepared_plan,
+                    printer_colors=effective_printer_colors,
+                )
+
+                prospective_recolors.append(
+                    (
+                        prepared_plan,
+                        component_colors,
+                    )
+                )
+
+            prospective_artifacts.append(
+                (
+                    selected_artifact_id,
+                    printer_colors,
+                    tuple(prospective_recolors),
+                )
+            )
+
+        for (
+            selected_artifact_id,
+            printer_colors,
+            prepared_recolors,
+        ) in prospective_artifacts:
+            _persist_printer_colors(
+                selected_artifact_id,
                 realization=realization,
+                printer_colors=printer_colors,
                 project_root=project_root,
             )
 
-        raise ValueError("Bulk recoloring mutation is not implemented yet.")
+            if realization is None:
+                _report_retained_printer_color_overrides(
+                    selected_artifact_id,
+                    project_root=project_root,
+                )
+
+            for prepared_plan, component_colors in prepared_recolors:
+                if not component_colors:
+                    continue
+
+                final_path = _existing_final_path(
+                    prepared_plan,
+                )
+
+                update_component_colors(
+                    final_path,
+                    artifact_id=selected_artifact_id,
+                    colors=component_colors,
+                )
+
+        return tuple(
+            analyze_artifact_colors(
+                selected_artifact_id,
+                realization=realization,
+            )
+            for selected_artifact_id in artifact_ids
+        )
 
     if recolor == "printer":
         project_root = Path.cwd()
@@ -880,7 +1071,9 @@ def run_colors(
             for prepared_plan in prepared_plans:
                 effective_printer_colors = printer_colors
 
-                if prepared_plan.resolver.source("printer_colors").startswith("realization "):
+                if prepared_plan.resolver.source(
+                    "printer_colors",
+                ).startswith("realization "):
                     effective_printer_colors = tuple(
                         prepared_plan.resolver(
                             "printer_colors",
@@ -920,16 +1113,12 @@ def run_colors(
                 if not component_colors:
                     continue
 
-                package_stage = next(
-                    stage for stage in prepared_plan.stages if stage.name == "package"
-                )
-
-                final_product = next(
-                    product for product in package_stage.products if product.name == "artifact"
+                final_path = _existing_final_path(
+                    prepared_plan,
                 )
 
                 update_component_colors(
-                    final_product.path,
+                    final_path,
                     artifact_id=artifact_id,
                     colors=component_colors,
                 )
@@ -1019,6 +1208,11 @@ def run_colors(
         )
 
         if realization is None:
+            _report_retained_printer_color_overrides(
+                artifact_id,
+                project_root=project_root,
+            )
+
             for prepared_plan in prepared_plans:
                 _recolor_existing_final(
                     artifact_id,
@@ -1039,6 +1233,11 @@ def run_colors(
         )
 
     if recolor == "reset-all-realizations":
+        if realization is not None:
+            raise ValueError(
+                "--recolor=reset-all-realizations cannot be combined with --realization."
+            )
+
         project_root = Path.cwd()
 
         prepared_plans = _prepare_artifact_recolor(
@@ -1060,10 +1259,10 @@ def run_colors(
 
         return analyze_artifact_colors(
             artifact_id,
-            realization=None,
+            realization=realization,
         )
 
-    raise NotImplementedError(f"Recolor operation {recolor!r} is not implemented.")
+    raise ValueError(f"Unsupported recolor selection {recolor!r}.")
 
 
 # =========================================================
