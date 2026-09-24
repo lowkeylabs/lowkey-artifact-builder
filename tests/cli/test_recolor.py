@@ -9,11 +9,24 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import Mock
 
+import pytest
+
 import lowkey_artifact_builder.cli.cmd_color as cmd_color
+from lowkey_artifact_builder.colors import (
+    ColorAssignment,
+    ColorAssignmentResult,
+    MeasuredColor,
+    PaletteColor,
+)
 from lowkey_artifact_builder.config import (
     load_artifact_config,
+)
+from lowkey_artifact_builder.engine import BuildPlan
+from lowkey_artifact_builder.model.models.artwork.color_analysis import (
+    ArtworkColorAnalysis,
 )
 
 # =========================================================
@@ -1016,3 +1029,814 @@ def test_retained_printer_color_overrides_are_silent_when_none_exist(
     )
 
     assert reported == []
+
+
+def test_recolor_existing_artwork_final_uses_effective_printer_assignments(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Recoloring an Artwork Realization updates its existing final 3MF from
+    effective Printer assignments without executing build stages.
+    """
+
+    final_path = tmp_path / "dog.artwork_default.3mf"
+    final_path.touch()
+
+    printer_assignments = ColorAssignmentResult(
+        assignments=(
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=1,
+                    rgb=(200, 0, 0),
+                ),
+                color=PaletteColor(
+                    name="fire-engine-red",
+                    rgb=(220, 38, 38),
+                ),
+                distance=1.0,
+            ),
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=2,
+                    rgb=(250, 250, 250),
+                ),
+                color=PaletteColor(
+                    name="cold-white",
+                    rgb=(245, 245, 240),
+                ),
+                distance=2.0,
+            ),
+        ),
+        distance=3.0,
+    )
+
+    analysis = ArtworkColorAnalysis(
+        system_assignments=printer_assignments,
+        printer_assignments=printer_assignments,
+        library_assignments=printer_assignments,
+        catalog_assignments=printer_assignments,
+    )
+
+    plan = SimpleNamespace(
+        artifact_id="dog",
+        realization_name="artwork_default",
+        model_name="artwork",
+        stages=(
+            SimpleNamespace(
+                name="package",
+                products=(
+                    SimpleNamespace(
+                        name="artifact",
+                        path=final_path,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    updates: list[
+        tuple[
+            Path,
+            str,
+            dict[str, PaletteColor],
+        ]
+    ] = []
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_existing_final_realization",
+        lambda artifact_id, realization, project_root: plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_analyze_existing_artwork_colors",
+        lambda resolved_plan: analysis,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "update_component_colors",
+        lambda path, *, artifact_id, colors: updates.append(
+            (
+                path,
+                artifact_id,
+                colors,
+            )
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda *args, **kwargs: pytest.fail("recoloring must not execute build stages"),
+    )
+
+    cmd_color._recolor_existing_final(
+        "dog",
+        realization="artwork_default",
+        project_root=tmp_path,
+    )
+
+    assert updates == [
+        (
+            final_path,
+            "dog",
+            {
+                "artwork-1": PaletteColor(
+                    name="fire-engine-red",
+                    rgb=(220, 38, 38),
+                ),
+                "artwork-2": PaletteColor(
+                    name="cold-white",
+                    rgb=(245, 245, 240),
+                ),
+            },
+        )
+    ]
+
+
+def test_recolor_existing_shape_final_updates_only_artwork_assignments(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Recoloring a Shape Realization updates participating Artwork components
+    from effective Printer assignments without replacing Shape-owned semantic
+    colors or executing build stages.
+    """
+
+    final_path = tmp_path / "dog.shape_ornament.3mf"
+    final_path.touch()
+
+    printer_assignments = ColorAssignmentResult(
+        assignments=(
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=1,
+                    rgb=(200, 0, 0),
+                ),
+                color=PaletteColor(
+                    name="fire-engine-red",
+                    rgb=(220, 38, 38),
+                ),
+                distance=1.0,
+            ),
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=2,
+                    rgb=(250, 250, 250),
+                ),
+                color=PaletteColor(
+                    name="cold-white",
+                    rgb=(245, 245, 240),
+                ),
+                distance=2.0,
+            ),
+        ),
+        distance=3.0,
+    )
+
+    artwork = ArtworkColorAnalysis(
+        system_assignments=printer_assignments,
+        printer_assignments=printer_assignments,
+        library_assignments=printer_assignments,
+        catalog_assignments=printer_assignments,
+    )
+
+    plan = SimpleNamespace(
+        artifact_id="dog",
+        realization_name="shape_ornament",
+        model_name="shape",
+        stages=(
+            SimpleNamespace(
+                name="package",
+                products=(
+                    SimpleNamespace(
+                        name="artifact",
+                        path=final_path,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    updates: list[
+        tuple[
+            Path,
+            str,
+            dict[str, PaletteColor],
+        ]
+    ] = []
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_existing_final_realization",
+        lambda artifact_id, realization, project_root: plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_analyze_existing_shape_artwork_colors",
+        lambda resolved_plan: artwork,
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "update_component_colors",
+        lambda path, *, artifact_id, colors: updates.append(
+            (
+                path,
+                artifact_id,
+                colors,
+            )
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda *args, **kwargs: pytest.fail("recoloring must not execute build stages"),
+    )
+
+    cmd_color._recolor_existing_final(
+        "dog",
+        realization="shape_ornament",
+        project_root=tmp_path,
+    )
+
+    assert updates == [
+        (
+            final_path,
+            "dog",
+            {
+                "artwork-1": PaletteColor(
+                    name="fire-engine-red",
+                    rgb=(220, 38, 38),
+                ),
+                "artwork-2": PaletteColor(
+                    name="cold-white",
+                    rgb=(245, 245, 240),
+                ),
+            },
+        )
+    ]
+
+
+def test_recolor_existing_shape_final_without_artwork_does_not_update_colors(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    A Shape Realization without participating Artwork has no physical Artwork
+    assignments to apply to its final 3MF.
+
+    Shape-owned semantic colors are not recolor targets.
+    """
+
+    final_path = tmp_path / "dog.shape_ornament.3mf"
+    final_path.touch()
+
+    plan = SimpleNamespace(
+        artifact_id="dog",
+        realization_name="shape_ornament",
+        model_name="shape",
+        stages=(
+            SimpleNamespace(
+                name="package",
+                products=(
+                    SimpleNamespace(
+                        name="artifact",
+                        path=final_path,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_existing_final_realization",
+        lambda artifact_id, realization, project_root: plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_analyze_existing_shape_artwork_colors",
+        lambda resolved_plan: None,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "update_component_colors",
+        lambda *args, **kwargs: pytest.fail("Shape-owned semantic colors must not be recolored"),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda *args, **kwargs: pytest.fail("recoloring must not execute build stages"),
+    )
+
+    cmd_color._recolor_existing_final(
+        "dog",
+        realization="shape_ornament",
+        project_root=tmp_path,
+    )
+
+
+def test_resolve_existing_final_realization_plans_without_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Existing-final recoloring may use normal planning to resolve the selected
+    Realization and its product paths, but resolution must not execute build
+    stages.
+    """
+
+    plan = SimpleNamespace(
+        artifact_id="dog",
+        realization_name="shape_ornament",
+        model_name="shape",
+    )
+
+    calls: list[
+        tuple[
+            str,
+            str,
+            Path,
+        ]
+    ] = []
+
+    def fake_create_build_plan(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+    ) -> object:
+        calls.append(
+            (
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
+        return plan
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_build_plan",
+        fake_create_build_plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda *args, **kwargs: pytest.fail(
+            "resolving an existing final must not execute build stages"
+        ),
+    )
+
+    result = cmd_color._resolve_existing_final_realization(
+        "dog",
+        "shape_ornament",
+        tmp_path,
+    )
+
+    assert result is plan
+
+    assert calls == [
+        (
+            "dog",
+            "shape_ornament",
+            tmp_path,
+        )
+    ]
+
+
+def test_recolor_existing_final_rejects_missing_final_without_building(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Recoloring requires an already-existing final 3MF.
+
+    A missing final product is a prerequisite failure and must not cause
+    geometry-producing build stages to execute.
+    """
+
+    final_path = tmp_path / "dog.artwork_default.3mf"
+    # note that there is NO TOUCH here!
+
+    plan = SimpleNamespace(
+        artifact_id="dog",
+        realization_name="artwork_default",
+        model_name="artwork",
+        stages=(
+            SimpleNamespace(
+                name="package",
+                products=(
+                    SimpleNamespace(
+                        name="artifact",
+                        path=final_path,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_existing_final_realization",
+        lambda artifact_id, realization, project_root: plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_analyze_existing_artwork_colors",
+        lambda resolved_plan: pytest.fail("missing final must be detected before color analysis"),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "update_component_colors",
+        lambda *args, **kwargs: pytest.fail("missing final must not be updated"),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda *args, **kwargs: pytest.fail("missing final must not trigger build execution"),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="existing final 3MF",
+    ):
+        cmd_color._recolor_existing_final(
+            "dog",
+            realization="artwork_default",
+            project_root=tmp_path,
+        )
+
+
+def test_analyze_existing_artwork_colors_uses_existing_manifest_without_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Existing-final recoloring analyzes an already-existing registered Artwork
+    manifest without executing build stages to create or refresh it.
+    """
+
+    manifest_path = tmp_path / "registered-artwork.json"
+    manifest_path.touch()
+
+    resolver = object()
+
+    plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            resolver=resolver,
+            stages=(
+                SimpleNamespace(
+                    name="vector",
+                    products=(
+                        SimpleNamespace(
+                            name="manifest",
+                            path=manifest_path,
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    expected = object()
+
+    calls: list[
+        tuple[
+            Path,
+            object,
+        ]
+    ] = []
+
+    def fake_analyze_registered_artwork_colors(
+        *,
+        manifest: Path,
+        resolver: object,
+    ) -> object:
+        calls.append(
+            (
+                manifest,
+                resolver,
+            )
+        )
+        return expected
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        fake_analyze_registered_artwork_colors,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda *args, **kwargs: pytest.fail(
+            "existing Artwork color analysis must not execute build stages"
+        ),
+    )
+
+    result = cmd_color._analyze_existing_artwork_colors(
+        plan,
+    )
+
+    assert result is expected
+
+    assert calls == [
+        (
+            manifest_path,
+            resolver,
+        )
+    ]
+
+
+def test_analyze_existing_artwork_colors_rejects_missing_manifest_without_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Existing-final recoloring requires the registered Artwork manifest to
+    already exist and must not rebuild it when it is missing.
+    """
+
+    manifest_path = tmp_path / "registered-artwork.json"
+
+    plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            resolver=object(),
+            stages=(
+                SimpleNamespace(
+                    name="vector",
+                    products=(
+                        SimpleNamespace(
+                            name="manifest",
+                            path=manifest_path,
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        lambda *args, **kwargs: pytest.fail("missing manifest must not be analyzed"),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda *args, **kwargs: pytest.fail("missing manifest must not trigger build execution"),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="registered Artwork manifest",
+    ):
+        cmd_color._analyze_existing_artwork_colors(
+            plan,
+        )
+
+
+def test_analyze_existing_shape_artwork_colors_uses_bound_existing_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Existing-final Shape recoloring follows the Shape Realization's bound
+    Artwork dependency and analyzes its already-existing registered manifest
+    without executing build stages.
+    """
+
+    manifest_path = tmp_path / "bound-artwork-manifest.json"
+    manifest_path.touch()
+
+    dependency = SimpleNamespace(
+        product_ref=SimpleNamespace(
+            model="artwork",
+            stage="vector",
+            product="manifest",
+        ),
+    )
+
+    artwork_resolver = object()
+
+    artwork_plan = SimpleNamespace(
+        resolver=artwork_resolver,
+        stages=(
+            SimpleNamespace(
+                name="vector",
+                products=(
+                    SimpleNamespace(
+                        name="manifest",
+                        path=manifest_path,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    shape_plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            project_root=tmp_path,
+            planned_product_dependencies=(dependency,),
+        ),
+    )
+
+    expected = object()
+
+    dependency_calls: list[
+        tuple[
+            object,
+            Path,
+        ]
+    ] = []
+
+    def fake_create_product_dependency_build_plan(
+        selected_dependency: object,
+        *,
+        project_root: Path,
+    ) -> object:
+        dependency_calls.append(
+            (
+                selected_dependency,
+                project_root,
+            )
+        )
+        return artwork_plan
+
+    analysis_calls: list[
+        tuple[
+            Path,
+            object,
+        ]
+    ] = []
+
+    def fake_analyze_registered_artwork_colors(
+        *,
+        manifest: Path,
+        resolver: object,
+    ) -> object:
+        analysis_calls.append(
+            (
+                manifest,
+                resolver,
+            )
+        )
+        return expected
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_product_dependency_build_plan",
+        fake_create_product_dependency_build_plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        fake_analyze_registered_artwork_colors,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda *args, **kwargs: pytest.fail(
+            "existing Shape recoloring must not execute build stages"
+        ),
+    )
+
+    result = cmd_color._analyze_existing_shape_artwork_colors(
+        shape_plan,
+    )
+
+    assert result is expected
+
+    assert dependency_calls == [
+        (
+            dependency,
+            tmp_path,
+        )
+    ]
+
+    assert analysis_calls == [
+        (
+            manifest_path,
+            artwork_resolver,
+        )
+    ]
+
+
+def test_analyze_existing_shape_artwork_colors_returns_none_without_artwork_dependency(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    A Shape Realization without a participating Artwork dependency has no
+    Artwork colors to apply during existing-final recoloring.
+    """
+
+    shape_plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            project_root=tmp_path,
+            planned_product_dependencies=(),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_product_dependency_build_plan",
+        lambda *args, **kwargs: pytest.fail("no Artwork producer plan should be created"),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda *args, **kwargs: pytest.fail(
+            "existing Shape recoloring must not execute build stages"
+        ),
+    )
+
+    assert (
+        cmd_color._analyze_existing_shape_artwork_colors(
+            shape_plan,
+        )
+        is None
+    )
+
+
+def test_analyze_existing_shape_artwork_colors_rejects_multiple_artwork_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Existing-final Shape recoloring requires an unambiguous registered Artwork
+    manifest dependency.
+    """
+
+    first_dependency = SimpleNamespace(
+        product_ref=SimpleNamespace(
+            model="artwork",
+            stage="vector",
+            product="manifest",
+        ),
+    )
+
+    second_dependency = SimpleNamespace(
+        product_ref=SimpleNamespace(
+            model="artwork",
+            stage="vector",
+            product="manifest",
+        ),
+    )
+
+    shape_plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            project_root=tmp_path,
+            planned_product_dependencies=(
+                first_dependency,
+                second_dependency,
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_product_dependency_build_plan",
+        lambda *args, **kwargs: pytest.fail("ambiguous Artwork dependencies must not be followed"),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda *args, **kwargs: pytest.fail(
+            "existing Shape recoloring must not execute build stages"
+        ),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="exactly one registered Artwork manifest dependency",
+    ):
+        cmd_color._analyze_existing_shape_artwork_colors(
+            shape_plan,
+        )

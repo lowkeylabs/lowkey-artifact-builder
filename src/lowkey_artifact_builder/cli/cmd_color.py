@@ -30,8 +30,14 @@ from lowkey_artifact_builder.engine import (
     create_product_dependency_build_plan,
     execute_dependency_build,
 )
+from lowkey_artifact_builder.formats.threemf import (
+    update_component_colors,
+)
 from lowkey_artifact_builder.model import (
     ProductRef,
+)
+from lowkey_artifact_builder.model.color import (
+    artwork_component_colors,
 )
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
     ArtworkColorAnalysis,
@@ -315,6 +321,56 @@ def _resolve_recolor_scope(
     )
 
 
+def _recolor_existing_final(
+    artifact_id: str,
+    *,
+    realization: str,
+    project_root: Path,
+) -> None:
+    plan = _resolve_existing_final_realization(
+        artifact_id,
+        realization,
+        project_root,
+    )
+
+    package_stage = next(stage for stage in plan.stages if stage.name == "package")
+
+    final_product = next(
+        product for product in package_stage.products if product.name == "artifact"
+    )
+
+    if not final_product.path.is_file():
+        raise RuntimeError(f"Recoloring requires an existing final 3MF: {final_product.path}")
+
+    if plan.model_name == "artwork":
+        artwork = _analyze_existing_artwork_colors(
+            plan,
+        )
+
+    elif plan.model_name == "shape":
+        artwork = _analyze_existing_shape_artwork_colors(
+            plan,
+        )
+
+    else:
+        raise NotImplementedError(
+            f"Existing-final recoloring is not yet implemented for model {plan.model_name!r}."
+        )
+
+    if artwork is None:
+        return
+
+    colors = artwork_component_colors(
+        artwork,
+    )
+
+    update_component_colors(
+        final_product.path,
+        artifact_id=artifact_id,
+        colors=colors,
+    )
+
+
 def _persist_printer_colors(
     artifact_id: str,
     *,
@@ -399,6 +455,90 @@ def _reset_printer_colors(
         artifact_id,
         "printer_colors",
         project_root=project_root,
+    )
+
+
+def _resolve_existing_final_realization(
+    artifact_id: str,
+    realization: str,
+    project_root: Path,
+) -> BuildPlan:
+    """
+    Resolve the Realization whose existing final product may be recolored.
+
+    Resolution uses normal build planning to identify the Model, effective
+    configuration, and canonical product paths. It does not execute the plan
+    or create missing products.
+    """
+
+    return create_build_plan(
+        artifact_id,
+        realization=realization,
+        project_root=project_root,
+    )
+
+
+def _analyze_existing_artwork_colors(
+    resolved_plan: BuildPlan,
+) -> ArtworkColorAnalysis:
+    """
+    Analyze colors from an already-existing registered Artwork manifest.
+
+    Existing-final recoloring consumes the planned manifest directly. It does
+    not execute build stages to create or refresh missing prerequisites.
+    """
+
+    manifest = _registered_artwork_manifest(
+        resolved_plan,
+    )
+
+    if not manifest.is_file():
+        raise RuntimeError(
+            f"Recoloring requires an existing registered Artwork manifest: {manifest}"
+        )
+
+    return analyze_registered_artwork_colors(
+        manifest=manifest,
+        resolver=resolved_plan.resolver,
+    )
+
+
+def _analyze_existing_shape_artwork_colors(
+    resolved_plan: BuildPlan,
+) -> ArtworkColorAnalysis | None:
+    """
+    Analyze already-existing Artwork participating in one Shape Realization.
+
+    The Shape plan owns discovery of the bound Artwork producer. Existing-final
+    recoloring follows that planned dependency but does not execute build
+    stages to create or refresh the registered Artwork manifest.
+    """
+
+    artwork_dependencies = tuple(
+        dependency
+        for dependency in resolved_plan.planned_product_dependencies
+        if (
+            dependency.product_ref.model == "artwork"
+            and dependency.product_ref.stage == "vector"
+            and dependency.product_ref.product == "manifest"
+        )
+    )
+
+    if not artwork_dependencies:
+        return None
+
+    if len(artwork_dependencies) != 1:
+        raise RuntimeError(
+            "Shape color analysis requires exactly one registered Artwork manifest dependency."
+        )
+
+    artwork_plan = create_product_dependency_build_plan(
+        artwork_dependencies[0],
+        project_root=resolved_plan.project_root,
+    )
+
+    return _analyze_existing_artwork_colors(
+        artwork_plan,
     )
 
 
