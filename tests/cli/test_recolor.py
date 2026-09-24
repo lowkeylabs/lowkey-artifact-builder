@@ -12,6 +12,9 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import lowkey_artifact_builder.cli.cmd_color as cmd_color
+from lowkey_artifact_builder.config import (
+    load_artifact_config,
+)
 
 # =========================================================
 # Printer recolor
@@ -216,3 +219,114 @@ def test_recolor_printer_persists_system_palette_at_realization_scope(
             tmp_path,
         )
     ]
+
+
+# =========================================================
+# Printer-color persistence
+# =========================================================
+
+
+def test_persist_printer_colors_updates_artifact_scope(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-scoped persistence stores printer_colors at Artifact scope while
+    preserving unrelated Artifact configuration.
+    """
+
+    path = tmp_path / "artifacts" / "nydeli" / "artifact.toml"
+
+    path.parent.mkdir(
+        parents=True,
+    )
+
+    path.write_text(
+        """
+model = "artwork"
+source = "nydeli.png"
+artwork_size = 90.0
+printer_colors = ["old-black", "old-white"]
+
+[realizations.shape_ornament]
+variant = "shape.ornament"
+printer_colors = ["ornament-black", "ornament-red"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    cmd_color._persist_printer_colors(
+        "nydeli",
+        realization=None,
+        printer_colors=(
+            "system-black",
+            "system-white",
+            "system-red",
+        ),
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "nydeli",
+        project_root=tmp_path,
+    )
+
+    assert config["printer_colors"] == [
+        "system-black",
+        "system-white",
+        "system-red",
+    ]
+
+    assert config["source"] == "nydeli.png"
+    assert config["artwork_size"] == 90.0
+
+    assert config["realizations"]["shape_ornament"]["printer_colors"] == [
+        "ornament-black",
+        "ornament-red",
+    ]
+
+
+def test_persist_printer_colors_preserves_artifact_document_presentation(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-scoped printer-color persistence preserves existing comments and
+    surrounding Artifact configuration presentation.
+    """
+
+    path = tmp_path / "artifacts" / "nydeli" / "artifact.toml"
+
+    path.parent.mkdir(
+        parents=True,
+    )
+
+    path.write_text(
+        """
+model = "artwork"
+
+# Preserve this source explanation.
+source = "nydeli.png"
+
+# Existing printer selection.
+printer_colors = ["old-black", "old-white"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    cmd_color._persist_printer_colors(
+        "nydeli",
+        realization=None,
+        printer_colors=(
+            "system-black",
+            "system-white",
+            "system-red",
+        ),
+        project_root=tmp_path,
+    )
+
+    text = path.read_text(
+        encoding="utf-8",
+    )
+
+    assert "# Preserve this source explanation." in text
+    assert "# Existing printer selection." in text
+    assert 'source = "nydeli.png"' in text

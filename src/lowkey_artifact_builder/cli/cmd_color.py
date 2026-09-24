@@ -16,6 +16,9 @@ import click
 from lowkey_artifact_builder.cli.display import (
     display_color_analysis,
 )
+from lowkey_artifact_builder.config import (
+    update_artifact_config,
+)
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     create_build_plan,
@@ -281,10 +284,27 @@ def _persist_printer_colors(
     """
     Persist printer colors at the selected Artifact or Realization scope.
 
-    Configuration persistence is implemented by a subsequent TDD slice.
+    Artifact-scoped persistence updates only the Artifact-level
+    printer_colors value. Existing Realization-specific overrides remain
+    unchanged.
+
+    Realization-scoped persistence is introduced by a subsequent TDD slice.
     """
 
-    raise NotImplementedError("Printer-color persistence is not implemented.")
+    if realization is not None:
+        raise NotImplementedError(
+            "Realization-scoped printer-color persistence is not implemented."
+        )
+
+    update_artifact_config(
+        artifact_id,
+        {
+            "printer_colors": list(
+                printer_colors,
+            ),
+        },
+        project_root=project_root,
+    )
 
 
 def run_colors(
