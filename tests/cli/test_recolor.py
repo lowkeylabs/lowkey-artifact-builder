@@ -285,6 +285,78 @@ printer_colors = ["ornament-black", "ornament-red"]
     ]
 
 
+def test_persist_printer_colors_updates_realization_scope(
+    tmp_path: Path,
+) -> None:
+    """
+    Realization-scoped persistence stores printer_colors only on the selected
+    Realization while preserving Artifact and sibling Realization values.
+    """
+
+    path = tmp_path / "artifacts" / "nydeli" / "artifact.toml"
+
+    path.parent.mkdir(
+        parents=True,
+    )
+
+    path.write_text(
+        """
+model = "artwork"
+source = "nydeli.png"
+printer_colors = ["artifact-black", "artifact-white"]
+
+[realizations.shape_default]
+variant = "shape.default"
+printer_colors = ["default-black", "default-white"]
+
+[realizations.shape_ornament]
+variant = "shape.ornament"
+shape_size = 95.0
+printer_colors = ["ornament-black", "ornament-red"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    cmd_color._persist_printer_colors(
+        "nydeli",
+        realization="shape_ornament",
+        printer_colors=(
+            "system-black",
+            "system-white",
+            "system-red",
+        ),
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "nydeli",
+        project_root=tmp_path,
+    )
+
+    assert config["printer_colors"] == [
+        "artifact-black",
+        "artifact-white",
+    ]
+
+    assert config["realizations"]["shape_default"] == {
+        "variant": "shape.default",
+        "printer_colors": [
+            "default-black",
+            "default-white",
+        ],
+    }
+
+    assert config["realizations"]["shape_ornament"] == {
+        "variant": "shape.ornament",
+        "shape_size": 95.0,
+        "printer_colors": [
+            "system-black",
+            "system-white",
+            "system-red",
+        ],
+    }
+
+
 def test_persist_printer_colors_preserves_artifact_document_presentation(
     tmp_path: Path,
 ) -> None:

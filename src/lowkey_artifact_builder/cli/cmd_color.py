@@ -18,6 +18,7 @@ from lowkey_artifact_builder.cli.display import (
 )
 from lowkey_artifact_builder.config import (
     update_artifact_config,
+    update_realization_config,
 )
 from lowkey_artifact_builder.engine import (
     BuildPlan,
@@ -288,21 +289,29 @@ def _persist_printer_colors(
     printer_colors value. Existing Realization-specific overrides remain
     unchanged.
 
-    Realization-scoped persistence is introduced by a subsequent TDD slice.
+    Realization-scoped persistence updates only the selected explicit
+    Realization.
     """
 
+    values = {
+        "printer_colors": list(
+            printer_colors,
+        ),
+    }
+
     if realization is not None:
-        raise NotImplementedError(
-            "Realization-scoped printer-color persistence is not implemented."
+        update_realization_config(
+            artifact_id,
+            realization,
+            values,
+            project_root=project_root,
         )
+
+        return
 
     update_artifact_config(
         artifact_id,
-        {
-            "printer_colors": list(
-                printer_colors,
-            ),
-        },
+        values,
         project_root=project_root,
     )
 
