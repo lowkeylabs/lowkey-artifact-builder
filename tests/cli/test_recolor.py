@@ -817,6 +817,12 @@ def test_recolor_reset_all_realizations_removes_realization_printer_colors(
         raising=False,
     )
 
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        lambda artifact_id, *, project_root: (),
+    )
+
     expected_analysis = object()
 
     monkeypatch.setattr(
@@ -3081,5 +3087,457 @@ def test_recolor_reset_at_artifact_scope_prepares_before_resetting_and_recolorin
             "analyze",
             "dog",
             None,
+        ),
+    ]
+
+
+def test_recolor_reset_all_realizations_prepares_before_resetting_and_recoloring(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    reset-all-realizations validates the complete Artifact Realization scope
+    before removing any Realization printer_colors overrides.
+
+    After successful preparation, all Realization overrides are removed once
+    and every prepared Realization is recolored against its newly inherited
+    Artifact configuration.
+    """
+
+    prepared_plans = (
+        cast(
+            BuildPlan,
+            SimpleNamespace(
+                realization_name="artwork_default",
+            ),
+        ),
+        cast(
+            BuildPlan,
+            SimpleNamespace(
+                realization_name="shape_default",
+            ),
+        ),
+        cast(
+            BuildPlan,
+            SimpleNamespace(
+                realization_name="shape_ornament",
+            ),
+        ),
+    )
+
+    events: list[tuple[object, ...]] = []
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    def fake_prepare_artifact_recolor(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> tuple[BuildPlan, ...]:
+        events.append(
+            (
+                "prepare",
+                artifact_id,
+                project_root,
+            )
+        )
+        return prepared_plans
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        fake_prepare_artifact_recolor,
+    )
+
+    def fake_reset_all_realization_printer_colors(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> None:
+        events.append(
+            (
+                "reset-all",
+                artifact_id,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_reset_all_realization_printer_colors",
+        fake_reset_all_realization_printer_colors,
+    )
+
+    def fake_recolor_existing_final(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+    ) -> None:
+        events.append(
+            (
+                "recolor",
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_recolor_existing_final",
+        fake_recolor_existing_final,
+    )
+
+    expected_analysis = object()
+
+    def fake_analyze_artifact_colors(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+    ) -> object:
+        events.append(
+            (
+                "analyze",
+                artifact_id,
+                realization,
+            )
+        )
+        return expected_analysis
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        fake_analyze_artifact_colors,
+    )
+
+    result = cmd_color.run_colors(
+        "dog",
+        recolor="reset-all-realizations",
+    )
+
+    assert result is expected_analysis
+
+    assert events == [
+        (
+            "prepare",
+            "dog",
+            tmp_path,
+        ),
+        (
+            "reset-all",
+            "dog",
+            tmp_path,
+        ),
+        (
+            "recolor",
+            "dog",
+            "artwork_default",
+            tmp_path,
+        ),
+        (
+            "recolor",
+            "dog",
+            "shape_default",
+            tmp_path,
+        ),
+        (
+            "recolor",
+            "dog",
+            "shape_ornament",
+            tmp_path,
+        ),
+        (
+            "analyze",
+            "dog",
+            None,
+        ),
+    ]
+
+
+def test_prepare_artifact_recolor_projects_requested_printer_colors_before_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact recolor preparation computes every prospective final-3MF recolor
+    against the printer_colors that will be effective after the requested
+    Artifact-level configuration mutation.
+
+    Prospective recolor computation remains read-only.
+    """
+
+    def make_plan(
+        realization_name: str,
+    ) -> BuildPlan:
+        final_path = tmp_path / f"{realization_name}.3mf"
+        final_path.touch()
+
+        resolver = SimpleNamespace(
+            source=lambda name: "artifact",
+        )
+
+        return cast(
+            BuildPlan,
+            SimpleNamespace(
+                realization_name=realization_name,
+                resolver=resolver,
+                stages=(
+                    SimpleNamespace(
+                        name="package",
+                        products=(
+                            SimpleNamespace(
+                                name="artifact",
+                                path=final_path,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+    plans = (
+        make_plan("artwork_default"),
+        make_plan("shape_default"),
+        make_plan("shape_ornament"),
+    )
+
+    plans_by_realization = {plan.realization_name: plan for plan in plans}
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_artifact_recolor_realizations",
+        lambda artifact_id, *, project_root: tuple(plan.realization_name for plan in plans),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_existing_final_realization",
+        lambda artifact_id, realization, project_root: (plans_by_realization[realization]),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_validate_existing_recolor_source",
+        lambda plan: None,
+    )
+
+    projected_printer_colors = (
+        "library-black",
+        "library-white",
+        "library-red",
+    )
+
+    computed: list[
+        tuple[
+            str,
+            tuple[str, ...],
+        ]
+    ] = []
+
+    def fake_prepare_existing_final_recolor(
+        plan: BuildPlan,
+        *,
+        printer_colors: tuple[str, ...],
+    ) -> object:
+        computed.append(
+            (
+                plan.realization_name,
+                printer_colors,
+            )
+        )
+
+        return object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_existing_final_recolor",
+        fake_prepare_existing_final_recolor,
+        raising=False,
+    )
+
+    cmd_color._prepare_artifact_recolor(
+        "dog",
+        project_root=tmp_path,
+        printer_colors=projected_printer_colors,
+    )
+
+    assert computed == [
+        (
+            "artwork_default",
+            projected_printer_colors,
+        ),
+        (
+            "shape_default",
+            projected_printer_colors,
+        ),
+        (
+            "shape_ornament",
+            projected_printer_colors,
+        ),
+    ]
+
+
+def test_prepare_artifact_recolor_preserves_explicit_realization_printer_colors(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-level prospective recoloring projects the requested Artifact
+    printer_colors only onto Realizations that inherit printer_colors.
+
+    An explicit Realization printer_colors override remains authoritative.
+    """
+
+    projected_artifact_palette = (
+        "library-black",
+        "library-white",
+        "library-red",
+    )
+
+    explicit_realization_palette = (
+        "library-blue",
+        "library-green",
+        "library-yellow",
+    )
+
+    class FakeResolver:
+        def __init__(
+            self,
+            printer_colors: tuple[str, ...],
+            source: str,
+        ) -> None:
+            self._printer_colors = printer_colors
+            self._source = source
+
+        def __call__(
+            self,
+            name: str,
+        ) -> tuple[str, ...]:
+            assert name == "printer_colors"
+
+            return self._printer_colors
+
+        def source(
+            self,
+            name: str,
+        ) -> str:
+            assert name == "printer_colors"
+
+            return self._source
+
+    def make_plan(
+        realization_name: str,
+        *,
+        printer_colors: tuple[str, ...],
+        source: str,
+    ) -> BuildPlan:
+        final_path = tmp_path / f"{realization_name}.3mf"
+        final_path.touch()
+
+        return cast(
+            BuildPlan,
+            SimpleNamespace(
+                realization_name=realization_name,
+                resolver=FakeResolver(
+                    printer_colors,
+                    source,
+                ),
+                stages=(
+                    SimpleNamespace(
+                        name="package",
+                        products=(
+                            SimpleNamespace(
+                                name="artifact",
+                                path=final_path,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+    inherited_plan = make_plan(
+        "shape_default",
+        printer_colors=(
+            "old-black",
+            "old-white",
+            "old-red",
+        ),
+        source="artifact",
+    )
+
+    overridden_plan = make_plan(
+        "shape_ornament",
+        printer_colors=explicit_realization_palette,
+        source="realization 'shape_ornament'",
+    )
+
+    plans = (
+        inherited_plan,
+        overridden_plan,
+    )
+
+    plans_by_realization = {plan.realization_name: plan for plan in plans}
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_artifact_recolor_realizations",
+        lambda artifact_id, *, project_root: tuple(plan.realization_name for plan in plans),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_existing_final_realization",
+        lambda artifact_id, realization, project_root: (plans_by_realization[realization]),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_validate_existing_recolor_source",
+        lambda plan: None,
+    )
+
+    observed: list[
+        tuple[
+            str,
+            tuple[str, ...],
+        ]
+    ] = []
+
+    def fake_prepare_existing_final_recolor(
+        plan: BuildPlan,
+        *,
+        printer_colors: tuple[str, ...],
+    ) -> None:
+        observed.append(
+            (
+                plan.realization_name,
+                printer_colors,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_existing_final_recolor",
+        fake_prepare_existing_final_recolor,
+    )
+
+    cmd_color._prepare_artifact_recolor(
+        "dog",
+        project_root=tmp_path,
+        printer_colors=projected_artifact_palette,
+    )
+
+    assert observed == [
+        (
+            "shape_default",
+            projected_artifact_palette,
+        ),
+        (
+            "shape_ornament",
+            explicit_realization_palette,
         ),
     ]

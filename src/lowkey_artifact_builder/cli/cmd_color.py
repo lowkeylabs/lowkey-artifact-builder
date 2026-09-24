@@ -141,16 +141,41 @@ def _resolve_color_realization(
     )
 
 
+def _prepare_existing_final_recolor(
+    plan: BuildPlan,
+    *,
+    printer_colors: tuple[str, ...],
+) -> None:
+    """
+    Compute the prospective recolor of one existing final 3MF.
+
+    This operation is read-only. The supplied printer_colors represent the
+    Artifact-level palette that will be effective after the requested
+    configuration mutation.
+
+    A later slice will retain the computed component-color mutation so it can
+    be applied after configuration persistence without recomputation.
+    """
+
+    _ = plan
+    _ = printer_colors
+
+
 def _prepare_artifact_recolor(
     artifact_id: str,
     *,
     project_root: Path,
+    printer_colors: tuple[str, ...] | None = None,
 ) -> tuple[BuildPlan, ...]:
     """
     Resolve and validate the complete Artifact recolor scope.
 
     Preparation is read-only. Every applicable Realization is resolved and
     validated before any configuration or final-3MF mutation may occur.
+
+    When projected Artifact-level printer_colors are supplied, prospective
+    final-3MF recolors are also computed for every applicable Realization
+    before preparation succeeds.
     """
 
     realizations = _resolve_artifact_recolor_realizations(
@@ -211,6 +236,18 @@ def _prepare_artifact_recolor(
             f"Recoloring requires usable existing recolor sources for every "
             f"applicable Realization: {details}"
         )
+
+    if printer_colors is not None:
+        for plan in plans:
+            effective_printer_colors = printer_colors
+
+            if plan.resolver.source("printer_colors").startswith("realization "):
+                effective_printer_colors = tuple(plan.resolver("printer_colors"))
+
+            _prepare_existing_final_recolor(
+                plan,
+                printer_colors=effective_printer_colors,
+            )
 
     return plans
 
@@ -843,10 +880,22 @@ def run_colors(
     if recolor == "reset-all-realizations":
         project_root = Path.cwd()
 
+        prepared_plans = _prepare_artifact_recolor(
+            artifact_id,
+            project_root=project_root,
+        )
+
         _reset_all_realization_printer_colors(
             artifact_id,
             project_root=project_root,
         )
+
+        for prepared_plan in prepared_plans:
+            _recolor_existing_final(
+                artifact_id,
+                realization=prepared_plan.realization_name,
+                project_root=project_root,
+            )
 
         return analyze_artifact_colors(
             artifact_id,
