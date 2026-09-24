@@ -11,8 +11,19 @@ policy.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Protocol
+from typing import (
+    Any,
+    Protocol,
+)
+
+from lowkey_artifact_builder.colors import (
+    PaletteColor,
+    color_distance,
+    resolve_palette,
+    resolve_palette_color,
+)
 
 
 class ShapeColorResolver(Protocol):
@@ -29,6 +40,25 @@ class ShapeColorResolver(Protocol):
         """
         ...
 
+    @property
+    def colors(
+        self,
+    ) -> Mapping[str, Any]:
+        """
+        Return the configured physical-color catalog.
+        """
+        ...
+
+
+@dataclass(frozen=True)
+class ShapeColorCandidate:
+    """
+    Advisory comparison of a semantic Shape color with one candidate color.
+    """
+
+    name: str
+    distance: float
+
 
 @dataclass(frozen=True)
 class ShapeColor:
@@ -38,6 +68,7 @@ class ShapeColor:
 
     color: str
     used_by: tuple[str, ...]
+    printer_candidate: ShapeColorCandidate
 
 
 @dataclass(frozen=True)
@@ -61,6 +92,10 @@ def analyze_shape_colors(
 
     Components sharing one semantic physical color occupy one color row.
     Component identity is preserved through that row's used_by membership.
+
+    The effective Printer palette is compared independently with each
+    semantic Shape color. The nearest Printer color is advisory and does
+    not replace the semantic color identity.
     """
 
     base_color = resolver(
@@ -128,6 +163,10 @@ def analyze_shape_colors(
             "artwork-fill",
         )
 
+    printer_colors = _resolve_printer_colors(
+        resolver,
+    )
+
     return ShapeColorAnalysis(
         colors=tuple(
             ShapeColor(
@@ -135,8 +174,74 @@ def analyze_shape_colors(
                 used_by=tuple(
                     used_by,
                 ),
+                printer_candidate=_nearest_candidate(
+                    semantic_color=color,
+                    candidates=printer_colors,
+                    resolver=resolver,
+                ),
             )
             for color, used_by in usage.items()
+        ),
+    )
+
+
+def _resolve_printer_colors(
+    resolver: ShapeColorResolver,
+) -> tuple[PaletteColor, ...]:
+    """
+    Resolve the effective Printer palette used for advisory comparison.
+    """
+
+    names = resolver(
+        "printer_colors",
+    )
+
+    if isinstance(
+        names,
+        str | bytes,
+    ) or not isinstance(
+        names,
+        list | tuple,
+    ):
+        raise ValueError("printer_colors must be a list or tuple of color names.")
+
+    return resolve_palette(
+        names,
+        resolver.colors,
+    )
+
+
+def _nearest_candidate(
+    *,
+    semantic_color: str,
+    candidates: tuple[PaletteColor, ...],
+    resolver: ShapeColorResolver,
+) -> ShapeColorCandidate:
+    """
+    Return the nearest advisory candidate for one semantic Shape color.
+
+    This is an independent comparison, not a one-to-one Artwork-style
+    physical-color assignment.
+    """
+
+    semantic = resolve_palette_color(
+        semantic_color,
+        resolver.colors,
+    )
+
+    candidate = min(
+        candidates,
+        key=lambda color: color_distance(
+            semantic.rgb,
+            color.rgb,
+        ),
+    )
+
+    return ShapeColorCandidate(
+        name=candidate.name,
+        distance=color_distance(
+            semantic.rgb,
+            candidate.rgb,
         ),
     )
 
@@ -144,6 +249,7 @@ def analyze_shape_colors(
 __all__ = [
     "ShapeColor",
     "ShapeColorAnalysis",
+    "ShapeColorCandidate",
     "ShapeColorResolver",
     "analyze_shape_colors",
 ]

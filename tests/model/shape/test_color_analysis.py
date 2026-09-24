@@ -20,14 +20,29 @@ class StubResolver:
     def __init__(
         self,
         values: dict[str, object],
+        *,
+        colors: dict[str, object] | None = None,
     ) -> None:
-        self._values = values
+        self._values = {
+            "printer_colors": [
+                "black",
+                "white",
+            ],
+            **values,
+        }
+        self._colors = colors or {}
 
     def __call__(
         self,
         name: str,
     ) -> object:
         return self._values[name]
+
+    @property
+    def colors(
+        self,
+    ) -> dict[str, object]:
+        return self._colors
 
 
 def test_shape_color_analysis_exposes_base_semantic_color() -> None:
@@ -181,3 +196,47 @@ def test_shape_color_analysis_groups_all_components_using_same_color() -> None:
         "outer-ridge",
         "artwork-fill",
     )
+
+
+def test_shape_color_analysis_compares_semantic_color_to_printer_palette() -> None:
+    """
+    A structural semantic color retains its identity while independently
+    reporting the nearest color available in the effective Printer palette.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_base_color": "orange",
+            "shape_outer_ridge_width": 0.0,
+            "shape_artwork_fill_color": "none",
+            "printer_colors": [
+                "red",
+                "blue",
+            ],
+        },
+        colors={
+            "orange": {
+                "rgb": [255, 128, 0],
+            },
+            "red": {
+                "rgb": [255, 0, 0],
+            },
+            "blue": {
+                "rgb": [0, 0, 255],
+            },
+        },
+    )
+
+    analysis = analyze_shape_colors(
+        resolver=resolver,
+    )
+
+    assert len(analysis.colors) == 1
+
+    color = analysis.colors[0]
+
+    assert color.color == "orange"
+    assert color.used_by == ("base",)
+
+    assert color.printer_candidate.name == "red"
+    assert color.printer_candidate.distance > 0.0
