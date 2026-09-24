@@ -40,6 +40,15 @@ class ShapeColorResolver(Protocol):
         """
         ...
 
+    def system_value(
+        self,
+        name: str,
+    ) -> object:
+        """
+        Resolve one value from the system configuration layer.
+        """
+        ...
+
     @property
     def colors(
         self,
@@ -68,6 +77,7 @@ class ShapeColor:
 
     color: str
     used_by: tuple[str, ...]
+    system_candidate: ShapeColorCandidate
     printer_candidate: ShapeColorCandidate
 
 
@@ -93,9 +103,9 @@ def analyze_shape_colors(
     Components sharing one semantic physical color occupy one color row.
     Component identity is preserved through that row's used_by membership.
 
-    The effective Printer palette is compared independently with each
-    semantic Shape color. The nearest Printer color is advisory and does
-    not replace the semantic color identity.
+    System and effective Printer palettes are compared independently with
+    each semantic Shape color. The nearest candidate in each scope is
+    advisory and does not replace the semantic color identity.
     """
 
     base_color = resolver(
@@ -163,8 +173,20 @@ def analyze_shape_colors(
             "artwork-fill",
         )
 
-    printer_colors = _resolve_printer_colors(
-        resolver,
+    system_colors = _resolve_palette_colors(
+        resolver=resolver,
+        parameter="printer_colors",
+        names=resolver.system_value(
+            "printer_colors",
+        ),
+    )
+
+    printer_colors = _resolve_palette_colors(
+        resolver=resolver,
+        parameter="printer_colors",
+        names=resolver(
+            "printer_colors",
+        ),
     )
 
     return ShapeColorAnalysis(
@@ -173,6 +195,11 @@ def analyze_shape_colors(
                 color=color,
                 used_by=tuple(
                     used_by,
+                ),
+                system_candidate=_nearest_candidate(
+                    semantic_color=color,
+                    candidates=system_colors,
+                    resolver=resolver,
                 ),
                 printer_candidate=_nearest_candidate(
                     semantic_color=color,
@@ -185,16 +212,15 @@ def analyze_shape_colors(
     )
 
 
-def _resolve_printer_colors(
+def _resolve_palette_colors(
+    *,
     resolver: ShapeColorResolver,
+    parameter: str,
+    names: object,
 ) -> tuple[PaletteColor, ...]:
     """
-    Resolve the effective Printer palette used for advisory comparison.
+    Resolve one configured palette used for advisory comparison.
     """
-
-    names = resolver(
-        "printer_colors",
-    )
 
     if isinstance(
         names,
@@ -203,7 +229,7 @@ def _resolve_printer_colors(
         names,
         list | tuple,
     ):
-        raise ValueError("printer_colors must be a list or tuple of color names.")
+        raise ValueError(f"{parameter} must be a list or tuple of color names.")
 
     return resolve_palette(
         names,

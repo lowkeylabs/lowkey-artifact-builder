@@ -21,6 +21,7 @@ class StubResolver:
         self,
         values: dict[str, object],
         *,
+        system_values: dict[str, object] | None = None,
         colors: dict[str, object] | None = None,
     ) -> None:
         self._values = {
@@ -30,6 +31,13 @@ class StubResolver:
             ],
             **values,
         }
+        self._system_values = {
+            "printer_colors": [
+                "black",
+                "white",
+            ],
+            **(system_values or {}),
+        }
         self._colors = colors or {}
 
     def __call__(
@@ -37,6 +45,12 @@ class StubResolver:
         name: str,
     ) -> object:
         return self._values[name]
+
+    def system_value(
+        self,
+        name: str,
+    ) -> object:
+        return self._system_values[name]
 
     @property
     def colors(
@@ -237,6 +251,60 @@ def test_shape_color_analysis_compares_semantic_color_to_printer_palette() -> No
 
     assert color.color == "orange"
     assert color.used_by == ("base",)
+
+    assert color.printer_candidate.name == "red"
+    assert color.printer_candidate.distance > 0.0
+
+
+def test_shape_color_analysis_compares_system_and_printer_independently() -> None:
+    """
+    System and Printer advisory comparisons use their distinct palettes.
+
+    System uses unresolved system-default printer_colors while Printer uses
+    the effective resolved printer_colors. Neither comparison replaces the
+    structural semantic color identity.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_base_color": "purple",
+            "shape_outer_ridge_width": 0.0,
+            "shape_artwork_fill_color": "none",
+            "printer_colors": [
+                "red",
+            ],
+        },
+        system_values={
+            "printer_colors": [
+                "blue",
+            ],
+        },
+        colors={
+            "purple": {
+                "rgb": [128, 0, 128],
+            },
+            "red": {
+                "rgb": [255, 0, 0],
+            },
+            "blue": {
+                "rgb": [0, 0, 255],
+            },
+        },
+    )
+
+    analysis = analyze_shape_colors(
+        resolver=resolver,
+    )
+
+    assert len(analysis.colors) == 1
+
+    color = analysis.colors[0]
+
+    assert color.color == "purple"
+    assert color.used_by == ("base",)
+
+    assert color.system_candidate.name == "blue"
+    assert color.system_candidate.distance > 0.0
 
     assert color.printer_candidate.name == "red"
     assert color.printer_candidate.distance > 0.0
