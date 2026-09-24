@@ -1956,3 +1956,155 @@ def test_bulk_realization_reset_requires_all_existing_finals_before_any_mutation
         )
 
     assert mutations == []
+
+
+def test_bulk_realization_reset_requires_all_recolor_sources_before_any_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bulk Realization reset validates every selected Realization's existing
+    recolor source before removing any printer_colors override.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_color_artifact_ids",
+        lambda *, project_root: (
+            "cat",
+            "dog",
+        ),
+    )
+
+    cat_plan = Mock(spec=BuildPlan)
+    cat_plan.artifact_id = "cat"
+    cat_plan.realization_name = "shape_ornament"
+
+    dog_plan = Mock(spec=BuildPlan)
+    dog_plan.artifact_id = "dog"
+    dog_plan.realization_name = "shape_ornament"
+
+    plans = {
+        "cat": cat_plan,
+        "dog": dog_plan,
+    }
+
+    events: list[tuple[object, ...]] = []
+
+    def fake_resolve_recolor_scope(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        project_root: Path,
+    ) -> BuildPlan:
+        events.append(
+            (
+                "resolve",
+                artifact_id,
+                realization,
+            )
+        )
+
+        return plans[artifact_id]
+
+    cat_final = tmp_path / "cat.3mf"
+    dog_final = tmp_path / "dog.3mf"
+    cat_final.touch()
+    dog_final.touch()
+
+    def fake_existing_final_path(
+        plan: BuildPlan,
+    ) -> Path:
+        artifact_id = plan.artifact_id
+
+        events.append(
+            (
+                "final",
+                artifact_id,
+            )
+        )
+
+        return cat_final if plan is cat_plan else dog_final
+
+    def fake_validate_existing_recolor_source(
+        plan: BuildPlan,
+    ) -> None:
+        artifact_id = plan.artifact_id
+
+        events.append(
+            (
+                "source",
+                artifact_id,
+            )
+        )
+
+        if plan is dog_plan:
+            raise RuntimeError("dog recolor source is missing")
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_recolor_scope",
+        fake_resolve_recolor_scope,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_existing_final_path",
+        fake_existing_final_path,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_validate_existing_recolor_source",
+        fake_validate_existing_recolor_source,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_reset_printer_colors",
+        lambda *args, **kwargs: events.append(
+            (
+                "reset",
+                args,
+                kwargs,
+            )
+        ),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="dog recolor source is missing",
+    ):
+        cmd_color.run_colors(
+            None,
+            realization="shape_ornament",
+            recolor="reset",
+        )
+
+    assert events == [
+        (
+            "resolve",
+            "cat",
+            "shape_ornament",
+        ),
+        (
+            "resolve",
+            "dog",
+            "shape_ornament",
+        ),
+        (
+            "final",
+            "cat",
+        ),
+        (
+            "final",
+            "dog",
+        ),
+        (
+            "source",
+            "cat",
+        ),
+        (
+            "source",
+            "dog",
+        ),
+    ]
