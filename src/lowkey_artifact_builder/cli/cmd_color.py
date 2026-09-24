@@ -1,7 +1,7 @@
 """
 Color analysis command.
 
-Reports physical color assignments for registered Artwork.
+Reports physical color analysis for Artifact Realizations.
 """
 # File: src/lowkey_artifact_builder/cli/cmd_color.py
 # Copyright 2026 LowKeyLabs LLC
@@ -28,6 +28,10 @@ from lowkey_artifact_builder.model.models.artwork.color_analysis import (
     ArtworkColorAnalysis,
     analyze_registered_artwork_colors,
 )
+from lowkey_artifact_builder.model.models.shape.color_analysis import (
+    ShapeColorAnalysis,
+    analyze_shape_colors,
+)
 
 # =========================================================
 # Analysis
@@ -38,9 +42,9 @@ def analyze_artifact_colors(
     artifact_id: str,
     *,
     realization: str | None = None,
-) -> ArtworkColorAnalysis:
+) -> ArtworkColorAnalysis | ShapeColorAnalysis:
     """
-    Analyze physical color assignments for one configured artifact.
+    Analyze physical colors for one configured Artifact.
 
     Without an explicitly selected Realization, analysis targets the canonical
     default Artwork Realization's registered manifest and realizes the required
@@ -146,15 +150,18 @@ def _analyze_artwork_colors(
 
 def _analyze_shape_colors(
     plan: BuildPlan,
-) -> ArtworkColorAnalysis:
+) -> ShapeColorAnalysis:
     """
     Analyze colors for a Shape Realization.
 
-    Shape-specific color analysis is introduced through this boundary so
-    Shape semantic colors are not interpreted as Artwork color assignments.
+    Shape semantic colors are resolved directly from configuration rather than
+    interpreted as Artwork color assignments or obtained through Shape stage
+    execution.
     """
 
-    raise NotImplementedError("Shape color analysis is not yet implemented.")
+    return analyze_shape_colors(
+        resolver=plan.resolver,
+    )
 
 
 def _registered_artwork_manifest(
@@ -196,7 +203,7 @@ def cli(
     realization: str | None,
 ) -> None:
     """
-    Report color diagnostics for registered Artwork.
+    Report color diagnostics for an Artifact or Realization.
     """
 
     analysis = analyze_artifact_colors(

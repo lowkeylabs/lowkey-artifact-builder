@@ -14,6 +14,10 @@ from lowkey_artifact_builder.colors import (
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
     ArtworkColorAnalysis,
 )
+from lowkey_artifact_builder.model.models.shape.color_analysis import (
+    ShapeColorAnalysis,
+    ShapeColorCandidate,
+)
 
 from .common import (
     console,
@@ -25,7 +29,84 @@ from .common import (
 # =========================================================
 
 
+def _format_shape_candidate(
+    candidate: ShapeColorCandidate,
+) -> str:
+    """
+    Format one advisory Shape color comparison.
+    """
+
+    return f"{candidate.name}\n{candidate.distance:.2f}"
+
+
 def display_color_analysis(
+    analysis: ArtworkColorAnalysis | ShapeColorAnalysis,
+) -> None:
+    """
+    Display physical color analysis.
+    """
+
+    if isinstance(
+        analysis,
+        ArtworkColorAnalysis,
+    ):
+        _display_artwork_color_analysis(
+            analysis,
+        )
+        return
+
+    if isinstance(
+        analysis,
+        ShapeColorAnalysis,
+    ):
+        _display_shape_color_analysis(
+            analysis,
+        )
+        return
+
+    raise TypeError(f"Unsupported color-analysis type: {type(analysis).__name__}.")
+
+
+def _display_shape_color_analysis(
+    analysis: ShapeColorAnalysis,
+) -> None:
+    """
+    Display Shape semantic-color analysis.
+    """
+
+    table = create_table()
+
+    table.add_column("Layer", no_wrap=True)
+    table.add_column("System", no_wrap=True)
+    table.add_column("Printer", no_wrap=True)
+    table.add_column("Library", no_wrap=True)
+    table.add_column("Catalog", no_wrap=True)
+    table.add_column("Used By")
+
+    for color in analysis.colors:
+        table.add_row(
+            color.color,
+            _format_shape_candidate(
+                color.system_candidate,
+            ),
+            _format_shape_candidate(
+                color.printer_candidate,
+            ),
+            _format_shape_candidate(
+                color.library_candidate,
+            ),
+            _format_shape_candidate(
+                color.catalog_candidate,
+            ),
+            ", ".join(
+                color.used_by,
+            ),
+        )
+
+    console.print(table)
+
+
+def _display_artwork_color_analysis(
     analysis: ArtworkColorAnalysis,
 ) -> None:
     """

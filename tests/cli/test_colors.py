@@ -16,6 +16,7 @@ from click.testing import CliRunner
 
 import lowkey_artifact_builder.cli.cmd_color as cmd_color
 from lowkey_artifact_builder.cli._main import cli
+from lowkey_artifact_builder.engine import BuildPlan
 from lowkey_artifact_builder.model import ProductRef
 
 # =========================================================
@@ -1062,3 +1063,56 @@ def test_requested_artwork_realization_targets_registered_manifest(
     assert executed == [
         targeted_plan,
     ]
+
+
+def test_shape_color_analysis_uses_resolved_configuration_without_execution(
+    monkeypatch,
+) -> None:
+    """
+    Shape color analysis consumes the selected Realization's resolved
+    configuration directly.
+
+    Structural semantic-color inspection must not execute Shape stages merely
+    to obtain color information already available through the resolver.
+    """
+
+    resolver = object()
+
+    plan = Mock(
+        spec=BuildPlan,
+    )
+    plan.resolver = resolver
+
+    expected_analysis = object()
+
+    def fail_execute(
+        *args,
+        **kwargs,
+    ) -> None:
+        raise AssertionError("Shape color analysis must not execute build stages.")
+
+    def fake_analyze_shape_colors(
+        *,
+        resolver,
+    ) -> object:
+        assert resolver is plan.resolver
+
+        return expected_analysis
+
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        fail_execute,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_shape_colors",
+        fake_analyze_shape_colors,
+        raising=False,
+    )
+
+    analysis = cmd_color._analyze_shape_colors(
+        plan,
+    )
+
+    assert analysis is expected_analysis

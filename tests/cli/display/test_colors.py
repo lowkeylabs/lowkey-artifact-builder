@@ -19,6 +19,11 @@ from lowkey_artifact_builder.colors import (
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
     ArtworkColorAnalysis,
 )
+from lowkey_artifact_builder.model.models.shape.color_analysis import (
+    ShapeColor,
+    ShapeColorAnalysis,
+    ShapeColorCandidate,
+)
 
 # =========================================================
 # Test support
@@ -400,3 +405,82 @@ def test_color_report_preserves_structured_analysis_order(
 
     assert output.index("printer-red") < output.index("printer-green")
     assert output.index("printer-green") < output.index("printer-blue")
+
+
+# =========================================================
+# Shape semantic colors
+# =========================================================
+
+
+def test_shape_color_report_displays_semantic_color_comparisons_and_usage(
+    capsys,
+) -> None:
+    """
+    Shape color reporting preserves the semantic color identity while exposing
+    advisory System, Printer, Library, and Catalog comparisons and component
+    usage.
+    """
+
+    analysis = ShapeColorAnalysis(
+        colors=(
+            ShapeColor(
+                color="orange",
+                used_by=(
+                    "base",
+                    "outer-ridge",
+                ),
+                system_candidate=ShapeColorCandidate(
+                    name="system-red",
+                    distance=1.25,
+                ),
+                printer_candidate=ShapeColorCandidate(
+                    name="printer-red",
+                    distance=2.50,
+                ),
+                library_candidate=ShapeColorCandidate(
+                    name="library-amber",
+                    distance=3.75,
+                ),
+                catalog_candidate=ShapeColorCandidate(
+                    name="catalog-orange",
+                    distance=0.50,
+                ),
+            ),
+        ),
+    )
+
+    display_color_analysis(
+        analysis,
+    )
+
+    output = capsys.readouterr().out
+
+    assert "Layer" in output
+    assert "System" in output
+    assert "Printer" in output
+    assert "Library" in output
+    assert "Catalog" in output
+    assert "Used By" in output
+
+    assert output.index("Layer") < output.index("System")
+    assert output.index("System") < output.index("Printer")
+    assert output.index("Printer") < output.index("Library")
+    assert output.index("Library") < output.index("Catalog")
+    assert output.index("Catalog") < output.index("Used By")
+
+    assert "orange" in output
+
+    assert "system-red" in output
+    assert "1.25" in output
+
+    assert "printer-red" in output
+    assert "2.50" in output
+
+    assert "library-amber" in output
+    assert "3.75" in output
+
+    assert "catalog-orange" in output
+    assert "0.50" in output
+
+    assert "base" in output
+    assert "outer-ridge" in output
