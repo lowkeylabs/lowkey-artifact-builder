@@ -806,13 +806,29 @@ def run_colors(
     if recolor == "reset":
         project_root = Path.cwd()
 
+        prepared_plans: tuple[BuildPlan, ...] = ()
+
+        if realization is None:
+            prepared_plans = _prepare_artifact_recolor(
+                artifact_id,
+                project_root=project_root,
+            )
+
         _reset_printer_colors(
             artifact_id,
             realization=realization,
             project_root=project_root,
         )
 
-        if realization is not None:
+        if realization is None:
+            for prepared_plan in prepared_plans:
+                _recolor_existing_final(
+                    artifact_id,
+                    realization=prepared_plan.realization_name,
+                    project_root=project_root,
+                )
+
+        else:
             _recolor_existing_final(
                 artifact_id,
                 realization=realization,

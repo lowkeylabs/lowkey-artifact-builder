@@ -675,6 +675,12 @@ def test_recolor_reset_removes_artifact_printer_colors(
         raising=False,
     )
 
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        lambda artifact_id, *, project_root: (),
+    )
+
     expected_analysis = object()
 
     monkeypatch.setattr(
@@ -2882,6 +2888,175 @@ def test_recolor_library_at_artifact_scope_prepares_before_persisting_and_recolo
                 "library-white",
                 "library-red",
             ),
+            tmp_path,
+        ),
+        (
+            "recolor",
+            "dog",
+            "artwork_default",
+            tmp_path,
+        ),
+        (
+            "recolor",
+            "dog",
+            "shape_default",
+            tmp_path,
+        ),
+        (
+            "recolor",
+            "dog",
+            "shape_ornament",
+            tmp_path,
+        ),
+        (
+            "analyze",
+            "dog",
+            None,
+        ),
+    ]
+
+
+def test_recolor_reset_at_artifact_scope_prepares_before_resetting_and_recoloring(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-scoped reset validates the complete Realization scope before
+    removing Artifact printer_colors or mutating any existing final 3MF.
+
+    After successful preparation, the Artifact override is removed once and
+    every prepared Realization is recolored independently against its newly
+    effective configuration.
+    """
+
+    prepared_plans = (
+        cast(
+            BuildPlan,
+            SimpleNamespace(
+                realization_name="artwork_default",
+            ),
+        ),
+        cast(
+            BuildPlan,
+            SimpleNamespace(
+                realization_name="shape_default",
+            ),
+        ),
+        cast(
+            BuildPlan,
+            SimpleNamespace(
+                realization_name="shape_ornament",
+            ),
+        ),
+    )
+
+    events: list[tuple[object, ...]] = []
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    def fake_prepare_artifact_recolor(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> tuple[BuildPlan, ...]:
+        events.append(
+            (
+                "prepare",
+                artifact_id,
+                project_root,
+            )
+        )
+        return prepared_plans
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        fake_prepare_artifact_recolor,
+    )
+
+    def fake_reset_printer_colors(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        project_root: Path,
+    ) -> None:
+        events.append(
+            (
+                "reset",
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_reset_printer_colors",
+        fake_reset_printer_colors,
+    )
+
+    def fake_recolor_existing_final(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+    ) -> None:
+        events.append(
+            (
+                "recolor",
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_recolor_existing_final",
+        fake_recolor_existing_final,
+    )
+
+    expected_analysis = object()
+
+    def fake_analyze_artifact_colors(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+    ) -> object:
+        events.append(
+            (
+                "analyze",
+                artifact_id,
+                realization,
+            )
+        )
+        return expected_analysis
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        fake_analyze_artifact_colors,
+    )
+
+    result = cmd_color.run_colors(
+        "dog",
+        recolor="reset",
+    )
+
+    assert result is expected_analysis
+
+    assert events == [
+        (
+            "prepare",
+            "dog",
+            tmp_path,
+        ),
+        (
+            "reset",
+            "dog",
+            None,
             tmp_path,
         ),
         (
