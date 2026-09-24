@@ -17,8 +17,12 @@ from lowkey_artifact_builder.colors import (
     PaletteColor,
 )
 from lowkey_artifact_builder.engine import BuildPlan
+from lowkey_artifact_builder.model import ProductRef
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
     ArtworkColorAnalysis,
+)
+from lowkey_artifact_builder.model.models.shape.color_analysis import (
+    ShapeColorAnalysis,
 )
 
 
@@ -2108,3 +2112,185 @@ def test_bulk_realization_reset_requires_all_recolor_sources_before_any_mutation
             "dog",
         ),
     ]
+
+
+def test_artwork_color_analysis_builds_only_registered_manifest_dependency(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Read-only Artwork color analysis targets only the registered vector
+    manifest required for analysis, not a complete Artwork manufacturing
+    build.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    manifest = tmp_path / "manifest.json"
+
+    manifest_product = Mock()
+    manifest_product.name = "manifest"
+    manifest_product.path = manifest
+
+    vector_stage = Mock()
+    vector_stage.name = "vector"
+    vector_stage.products = (manifest_product,)
+
+    plan = Mock(spec=BuildPlan)
+    plan.stages = (vector_stage,)
+    plan.resolver = Mock()
+
+    captured_targets: list[tuple[ProductRef, ...] | None] = []
+    executed: list[BuildPlan] = []
+
+    def fake_create_build_plan(
+        artifact_id: str,
+        *,
+        realization: str,
+        targets: tuple[ProductRef, ...] | None = None,
+        project_root: Path,
+    ) -> BuildPlan:
+        assert artifact_id == "dog"
+        assert realization == "artwork_default"
+
+        captured_targets.append(targets)
+
+        return plan
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_build_plan",
+        fake_create_build_plan,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda build_plan: executed.append(build_plan),
+    )
+
+    expected = Mock(spec=ArtworkColorAnalysis)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        lambda *, manifest, resolver: expected,
+    )
+
+    result = cmd_color.analyze_artifact_colors(
+        "dog",
+    )
+
+    assert result is expected
+    assert executed == [plan]
+
+    assert len(captured_targets) == 1
+    assert captured_targets[0] is not None
+    assert len(captured_targets[0]) == 1
+
+    target = captured_targets[0][0]
+
+    assert target == ProductRef(
+        artifact="dog",
+        model="artwork",
+        realization="artwork_default",
+        stage="vector",
+        product="manifest",
+    )
+
+
+def test_shape_color_analysis_builds_only_bound_artwork_manifest_dependency(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Read-only Shape color analysis realizes only its exact planned Artwork
+    manifest dependency and does not execute the Shape plan or a standalone
+    Artwork manufacturing build.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    dependency = Mock()
+    dependency.product_ref = ProductRef(
+        artifact="dog",
+        model="artwork",
+        realization="artwork_default",
+        stage="vector",
+        product="manifest",
+    )
+
+    shape_plan = Mock(spec=BuildPlan)
+    shape_plan.model_name = "shape"
+    shape_plan.realization_name = "shape_ornament"
+    shape_plan.project_root = tmp_path
+    shape_plan.planned_product_dependencies = (dependency,)
+    shape_plan.resolver = Mock()
+
+    manifest = tmp_path / "manifest.json"
+
+    manifest_product = Mock()
+    manifest_product.name = "manifest"
+    manifest_product.path = manifest
+
+    vector_stage = Mock()
+    vector_stage.name = "vector"
+    vector_stage.products = (manifest_product,)
+
+    artwork_plan = Mock(spec=BuildPlan)
+    artwork_plan.stages = (vector_stage,)
+    artwork_plan.resolver = Mock()
+
+    dependency_plans: list[object] = []
+    executed: list[BuildPlan] = []
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_color_realization",
+        lambda artifact_id, *, realization, project_root: shape_plan,
+    )
+
+    def fake_create_product_dependency_build_plan(
+        selected_dependency: object,
+        *,
+        project_root: Path,
+    ) -> BuildPlan:
+        dependency_plans.append(selected_dependency)
+
+        assert selected_dependency is dependency
+        assert project_root == tmp_path
+
+        return artwork_plan
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_product_dependency_build_plan",
+        fake_create_product_dependency_build_plan,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda build_plan: executed.append(build_plan),
+    )
+
+    artwork_analysis = Mock(spec=ArtworkColorAnalysis)
+    shape_analysis = Mock(spec=ShapeColorAnalysis)
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        lambda *, manifest, resolver: artwork_analysis,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_shape_colors",
+        lambda *, resolver, artwork: shape_analysis,
+    )
+
+    result = cmd_color.analyze_artifact_colors(
+        "dog",
+        realization="shape_ornament",
+    )
+
+    assert result is shape_analysis
+    assert dependency_plans == [dependency]
+    assert executed == [artwork_plan]
