@@ -2234,3 +2234,256 @@ def test_recolor_reset_updates_selected_realization_existing_final(
             "shape_ornament",
         ),
     ]
+
+
+def test_resolve_artifact_recolor_realizations_includes_canonical_and_explicit_realizations(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-scoped recoloring selects every applicable Realization, including
+    canonical Realizations that do not require explicit Artifact configuration
+    and additional explicitly configured Realizations.
+    """
+
+    expected = (
+        "artwork_default",
+        "shape_default",
+        "shape_ornament",
+        "gift_ornament",
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "get_realization_names",
+        lambda artifact_id, *, project_root: expected,
+        raising=False,
+    )
+
+    result = cmd_color._resolve_artifact_recolor_realizations(
+        "dog",
+        project_root=tmp_path,
+    )
+
+    assert result == expected
+
+
+def test_prepare_artifact_recolor_rejects_missing_final_before_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-scoped recoloring validates every selected Realization before
+    configuration or final-3MF mutation begins.
+
+    If any selected Realization lacks its existing final 3MF, preparation
+    fails without recoloring any Realization.
+    """
+
+    realizations = (
+        "artwork_default",
+        "shape_default",
+        "shape_ornament",
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_artifact_recolor_realizations",
+        lambda artifact_id, *, project_root: realizations,
+    )
+
+    plans: dict[str, object] = {}
+
+    for realization in realizations:
+        final_path = tmp_path / realization / "artifact.3mf"
+
+        if realization != "shape_default":
+            final_path.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+            final_path.touch()
+
+        plans[realization] = SimpleNamespace(
+            artifact_id="dog",
+            realization_name=realization,
+            model_name="artwork" if realization == "artwork_default" else "shape",
+            stages=(
+                SimpleNamespace(
+                    name="package",
+                    products=(
+                        SimpleNamespace(
+                            name="artifact",
+                            path=final_path,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+    resolved: list[str] = []
+
+    def fake_resolve_existing_final_realization(
+        artifact_id: str,
+        realization: str,
+        project_root: Path,
+    ) -> object:
+        resolved.append(realization)
+        return plans[realization]
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_existing_final_realization",
+        fake_resolve_existing_final_realization,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_recolor_existing_final",
+        lambda *args, **kwargs: pytest.fail(
+            "Artifact recolor preparation must not mutate final 3MFs"
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        lambda *args, **kwargs: pytest.fail(
+            "Artifact recolor preparation must not mutate configuration"
+        ),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="existing final 3MF",
+    ):
+        cmd_color._prepare_artifact_recolor(
+            "dog",
+            project_root=tmp_path,
+        )
+
+    assert resolved == list(realizations)
+
+
+def test_prepare_artifact_recolor_rejects_missing_recolor_source_before_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-scoped recoloring validates the recolor source for every selected
+    Realization before configuration or final-3MF mutation begins.
+
+    Failure in one Realization must not prevent the remaining selected
+    Realizations from being validated.
+    """
+
+    def make_plan(
+        realization: str,
+        model_name: str,
+    ) -> BuildPlan:
+        final_path = tmp_path / realization / "artifact.3mf"
+
+        final_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        final_path.touch()
+
+        return cast(
+            BuildPlan,
+            SimpleNamespace(
+                artifact_id="dog",
+                realization_name=realization,
+                model_name=model_name,
+                stages=(
+                    SimpleNamespace(
+                        name="package",
+                        products=(
+                            SimpleNamespace(
+                                name="artifact",
+                                path=final_path,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+    plans = (
+        make_plan(
+            "artwork_default",
+            "artwork",
+        ),
+        make_plan(
+            "shape_default",
+            "shape",
+        ),
+        make_plan(
+            "shape_ornament",
+            "shape",
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_artifact_recolor_realizations",
+        lambda artifact_id, *, project_root: tuple(plan.realization_name for plan in plans),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_existing_final_realization",
+        lambda artifact_id, realization, project_root: next(
+            plan for plan in plans if plan.realization_name == realization
+        ),
+    )
+
+    validated: list[str] = []
+
+    def fake_validate_existing_recolor_source(
+        plan: BuildPlan,
+    ) -> None:
+        validated.append(
+            plan.realization_name,
+        )
+
+        if plan.realization_name == "shape_default":
+            raise RuntimeError("Recoloring requires an existing registered Artwork manifest")
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_validate_existing_recolor_source",
+        fake_validate_existing_recolor_source,
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_recolor_existing_final",
+        lambda *args, **kwargs: pytest.fail(
+            "Artifact recolor preparation must not mutate final 3MFs"
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        lambda *args, **kwargs: pytest.fail(
+            "Artifact recolor preparation must not mutate configuration"
+        ),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="registered Artwork manifest",
+    ):
+        cmd_color._prepare_artifact_recolor(
+            "dog",
+            project_root=tmp_path,
+        )
+
+    assert validated == [
+        "artwork_default",
+        "shape_default",
+        "shape_ornament",
+    ]

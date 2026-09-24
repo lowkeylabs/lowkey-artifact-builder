@@ -18,6 +18,7 @@ from lowkey_artifact_builder.cli.display import (
 )
 from lowkey_artifact_builder.config import (
     get_realization_configurations_with_value,
+    get_realization_names,
     remove_all_realization_config_values,
     remove_artifact_config_value,
     remove_realization_config_value,
@@ -100,6 +101,25 @@ def analyze_artifact_colors(
     )
 
 
+def _resolve_artifact_recolor_realizations(
+    artifact_id: str,
+    *,
+    project_root: Path,
+) -> tuple[str, ...]:
+    """
+    Return every effective Realization applicable to Artifact recoloring.
+
+    Configuration owns Realization discovery so canonical Realizations and
+    Artifact-defined Realizations follow the same semantics used by normal
+    planning.
+    """
+
+    return get_realization_names(
+        artifact_id,
+        project_root=project_root,
+    )
+
+
 def _resolve_color_realization(
     artifact_id: str,
     *,
@@ -118,6 +138,110 @@ def _resolve_color_realization(
         artifact_id,
         realization=realization,
         project_root=project_root,
+    )
+
+
+def _prepare_artifact_recolor(
+    artifact_id: str,
+    *,
+    project_root: Path,
+) -> tuple[BuildPlan, ...]:
+    """
+    Resolve and validate the complete Artifact recolor scope.
+
+    Preparation is read-only. Every applicable Realization is resolved and
+    validated before any configuration or final-3MF mutation may occur.
+    """
+
+    realizations = _resolve_artifact_recolor_realizations(
+        artifact_id,
+        project_root=project_root,
+    )
+
+    plans = tuple(
+        _resolve_existing_final_realization(
+            artifact_id,
+            realization,
+            project_root,
+        )
+        for realization in realizations
+    )
+
+    missing_finals: list[Path] = []
+
+    for plan in plans:
+        package_stage = next(stage for stage in plan.stages if stage.name == "package")
+
+        final_product = next(
+            product for product in package_stage.products if product.name == "artifact"
+        )
+
+        if not final_product.path.is_file():
+            missing_finals.append(
+                final_product.path,
+            )
+
+    if missing_finals:
+        missing = ", ".join(str(path) for path in missing_finals)
+
+        raise RuntimeError(
+            f"Recoloring requires an existing final 3MF for every "
+            f"applicable Realization; missing: {missing}"
+        )
+
+    source_errors: list[RuntimeError] = []
+
+    for plan in plans:
+        try:
+            _validate_existing_recolor_source(
+                plan,
+            )
+        except RuntimeError as exc:
+            source_errors.append(
+                exc,
+            )
+
+    if source_errors:
+        if len(source_errors) == 1:
+            raise source_errors[0]
+
+        details = "; ".join(str(error) for error in source_errors)
+
+        raise RuntimeError(
+            f"Recoloring requires usable existing recolor sources for every "
+            f"applicable Realization: {details}"
+        )
+
+    return plans
+
+
+def _validate_existing_recolor_source(
+    plan: BuildPlan,
+) -> None:
+    """
+    Validate that an existing Realization has the source data needed to recolor
+    its final 3MF without executing build stages.
+
+    Artwork Realizations require an existing registered Artwork manifest.
+    Shape Realizations require the same only when they consume Artwork.
+    Shape Realizations without Artwork have no physical Artwork assignments to
+    validate or apply.
+    """
+
+    if plan.model_name == "artwork":
+        _analyze_existing_artwork_colors(
+            plan,
+        )
+        return
+
+    if plan.model_name == "shape":
+        _analyze_existing_shape_artwork_colors(
+            plan,
+        )
+        return
+
+    raise NotImplementedError(
+        f"Existing-final recoloring is not yet implemented for model {plan.model_name!r}."
     )
 
 
