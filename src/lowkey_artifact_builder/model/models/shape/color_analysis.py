@@ -80,6 +80,7 @@ class ShapeColor:
     system_candidate: ShapeColorCandidate
     printer_candidate: ShapeColorCandidate
     library_candidate: ShapeColorCandidate
+    catalog_candidate: ShapeColorCandidate
 
 
 @dataclass(frozen=True)
@@ -104,9 +105,11 @@ def analyze_shape_colors(
     Components sharing one semantic physical color occupy one color row.
     Component identity is preserved through that row's used_by membership.
 
-    System, effective Printer, and Library palettes are compared independently
-    with each semantic Shape color. The nearest candidate in each scope is
-    advisory and does not replace the semantic color identity.
+    System, effective Printer, Library, and Catalog colors are compared
+    independently with each semantic Shape color. The nearest candidate in
+    each scope is advisory and does not replace the semantic color identity.
+
+    Catalog-wide comparison includes physical catalog colors only.
     """
 
     base_color = resolver(
@@ -198,6 +201,10 @@ def analyze_shape_colors(
         ),
     )
 
+    catalog_colors = _resolve_catalog_colors(
+        resolver=resolver,
+    )
+
     return ShapeColorAnalysis(
         colors=tuple(
             ShapeColor(
@@ -218,6 +225,11 @@ def analyze_shape_colors(
                 library_candidate=_nearest_candidate(
                     semantic_color=color,
                     candidates=library_colors,
+                    resolver=resolver,
+                ),
+                catalog_candidate=_nearest_candidate(
+                    semantic_color=color,
+                    candidates=catalog_colors,
                     resolver=resolver,
                 ),
             )
@@ -248,6 +260,47 @@ def _resolve_palette_colors(
     return resolve_palette(
         names,
         resolver.colors,
+    )
+
+
+def _resolve_catalog_colors(
+    *,
+    resolver: ShapeColorResolver,
+) -> tuple[PaletteColor, ...]:
+    """
+    Resolve physical colors participating in catalog-wide comparison.
+
+    Entries whose manufacturer is "test" are nonphysical catalog entries
+    and are excluded, matching Artwork catalog-wide analysis semantics.
+    """
+
+    names = tuple(
+        name
+        for name, entry in resolver.colors.items()
+        if _is_physical_catalog_color(
+            entry,
+        )
+    )
+
+    return resolve_palette(
+        names,
+        resolver.colors,
+    )
+
+
+def _is_physical_catalog_color(
+    entry: object,
+) -> bool:
+    """
+    Return whether a catalog entry represents physical filament.
+    """
+
+    return (
+        isinstance(
+            entry,
+            Mapping,
+        )
+        and entry.get("manufacturer") != "test"
     )
 
 

@@ -42,7 +42,16 @@ class StubResolver:
             ],
             **(system_values or {}),
         }
-        self._colors = colors or {}
+        self._colors = colors or {
+            "black": {
+                "rgb": [0, 0, 0],
+                "manufacturer": "test-default",
+            },
+            "white": {
+                "rgb": [255, 255, 255],
+                "manufacturer": "test-default",
+            },
+        }
 
     def __call__(
         self,
@@ -374,3 +383,72 @@ def test_shape_color_analysis_compares_library_independently() -> None:
 
     assert color.library_candidate.name == "yellow"
     assert color.library_candidate.distance > 0.0
+
+
+def test_shape_color_analysis_compares_physical_catalog_independently() -> None:
+    """
+    Catalog advisory comparison uses all physical catalog colors independently
+    of System, Printer, and Library.
+
+    Nonphysical test colors are excluded from catalog-wide comparison, and the
+    comparison does not replace the structural semantic color identity.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_base_color": "orange",
+            "shape_outer_ridge_width": 0.0,
+            "shape_artwork_fill_color": "none",
+            "printer_colors": [
+                "red",
+            ],
+            "library_colors": [
+                "yellow",
+            ],
+        },
+        system_values={
+            "printer_colors": [
+                "blue",
+            ],
+        },
+        colors={
+            "orange": {
+                "rgb": [255, 128, 0],
+                "manufacturer": "test",
+            },
+            "red": {
+                "rgb": [255, 0, 0],
+                "manufacturer": "test",
+            },
+            "blue": {
+                "rgb": [0, 0, 255],
+                "manufacturer": "test",
+            },
+            "yellow": {
+                "rgb": [255, 255, 0],
+                "manufacturer": "test",
+            },
+            "physical-green": {
+                "rgb": [0, 255, 0],
+                "manufacturer": "Example",
+            },
+        },
+    )
+
+    analysis = analyze_shape_colors(
+        resolver=resolver,
+    )
+
+    assert len(analysis.colors) == 1
+
+    color = analysis.colors[0]
+
+    assert color.color == "orange"
+    assert color.used_by == ("base",)
+
+    assert color.system_candidate.name == "blue"
+    assert color.printer_candidate.name == "red"
+    assert color.library_candidate.name == "yellow"
+
+    assert color.catalog_candidate.name == "physical-green"
+    assert color.catalog_candidate.distance > 0.0
