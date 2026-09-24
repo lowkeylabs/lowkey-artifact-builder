@@ -71,17 +71,22 @@ def _display_shape_color_analysis(
     analysis: ShapeColorAnalysis,
 ) -> None:
     """
-    Display Shape semantic-color analysis.
+    Display Shape Realization color analysis.
+
+    Shape-owned structural colors retain semantic-color comparison semantics.
+    Participating Artwork colors retain Artwork physical-color assignment
+    semantics. Both are presented in one realization-level table with
+    component usage.
     """
 
-    table = create_table()
+    table = create_table(expand=False)
 
     table.add_column("Layer", no_wrap=True)
     table.add_column("System", no_wrap=True)
     table.add_column("Printer", no_wrap=True)
     table.add_column("Library", no_wrap=True)
     table.add_column("Catalog", no_wrap=True)
-    table.add_column("Used By")
+    table.add_column("Used By", no_wrap=True)
 
     for color in analysis.colors:
         table.add_row(
@@ -102,6 +107,48 @@ def _display_shape_color_analysis(
                 color.used_by,
             ),
         )
+
+    if analysis.artwork is not None:
+        system = _assignments_by_index(
+            analysis.artwork.system_assignments,
+        )
+        printer = _assignments_by_index(
+            analysis.artwork.printer_assignments,
+        )
+        library = _assignments_by_index(
+            analysis.artwork.library_assignments,
+        )
+        catalog = _assignments_by_index(
+            analysis.artwork.catalog_assignments,
+        )
+
+        for assignment in analysis.artwork.printer_assignments.assignments:
+            index = assignment.measured.index
+
+            table.add_row(
+                _format_artifact_color(
+                    index,
+                    assignment.measured.rgb,
+                ),
+                _format_assignment(
+                    system[index],
+                ),
+                _format_assignment(
+                    printer[index],
+                ),
+                _format_assignment(
+                    library[index],
+                ),
+                _format_assignment(
+                    catalog[index],
+                ),
+                ", ".join(
+                    (analysis.artwork_used_by or {}).get(
+                        index,
+                        (),
+                    ),
+                ),
+            )
 
     console.print(table)
 

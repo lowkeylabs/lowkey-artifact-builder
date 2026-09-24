@@ -570,3 +570,59 @@ def test_shape_color_analysis_preserves_supplied_artwork_analysis() -> None:
     )
 
     assert analysis.artwork is artwork
+
+
+def test_shape_color_analysis_identifies_artwork_color_usage() -> None:
+    """
+    Artwork-derived colors participating in a Shape Realization retain explicit
+    realization-level component usage.
+
+    Usage belongs to the Shape Realization rather than to Artwork assignment
+    analysis itself.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_base_color": "white",
+            "shape_outer_ridge_width": 0.0,
+            "shape_artwork_fill_color": "none",
+        }
+    )
+
+    measured = MeasuredColor(
+        index=1,
+        rgb=(240, 80, 40),
+    )
+
+    def assignment_result(
+        name: str,
+    ) -> ColorAssignmentResult:
+        return ColorAssignmentResult(
+            assignments=(
+                ColorAssignment(
+                    measured=measured,
+                    color=PaletteColor(
+                        name=name,
+                        rgb=measured.rgb,
+                    ),
+                    distance=0.0,
+                ),
+            ),
+            distance=0.0,
+        )
+
+    artwork = ArtworkColorAnalysis(
+        system_assignments=assignment_result("system-red"),
+        printer_assignments=assignment_result("printer-red"),
+        library_assignments=assignment_result("library-red"),
+        catalog_assignments=assignment_result("catalog-red"),
+    )
+
+    analysis = analyze_shape_colors(
+        resolver=resolver,
+        artwork=artwork,
+    )
+
+    assert analysis.artwork_used_by == {
+        1: ("artwork",),
+    }

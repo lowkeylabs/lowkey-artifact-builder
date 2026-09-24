@@ -94,10 +94,14 @@ class ShapeColorAnalysis:
     Shape-owned structural colors retain their semantic-color comparison
     semantics. Artwork-derived colors retain their Artwork physical-color
     assignment semantics.
+
+    Artwork usage belongs to the Shape Realization and is keyed by persistent
+    Artwork color identity.
     """
 
     colors: tuple[ShapeColor, ...]
     artwork: ArtworkColorAnalysis | None = None
+    artwork_used_by: dict[int, tuple[str, ...]] | None = None
 
 
 def analyze_shape_colors(
@@ -217,6 +221,15 @@ def analyze_shape_colors(
         resolver=resolver,
     )
 
+    artwork_used_by = (
+        {
+            assignment.measured.index: ("artwork",)
+            for assignment in artwork.printer_assignments.assignments
+        }
+        if artwork is not None
+        else None
+    )
+
     return ShapeColorAnalysis(
         colors=tuple(
             ShapeColor(
@@ -248,6 +261,7 @@ def analyze_shape_colors(
             for color, used_by in usage.items()
         ),
         artwork=artwork,
+        artwork_used_by=artwork_used_by,
     )
 
 

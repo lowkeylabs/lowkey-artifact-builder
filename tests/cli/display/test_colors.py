@@ -7,6 +7,10 @@ Tests for Artwork color analysis presentation.
 
 from __future__ import annotations
 
+import pytest
+from rich.console import Console
+
+from lowkey_artifact_builder.cli.display import colors as colors_display
 from lowkey_artifact_builder.cli.display import (
     display_color_analysis,
 )
@@ -28,6 +32,24 @@ from lowkey_artifact_builder.model.models.shape.color_analysis import (
 # =========================================================
 # Test support
 # =========================================================
+
+
+@pytest.fixture(autouse=True)
+def _wide_display_console(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Give display tests a deterministic width sufficient to inspect table
+    content without Rich truncating semantic columns or values.
+    """
+
+    monkeypatch.setattr(
+        colors_display,
+        "console",
+        Console(
+            width=200,
+        ),
+    )
 
 
 def _assignment_result(
@@ -484,3 +506,136 @@ def test_shape_color_report_displays_semantic_color_comparisons_and_usage(
 
     assert "base" in output
     assert "outer-ridge" in output
+
+
+def test_shape_color_report_displays_participating_artwork_colors(
+    capsys,
+) -> None:
+    """
+    A Shape Realization report includes participating Artwork colors.
+
+    Artwork-derived colors retain their Artwork physical-color assignment
+    semantics rather than being treated as Shape-owned semantic colors.
+    """
+
+    artwork = _analysis()
+
+    analysis = ShapeColorAnalysis(
+        colors=(
+            ShapeColor(
+                color="orange",
+                used_by=("base",),
+                system_candidate=ShapeColorCandidate(
+                    name="system-orange",
+                    distance=1.0,
+                ),
+                printer_candidate=ShapeColorCandidate(
+                    name="printer-orange",
+                    distance=2.0,
+                ),
+                library_candidate=ShapeColorCandidate(
+                    name="library-orange",
+                    distance=3.0,
+                ),
+                catalog_candidate=ShapeColorCandidate(
+                    name="catalog-orange",
+                    distance=4.0,
+                ),
+            ),
+        ),
+        artwork=artwork,
+    )
+
+    display_color_analysis(
+        analysis,
+    )
+
+    output = capsys.readouterr().out
+
+    assert "orange" in output
+    assert "base" in output
+
+    for name in (
+        "system-red",
+        "system-green",
+        "system-blue",
+        "printer-red",
+        "printer-green",
+        "printer-blue",
+        "library-red",
+        "library-green",
+        "library-blue",
+        "catalog-red",
+        "catalog-green",
+        "catalog-blue",
+    ):
+        assert name in output
+
+
+def test_shape_color_report_combines_structural_and_artwork_colors(
+    capsys,
+) -> None:
+    """
+    A Shape Realization presents structural and participating Artwork colors
+    together in one realization-level color table.
+
+    Structural rows retain semantic-color comparison semantics. Artwork rows
+    retain Artwork assignment semantics. Both expose realization component
+    usage.
+    """
+
+    artwork = _analysis()
+
+    analysis = ShapeColorAnalysis(
+        colors=(
+            ShapeColor(
+                color="orange",
+                used_by=("base",),
+                system_candidate=ShapeColorCandidate(
+                    name="system-orange",
+                    distance=1.0,
+                ),
+                printer_candidate=ShapeColorCandidate(
+                    name="printer-orange",
+                    distance=2.0,
+                ),
+                library_candidate=ShapeColorCandidate(
+                    name="library-orange",
+                    distance=3.0,
+                ),
+                catalog_candidate=ShapeColorCandidate(
+                    name="catalog-orange",
+                    distance=4.0,
+                ),
+            ),
+        ),
+        artwork=artwork,
+        artwork_used_by={
+            1: ("artwork",),
+            2: ("artwork",),
+            3: ("artwork",),
+        },
+    )
+
+    display_color_analysis(
+        analysis,
+    )
+
+    output = capsys.readouterr().out
+
+    assert output.count("Used By") == 1
+
+    assert output.index("Layer") < output.index("System")
+    assert output.index("System") < output.index("Printer")
+    assert output.index("Printer") < output.index("Library")
+    assert output.index("Library") < output.index("Catalog")
+    assert output.index("Catalog") < output.index("Used By")
+
+    assert "orange" in output
+    assert "base" in output
+
+    assert "1 (250, 10, 10)" in output
+    assert "2 (10, 250, 10)" in output
+    assert "3 (10, 10, 250)" in output
+
+    assert output.count("artwork") == 3
