@@ -3631,3 +3631,175 @@ def test_prepare_existing_final_recolor_computes_artwork_component_colors(
     )
 
     assert result == expected_component_colors
+
+
+def test_prepare_existing_final_recolor_computes_shape_artwork_component_colors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Prospective recolor preparation for a Shape computes only the participating
+    Artwork component colors against the supplied effective printer palette.
+
+    Model-owned structural Shape colors remain semantic colors and are not
+    included in the physical Artwork recolor mutation.
+    """
+
+    projected_printer_colors = (
+        "library-black",
+        "library-white",
+        "library-red",
+    )
+
+    projected_resolver = object()
+    artwork_analysis = object()
+
+    expected_component_colors = {
+        "artwork-1": object(),
+        "artwork-2": object(),
+        "artwork-3": object(),
+    }
+
+    resolver = Mock()
+    resolver.with_values.return_value = projected_resolver
+
+    @dataclass(frozen=True)
+    class FakeBuildPlan:
+        model_name: str
+        resolver: object
+
+    plan = cast(
+        BuildPlan,
+        FakeBuildPlan(
+            model_name="shape",
+            resolver=resolver,
+        ),
+    )
+
+    analyze_shape_artwork = Mock(
+        return_value=artwork_analysis,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_analyze_existing_shape_artwork_colors",
+        analyze_shape_artwork,
+    )
+
+    component_colors = Mock(
+        return_value=expected_component_colors,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "artwork_component_colors",
+        component_colors,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "update_component_colors",
+        lambda *args, **kwargs: pytest.fail("Preparation must not mutate the final 3MF"),
+    )
+
+    result = cmd_color._prepare_existing_final_recolor(
+        plan,
+        printer_colors=projected_printer_colors,
+    )
+
+    resolver.with_values.assert_called_once_with(
+        {
+            "printer_colors": projected_printer_colors,
+        },
+        provenance="prospective recolor",
+    )
+
+    analyze_shape_artwork.assert_called_once()
+
+    analyzed_plan = analyze_shape_artwork.call_args.args[0]
+
+    assert analyzed_plan.resolver is projected_resolver
+
+    component_colors.assert_called_once_with(
+        artwork_analysis,
+    )
+
+    assert result == expected_component_colors
+
+
+def test_prepare_existing_final_recolor_shape_without_artwork_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A Shape without participating Artwork has no physical Artwork component
+    recolor mutation to prepare.
+
+    Structural Shape colors retain their Model-owned semantic identities.
+    """
+
+    projected_printer_colors = (
+        "library-black",
+        "library-white",
+        "library-red",
+    )
+
+    projected_resolver = object()
+
+    resolver = Mock()
+    resolver.with_values.return_value = projected_resolver
+
+    @dataclass(frozen=True)
+    class FakeBuildPlan:
+        model_name: str
+        resolver: object
+
+    plan = cast(
+        BuildPlan,
+        FakeBuildPlan(
+            model_name="shape",
+            resolver=resolver,
+        ),
+    )
+
+    analyze_shape_artwork = Mock(
+        return_value=None,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_analyze_existing_shape_artwork_colors",
+        analyze_shape_artwork,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "artwork_component_colors",
+        lambda analysis: pytest.fail(
+            "Shape without Artwork must not compute Artwork component colors"
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "update_component_colors",
+        lambda *args, **kwargs: pytest.fail("Preparation must not mutate the final 3MF"),
+    )
+
+    result = cmd_color._prepare_existing_final_recolor(
+        plan,
+        printer_colors=projected_printer_colors,
+    )
+
+    resolver.with_values.assert_called_once_with(
+        {
+            "printer_colors": projected_printer_colors,
+        },
+        provenance="prospective recolor",
+    )
+
+    analyze_shape_artwork.assert_called_once()
+
+    analyzed_plan = analyze_shape_artwork.call_args.args[0]
+
+    assert analyzed_plan.resolver is projected_resolver
+
+    assert result == {}

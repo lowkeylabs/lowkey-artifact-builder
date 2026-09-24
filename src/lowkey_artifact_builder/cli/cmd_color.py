@@ -182,6 +182,18 @@ def _prepare_existing_final_recolor(
             analysis,
         )
 
+    if projected_plan.model_name == "shape":
+        analysis = _analyze_existing_shape_artwork_colors(
+            projected_plan,
+        )
+
+        if analysis is None:
+            return {}
+
+        return artwork_component_colors(
+            analysis,
+        )
+
     raise NotImplementedError(
         f"Prospective existing-final recoloring is not yet implemented "
         f"for model {projected_plan.model_name!r}."
