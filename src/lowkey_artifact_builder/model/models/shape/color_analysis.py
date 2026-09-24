@@ -79,6 +79,7 @@ class ShapeColor:
     used_by: tuple[str, ...]
     system_candidate: ShapeColorCandidate
     printer_candidate: ShapeColorCandidate
+    library_candidate: ShapeColorCandidate
 
 
 @dataclass(frozen=True)
@@ -103,8 +104,8 @@ def analyze_shape_colors(
     Components sharing one semantic physical color occupy one color row.
     Component identity is preserved through that row's used_by membership.
 
-    System and effective Printer palettes are compared independently with
-    each semantic Shape color. The nearest candidate in each scope is
+    System, effective Printer, and Library palettes are compared independently
+    with each semantic Shape color. The nearest candidate in each scope is
     advisory and does not replace the semantic color identity.
     """
 
@@ -189,6 +190,14 @@ def analyze_shape_colors(
         ),
     )
 
+    library_colors = _resolve_palette_colors(
+        resolver=resolver,
+        parameter="library_colors",
+        names=resolver(
+            "library_colors",
+        ),
+    )
+
     return ShapeColorAnalysis(
         colors=tuple(
             ShapeColor(
@@ -204,6 +213,11 @@ def analyze_shape_colors(
                 printer_candidate=_nearest_candidate(
                     semantic_color=color,
                     candidates=printer_colors,
+                    resolver=resolver,
+                ),
+                library_candidate=_nearest_candidate(
+                    semantic_color=color,
+                    candidates=library_colors,
                     resolver=resolver,
                 ),
             )

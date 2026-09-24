@@ -29,6 +29,10 @@ class StubResolver:
                 "black",
                 "white",
             ],
+            "library_colors": [
+                "black",
+                "white",
+            ],
             **values,
         }
         self._system_values = {
@@ -308,3 +312,65 @@ def test_shape_color_analysis_compares_system_and_printer_independently() -> Non
 
     assert color.printer_candidate.name == "red"
     assert color.printer_candidate.distance > 0.0
+
+
+def test_shape_color_analysis_compares_library_independently() -> None:
+    """
+    Library advisory comparison uses the resolved Library palette
+    independently of System and Printer.
+
+    The comparison does not replace the structural semantic color identity.
+    """
+
+    resolver = StubResolver(
+        {
+            "shape_base_color": "orange",
+            "shape_outer_ridge_width": 0.0,
+            "shape_artwork_fill_color": "none",
+            "printer_colors": [
+                "red",
+            ],
+            "library_colors": [
+                "yellow",
+            ],
+        },
+        system_values={
+            "printer_colors": [
+                "blue",
+            ],
+        },
+        colors={
+            "orange": {
+                "rgb": [255, 128, 0],
+            },
+            "red": {
+                "rgb": [255, 0, 0],
+            },
+            "blue": {
+                "rgb": [0, 0, 255],
+            },
+            "yellow": {
+                "rgb": [255, 255, 0],
+            },
+        },
+    )
+
+    analysis = analyze_shape_colors(
+        resolver=resolver,
+    )
+
+    assert len(analysis.colors) == 1
+
+    color = analysis.colors[0]
+
+    assert color.color == "orange"
+    assert color.used_by == ("base",)
+
+    assert color.system_candidate.name == "blue"
+    assert color.system_candidate.distance > 0.0
+
+    assert color.printer_candidate.name == "red"
+    assert color.printer_candidate.distance > 0.0
+
+    assert color.library_candidate.name == "yellow"
+    assert color.library_candidate.distance > 0.0
