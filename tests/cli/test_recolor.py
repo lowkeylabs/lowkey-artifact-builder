@@ -789,3 +789,230 @@ def test_recolor_reset_all_realizations_removes_realization_printer_colors(
             tmp_path,
         )
     ]
+
+
+def test_artifact_recolor_reports_retained_realization_printer_colors(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-scoped recolor reports Realization-specific printer_colors
+    overrides that remain authoritative after Artifact-level persistence.
+    """
+
+    resolver = Mock()
+    resolver.system_value.return_value = [
+        "system-black",
+        "system-white",
+        "system-red",
+    ]
+
+    plan = SimpleNamespace(
+        resolver=resolver,
+    )
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_recolor_scope",
+        lambda artifact_id, *, realization, project_root: plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        lambda artifact_id, *, realization, printer_colors, project_root: None,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "get_realization_configurations_with_value",
+        lambda artifact_id, name, *, project_root: (
+            "shape_default",
+            "shape_ornament",
+        ),
+        raising=False,
+    )
+
+    reported: list[tuple[str, ...]] = []
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_report_retained_realization_printer_colors",
+        lambda realizations: reported.append(realizations),
+        raising=False,
+    )
+
+    expected_analysis = object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        lambda artifact_id, *, realization: expected_analysis,
+    )
+
+    analysis = cmd_color.run_colors(
+        "nydeli",
+        recolor="printer",
+    )
+
+    assert analysis is expected_analysis
+
+    assert reported == [
+        (
+            "shape_default",
+            "shape_ornament",
+        )
+    ]
+
+
+def test_artifact_library_recolor_reports_retained_realization_printer_colors(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-scoped Library recolor reports Realization-specific printer_colors
+    overrides that remain authoritative.
+    """
+
+    resolver = Mock()
+    resolver.return_value = [
+        "library-black",
+        "library-white",
+        "library-red",
+    ]
+
+    plan = SimpleNamespace(
+        resolver=resolver,
+    )
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_recolor_scope",
+        lambda artifact_id, *, realization, project_root: plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        lambda artifact_id, *, realization, printer_colors, project_root: None,
+    )
+
+    reported: list[str] = []
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_report_retained_printer_color_overrides",
+        lambda artifact_id, *, project_root: reported.append(artifact_id),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        lambda artifact_id, *, realization: object(),
+    )
+
+    cmd_color.run_colors(
+        "nydeli",
+        recolor="library",
+    )
+
+    assert reported == [
+        "nydeli",
+    ]
+
+
+def test_realization_recolor_does_not_report_other_realization_overrides(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Realization-scoped recolor does not issue the Artifact-scope retained
+    override report.
+    """
+
+    resolver = Mock()
+    resolver.system_value.return_value = [
+        "system-black",
+        "system-white",
+    ]
+
+    plan = SimpleNamespace(
+        resolver=resolver,
+    )
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_recolor_scope",
+        lambda artifact_id, *, realization, project_root: plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        lambda artifact_id, *, realization, printer_colors, project_root: None,
+    )
+
+    reported: list[str] = []
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_report_retained_printer_color_overrides",
+        lambda artifact_id, *, project_root: reported.append(artifact_id),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        lambda artifact_id, *, realization: object(),
+    )
+
+    cmd_color.run_colors(
+        "nydeli",
+        realization="shape_ornament",
+        recolor="printer",
+    )
+
+    assert reported == []
+
+
+def test_retained_printer_color_overrides_are_silent_when_none_exist(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact recolor emits no retained-override report when no explicit
+    Realization printer_colors overrides exist.
+    """
+
+    monkeypatch.setattr(
+        cmd_color,
+        "get_realization_configurations_with_value",
+        lambda artifact_id, name, *, project_root: (),
+    )
+
+    reported: list[tuple[str, ...]] = []
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_report_retained_realization_printer_colors",
+        lambda realizations: reported.append(realizations),
+    )
+
+    cmd_color._report_retained_printer_color_overrides(
+        "nydeli",
+        project_root=tmp_path,
+    )
+
+    assert reported == []

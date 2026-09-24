@@ -13,6 +13,7 @@ import pytest
 
 from lowkey_artifact_builder.config import (
     ConfigError,
+    get_realization_configurations_with_value,
     get_resolver,
     load_artifact_config,
     remove_all_realization_config_values,
@@ -947,3 +948,54 @@ def test_remove_all_realization_printer_colors_preserves_artifact_palette(
     assert config["realizations"]["artwork_default"] == {
         "artwork_size": 85.0,
     }
+
+
+def test_get_realization_configurations_with_value_returns_explicit_overrides(
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit Realization customizations containing the requested value are
+    identified without considering inherited values.
+    """
+
+    write_artifact_config(
+        "nydeli",
+        {
+            "model": "artwork",
+            "source": "nydeli.png",
+            "printer_colors": [
+                "artifact-black",
+                "artifact-white",
+            ],
+            "realizations": {
+                "shape_default": {
+                    "printer_colors": [
+                        "default-black",
+                        "default-white",
+                    ],
+                },
+                "shape_ornament": {
+                    "shape_size": 95.0,
+                    "printer_colors": [
+                        "ornament-black",
+                        "ornament-red",
+                    ],
+                },
+                "artwork_default": {
+                    "artwork_size": 85.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    realizations = get_realization_configurations_with_value(
+        "nydeli",
+        "printer_colors",
+        project_root=tmp_path,
+    )
+
+    assert realizations == (
+        "shape_default",
+        "shape_ornament",
+    )

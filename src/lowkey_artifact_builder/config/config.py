@@ -2411,6 +2411,55 @@ def remove_realization_config_value(
     return path
 
 
+def get_realization_configurations_with_value(
+    artifact_id: str,
+    name: str,
+    *,
+    project_root: Path | str | None = None,
+) -> tuple[str, ...]:
+    """
+    Return explicit Realization customizations containing one value.
+
+    Only values explicitly present in materialized Realization configuration
+    are considered. Inherited values and unmaterialized canonical Realizations
+    are not included.
+    """
+
+    path = artifact_config_path(
+        artifact_id,
+        project_root=project_root,
+    )
+
+    if not path.exists():
+        return ()
+
+    document = _load_artifact_document(
+        path,
+    )
+
+    realizations = document.get(
+        "realizations",
+    )
+
+    if not isinstance(
+        realizations,
+        MutableMapping,
+    ):
+        return ()
+
+    return tuple(
+        realization
+        for realization, realization_document in realizations.items()
+        if (
+            isinstance(
+                realization_document,
+                MutableMapping,
+            )
+            and name in realization_document
+        )
+    )
+
+
 # =========================================================
 # Exports
 # =========================================================
@@ -2422,6 +2471,7 @@ __all__ = [
     "Resolver",
     "artifact_config_path",
     "get_product_dependency_binding",
+    "get_realization_configurations_with_value",
     "get_realization_names",
     "get_resolver",
     "load_artifact_config",

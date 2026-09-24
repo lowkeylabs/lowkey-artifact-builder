@@ -17,6 +17,7 @@ from lowkey_artifact_builder.cli.display import (
     display_color_analysis,
 )
 from lowkey_artifact_builder.config import (
+    get_realization_configurations_with_value,
     remove_all_realization_config_values,
     remove_artifact_config_value,
     remove_realization_config_value,
@@ -254,6 +255,42 @@ def _registered_artwork_manifest(
 # =========================================================
 
 
+def _report_retained_printer_color_overrides(
+    artifact_id: str,
+    *,
+    project_root: Path,
+) -> None:
+    """
+    Report explicit Realization printer_colors overrides retained after an
+    Artifact-scoped recolor.
+    """
+
+    realizations = get_realization_configurations_with_value(
+        artifact_id,
+        "printer_colors",
+        project_root=project_root,
+    )
+
+    if realizations:
+        _report_retained_realization_printer_colors(
+            realizations,
+        )
+
+
+def _report_retained_realization_printer_colors(
+    realizations: tuple[str, ...],
+) -> None:
+    """
+    Report Realizations whose explicit printer_colors remain authoritative.
+    """
+
+    names = ", ".join(
+        realizations,
+    )
+
+    click.echo(f"Retained Realization-specific printer_colors override(s): {names}")
+
+
 def _resolve_recolor_scope(
     artifact_id: str,
     *,
@@ -414,6 +451,12 @@ def run_colors(
             project_root=project_root,
         )
 
+        if realization is None:
+            _report_retained_printer_color_overrides(
+                artifact_id,
+                project_root=project_root,
+            )
+
         return analyze_artifact_colors(
             artifact_id,
             realization=realization,
@@ -440,6 +483,12 @@ def run_colors(
             printer_colors=printer_colors,
             project_root=project_root,
         )
+
+        if realization is None:
+            _report_retained_printer_color_overrides(
+                artifact_id,
+                project_root=project_root,
+            )
 
         return analyze_artifact_colors(
             artifact_id,
