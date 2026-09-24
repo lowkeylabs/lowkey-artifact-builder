@@ -19,6 +19,7 @@ from lowkey_artifact_builder.cli.display import (
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     create_build_plan,
+    create_product_dependency_build_plan,
     execute_dependency_build,
 )
 from lowkey_artifact_builder.model import (
@@ -157,10 +158,69 @@ def _analyze_shape_colors(
     Shape semantic colors are resolved directly from configuration rather than
     interpreted as Artwork color assignments or obtained through Shape stage
     execution.
+
+    Participating Artwork retains its distinct Artwork physical-color
+    assignment analysis.
     """
+
+    artwork = _analyze_shape_artwork_colors(
+        plan,
+    )
 
     return analyze_shape_colors(
         resolver=plan.resolver,
+        artwork=artwork,
+    )
+
+
+def _analyze_shape_artwork_colors(
+    plan: BuildPlan,
+) -> ArtworkColorAnalysis | None:
+    """
+    Analyze registered Artwork participating in one Shape Realization.
+
+    The Shape plan owns discovery of the bound Artwork producer. Color analysis
+    follows that planned dependency rather than reconstructing or assuming an
+    Artwork Artifact or Realization.
+
+    Only the targeted registered Artwork dependency is realized. Shape stages
+    and standalone Artwork manufacturing stages are not executed.
+    """
+
+    artwork_dependencies = tuple(
+        dependency
+        for dependency in plan.planned_product_dependencies
+        if (
+            dependency.product_ref.model == "artwork"
+            and dependency.product_ref.stage == "vector"
+            and dependency.product_ref.product == "manifest"
+        )
+    )
+
+    if not artwork_dependencies:
+        return None
+
+    if len(artwork_dependencies) != 1:
+        raise RuntimeError(
+            "Shape color analysis requires exactly one registered Artwork manifest dependency."
+        )
+
+    artwork_plan = create_product_dependency_build_plan(
+        artwork_dependencies[0],
+        project_root=plan.project_root,
+    )
+
+    execute_dependency_build(
+        artwork_plan,
+    )
+
+    manifest = _registered_artwork_manifest(
+        artwork_plan,
+    )
+
+    return analyze_registered_artwork_colors(
+        manifest=manifest,
+        resolver=artwork_plan.resolver,
     )
 
 

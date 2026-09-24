@@ -1082,6 +1082,7 @@ def test_shape_color_analysis_uses_resolved_configuration_without_execution(
         spec=BuildPlan,
     )
     plan.resolver = resolver
+    plan.planned_product_dependencies = ()
 
     expected_analysis = object()
 
@@ -1094,8 +1095,10 @@ def test_shape_color_analysis_uses_resolved_configuration_without_execution(
     def fake_analyze_shape_colors(
         *,
         resolver,
+        artwork,
     ) -> object:
         assert resolver is plan.resolver
+        assert artwork is None
 
         return expected_analysis
 
@@ -1116,3 +1119,182 @@ def test_shape_color_analysis_uses_resolved_configuration_without_execution(
     )
 
     assert analysis is expected_analysis
+
+
+def test_shape_color_analysis_preserves_participating_artwork_analysis(
+    monkeypatch,
+) -> None:
+    """
+    Shape color analysis supplies participating Artwork analysis separately
+    from Shape-owned structural semantic-color analysis.
+    """
+
+    resolver = object()
+
+    plan = Mock(
+        spec=BuildPlan,
+    )
+    plan.resolver = resolver
+
+    artwork_analysis = object()
+    expected_analysis = object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_analyze_shape_artwork_colors",
+        lambda selected_plan: artwork_analysis,
+        raising=False,
+    )
+
+    def fake_analyze_shape_colors(
+        *,
+        resolver,
+        artwork,
+    ) -> object:
+        assert resolver is plan.resolver
+        assert artwork is artwork_analysis
+
+        return expected_analysis
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_shape_colors",
+        fake_analyze_shape_colors,
+    )
+
+    analysis = cmd_color._analyze_shape_colors(
+        plan,
+    )
+
+    assert analysis is expected_analysis
+
+
+def test_shape_artwork_analysis_uses_bound_artwork_dependency(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Shape color analysis obtains participating Artwork from the Shape
+    Realization's bound registered-Artwork product dependency.
+
+    The producer Artifact and Realization come from dependency planning rather
+    than being reconstructed or assumed by the color-analysis command.
+    """
+
+    dependency = SimpleNamespace(
+        binding=SimpleNamespace(
+            artifact="source-artwork",
+            realization="custom-artwork",
+        ),
+        product_ref=ProductRef(
+            artifact="source-artwork",
+            model="artwork",
+            realization="custom-artwork",
+            stage="vector",
+            product="manifest",
+        ),
+    )
+
+    shape_plan = Mock(
+        spec=BuildPlan,
+    )
+    shape_plan.project_root = tmp_path
+    shape_plan.planned_product_dependencies = (dependency,)
+
+    manifest = tmp_path / "registered" / "products.json"
+    artwork_resolver = object()
+
+    artwork_plan = SimpleNamespace(
+        resolver=artwork_resolver,
+        stages=(
+            SimpleNamespace(
+                name="vector",
+                products=(
+                    SimpleNamespace(
+                        name="manifest",
+                        path=manifest,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    planned: list[tuple[object, Path]] = []
+    executed: list[object] = []
+    expected_analysis = object()
+
+    def fake_create_product_dependency_build_plan(
+        selected_dependency,
+        *,
+        project_root: Path,
+    ) -> object:
+        planned.append(
+            (
+                selected_dependency,
+                project_root,
+            )
+        )
+
+        return artwork_plan
+
+    def fake_execute_dependency_build(
+        plan,
+    ) -> object:
+        assert plan is artwork_plan
+
+        executed.append(
+            plan,
+        )
+
+        manifest.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        manifest.write_text(
+            "{}",
+            encoding="utf-8",
+        )
+
+        return object()
+
+    def fake_analyze_registered_artwork_colors(
+        *,
+        manifest: Path,
+        resolver,
+    ) -> object:
+        assert manifest.is_file()
+        assert resolver is artwork_resolver
+
+        return expected_analysis
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_product_dependency_build_plan",
+        fake_create_product_dependency_build_plan,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        fake_execute_dependency_build,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        fake_analyze_registered_artwork_colors,
+    )
+
+    analysis = cmd_color._analyze_shape_artwork_colors(
+        shape_plan,
+    )
+
+    assert analysis is expected_analysis
+    assert planned == [
+        (
+            dependency,
+            tmp_path,
+        )
+    ]
+    assert executed == [
+        artwork_plan,
+    ]
