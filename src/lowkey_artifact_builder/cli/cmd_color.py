@@ -597,6 +597,13 @@ def run_colors(
                 project_root=project_root,
             )
 
+        if realization is not None:
+            _recolor_existing_final(
+                artifact_id,
+                realization=realization,
+                project_root=project_root,
+            )
+
         return analyze_artifact_colors(
             artifact_id,
             realization=realization,
@@ -630,6 +637,13 @@ def run_colors(
                 project_root=project_root,
             )
 
+        if realization is not None:
+            _recolor_existing_final(
+                artifact_id,
+                realization=realization,
+                project_root=project_root,
+            )
+
         return analyze_artifact_colors(
             artifact_id,
             realization=realization,
@@ -643,6 +657,13 @@ def run_colors(
             realization=realization,
             project_root=project_root,
         )
+
+        if realization is not None:
+            _recolor_existing_final(
+                artifact_id,
+                realization=realization,
+                project_root=project_root,
+            )
 
         return analyze_artifact_colors(
             artifact_id,
