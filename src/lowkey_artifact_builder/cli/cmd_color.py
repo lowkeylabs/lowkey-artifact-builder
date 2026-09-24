@@ -17,6 +17,7 @@ from lowkey_artifact_builder.cli.display import (
     display_color_analysis,
 )
 from lowkey_artifact_builder.config import (
+    remove_all_realization_config_values,
     remove_artifact_config_value,
     remove_realization_config_value,
     update_artifact_config,
@@ -318,6 +319,24 @@ def _persist_printer_colors(
     )
 
 
+def _reset_all_realization_printer_colors(
+    artifact_id: str,
+    *,
+    project_root: Path,
+) -> None:
+    """
+    Remove printer_colors from every explicit Realization customization.
+
+    Artifact-level printer_colors are preserved.
+    """
+
+    remove_all_realization_config_values(
+        artifact_id,
+        "printer_colors",
+        project_root=project_root,
+    )
+
+
 def _reset_printer_colors(
     artifact_id: str,
     *,
@@ -439,6 +458,19 @@ def run_colors(
         return analyze_artifact_colors(
             artifact_id,
             realization=realization,
+        )
+
+    if recolor == "reset-all-realizations":
+        project_root = Path.cwd()
+
+        _reset_all_realization_printer_colors(
+            artifact_id,
+            project_root=project_root,
+        )
+
+        return analyze_artifact_colors(
+            artifact_id,
+            realization=None,
         )
 
     raise NotImplementedError(f"Recolor operation {recolor!r} is not implemented.")

@@ -2237,6 +2237,65 @@ def _project_root(
 # =========================================================
 
 
+def remove_all_realization_config_values(
+    artifact_id: str,
+    name: str,
+    *,
+    project_root: Path | str | None = None,
+) -> Path:
+    """
+    Remove one value from every explicit Realization customization.
+
+    Artifact-level configuration and all other Realization-specific values
+    are preserved.
+
+    Returns the artifact.toml path.
+    """
+
+    path = artifact_config_path(
+        artifact_id,
+        project_root=project_root,
+    )
+
+    if not path.exists():
+        return path
+
+    document = _load_artifact_document(
+        path,
+    )
+
+    realizations = document.get(
+        "realizations",
+    )
+
+    if not isinstance(
+        realizations,
+        MutableMapping,
+    ):
+        return path
+
+    for realization_document in realizations.values():
+        if isinstance(
+            realization_document,
+            MutableMapping,
+        ):
+            realization_document.pop(
+                name,
+                None,
+            )
+
+    _validate_artifact_document(
+        document.unwrap(),
+    )
+
+    _write_artifact_document_atomic(
+        path,
+        document,
+    )
+
+    return path
+
+
 def remove_artifact_config_value(
     artifact_id: str,
     name: str,
@@ -2366,6 +2425,7 @@ __all__ = [
     "get_realization_names",
     "get_resolver",
     "load_artifact_config",
+    "remove_all_realization_config_values",
     "remove_artifact_config_value",
     "remove_realization_config_value",
     "update_artifact_config",

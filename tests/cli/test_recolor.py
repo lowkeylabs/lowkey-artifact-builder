@@ -727,3 +727,65 @@ def test_recolor_reset_removes_realization_printer_colors(
             tmp_path,
         )
     ]
+
+
+def test_recolor_reset_all_realizations_removes_realization_printer_colors(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    reset-all-realizations removes printer_colors from every Realization
+    customization in the selected Artifact scope.
+    """
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    reset: list[
+        tuple[
+            str,
+            Path,
+        ]
+    ] = []
+
+    def fake_reset_all_realization_printer_colors(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> None:
+        reset.append(
+            (
+                artifact_id,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_reset_all_realization_printer_colors",
+        fake_reset_all_realization_printer_colors,
+        raising=False,
+    )
+
+    expected_analysis = object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        lambda artifact_id, *, realization: expected_analysis,
+    )
+
+    analysis = cmd_color.run_colors(
+        "nydeli",
+        recolor="reset-all-realizations",
+    )
+
+    assert analysis is expected_analysis
+
+    assert reset == [
+        (
+            "nydeli",
+            tmp_path,
+        )
+    ]

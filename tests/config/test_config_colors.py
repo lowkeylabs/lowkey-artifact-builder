@@ -15,6 +15,7 @@ from lowkey_artifact_builder.config import (
     ConfigError,
     get_resolver,
     load_artifact_config,
+    remove_all_realization_config_values,
     remove_artifact_config_value,
     remove_realization_config_value,
     update_realization_config,
@@ -879,4 +880,70 @@ def test_remove_realization_config_value_removes_printer_colors(
 
     assert config["realizations"]["shape_ornament"] == {
         "shape_size": 95.0,
+    }
+
+
+def test_remove_all_realization_printer_colors_preserves_artifact_palette(
+    tmp_path: Path,
+) -> None:
+    """
+    Removing printer_colors from all Realization customizations preserves the
+    Artifact-level palette and unrelated Realization customization.
+    """
+
+    write_artifact_config(
+        "nydeli",
+        {
+            "model": "artwork",
+            "source": "nydeli.png",
+            "printer_colors": [
+                "artifact-black",
+                "artifact-white",
+            ],
+            "realizations": {
+                "shape_default": {
+                    "printer_colors": [
+                        "default-black",
+                        "default-white",
+                    ],
+                },
+                "shape_ornament": {
+                    "shape_size": 95.0,
+                    "printer_colors": [
+                        "ornament-black",
+                        "ornament-red",
+                    ],
+                },
+                "artwork_default": {
+                    "artwork_size": 85.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    remove_all_realization_config_values(
+        "nydeli",
+        "printer_colors",
+        project_root=tmp_path,
+    )
+
+    config = load_artifact_config(
+        "nydeli",
+        project_root=tmp_path,
+    )
+
+    assert config["printer_colors"] == [
+        "artifact-black",
+        "artifact-white",
+    ]
+
+    assert "printer_colors" not in config["realizations"]["shape_default"]
+
+    assert config["realizations"]["shape_ornament"] == {
+        "shape_size": 95.0,
+    }
+
+    assert config["realizations"]["artwork_default"] == {
+        "artwork_size": 85.0,
     }
