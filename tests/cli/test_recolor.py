@@ -357,6 +357,198 @@ printer_colors = ["ornament-black", "ornament-red"]
     }
 
 
+def test_recolor_library_persists_library_palette_at_artifact_scope(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    library recolor pins the effective Library palette at Artifact scope.
+    """
+
+    resolver = Mock()
+    resolver.return_value = [
+        "library-black",
+        "library-white",
+        "library-red",
+    ]
+
+    plan = SimpleNamespace(
+        resolver=resolver,
+    )
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_recolor_scope",
+        lambda artifact_id, *, realization, project_root: plan,
+        raising=False,
+    )
+
+    persisted: list[
+        tuple[
+            str,
+            str | None,
+            tuple[str, ...],
+            Path,
+        ]
+    ] = []
+
+    def fake_persist_printer_colors(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        printer_colors: tuple[str, ...],
+        project_root: Path,
+    ) -> None:
+        persisted.append(
+            (
+                artifact_id,
+                realization,
+                printer_colors,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        fake_persist_printer_colors,
+    )
+
+    expected_analysis = object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        lambda artifact_id, *, realization: expected_analysis,
+    )
+
+    analysis = cmd_color.run_colors(
+        "nydeli",
+        recolor="library",
+    )
+
+    assert analysis is expected_analysis
+
+    resolver.assert_called_once_with(
+        "library_colors",
+    )
+
+    resolver.system_value.assert_not_called()
+
+    assert persisted == [
+        (
+            "nydeli",
+            None,
+            (
+                "library-black",
+                "library-white",
+                "library-red",
+            ),
+            tmp_path,
+        )
+    ]
+
+
+def test_recolor_library_persists_library_palette_at_realization_scope(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Realization-scoped library recolor pins the effective Library palette only
+    at the selected Realization scope.
+    """
+
+    resolver = Mock()
+    resolver.return_value = [
+        "library-black",
+        "library-white",
+        "library-red",
+    ]
+
+    plan = SimpleNamespace(
+        resolver=resolver,
+    )
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_recolor_scope",
+        lambda artifact_id, *, realization, project_root: plan,
+        raising=False,
+    )
+
+    persisted: list[
+        tuple[
+            str,
+            str | None,
+            tuple[str, ...],
+            Path,
+        ]
+    ] = []
+
+    def fake_persist_printer_colors(
+        artifact_id: str,
+        *,
+        realization: str | None,
+        printer_colors: tuple[str, ...],
+        project_root: Path,
+    ) -> None:
+        persisted.append(
+            (
+                artifact_id,
+                realization,
+                printer_colors,
+                project_root,
+            )
+        )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_persist_printer_colors",
+        fake_persist_printer_colors,
+    )
+
+    expected_analysis = object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        lambda artifact_id, *, realization: expected_analysis,
+    )
+
+    analysis = cmd_color.run_colors(
+        "nydeli",
+        realization="shape_ornament",
+        recolor="library",
+    )
+
+    assert analysis is expected_analysis
+
+    resolver.assert_called_once_with(
+        "library_colors",
+    )
+
+    resolver.system_value.assert_not_called()
+
+    assert persisted == [
+        (
+            "nydeli",
+            "shape_ornament",
+            (
+                "library-black",
+                "library-white",
+                "library-red",
+            ),
+            tmp_path,
+        )
+    ]
+
+
 def test_persist_printer_colors_preserves_artifact_document_presentation(
     tmp_path: Path,
 ) -> None:

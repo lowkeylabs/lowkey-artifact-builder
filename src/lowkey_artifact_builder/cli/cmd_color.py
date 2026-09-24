@@ -328,8 +328,13 @@ def run_colors(
     Read-only operation delegates directly to normal color analysis.
 
     Printer recoloring pins the unresolved system/default printer palette at
-    the selected Artifact or Realization scope, then performs normal color
-    analysis against the newly persisted configuration.
+    the selected Artifact or Realization scope.
+
+    Library recoloring pins the effective Library palette as printer_colors at
+    the selected Artifact or Realization scope.
+
+    After persistence, normal color analysis runs against the newly persisted
+    configuration.
     """
 
     if recolor is None:
@@ -350,6 +355,33 @@ def run_colors(
         printer_colors = tuple(
             plan.resolver.system_value(
                 "printer_colors",
+            )
+        )
+
+        _persist_printer_colors(
+            artifact_id,
+            realization=realization,
+            printer_colors=printer_colors,
+            project_root=project_root,
+        )
+
+        return analyze_artifact_colors(
+            artifact_id,
+            realization=realization,
+        )
+
+    if recolor == "library":
+        project_root = Path.cwd()
+
+        plan = _resolve_recolor_scope(
+            artifact_id,
+            realization=realization,
+            project_root=project_root,
+        )
+
+        printer_colors = tuple(
+            plan.resolver(
+                "library_colors",
             )
         )
 
