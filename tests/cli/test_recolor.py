@@ -7,6 +7,7 @@ Tests for operator recoloring through the colors command.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -3541,3 +3542,92 @@ def test_prepare_artifact_recolor_preserves_explicit_realization_printer_colors(
             explicit_realization_palette,
         ),
     ]
+
+
+def test_prepare_existing_final_recolor_computes_artwork_component_colors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Prospective recolor preparation computes the packaged Artwork component
+    colors against the supplied effective printer palette without mutating
+    configuration or the final 3MF.
+    """
+
+    projected_printer_colors = (
+        "library-black",
+        "library-white",
+        "library-red",
+    )
+
+    projected_resolver = object()
+    analysis = object()
+
+    expected_component_colors = {
+        "artwork-1": object(),
+        "artwork-2": object(),
+        "artwork-3": object(),
+    }
+
+    resolver = Mock()
+    resolver.with_values.return_value = projected_resolver
+
+    @dataclass(frozen=True)
+    class FakeBuildPlan:
+        model_name: str
+        resolver: object
+
+    plan = cast(
+        BuildPlan,
+        FakeBuildPlan(
+            model_name="artwork",
+            resolver=resolver,
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_analyze_existing_artwork_colors",
+        Mock(
+            return_value=analysis,
+        ),
+    )
+
+    component_colors = Mock(
+        return_value=expected_component_colors,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "artwork_component_colors",
+        component_colors,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "update_component_colors",
+        lambda *args, **kwargs: pytest.fail("Preparation must not mutate the final 3MF"),
+    )
+
+    result = cmd_color._prepare_existing_final_recolor(
+        plan,
+        printer_colors=projected_printer_colors,
+    )
+
+    resolver.with_values.assert_called_once_with(
+        {
+            "printer_colors": projected_printer_colors,
+        },
+        provenance="prospective recolor",
+    )
+
+    cmd_color._analyze_existing_artwork_colors.assert_called_once()
+
+    analyzed_plan = cmd_color._analyze_existing_artwork_colors.call_args.args[0]
+
+    assert analyzed_plan.resolver is projected_resolver
+
+    component_colors.assert_called_once_with(
+        analysis,
+    )
+
+    assert result == expected_component_colors

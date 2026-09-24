@@ -9,12 +9,16 @@ Reports physical color analysis for Artifact Realizations.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import click
 
 from lowkey_artifact_builder.cli.display import (
     display_color_analysis,
+)
+from lowkey_artifact_builder.colors import (
+    PaletteColor,
 )
 from lowkey_artifact_builder.config import (
     get_realization_configurations_with_value,
@@ -145,20 +149,43 @@ def _prepare_existing_final_recolor(
     plan: BuildPlan,
     *,
     printer_colors: tuple[str, ...],
-) -> None:
+) -> dict[str, PaletteColor]:
     """
-    Compute the prospective recolor of one existing final 3MF.
+    Compute the prospective component-color mutation for one existing final 3MF.
 
-    This operation is read-only. The supplied printer_colors represent the
-    Artifact-level palette that will be effective after the requested
-    configuration mutation.
+    This operation is read-only. The supplied printer_colors are overlaid onto
+    the plan's resolved configuration so color assignment reflects the
+    configuration that will be effective after persistence.
 
-    A later slice will retain the computed component-color mutation so it can
-    be applied after configuration persistence without recomputation.
+    The returned mapping can later be applied to the existing final 3MF without
+    recomputing color assignments after configuration mutation.
     """
 
-    _ = plan
-    _ = printer_colors
+    projected_resolver = plan.resolver.with_values(
+        {
+            "printer_colors": printer_colors,
+        },
+        provenance="prospective recolor",
+    )
+
+    projected_plan = replace(
+        plan,
+        resolver=projected_resolver,
+    )
+
+    if projected_plan.model_name == "artwork":
+        analysis = _analyze_existing_artwork_colors(
+            projected_plan,
+        )
+
+        return artwork_component_colors(
+            analysis,
+        )
+
+    raise NotImplementedError(
+        f"Prospective existing-final recoloring is not yet implemented "
+        f"for model {projected_plan.model_name!r}."
+    )
 
 
 def _prepare_artifact_recolor(
