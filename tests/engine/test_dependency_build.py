@@ -44,6 +44,7 @@ from lowkey_artifact_builder.engine import (
     StageCompletion,
     create_required_fingerprints,
     execute_dependency_build,
+    plan_dependency_build,
     write_stage_completion,
 )
 from lowkey_artifact_builder.model import (
@@ -2287,3 +2288,240 @@ def test_dependency_build_shared_producer_failure_stops_all_dependents(
     assert executed == [
         "artifact-d",
     ]
+
+
+# =========================================================
+# Dependency-aware read-only planning
+# =========================================================
+
+
+def test_dependency_build_planning_reports_current_consumer(
+    consumer_plan: BuildPlan,
+    producer_plan: BuildPlan,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Dependency-aware planning can prove a previously completed consumer
+    current without executing producer or consumer work.
+    """
+
+    _record_producer_current(
+        producer_plan,
+    )
+
+    _record_plan_current(
+        consumer_plan,
+    )
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        if build_plan is consumer_plan:
+            return (producer_plan,)
+
+        if build_plan is producer_plan:
+            return ()
+
+        raise AssertionError(f"Unexpected BuildPlan {build_plan.artifact_id!r}")
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    execution_plan = plan_dependency_build(
+        consumer_plan,
+    )
+
+    assert execution_plan.required_product_dependencies == ()
+
+    assert len(execution_plan.stages) == 1
+
+    stage = execution_plan.stages[0]
+
+    assert stage.stage_name == "consume"
+    assert stage.product_states == (ProductState.CURRENT,)
+    assert not stage.requires_execution
+
+
+def test_dependency_build_planning_reports_stale_consumer(
+    consumer_plan: BuildPlan,
+    producer_plan: BuildPlan,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Dependency-aware planning reports an existing consumer Product stale
+    when its recorded build context no longer matches the required context.
+    """
+
+    _record_producer_current(
+        producer_plan,
+    )
+
+    _record_plan_current(
+        consumer_plan,
+    )
+
+    consumer_stage = consumer_plan.stages[0]
+
+    write_stage_completion(
+        _stage_working_dir(
+            consumer_stage,
+        ),
+        StageCompletion(
+            artifact_id=consumer_plan.artifact_id,
+            model_name=consumer_plan.model_name,
+            realization=consumer_plan.realization_name,
+            stage_name=consumer_stage.name,
+            products=tuple(product.name for product in consumer_stage.products),
+            fingerprint=ProductFingerprint(
+                algorithm="sha256",
+                value="stale-build-context",
+            ),
+        ),
+    )
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        if build_plan is consumer_plan:
+            return (producer_plan,)
+
+        if build_plan is producer_plan:
+            return ()
+
+        raise AssertionError(f"Unexpected BuildPlan {build_plan.artifact_id!r}")
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    execution_plan = plan_dependency_build(
+        consumer_plan,
+    )
+
+    assert execution_plan.required_product_dependencies == ()
+
+    assert len(execution_plan.stages) == 1
+
+    stage = execution_plan.stages[0]
+
+    assert stage.stage_name == "consume"
+    assert stage.product_states == (ProductState.STALE,)
+    assert stage.requires_execution
+
+
+def test_dependency_build_planning_reports_unbuilt_dependency_without_execution(
+    consumer_plan: BuildPlan,
+    producer_plan: BuildPlan,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Dependency-aware planning identifies an absent producer requirement
+    without producing either the dependency or its consumer.
+    """
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        if build_plan is consumer_plan:
+            assert execution_plan.required_product_dependencies
+
+            return (producer_plan,)
+
+        if build_plan is producer_plan:
+            return ()
+
+        raise AssertionError(f"Unexpected BuildPlan {build_plan.artifact_id!r}")
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    execution_plan = plan_dependency_build(
+        consumer_plan,
+    )
+
+    assert len(execution_plan.required_product_dependencies) == 1
+
+    dependency = execution_plan.required_product_dependencies[0]
+
+    assert dependency.state is ProductState.ABSENT
+    assert dependency.requires_production
+
+    assert not any(
+        product.path.exists() for stage in producer_plan.stages for product in stage.products
+    )
+
+    assert not any(
+        product.path.exists() for stage in consumer_plan.stages for product in stage.products
+    )
+
+
+def test_dependency_build_planning_does_not_mutate_persistent_products(
+    consumer_plan: BuildPlan,
+    producer_plan: BuildPlan,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Dependency-aware planning is observational: inspecting a completed
+    dependency graph does not modify persistent Products or metadata.
+    """
+
+    _record_producer_current(
+        producer_plan,
+    )
+
+    _record_plan_current(
+        consumer_plan,
+    )
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        if build_plan is consumer_plan:
+            return (producer_plan,)
+
+        if build_plan is producer_plan:
+            return ()
+
+        raise AssertionError(f"Unexpected BuildPlan {build_plan.artifact_id!r}")
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    before = {
+        path.relative_to(
+            consumer_plan.project_root,
+        ): path.read_bytes()
+        for path in consumer_plan.project_root.rglob("*")
+        if path.is_file()
+    }
+
+    execution_plan = plan_dependency_build(
+        consumer_plan,
+    )
+
+    after = {
+        path.relative_to(
+            consumer_plan.project_root,
+        ): path.read_bytes()
+        for path in consumer_plan.project_root.rglob("*")
+        if path.is_file()
+    }
+
+    assert execution_plan.required_product_dependencies == ()
+
+    assert before == after

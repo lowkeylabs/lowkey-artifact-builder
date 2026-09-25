@@ -45,6 +45,10 @@ def cli(
         )
     )
 
+    if not artifact_ids:
+        click.echo("No artifacts found.")
+        return
+
     for artifact_id in artifact_ids:
         click.echo(artifact_id)
 

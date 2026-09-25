@@ -1,6 +1,7 @@
 """
 Tests for the artifact list command.
 """
+
 # File: tests/cli/test_list.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
@@ -65,18 +66,22 @@ def test_list_discovers_artifacts_from_project_root(
     tmp_path: Path,
 ) -> None:
     """
-    Artifact listing delegates workspace discovery to the artifact API.
+    Artifact listing delegates workspace discovery to the Artifact API.
     """
 
     roots: list[Path] = []
 
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.chdir(
+        tmp_path,
+    )
 
     def discover(
         *,
         project_root: Path,
     ) -> tuple[str, ...]:
-        roots.append(project_root)
+        roots.append(
+            project_root,
+        )
 
         return (
             "skippy",
@@ -92,14 +97,16 @@ def test_list_discovers_artifacts_from_project_root(
     result = _invoke()
 
     assert result.exit_code == 0
-    assert roots == [tmp_path]
+    assert roots == [
+        tmp_path,
+    ]
 
 
 def test_list_displays_discovered_artifact_ids(
     monkeypatch,
 ) -> None:
     """
-    Every discovered artifact ID is presented to the user.
+    Every discovered Artifact ID is presented to the operator.
     """
 
     monkeypatch.setattr(
@@ -114,15 +121,22 @@ def test_list_displays_discovered_artifact_ids(
     result = _invoke()
 
     assert result.exit_code == 0
+
     assert "skippy" in result.output
     assert "scooby" in result.output
 
 
-def test_list_succeeds_when_no_artifacts_exist(
+# =========================================================
+# Empty workspace
+# =========================================================
+
+
+def test_list_empty_workspace_reports_no_artifacts_found(
     monkeypatch,
 ) -> None:
     """
-    An empty workspace is a valid artifact-listing result.
+    An empty workspace is successful and explicitly tells the operator
+    that no managed Artifacts exist.
     """
 
     monkeypatch.setattr(
@@ -134,3 +148,4 @@ def test_list_succeeds_when_no_artifacts_exist(
     result = _invoke()
 
     assert result.exit_code == 0
+    assert result.output.strip() == "No artifacts found."

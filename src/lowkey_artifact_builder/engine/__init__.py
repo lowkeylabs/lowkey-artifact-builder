@@ -81,6 +81,7 @@ from .dependency_build import (
     DependencyBuildError,
     DependencyCycleError,
     execute_dependency_build,
+    plan_dependency_build,
 )
 from .dependency_plan import (
     create_required_product_dependency_build_plans,
@@ -210,6 +211,7 @@ __all__ = [
     "gather_product_evidence",
     "plan_execution",
     "plan_incremental_execution",
+    "plan_dependency_build",
     "prepare_incremental_build",
     "product_is_fresh",
     "read_stage_completion",

@@ -220,6 +220,82 @@ def _execute_dependency_build(
     )
 
 
+def plan_dependency_build(
+    build_plan: BuildPlan,
+    *,
+    product_dependency_fingerprint: (ProductDependencyFingerprintResolver | None) = None,
+) -> ExecutionPlan:
+    """
+    Plan one dependency-aware artifact build without executing work.
+
+    Required cross-artifact producer BuildPlans are used only to derive the
+    fingerprints required by their targeted persistent products.
+
+    Those fingerprints allow the consumer to be replanned using the same
+    persistent-state-aware incremental planning machinery used by execution.
+
+    Planning is observational. It does not execute producer or consumer
+    stages and does not create, repair, publish, or otherwise mutate
+    persistent Products.
+
+    If a required producer Product does not currently exist, the original
+    consumer plan is returned with that dependency still requiring
+    production.
+    """
+
+    produced: dict[
+        tuple[
+            str,
+            str,
+            str,
+            str,
+            str,
+        ],
+        ProductFingerprint,
+    ] = {}
+
+    resolver = _create_product_dependency_fingerprint_resolver(
+        supplied=product_dependency_fingerprint,
+        produced=produced,
+    )
+
+    initial_plan = plan_incremental_execution(
+        build_plan,
+        product_dependency_fingerprint=resolver,
+    )
+
+    producer_plans = create_required_product_dependency_build_plans(
+        build_plan,
+        initial_plan,
+    )
+
+    for producer_plan in producer_plans:
+        producer_execution_plan = plan_incremental_execution(
+            producer_plan,
+            product_dependency_fingerprint=product_dependency_fingerprint,
+        )
+
+        if producer_execution_plan.required_product_dependencies or any(
+            stage.requires_execution for stage in producer_execution_plan.stages
+        ):
+            return initial_plan
+
+        _record_producer_fingerprints(
+            producer_plan=producer_plan,
+            fingerprints=produced,
+        )
+
+    resolver = _create_product_dependency_fingerprint_resolver(
+        supplied=product_dependency_fingerprint,
+        produced=produced,
+    )
+
+    return plan_incremental_execution(
+        build_plan,
+        product_dependency_fingerprint=resolver,
+    )
+
+
 # =========================================================
 # Producer fingerprint collection
 # =========================================================
@@ -337,4 +413,5 @@ __all__ = [
     "DependencyBuildError",
     "DependencyCycleError",
     "execute_dependency_build",
+    "plan_dependency_build",
 ]

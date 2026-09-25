@@ -679,128 +679,62 @@ def test_shape_default_realization_preserves_default_manufacturing(
     assert component_name("default-shape", "ridge", "white") not in object_names
 
 
-def test_show_variant_and_build_realization_use_same_configuration(
+def test_variant_and_canonical_realization_use_same_configuration(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Variant inspection and canonical Realization build resolve the same
-    effective Model-scoped configuration.
+    Model-owned Variant selection and its canonical Artifact Realization
+    resolve the same effective configuration.
 
-    Show selects the Model-owned Variant as a configuration concern.
-    Build selects its canonical Artifact Realization as the normal
-    execution coordinate.
+    Variant selection is a configuration concern. The corresponding
+    canonical Realization is the normal Artifact execution coordinate.
     """
-
-    import lowkey_artifact_builder.cli.cmd_build as cmd_build
-    import lowkey_artifact_builder.cli.cmd_show as cmd_show
-
-    project_root = tmp_path
-
-    monkeypatch.chdir(
-        project_root,
-    )
 
     write_artifact_config(
         "example",
         {
             "model": "shape",
         },
-        project_root=project_root,
+        project_root=tmp_path,
     )
 
-    shown: list[
-        tuple[
-            str,
-            str,
-            str,
-            float,
-            str,
-        ]
-    ] = []
-
-    built: list[
-        tuple[
-            str,
-            str,
-            str,
-            float,
-            str,
-        ]
-    ] = []
-
-    original_display_artifact_config = cmd_show.display_artifact_config
-
-    def capture_show_config(
-        artifact_id,
-        model,
-        resolver,
-    ):
-        shown.append(
-            (
-                resolver("model"),
-                resolver("realization"),
-                resolver("variant"),
-                resolver("shape_outer_ridge_width"),
-                resolver.source("shape_outer_ridge_width"),
-            )
-        )
-
-        return original_display_artifact_config(
-            artifact_id,
-            model,
-            resolver,
-        )
-
-    monkeypatch.setattr(
-        cmd_show,
-        "display_artifact_config",
-        capture_show_config,
+    variant_plans = create_build_plans(
+        "example",
+        model_name="shape",
+        variant_name="ornament",
+        project_root=tmp_path,
     )
 
-    monkeypatch.setattr(
-        cmd_build,
-        "display_build_plan",
-        lambda plan: built.append(
-            (
-                plan.model_name,
-                plan.realization_name,
-                plan.resolver("variant"),
-                plan.resolver("shape_outer_ridge_width"),
-                plan.resolver.source("shape_outer_ridge_width"),
-            )
+    realization_plans = create_build_plans(
+        "example",
+        realization="shape_ornament",
+        project_root=tmp_path,
+    )
+
+    assert len(variant_plans) == 1
+    assert len(realization_plans) == 1
+
+    variant_plan = variant_plans[0]
+    realization_plan = realization_plans[0]
+
+    variant_state = (
+        variant_plan.model_name,
+        variant_plan.realization_name,
+        variant_plan.resolver("variant"),
+        variant_plan.resolver("shape_outer_ridge_width"),
+        variant_plan.resolver.source(
+            "shape_outer_ridge_width",
         ),
     )
 
-    runner = CliRunner()
-
-    show_result = runner.invoke(
-        cli,
-        [
-            "show",
-            "example",
-            "--variant",
-            "shape.ornament",
-        ],
-    )
-
-    assert show_result.exit_code == 0, (
-        f"Shape ornament show failed:\n{show_result.output}\n{show_result.exception!r}"
-    )
-
-    build_result = runner.invoke(
-        cli,
-        [
-            "build",
-            "example",
-            "--realization",
-            "shape_ornament",
-            "--dry-run",
-        ],
-    )
-
-    assert build_result.exit_code == 0, (
-        f"Shape ornament dry-run failed:\n{build_result.output}\n{build_result.exception!r}"
+    realization_state = (
+        realization_plan.model_name,
+        realization_plan.realization_name,
+        realization_plan.resolver("variant"),
+        realization_plan.resolver("shape_outer_ridge_width"),
+        realization_plan.resolver.source(
+            "shape_outer_ridge_width",
+        ),
     )
 
     expected = (
@@ -811,10 +745,5 @@ def test_show_variant_and_build_realization_use_same_configuration(
         "variant 'ornament'",
     )
 
-    assert shown == [
-        expected,
-    ]
-
-    assert built == [
-        expected,
-    ]
+    assert variant_state == expected
+    assert realization_state == expected

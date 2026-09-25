@@ -1,9 +1,10 @@
 """
-Artifact inspection command.
+Artifact manufacturing inspection command.
 
-Displays the resolved configuration of an existing artifact without
-modifying persistent artifact state.
+Displays operator-oriented manufacturing status for an existing Artifact
+without modifying persistent Artifact state.
 """
+
 # File: src/lowkey_artifact_builder/cli/cmd_show.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
@@ -13,23 +14,15 @@ from __future__ import annotations
 from pathlib import Path
 
 import click
+from rich.console import Console
+from rich.table import Table
 
-from lowkey_artifact_builder.cli.display import (
-    display_artifact_config,
-)
-from lowkey_artifact_builder.cli.variants import (
-    parse_variant_reference,
+from lowkey_artifact_builder.application import (
+    ArtifactManufacturingStatus,
+    inspect_artifact_manufacturing,
 )
 from lowkey_artifact_builder.config import (
     ConfigError,
-    get_resolver,
-    load_artifact_config,
-)
-from lowkey_artifact_builder.engine import (
-    create_build_plans,
-)
-from lowkey_artifact_builder.model import (
-    build_model_registry,
 )
 
 # =========================================================
@@ -43,20 +36,21 @@ from lowkey_artifact_builder.model import (
     nargs=-1,
 )
 @click.option(
-    "--variant",
+    "--realization",
     type=str,
     default=None,
-    help="Select one artifact Variant.",
+    help="Select one Artifact Realization.",
 )
 def cli(
     artifact_ids: tuple[str, ...],
-    variant: str | None,
+    realization: str | None,
 ) -> None:
     """
-    Display an existing artifact's resolved configuration.
+    Show manufacturing status for one Artifact.
 
-    An optional --variant selects the Variant whose effective
-    configuration is inspected.
+    Without --realization, every effective Realization is shown.
+
+    --realization narrows inspection to one effective Realization.
     """
 
     if not artifact_ids:
@@ -68,94 +62,73 @@ def cli(
     artifact_id = artifact_ids[0]
     project_root = Path.cwd()
 
-    existing = load_artifact_config(
-        artifact_id,
-        project_root=project_root,
-    )
-
-    if not existing:
-        raise click.ClickException(f"Artifact {artifact_id!r} is not defined.")
-
-    if variant is None:
-        _display_artifact(
+    try:
+        status = inspect_artifact_manufacturing(
             artifact_id,
+            realization=realization,
             project_root=project_root,
         )
-        return
 
-    model_name, variant_name = parse_variant_reference(
-        variant,
-    )
-
-    _display_artifact(
-        artifact_id,
-        model_name=model_name,
-        variant_name=variant_name,
-        project_root=project_root,
-    )
-
-
-# =========================================================
-# Artifact display
-# =========================================================
-
-
-def _display_artifact(
-    artifact_id: str,
-    *,
-    model_name: str | None = None,
-    variant_name: str | None = None,
-    project_root: Path,
-) -> None:
-    """
-    Display an artifact's resolved configuration.
-
-    The artifact must already be defined.
-
-    A selected Variant is identified by its Model and local Variant name.
-    Artifact planning resolves that Variant to its canonical default
-    Realization before configuration is displayed.
-    """
-
-    try:
-        if model_name is None and variant_name is None:
-            resolver = get_resolver(
-                artifact_id,
-                project_root=project_root,
-            )
-        else:
-            plans = create_build_plans(
-                artifact_id,
-                model_name=model_name,
-                variant_name=variant_name,
-                project_root=project_root,
-            )
-
-            if len(plans) != 1:
-                raise ConfigError(
-                    f"Variant selection for artifact {artifact_id!r} "
-                    f"resolved to {len(plans)} build plans."
-                )
-
-            resolver = plans[0].resolver
-
-        resolved_model_name = resolver("model")
-
-        registry = build_model_registry()
-        model = registry.get_model(
-            resolved_model_name,
-        )
-
-    except (
-        ConfigError,
-        KeyError,
-    ) as exc:
+    except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    display_artifact_config(
-        artifact_id,
-        model,
-        resolver,
+    _display_manufacturing_status(
+        status,
+    )
+
+
+# =========================================================
+# Manufacturing display
+# =========================================================
+
+
+def _display_manufacturing_status(
+    status: ArtifactManufacturingStatus,
+) -> None:
+    """
+    Display operator-oriented manufacturing status.
+
+    Routine SHOW output deliberately exposes only manufacturing concepts:
+
+        Realization
+        Type
+        State
+        accessible 3MF
+
+    Engine Stages, resolver details, dependency state, fingerprints, and
+    canonical internal Product locations remain below the presentation
+    boundary.
+    """
+
+    console = Console()
+
+    table = Table(
+        title=status.artifact_id,
+    )
+
+    table.add_column(
+        "Realization",
+    )
+    table.add_column(
+        "Type",
+    )
+    table.add_column(
+        "State",
+    )
+    table.add_column(
+        "3MF",
+    )
+
+    for realization in status.realizations:
+        table.add_row(
+            realization.realization,
+            realization.realization_type.value,
+            realization.state.value,
+            (str(realization.product) if realization.product is not None else "-"),
+        )
+
+    console.print(
+        table,
     )
 
 
