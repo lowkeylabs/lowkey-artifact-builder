@@ -114,6 +114,9 @@ artifact build smith-dog --realization shape_ornament
 The CLI also provides inspection, maintenance, color-analysis, and recoloring
 operations as the workflow requires them.
 
+See [`src/lowkey_artifact_builder/cli/README.md`](src/lowkey_artifact_builder/cli/README.md)
+for the operator workflow, command responsibilities, and common CLI workflows.
+
 Run:
 
 ```bash
@@ -486,6 +489,7 @@ Project documentation is divided by responsibility.
 | Document                                                                                  | Purpose                                                                                   |
 | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | [`README.md`](README.md)                                                                  | Project introduction, normal usage, and documentation entry point                         |
+| [`src/lowkey_artifact_builder/cli/README.md`](src/lowkey_artifact_builder/cli/README.md) | CLI operator workflow, command responsibilities, and usage |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md)                                                      | Normative system-wide terminology, relationships, contracts, and architectural invariants |
 | [Artwork `DEFINITION.md`](src/lowkey_artifact_builder/model/models/artwork/DEFINITION.md) | Normative semantics and invariants of the Artwork Model                                   |
 | [Shape `DEFINITION.md`](src/lowkey_artifact_builder/model/models/shape/DEFINITION.md)     | Normative semantics and invariants of the Shape Model                                     |

@@ -74,6 +74,16 @@ artwork C ──┘
 
 The architecture should optimize the user experience for the common case without restricting the dependency system to the common case.
 
+The primary operator workflow is to move source material to usable
+manufacturing Products with the fewest necessary decisions and actions.
+After source material is registered as an Artifact, an operator should be
+able to discover its available canonical and customized Realizations,
+determine the state of their manufacturing Products, realize only Products
+that are missing or stale, and retrieve current Products for downstream
+manufacturing or delivery. Inspection and configuration capabilities exist
+to support this workflow without becoming mandatory steps when an
+appropriate current Product already exists.
+
 The long-term objective is for new manufactured products to increasingly be defined through model features, variants, configuration, and composition of reusable operations rather than new special-purpose Python pipelines.
 
 ------------------------------------------------------------------------
@@ -193,6 +203,9 @@ Once registered artwork geometry has been generated, it may be reused for standa
 
 Reusable upstream work should not be repeated merely because a downstream Variant has different Features, dimensions, or manufacturing parameters.
 
+Current manufacturing Products should be discoverable and retrievable for
+downstream use without requiring their producing Stages to execute again.
+
 ## 3.4 Dependencies determine execution
 
 Stages and Products form a dependency graph.
@@ -252,6 +265,17 @@ Engine behavior must not depend on CLI verbosity, logging policy, terminal avail
 Observers must not alter dependency, Product-state, resumability, or execution decisions.
 
 The execution engine remains synchronous unless concurrency is introduced by a separate architectural decision.
+
+## 3.10 Application behavior is interface-independent
+
+Operator interfaces are adapters over common application capabilities.
+
+The CLI may provide terminal-oriented discovery, inspection, configuration,
+execution, and Product retrieval, while other clients may expose the same
+capabilities through an API, browser, or other interface.
+
+Artifact, Variant, Realization, Product, configuration, planning, state,
+and execution semantics must not depend on a particular user interface.
 
 ------------------------------------------------------------------------
 
