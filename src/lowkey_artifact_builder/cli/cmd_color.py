@@ -21,6 +21,7 @@ from lowkey_artifact_builder.colors import (
     PaletteColor,
 )
 from lowkey_artifact_builder.config import (
+    ConfigError,
     get_realization_configurations_with_value,
     get_realization_names,
     remove_all_realization_config_values,
@@ -1432,6 +1433,9 @@ def cli(
 ) -> None:
     """
     Report color diagnostics for an Artifact or Realization.
+
+    Expected configuration failures are translated into concise operator
+    errors at the CLI boundary.
     """
 
     if realization is not None and recolor == "reset-all-realizations":
@@ -1439,20 +1443,36 @@ def cli(
             "--recolor=reset-all-realizations cannot be combined with --realization."
         )
 
-    analysis = run_colors(
-        artifact_id,
-        realization=realization,
-        recolor=recolor,
-    )
+    if artifact_id is not None:
+        artifact_ids = list_artifacts(
+            project_root=Path.cwd(),
+        )
+
+        if artifact_id not in artifact_ids:
+            raise click.ClickException(f"Artifact {artifact_id!r} is not defined.")
+
+    try:
+        analysis = run_colors(
+            artifact_id,
+            realization=realization,
+            recolor=recolor,
+        )
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     if isinstance(
         analysis,
         tuple,
     ):
+        if not analysis:
+            click.echo("No artifacts found.")
+            return
+
         for artifact_analysis in analysis:
             display_color_analysis(
                 artifact_analysis,
             )
+
         return
 
     display_color_analysis(

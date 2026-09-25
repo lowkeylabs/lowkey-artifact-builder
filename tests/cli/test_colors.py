@@ -84,6 +84,11 @@ def test_colors_command_analyzes_and_displays_artifact(
         return expected_analysis
 
     monkeypatch.setattr(
+        cmd_color,
+        "list_artifacts",
+        lambda *, project_root: ("nydeli",),
+    )
+    monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.analyze_artifact_colors",
         fake_analyze_artifact_colors,
     )
@@ -734,6 +739,11 @@ def test_colors_accepts_realization_option(
         return expected_analysis
 
     monkeypatch.setattr(
+        cmd_color,
+        "list_artifacts",
+        lambda *, project_root: ("nydeli",),
+    )
+    monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.analyze_artifact_colors",
         fake_analyze_artifact_colors,
     )
@@ -1346,6 +1356,11 @@ def test_colors_accepts_supported_recolor_selections(
 
         return expected_analysis
 
+    monkeypatch.setattr(
+        cmd_color,
+        "list_artifacts",
+        lambda *, project_root: ("nydeli",),
+    )
     monkeypatch.setattr(
         cmd_color,
         "run_colors",

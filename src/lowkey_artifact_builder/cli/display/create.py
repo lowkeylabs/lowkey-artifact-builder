@@ -29,39 +29,49 @@ def display_create_status(
 ) -> None:
     """
     Display the read-only source-intake overview for CREATE.
+
+    Empty intake state is reported explicitly rather than represented by
+    empty tables.
     """
 
-    artifacts_table = create_table(
-        title="Existing Artifacts",
-    )
+    if not artifact_ids and not sources:
+        console.print("No existing artifacts or incoming PNGs found.")
+        return
 
-    artifacts_table.add_column(
-        "Artifact",
-    )
-
-    for artifact_id in artifact_ids:
-        artifacts_table.add_row(
-            artifact_id,
+    if artifact_ids:
+        artifacts_table = create_table(
+            title="Existing Artifacts",
         )
 
-    console.print(artifacts_table)
-
-    console.print()
-
-    sources_table = create_table(
-        title="Incoming PNGs",
-    )
-
-    sources_table.add_column(
-        "Source",
-    )
-
-    for source in sources:
-        sources_table.add_row(
-            source.name,
+        artifacts_table.add_column(
+            "Artifact",
         )
 
-    console.print(sources_table)
+        for artifact_id in artifact_ids:
+            artifacts_table.add_row(
+                artifact_id,
+            )
+
+        console.print(artifacts_table)
+
+    if artifact_ids and sources:
+        console.print()
+
+    if sources:
+        sources_table = create_table(
+            title="Incoming PNGs",
+        )
+
+        sources_table.add_column(
+            "Source",
+        )
+
+        for source in sources:
+            sources_table.add_row(
+                source.name,
+            )
+
+        console.print(sources_table)
 
 
 __all__ = [
