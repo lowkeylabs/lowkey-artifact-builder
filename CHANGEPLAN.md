@@ -2,985 +2,1442 @@
 
 ## Purpose
 
-This change plan streamlines the user-facing workflow of
+Refactor and polish the user-facing workflow of `lowkey-artifact-builder`
+around the actual manufacturing value chain.
 
-`lowkey-artifact-builder` around the common production path:
+The operator's goal is:
 
-``` text
+> Move customer artwork to a correct, printable 3MF with the fewest necessary
+> decisions and actions.
 
-raw PNGs
+The primary value-chain commands are:
 
-    ↓
-
-create
-
-    ↓
-
-Artifacts
-
-    ↓
-
-build
-
-    ↓
-
-3MF Products
-
-    ↓
-
-colors
-
-    ↓
-
-operator-ready 3MFs
-
-    ↓
-
-PrusaSlicer / printer
-```
-
-The CLI should optimize this common case while preserving the
-
-architectural distinction between Models, Variants, Artifacts,
-
-Realizations, Stages, and Products.
-
-The central CLI principle is:
-
-> Users normally address Artifacts and Realizations. Variants provide
-
-> Model-owned reusable configuration from which Realizations are
-
-> derived.
-
-Configuration is therefore exceptional in the ordinary production
-
-workflow. Canonical Realizations permit a newly created Artifact to use
-
-every registered Model Variant without requiring Artifact-specific
-
-configuration.
-
-The intended routine batch workflow is:
-
-``` text
-
+```text
+customer artwork
+      ↓
 artifact create
-
+      ↓
+managed Artifact
+      ↓
 artifact build
-
-artifact build --build-all
-
-artifact colors
+      ↓
+printable 3MF
+      ↓
+slicer / share / upload / print
 ```
 
-`artifact colors` is the single user-facing color operation. Without
+`create` and `build` therefore define the ordinary production path.
 
-`--recolor`, it is read-only analysis. With `--recolor`, it explicitly
+Other commands support that path when the operator needs discovery,
+explanation, customization, correction, color selection, or maintenance:
 
-applies an operator-selected physical-color assignment to existing final
+```text
+list
+show
+config
+colors
+clean
+```
 
-3MFs.
+These commands are helpers or exception paths. They are powerful operator
+controls, but they must not become mandatory ceremony before routine
+manufacturing.
 
-Artifact-specific configuration is required only when a canonical
+Given an `artifact_id`, the operator should be able to get from that ID to the
+desired printable 3MF quickly, while being shown only the decisions or
+corrective actions that actually require attention.
 
-Realization must be customized, an additional named Realization must be
+This plan is a workflow and CLI refactor. It does not redefine Artifact,
+Variant, Realization, Product, configuration, build planning, Product state, or
+Model semantics. Those remain owned by `ARCHITECTURE.md` and the applicable
+Model `DEFINITION.md`.
 
-defined, or an operator intentionally persists a color selection.
-
-------------------------------------------------------------------------
+---
 
 # Development Method
 
 This plan is subordinate to:
 
-``` text
-
+```text
 ARCHITECTURE.md
-
 src/lowkey_artifact_builder/model/models/<model>/DEFINITION.md
-
+src/lowkey_artifact_builder/cli/README.md
 prompts/NEW_THREAD.md
-
 prompts/TEST_DRIVEN_DEVELOPMENT.md
 ```
 
-The permanent specifications define intended behavior. Repository HEAD
+`ARCHITECTURE.md` and the Model definitions remain the permanent normative
+specifications. The CLI README describes the intended human-facing CLI
+workflow. Repository HEAD defines the current implementation. This file
+describes temporary work required to bring HEAD into alignment.
 
-defines the current implementation. This file describes a route between
+Before each TDD slice:
 
-them.
+1. review the relevant specifications and CLI README;
+2. review current HEAD and existing tests;
+3. credit behavior HEAD already satisfies;
+4. identify the next unmet operator workflow;
+5. resolve any remaining semantic question before testing it;
+6. add a coherent behavioral test slice;
+7. observe RED for the intended reason;
+8. implement the behavior;
+9. run focused tests and the complete quality suite;
+10. commit and reevaluate HEAD.
 
-At the beginning of each development thread and before selecting each
+TDD slices do not need to correspond to one feature or one small production
+change.
 
-new TDD slice:
+For this refactor, prefer a larger coherent slice when several closely related
+behaviors together establish one operator workflow and can still produce
+understandable RED failures.
 
-1.  review the permanent specifications relevant to the work;
+The useful unit is the smallest **workflow capability** that can be designed,
+tested, implemented, and committed coherently.
 
-2.  review `prompts/TEST_DRIVEN_DEVELOPMENT.md`;
+CLI tests should protect:
 
-3.  review current repository HEAD;
+- user intent;
+- command and option interpretation;
+- scope;
+- validation;
+- useful errors;
+- operator-facing output; and
+- translation into application operations.
 
-4.  review existing tests;
+They should not duplicate Model, engine, configuration-resolution,
+Product-state, or color-matching tests already protected below the CLI.
 
-5.  determine which work described here HEAD already satisfies;
+---
 
-6.  identify meaningful discrepancies rather than silently resolving
+# Incremental Delivery Rule
 
-    them;
+Every phase in this plan must end at a production-capable stopping point.
 
-7.  select the next coherent unmet behavioral slice.
+Later phases may improve discovery, explanation, customization, maintenance, or
+specialized control, but completion of a later phase must not be required for
+the operator to obtain useful manufacturing Products from capabilities
+established by an earlier phase.
 
-Phase and subsection ordering in this document does not override that
+In particular:
 
-process. Work listed here must not be repeated merely because it remains
+```text
+Phase 1
+    must leave create → build → 3MF usable for production
 
-listed. Credit behavior already satisfied by HEAD and proceed to the
+Phase 2
+    adds better discovery and manufacturing visibility
+    without making inspection mandatory
 
-next unmet requirement.
+Phase 3
+    improves exception/customization paths
+    without changing the ordinary production requirement
 
-Each behavioral change follows:
-
-``` text
-
-resolve semantics
-
-    ↓
-
-write coherent tests
-
-    ↓
-
-observe RED
-
-    ↓
-
-evaluate failures
-
-    ↓
-
-implement
-
-    ↓
-
-focused tests
-
-    ↓
-
-complete quality suite
-
-    ↓
-
-commit
-
-    ↓
-
-reevaluate HEAD
+Phase 4
+    consolidates secondary/developer surfaces and presentation
 ```
 
-CLI tests should protect user intent, option interpretation, useful
+At the end of every phase, reevaluate the complete operator workflow before
+starting the next phase.
 
-errors, and translation into application operations. They should not
+---
 
-duplicate engine, configuration, color-assignment, or Model semantics
+# UI Independence
 
-already protected at a lower level.
+The CLI is one client of the application. It is not the application itself.
 
-Each phase below is intended to leave the application in a coherent and
+The same manufacturing workflow may later be presented through:
 
-usable state. A phase may contain multiple independently committed TDD
+```text
+CLI
+TUI
+GUI
+browser/API client
+```
 
-slices.
+Reusable workflow behavior therefore belongs below the UI boundary.
 
-------------------------------------------------------------------------
+The preferred structure is:
 
-# Cross-Phase CLI Semantics
+```text
+CLI / TUI / GUI / API
+          │
+          ▼
+ reusable application operations
+          │
+          ▼
+ configuration / planning / engine / Products
+```
 
-## Realizations are the execution coordinate
+Application operations should return structured results or expose semantic
+events that can be consumed by different user interfaces.
 
-Normal CLI execution addresses:
+UI-specific concerns include:
 
-``` text
+- Click argument and option parsing;
+- terminal prompts;
+- terminal formatting;
+- progress presentation;
+- human-facing CLI error translation.
 
-Artifact + Realization
+Reusable application concerns include:
+
+- Artifact discovery;
+- source registration;
+- Realization discovery;
+- manufacturing state;
+- build orchestration;
+- Product discovery and retrieval;
+- configuration operations;
+- color operations; and
+- cleaning operations.
+
+Do not solve a workflow problem merely by adding orchestration to
+`cmd_create.py`, `cmd_build.py`, or another Click command module when the
+behavior is useful to other clients.
+
+A workflow capability is not complete merely because it can be driven from a
+Click callback. Its underlying operation should be reusable without invoking or
+emulating the CLI.
+
+Testing should reflect that boundary:
+
+```text
+application tests
+    prove reusable workflow behavior
+
+CLI tests
+    prove argument → operation translation
+    and result → human-facing presentation
+```
+
+Existing engine/configuration APIs need not be wrapped gratuitously. Introduce
+or refactor an application-level operation when doing so removes UI-owned
+workflow logic or provides a capability that multiple interfaces can use.
+
+---
+
+# Existing Behavior to Preserve
+
+Significant work has already gone into the CLI in previous change plans.
+
+In particular:
+
+```text
+create
+build
+config
+clean
+colors
+```
+
+already implement substantial production behavior.
+
+`create`, `build`, `config`, and `clean` should require only minimal
+refactoring, if any, unless review identifies an actual obstacle to a more
+efficient manufacturing workflow.
+
+`colors` already has substantial completed analysis and recoloring behavior and
+should likewise retain its established semantics.
+
+Treat these commands as existing capabilities, not blank surfaces to redesign.
+
+We may intentionally change an established command if implementation experience
+shows that a different interaction materially reduces operator work or makes
+the manufacturing path clearer. Such a change must be justified by the value
+chain rather than by a desire for syntactic uniformity.
+
+Preserve established behavior including:
+
+- `artifact create` ingestion and operator-assigned Artifact identity;
+- canonical Realization discovery through configuration rather than CLI-owned
+  reconstruction;
+- the substantial Realization-oriented and incremental behavior already
+  implemented by `artifact build`;
+- incremental Product-state evaluation and reuse of current Products;
+- `artifact config` Artifact/Realization customization;
+- `artifact clean` Artifact/Realization maintenance scope;
+- `artifact colors` analysis and recoloring;
+- normal configuration precedence;
+- dependency-driven minimal realization;
+- canonical Stage Product ownership; and
+- independent Stage execution through a complete `StageContext`.
+
+Do not reopen established Model, build-engine, configuration, or color
+semantics merely as part of CLI polishing.
+
+---
+
+# Value-Chain Design Principle
+
+Evaluate the CLI from the operator's position in the manufacturing workflow,
+not by trying to make every command look structurally identical.
+
+The design question is:
+
+> What does the operator need to do next to get the requested 3MF to the
+> printer?
+
+Then determine which reusable application capability and UI operation best
+supports that step.
+
+Use:
+
+```text
+operator need
+      ↓
+application capability
+      ↓
+CLI representation
 ```
 
 not:
 
-``` text
-
-Artifact + Variant
+```text
+available CLI command
+      ↓
+invent additional responsibilities for it
 ```
 
-A Variant is a Model-owned reusable configuration.
+Inspection is not itself the goal.
 
-A Realization is the application of that Variant to an Artifact,
+Configuration is not itself the goal.
 
-optionally with Artifact-specific customization.
+Color analysis is not itself the goal.
 
-Multiple Realizations may originate from the same Variant, so Variant
+Cleaning is not itself the goal.
 
-identity is not a sufficient general execution coordinate.
+Each exists only to remove an obstacle, answer a necessary question, or support
+the creation of the correct manufacturing Product.
 
-Normal user-facing build, inspection, cleaning, and color operations
+---
 
-should therefore use Realization names where Realization-specific scope
+# Common User-Facing Behavior
 
-is requested.
+These conventions apply where they improve the operator workflow. They do not
+require every command to support every possible scope.
 
-## Canonical Realizations require no Artifact configuration
+## Working directory
 
-Every registered Model Variant supplies a canonical Realization to every
+The CLI operates on the current working directory as the project root.
 
-Artifact according to the architecture.
+A working directory may contain any combination of:
 
-Examples include:
-
-``` text
-
-artwork.default  -> artwork_default
-
-shape.default    -> shape_default
-
-shape.ornament   -> shape_ornament
+```text
+loose incoming source images
+originals/
+artifacts/
 ```
 
-A newly created Artifact therefore does not need to declare those
+The operator must not need to create internal storage directories before using
+the application.
 
-Realizations in `artifact.toml`.
+A missing collection directory means that the corresponding collection is
+empty. It is not itself an exceptional condition.
 
-Artifact configuration should contain only source metadata and actual
+## Scope
 
-Artifact-specific customization.
+Where applicable:
 
-## Scope convention
-
-Where applicable, commands use the same scope convention:
-
-``` text
-
-<command>
-
+```text
+COMMAND
     all applicable Artifacts
 
-<command> dog
-
+COMMAND dog
     Artifact dog
 
-<command> --realization shape_ornament
-
+COMMAND --realization shape_ornament
     that Realization across applicable Artifacts
 
-<command> dog --realization shape_ornament
-
+COMMAND dog --realization shape_ornament
     that Realization of dog
 ```
 
-Commands must define sensible behavior when a requested Realization is
+Support a scope only when it makes the operation more useful.
 
-not available for one or more selected Artifacts rather than silently
+An explicitly supplied Artifact or Realization is an assertion that the
+addressed object exists. Failure should be reported as a concise
+operator-facing error.
 
-changing the meaning of the request.
+## Empty, absent, and broken state
 
-For color mutation, scope determines exactly where `printer_colors` is
+Distinguish:
 
-mutated.
+```text
+empty collection
+    normal result
 
-Without `--realization`, recoloring mutates only Artifact-level
+explicitly requested object absent
+    operator-facing error
 
-`printer_colors`:
-
-``` text
-
-artifact colors dog --recolor=library
-
-    persist Artifact-level printer_colors
-
-    do not modify Realization-specific printer_colors
-
-    update applicable final Realization 3MFs according to each
-
-    Realization's effective resolved printer_colors
+discovered persistent object malformed or inconsistent
+    operator-facing configuration/application error
 ```
 
-With --realization, recoloring mutates only that Realization's
+Broad operations against an empty workspace should not fail merely because
+`artifacts/` or `originals/` is absent.
 
-printer_colors:
+Expected configuration, planning, build, and equivalent application errors
+must be translated by the UI boundary.
 
-``` text
+Do not indiscriminately catch unexpected programming defects.
 
-artifact colors dog --realization shape_ornament --recolor=library
+## Lean operator-facing output
 
-    persist Realization-specific printer_colors
+Routine CLI output should answer only questions useful to the next operator
+action.
 
-    update only dog/shape_ornament
+Prefer information such as:
+
+```text
+Artifact
+Realization
+what happened
+whether work remains
+3MF or other relevant manufacturing Product
 ```
 
-Normal configuration precedence remains authoritative.
+Avoid narrating internal orchestration.
 
-An Artifact-level recolor must not erase or replace Realization-specific
+Do not expose Model, Variant, Stage, dependency, resolver, filesystem, or
+implementation details unless they are directly useful for the requested
+operation.
 
-printer_colors. A Realization-specific override therefore continues to
-win
+Successful routine commands should be terse.
 
-over the newly selected Artifact-level palette.
+Errors should identify the actionable Artifact/Realization and problem without
+a Python traceback for expected failures.
 
-When an Artifact-level recolor encounters a Realization-specific
+Batch output should make successes, skipped/current work, and failures easy to
+distinguish without overwhelming the operator with per-stage noise.
 
-printer_colors override, report that the Realization retains its
-explicit
+---
 
-override so the operator understands why that Realization was not
-changed to
-
-the newly selected Artifact palette.
-
-## Project-owned paths
-
-Artifact-owned managed inputs may be referenced from Artifact
-
-configuration using paths relative to the project root.
-
-Such paths are resolved relative to the project root, not the process
-
-working directory and not the directory containing `artifact.toml`.
-
-For example:
-
-``` toml
-
-source = "artifacts/dog/artifact.png"
-
-original = "originals/dog.png"
-```
-
-These are persistent references to Artifact-owned source resources.
-
-Generated Model, Stage, and Product filesystem paths must not be
-
-persisted in Artifact configuration.
-
-The distinction is:
-
-``` text
-
-Artifact-owned managed input
-
-    persistent source/configuration resource
-
-    may be referenced by project-relative path
-
-generated Model/Stage Product
-
-    materialization of the build graph
-
-    must not be persisted as Artifact configuration
-```
-
-The filesystem may materialize generated Products, but Artifact
-
-configuration must continue to address manufacturing behavior through
-
-logical configuration and Product identity rather than generated paths.
-
-------------------------------------------------------------------------
-
-# Phase 1 - complete
-
-------------------------------------------------------------------------
-
-# Phase 2 --- Inspection
+# Phase 1 — Polish the Production Value Chain
 
 ## Goal
 
-At the end of Phase 2, the user can answer distinct questions without
+Make the existing production path clean, direct, and production-ready:
 
-confusing authored configuration, effective configuration, addressable
-
-objects, and color analysis.
-
-The commands are:
-
-``` text
-
-artifact list
-
-artifact config
-
-artifact show
-
-artifact colors
+```text
+incoming customer artwork
+      ↓
+create
+      ↓
+Artifact
+      ↓
+build
+      ↓
+printable 3MF
 ```
 
-Their responsibilities are intentionally distinct:
+`clean` supports this path when generated work must intentionally be discarded.
 
-``` text
+This phase begins by reviewing and preserving the substantial existing behavior
+of `create`, `build`, and `clean`.
 
-list
+The expected work is primarily cleanup, application/UI separation, consistent
+workspace behavior, and leaner operator-facing presentation.
 
-    What exists / what can I address?
+Do not assume these commands require structural redesign.
 
-config
+At the end of Phase 1, the program must already be fully usable for routine
+value creation without any work from later phases.
 
-    What have I explicitly configured?
+---
 
-show
+## 1.1 Review the existing production path end to end
 
-    What configuration will actually be used?
+Before changing individual commands, exercise current HEAD as an operator.
 
-colors
+Cover at least:
 
-    What physical color assignments are available, why were they selected,
+```text
+new source → create → build → 3MF
 
-    and which assignment is currently configured for printing?
+existing Artifact → build selected Realization → 3MF
+
+current Realization → build → reuse → 3MF
+
+clean → build → regenerated 3MF
 ```
 
-`colors` is already established in Phase 1 as both a read-only analysis
+Record only actual discrepancies from the intended workflow.
 
-command and, only when `--recolor` is supplied, the explicit
+Pay particular attention to:
 
-color-selection mutation surface.
+- unnecessary questions or command steps;
+- noisy or implementation-oriented output;
+- missing or unclear 3MF presentation;
+- inconsistent empty-workspace behavior;
+- expected errors that leak tracebacks;
+- duplicated orchestration in Click modules;
+- situations where current Products are rebuilt unnecessarily; and
+- situations where an operator cannot easily tell what Product resulted.
 
-------------------------------------------------------------------------
+Use this review to choose the first coherent TDD slice.
 
-## 2.1 List
+---
 
-Define:
+## 1.2 `create`: make intake quiet and direct
 
-``` text
+`create` is the boundary between unmanaged customer source material and a
+managed Artifact.
 
-artifact list
-```
-
-to list defined Artifact IDs.
-
-Define:
-
-``` text
-
-artifact list dog
-```
-
-to list the effective Realizations addressable for `dog`, including
-
-canonical Realizations and explicitly declared additional Realizations.
-
-Listing should use the authoritative Realization catalog rather than
-
-reconstructing it independently in CLI code.
-
-`list` reports identity and availability, not complete configuration.
-
-------------------------------------------------------------------------
-
-## 2.2 Show
-
-Make `show` Realization-oriented.
+The operator assigns the Artifact identity during creation.
 
 For example:
 
-``` text
-
-artifact show dog --realization shape_ornament
+```text
+artifact create baird-lilo --source lilo.png
 ```
 
-shows the fully resolved configuration that would actually be used for
+The `artifact_id` remains opaque to the build system. `baird-lilo` may encode an
+operator's business convention, but the application must not infer customer,
+source, Variant, or Product semantics from that structure.
 
-that Realization.
+Bare:
 
-It should resolve the Realization directly through configuration
-
-semantics rather than detouring through Variant-oriented build planning
-
-merely to obtain a resolver.
-
-Resolved output may include useful provenance where that helps explain
-
-whether a value came from:
-
--   Model defaults;
-
--   Variant overrides;
-
--   Workspace configuration;
-
--   Artifact configuration; or
-
--   Realization customization.
-
-Do not make `show` synonymous with `config`.
-
-------------------------------------------------------------------------
-
-## 2.3 Colors integration
-
-`artifact colors` owns color-assignment inspection and operator color
-
-selection.
-
-Do not reintroduce a separate `artifact recolor` command.
-
-Inspection must continue to expose the established Artwork assignment
-
-semantics and quantitative comparison established in Phase 1.
-
-Mutation remains explicit through:
-
-``` text
-
---recolor=printer
-
---recolor=library
-
---recolor=reset
-
---recolor=reset-all-realizations
+```text
+artifact create
 ```
 
-Catalog remains advisory and cannot be selected for recoloring.
+may discover incoming source images according to the established ingestion
+workflow.
 
-Model-owned structural printing colors are not Artifact color regions
+### Preserve unless a discrepancy is found
 
-and must not be silently included in Artwork's global one-to-one color
+Current `create` work should already cover much of:
 
-analysis, even though they should be represented appropriately in the
+- loose-source discovery;
+- explicit source registration;
+- operator-selected Artifact identity;
+- duplicate recognition;
+- managed source preservation;
+- workspace materialization as needed; and
+- batch ingestion.
 
-operator-facing component display.
+Do not rewrite these behaviors merely to fit a new internal abstraction.
 
-------------------------------------------------------------------------
+### Refactor where useful
 
-## 2.4 Remove misplaced inspection responsibilities
+Ensure that:
 
-As the command responsibilities become established, remove or relocate
+- no manual creation of `originals/` or `artifacts/` is required;
+- no-source behavior is concise and intentional;
+- collisions and inconsistent managed state are useful operator errors;
+- successful output identifies what was created without narrating internal
+  filesystem work; and
+- reusable ingestion behavior is not trapped inside Click callbacks.
 
-legacy CLI behavior that no longer belongs to its command.
+### Completion
 
-In particular, Model catalog/workplan inspection currently attached to
+Incoming customer artwork can become a managed Artifact with the minimum
+necessary operator input.
 
-Artifact configuration should not force `config` to serve two unrelated
+---
 
-purposes.
+## 1.3 `build`: make the requested Product current
 
-Before moving or deleting developer-oriented capabilities, determine
+`build` is the principal value-producing command.
 
-whether they remain useful and choose an explicit home for them rather
+Its operator meaning is:
 
-than silently discarding them.
+> Make the requested manufacturing Product current.
 
-------------------------------------------------------------------------
+The operator should not need to think in terms of Stages or dependency
+execution during routine production.
 
-## Phase 2 completion criterion
+### Preserve substantial existing behavior
 
-Without editing files or invoking developer internals, a user can
+Previous work has already established significant `build` behavior including:
 
-determine:
+- Artifact discovery;
+- canonical and custom Realization discovery;
+- Realization-oriented execution;
+- incremental Product-state evaluation;
+- current Product reuse;
+- Artifact materialization;
+- batch execution;
+- dry-run/status behavior;
+- rebuild behavior;
+- semantic execution events; and
+- independent Stage execution.
 
--   which Artifacts exist;
+Credit this behavior before designing changes.
 
--   which Realizations are available;
+### Routine manufacturing
 
--   what Artifact-specific configuration was authored;
+A selected Realization should remain directly buildable:
 
--   what effective configuration a Realization will use;
+```text
+artifact build baird-lilo --realization shape_ornament
+```
 
--   whether builds are current;
+Broad build behavior should remain useful where it reduces operator work.
 
--   what System, Printer, Library, and Catalog color assignments are
+Incremental execution must continue to reuse current Products and realize only
+the required dependency closure.
 
-    available;
+### Presentation
 
--   why Artwork physical colors were selected; and
+Routine build output should emphasize:
 
--   which printer palette is currently configured.
+```text
+Artifact / Realization
+current, built, or failed
+resulting 3MF
+```
 
-The production workflow established in Phase 1 remains unchanged.
+It should not require the operator to interpret a stream of Stage events unless
+that detail is explicitly requested or needed to diagnose a failure.
 
-------------------------------------------------------------------------
+If current semantic execution events are useful to future UIs, preserve them
+below the presentation layer while making normal CLI rendering leaner.
 
-# Phase 3 --- CLI Consolidation and Production Polish
+### Historical selection syntax
 
-## Goal
+Review public Variant-oriented syntax such as:
 
-Complete the transition from the historical CLI to the streamlined
-
-Artifact/Realization-oriented workflow without retaining contradictory
-
-command semantics.
-
-This phase should contain no speculative new manufacturing capability.
-
-It consolidates behavior already proven useful in the preceding phases.
-
-------------------------------------------------------------------------
-
-## 3.1 Retire obsolete normal-workflow syntax
-
-Review remaining public options and remove or clearly isolate obsolete
-
-Variant-oriented normal execution syntax such as:
-
-``` text
-
+```text
 --variant
-
 --all-variants
 ```
 
-where Realization-oriented equivalents now define the intended user
+only if it interferes with the efficient production workflow.
 
-workflow.
+Do not remove working capability merely to make the syntax uniform.
 
-Do not remove internal Model/Variant coordinates merely because they are
+Variants remain architecturally essential regardless of whether a particular
+Variant selector remains part of the routine CLI.
 
-no longer ordinary CLI coordinates.
+### Completion
 
-Variants remain architecturally essential configuration identities.
+Given an Artifact and desired Realization, the operator can make the required
+manufacturing Product current with minimal interaction and clear output.
 
-Remove or reject the obsolete standalone:
+---
 
-``` text
+## 1.4 Make the resulting 3MF obvious and accessible
 
-artifact recolor
-```
+BUILD creates value because its manufacturing Product can leave the builder and
+enter the manufacturing/delivery workflow.
 
-command once `artifact colors --recolor=...` is established as the sole
-
-public color-mutation surface.
-
-------------------------------------------------------------------------
-
-## 3.2 Developer and Stage operations
-
-Review independent Stage execution and other developer-oriented
-
-operations.
-
-Preserve the architectural ability to execute a Stage through a complete
-
-`StageContext`.
-
-Do not force specialized Stage execution into the ordinary production
-
-command semantics merely to reduce the number of top-level commands.
-
-If developer operations require a separate command surface, make that
-
-separation explicit.
-
-------------------------------------------------------------------------
-
-## 3.3 Output consistency
-
-Make routine command output consistent around:
-
-``` text
-
+```text
 Artifact
-
+   ↓
 Realization
-
-state/action
-
-Product where relevant
+   ↓
+build
+   ↓
+3MF
+══════════════════════ delivery boundary
+   ↓
+slicer / share / upload / print
 ```
 
-Avoid exposing implementation-oriented Model/Variant coordinates when
+HEAD already publishes a realization-named convenience 3MF beside
+`artifact.toml` when a package Stage executes.
 
-they do not help the user perform the requested operation.
+The canonical Stage Product remains authoritative.
 
-Errors should identify the actionable Artifact/Realization scope that
+### Review publication/retrieval behavior
 
-failed.
+Exercise at least:
 
-Batch operations should summarize successful, skipped/current, and
+```text
+package executes
+    → canonical Product exists
+    → realization-named 3MF is available
 
-failed work without obscuring the underlying error.
+package already current
+    → canonical Product reused
+    → operator can still obtain the 3MF
 
-Color output should use consistent terminology for:
-
-``` text
-
-System
-
-Printer
-
-Library
-
-Catalog
+canonical Product current
+published convenience copy absent
+    → operator can obtain the 3MF without geometry rebuild
 ```
 
-and clearly distinguish read-only analysis from a requested recolor
+The application may retrieve the canonical Product directly, restore the
+published convenience copy, or expose a small reusable Product
+retrieval/publication operation.
 
-mutation.
+Do not make canonical Product ownership dependent on CLI presentation.
 
-------------------------------------------------------------------------
+Do not add PrusaSlicer-, email-, or upload-specific integration in this phase.
+Those are consumers of the Product retrieval capability.
 
-## 3.4 End-to-end production acceptance
+### Completion
 
-Protect the final common workflow with a small number of meaningful
+A successful or already-current build leaves the operator with an obvious,
+accessible printable 3MF.
 
-acceptance tests.
+---
 
-A representative workflow should establish that the user can:
+## 1.5 `clean`: production maintenance without friction
 
-``` text
+`clean` supports production when generated work needs to be discarded and
+regenerated.
 
-place PNGs in intake
+It is not part of the normal happy path, but it must be reliable enough that
+Phase 1 is independently usable.
 
-    ↓
+Preserve existing Artifact and Realization cleaning semantics.
 
-artifact create
+Review:
 
-    ↓
+```text
+artifact clean dog
 
-artifact build
+artifact clean dog --realization shape_ornament
 
-    ↓
+artifact clean --realization shape_ornament
 
-inspect pending build state
-
-    ↓
-
-artifact build --build-all
-
-    ↓
-
-artifact colors
-
-    ↓
-
-optionally artifact colors --recolor=library
-
-    ↓
-
-obtain operator-ready final 3MF Products
+artifact clean --force
 ```
 
-A customization acceptance path should establish only the additional
+as applicable to current behavior.
 
-behavior that matters:
+Ensure that cleaning:
 
-``` text
+- removes only intended generated Products;
+- preserves Artifact configuration and Artifact-owned inputs;
+- uses the same useful Artifact/Realization terminology as build;
+- handles empty collections sensibly;
+- reports expected errors concisely; and
+- leaves subsequent build behavior correct.
 
+Do not expand `clean` into Artifact deletion.
+
+### Completion
+
+The operator can intentionally discard generated work and return immediately to
+the normal `build → 3MF` path.
+
+---
+
+## 1.6 Phase 1 workflow slices
+
+Prefer workflow-sized TDD slices over artificially tiny command edits.
+
+Reasonable slices include:
+
+### Slice A — routine single-Artifact production
+
+```text
+source
+  ↓
 create
-
-    ↓
-
-config one Realization
-
-    ↓
-
-build that Realization
-
-    ↓
-
-inspect colors
-
-    ↓
-
-optionally recolor that Realization through artifact colors
+  ↓
+build selected/default manufacturing work
+  ↓
+3MF clearly available
 ```
 
-A reset acceptance path should establish that:
+Cover lean success output and current-Product reuse where they belong to the
+same observable workflow.
 
-``` text
+### Slice B — workspace and batch production
 
-select library colors
+Cover coherent behavior for:
 
-    ↓
+- empty workspace;
+- loose intake;
+- multiple Artifacts;
+- independent failures;
+- useful batch summaries; and
+- expected error translation.
 
-persist printer_colors at the selected scope
+Do not force unrelated edge cases into this slice merely because they involve a
+CLI.
 
-    ↓
+### Slice C — maintenance and recovery
 
-recolor final 3MF
-
-    ↓
-
---recolor=reset
-
-    ↓
-
-remove that scope's printer_colors override
-
-    ↓
-
-restore inherited effective printer assignment
-
-    ↓
-
-update final 3MF presentation
+```text
+current Product
+      ↓
+clean selected scope
+      ↓
+build
+      ↓
+correct regenerated 3MF
 ```
 
-Do not duplicate detailed Model geometry, configuration resolution,
+Also cover recovery/access when the canonical current Product exists but an
+operator-facing convenience publication is missing.
 
-build graph, or color-assignment assertions already protected by focused
-
+The exact slice boundaries should be chosen after reviewing HEAD and existing
 tests.
 
-------------------------------------------------------------------------
+---
 
-## Phase 3 completion criterion
+## Phase 1 Completion Criterion
 
-The normal user-facing CLI presents one coherent mental model:
+Phase 1 is complete when the program is independently useful for routine
+production.
 
-``` text
+For artwork whose defaults already describe the desired manufactured object:
 
-create    ingest customer sources
-
-build     inspect build state or make selected work current
-
-config    author Artifact/Realization exceptions
-
-clean     discard generated work
-
-colors    inspect color assignments and explicitly select/reset
-
-          operator-facing physical colors
-
-list      discover addressable Artifacts and Realizations
-
-show      inspect effective resolved configuration
+```text
+create → build → 3MF
 ```
 
-Variants remain Model-owned reusable configuration.
+is sufficient.
 
-Realizations remain the Artifact-scoped execution coordinate.
+The operator does not need `list`, `show`, `config`, or `colors` merely to
+complete an ordinary job.
 
-The common production workflow requires no manual configuration when
+`clean` is available when maintenance is required.
 
-Model Variants and inherited color configuration already describe the
+Successful routine output is terse and focused on value created.
 
-desired products.
+Expected errors are actionable and do not expose tracebacks.
 
-------------------------------------------------------------------------
+The underlying production operations are reusable by a future CLI, TUI, GUI, or
+API presentation.
 
-# Target Production Workflow
+---
 
-For a routine batch:
+# Phase 2 — Add Manufacturing Visibility
 
-``` text
+## Goal
 
-# Customer PNGs are placed in the project root.
+Improve discovery and inspection without changing the Phase 1 production path.
 
-artifact create
+Phase 1 remains fully usable if Phase 2 is never implemented.
 
-# See what the new intake or configuration changes require.
+Phase 2 helps the operator answer questions that arise around the production
+workflow:
 
-artifact build
+```text
+What Artifact is this?
 
-# Bring the project current.
+What can I manufacture from it?
 
-artifact build --build-all
+What has already been manufactured?
 
-# Inspect current and alternative physical color assignments.
+Is the desired Product current?
 
-artifact colors
+Where is the 3MF?
+
+Does anything actually require attention?
 ```
 
-When filament swaps from owned inventory are acceptable:
+The primary commands are:
 
-``` text
-
-artifact colors --recolor=library
-```
-
-Each Artifact's Library assignment is computed independently before
-
-mutation.
-
-When one Artifact should pin the system/default printer palette:
-
-``` text
-
-artifact colors smith-dog --recolor=printer
-```
-
-When one Artifact should select its best owned-library colors for all
-
-applicable Realizations:
-
-``` text
-
-artifact colors smith-dog --recolor=library
-```
-
-When only one Realization requires a color exception:
-
-``` text
-
-artifact colors smith-dog \\
-
-    --realization shape_ornament \\
-
-    --recolor=library
-```
-
-When that color exception should be removed:
-
-``` text
-
-artifact colors smith-dog \\
-
-    --realization shape_ornament \\
-
-    --recolor=reset
-```
-
-When all Realization-specific color exceptions for one Artifact should
-be removed while retaining its Artifact-level printer palette:
-
-``` text
-artifact colors smith-dog --recolor=reset-all-realizations
-```
-
-Inspection and maintenance remain available without complicating the
-
-ordinary path:
-
-``` text
-
+```text
 artifact list
-
-artifact list smith-dog
-
-artifact config smith-dog --realization shape_ornament
-
-artifact show smith-dog --realization shape_ornament
-
-artifact colors smith-dog
-
-artifact colors smith-dog --realization shape_ornament
-
-artifact clean smith-dog --realization shape_ornament
+artifact show
 ```
 
-The desired steady-state workflow is therefore:
+Inspection exists to remove uncertainty. It must not become a prerequisite for
+`build`.
 
-``` text
+---
 
-create → build → colors → print
+## 2.1 `list`: discover managed Artifacts
+
+An operator may manage many Artifacts and may want to review existing IDs before
+registering incoming artwork.
+
+`artifact list` answers:
+
+> What managed Artifacts do I already have?
+
+### Required behavior
+
+```text
+artifact list
 ```
 
-with:
+lists managed Artifact IDs.
 
-``` text
+It should:
 
-config
+- use authoritative Artifact discovery;
+- require no build planning;
+- require no generated Products;
+- work in an empty workspace; and
+- remain concise.
 
-clean
+For example, an empty workspace may report:
 
-list
+```text
+No artifacts found.
+```
 
+Do not overload:
+
+```text
+artifact list dog
+```
+
+to mean Realization discovery.
+
+Once an Artifact is known, its Realizations belong to the Artifact
+manufacturing view.
+
+### Completion
+
+The operator can efficiently review existing Artifact identities before
+choosing an ID for new incoming artwork or selecting existing work.
+
+---
+
+## 2.2 `show`: manufacturing overview for an Artifact
+
+Given an Artifact, the useful first question is:
+
+> What can I manufacture from this Artifact, and what already exists?
+
+Use:
+
+```text
+artifact show baird-lilo
+```
+
+to present the effective canonical and custom Realizations together with the
+facts needed for the next manufacturing decision.
+
+Conceptually:
+
+```text
+Realization          Type       State       3MF
+artwork_default      built-in   current     artwork_default.3mf
+shape_default        built-in   not built   —
+shape_ornament       built-in   current     shape_ornament.3mf
+large-ornament       custom     stale       large-ornament.3mf
+```
+
+Exact formatting is presentation detail.
+
+The operator should be able to determine:
+
+- which Realizations are available;
+- which are canonical and which are customized when that distinction helps;
+- whether a Realization is missing, stale, or current in useful operator terms;
+- whether a manufacturing 3MF exists; and
+- whether any action is required before using it.
+
+State and Product availability are separate facts.
+
+A stale Realization may still have an existing 3MF. Do not hide an existing
+Product merely because newer inputs make it stale.
+
+Use authoritative Realization discovery and existing Product-state semantics.
+Do not reconstruct those rules in CLI presentation code.
+
+### Current HEAD discrepancy
+
+Current `show` is primarily a resolved-configuration view and exposes
+Variant-oriented selection.
+
+Refactor only what is necessary to make it answer the operator's manufacturing
+question.
+
+### Completion
+
+Given an `artifact_id`, the operator can see the shortest path from that
+Artifact to the desired printable 3MF.
+
+---
+
+## 2.3 Realization drill-down
+
+When the manufacturing overview shows that explanation is useful:
+
+```text
+artifact show baird-lilo --realization shape_ornament
+```
+
+should explain the effective Realization that would be manufactured.
+
+This is a drill-down from the manufacturing view, not a required step before
+build.
+
+Resolve the Realization through normal configuration/Realization semantics
+rather than using Variant-oriented CLI build planning merely to obtain a
+resolver.
+
+Useful provenance may be shown where it helps explain an effective value.
+
+Do not make `show` synonymous with authored `config`.
+
+---
+
+## 2.4 Shared discovery and state operations
+
+If `list`, `show`, `build`, or a future UI need the same Artifact,
+Realization, Product, or state information, expose that information through
+reusable application operations.
+
+Avoid structures such as:
+
+```text
+cmd_show.py
+    reconstructs manufacturing state
+
+cmd_build.py
+    reconstructs manufacturing state differently
+
+future GUI
+    must reconstruct it a third time
+```
+
+Prefer:
+
+```text
+application manufacturing view/state
+       ├── CLI
+       ├── future TUI
+       ├── future GUI
+       └── API
+```
+
+Keep presentation-specific tables and prose in the UI layer.
+
+---
+
+## Phase 2 Completion Criterion
+
+Phase 2 is complete when:
+
+- Phase 1's `create → build → 3MF` workflow remains sufficient for routine work;
+- `list` makes existing Artifact discovery easy;
+- `show` makes available Realizations, useful state, and existing 3MFs visible;
+- the operator can identify whether action is actually required;
+- inspection does not mutate persistent state; and
+- the underlying inspection/state capability is reusable outside the CLI.
+
+The program remains independently production-capable at this stopping point.
+
+---
+
+# Phase 3 — Refine Exception and Customization Paths
+
+## Goal
+
+Improve the controls used when the ordinary production path does not already
+produce the desired manufacturing result.
+
+The ordinary path remains:
+
+```text
+create → build → 3MF
+```
+
+Exception paths branch from it only when needed.
+
+Typical examples are:
+
+```text
+configuration exception
+    config → build → 3MF
+
+color exception
+    colors [→ recolor] → 3MF
+
+maintenance exception
+    clean → build → 3MF
+```
+
+Phase 3 must not make these commands prerequisites for routine production.
+
+---
+
+## 3.1 `config`: authored customization
+
+`config` answers:
+
+> What have I explicitly configured, or what do I need to customize?
+
+Preserve the substantial existing Artifact/Realization configuration behavior.
+
+```text
+artifact config baird-lilo
+```
+
+should remain focused on authored Artifact configuration.
+
+```text
+artifact config baird-lilo --realization shape_ornament
+```
+
+should remain focused on authored customization for that Realization.
+
+A canonical Realization with no explicit customization should not be made to
+look as though all inherited/default values were authored in `artifact.toml`.
+
+Existing mutation and custom-Realization creation behavior should be preserved
+unless actual workflow use identifies unnecessary friction.
+
+### Separate authored and effective configuration
+
+`config` owns authored configuration.
+
+`show --realization` may explain the effective manufacturing configuration.
+
+Do not make the commands duplicate each other.
+
+### Misplaced developer inspection
+
+Review Model/developer inspection currently attached to `config`, including
+capabilities such as:
+
+```text
+--list-models
+--workplan
+--dump
+```
+
+If these remain useful, give them an explicit developer-oriented home rather
+than forcing Artifact configuration to serve unrelated purposes.
+
+Do not silently discard useful developer capability.
+
+### Completion
+
+The operator enters `config` only when the manufactured Artifact requires
+customization or authored configuration needs inspection.
+
+---
+
+## 3.2 `colors`: physical-color exception
+
+`colors` answers:
+
+> Do the physical printing colors require operator attention?
+
+Preserve the established color-analysis and recoloring semantics.
+
+Without `--recolor`, `artifact colors` remains read-only analysis.
+
+Mutation remains explicit through:
+
+```text
+--recolor=printer
+--recolor=library
+--recolor=reset
+--recolor=reset-all-realizations
+```
+
+Catalog remains advisory and cannot be selected as a recolor target.
+
+Artifact-level recolor must continue to preserve explicit Realization-level
+`printer_colors`.
+
+Realization-level recolor affects only the selected Realization.
+
+Artwork color rows remain independently printable Artifact colors.
+
+Model-owned structural printing colors must not be silently folded into
+Artwork's global one-to-one color assignment.
+
+### Refactor only operator interaction
+
+Review `colors` for:
+
+- leaner output where possible;
+- empty-workspace behavior;
+- concise expected errors;
+- Artifact/Realization scope consistency; and
+- reusable application behavior beneath Click presentation.
+
+Do not reopen the assignment algorithm or persistence rules without evidence of
+an actual defect.
+
+### Completion
+
+The operator uses `colors` only when physical color choice requires attention,
+and can then return immediately to the manufacturing workflow.
+
+---
+
+## 3.3 Exception-path guidance
+
+Where useful, `show`, `build`, or another manufacturing operation may identify
+that attention is required.
+
+Such guidance should identify the problem and the appropriate next action
+without forcing the action.
+
+Conceptually:
+
+```text
+desired Realization current
+    → use 3MF
+
+desired Realization stale/missing
+    → build
+
+configuration requires customization
+    → config
+
+physical colors require operator choice
+    → colors
+```
+
+Do not turn these into a rigid wizard or mandatory sequence.
+
+A future GUI or TUI may render the same structured conditions as buttons,
+warnings, or contextual actions.
+
+---
+
+## Phase 3 Completion Criterion
+
+Phase 3 is complete when:
+
+- the ordinary `create → build → 3MF` workflow remains unchanged;
+- authored configuration has a focused operator surface;
+- effective configuration remains distinguishable from authored configuration;
+- color analysis/recoloring remains an optional physical-color control;
+- exception paths return naturally to the manufacturing path;
+- no exception command becomes mandatory ceremony; and
+- reusable operations remain UI-independent.
+
+The program remains independently production-capable at this stopping point.
+
+---
+
+# Phase 4 — Consolidate Secondary and Developer Surfaces
+
+## Goal
+
+After the production and exception workflows are stable, remove remaining
+historical CLI inconsistencies without disturbing the established value chain.
+
+This phase contains no speculative manufacturing capability.
+
+---
+
+## 4.1 Review historical public syntax
+
+Review remaining public options and aliases against actual operator value.
+
+Candidates may include historical Variant-oriented normal-workflow syntax such
+as:
+
+```text
+--variant
+--all-variants
+```
+
+Do not remove syntax solely because another form appears more uniform.
+
+For each candidate ask:
+
+1. Does an operator still need this capability?
+2. Is it part of routine manufacturing?
+3. Is it an exception/customization capability?
+4. Is it primarily a developer capability?
+5. Does another established operation already express the need more directly?
+
+Retain, relocate, or remove behavior based on those answers.
+
+---
+
+## 4.2 Developer operations
+
+Review independent Stage execution, Model/workplan inspection, and other
+developer-oriented capabilities.
+
+Preserve architectural capabilities that remain useful.
+
+Keep them from complicating the routine production surface.
+
+A separate developer-oriented command surface is acceptable if it provides a
+clearer boundary.
+
+Do not make the production CLI responsible for presenting every engine
+capability.
+
+---
+
+## 4.3 Final help and message consistency
+
+Review:
+
+```text
+artifact --help
+artifact <command> --help
+```
+
+after command responsibilities are stable.
+
+Ensure help describes operator purpose rather than implementation mechanics.
+
+Review routine messages across commands for:
+
+- terse successful output;
+- consistent Artifact/Realization terminology;
+- actionable expected errors;
+- useful batch summaries;
+- obvious manufacturing Products; and
+- no unnecessary Stage/Model/Variant detail.
+
+Do not force identical output shapes on commands with different operator
+purposes.
+
+---
+
+## 4.4 End-to-end acceptance
+
+Protect a small number of complete workflows rather than reproducing every
+focused command test.
+
+### Routine new work
+
+```text
+incoming artwork
+      ↓
+create
+      ↓
+build
+      ↓
+3MF
+```
+
+### Existing current work
+
+```text
+known Artifact
+      ↓
+build or show
+      ↓
+current Product reused
+      ↓
+3MF
+```
+
+### Manufacturing inspection
+
+```text
+known Artifact
+      ↓
 show
+      ↓
+choose existing/current Realization
+   or
+identify missing/stale work
 ```
 
-used when the ordinary path requires customization, maintenance, or
+### Configuration exception
 
-broader configuration explanation.
+```text
+config customization
+      ↓
+build
+      ↓
+correct 3MF
+```
 
-`colors` remains part of the ordinary production path because it
+### Color exception
 
-provides both the operator's color comparison and the explicit, optional
+```text
+colors
+      ↓
+optional recolor
+      ↓
+operator-ready 3MF
+```
 
-recolor selection.
+### Maintenance
+
+```text
+clean selected generated work
+      ↓
+build
+      ↓
+regenerated 3MF
+```
+
+Keep these acceptance tests focused on user-visible value. Detailed geometry,
+configuration resolution, graph planning, Product-state, and color-assignment
+behavior belongs in existing lower-level tests.
+
+---
+
+## Phase 4 Completion Criterion
+
+The public CLI presents a coherent manufacturing workflow while remaining a
+thin client over reusable application capabilities.
+
+Routine production remains:
+
+```text
+create → build → 3MF
+```
+
+Everything else exists to make that path easier when the ordinary case needs
+discovery, explanation, customization, correction, or maintenance.
+
+---
+
+# Final Completion Criterion
+
+The refactor is complete when the application supports this operator objective:
+
+> Move customer artwork to a correct, printable 3MF with the fewest necessary
+> decisions and actions.
+
+Given an `artifact_id`, the operator can get from that ID to the desired
+printable 3MF quickly while being shown only decisions or corrective actions
+that actually require attention.
+
+Specifically:
+
+- incoming artwork can be registered without manual workspace preparation;
+- Artifact identity remains operator/client assigned and opaque to the build
+  system;
+- `build` makes requested manufacturing work current;
+- current Products are reused;
+- the resulting 3MF is obvious and retrievable;
+- missing convenience publication does not require unnecessary geometry
+  rebuilding when the canonical Product is already current;
+- `clean` provides reliable production maintenance;
+- `list` helps discover managed Artifact identities;
+- `show` exposes useful Realization, state, and Product information when
+  inspection is needed;
+- `config` is an exception/customization path rather than routine ceremony;
+- `colors` is an exception/physical-color path rather than routine ceremony;
+- expected errors are concise and actionable;
+- routine output is lean and focused on the next operator action;
+- application workflow behavior is reusable independently of Click; and
+- future CLI, TUI, GUI, browser, or API clients can present the same underlying
+  manufacturing capabilities without reconstructing them.
+
+The target mental model is:
+
+```text
+                    ┌──────── list / show ────────┐
+                    │       when uncertain         │
+                    │                              ▼
+customer artwork → create → Artifact → build → printable 3MF → printer
+                                  ▲         │
+                                  │         │
+                    ┌─────────────┘         │
+                    │                       │
+              config / colors               │
+              when customization            │
+              requires attention            │
+                                            │
+                         clean ──────────────┘
+                         when generated work
+                         must be discarded
+```
+
+The steady-state operator workflow is not a mandatory sequence of every
+available command.
+
+It is:
+
+```text
+create
+   ↓
+build
+   ↓
+use the 3MF
+```
+
+with every other capability available only when it adds value.
