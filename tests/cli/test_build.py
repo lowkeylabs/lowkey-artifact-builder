@@ -16,6 +16,7 @@ from click.testing import CliRunner
 import lowkey_artifact_builder.cli.cmd_build as cmd_build
 from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.config import ConfigError
+from lowkey_artifact_builder.engine import ExecutionPlan
 
 # =========================================================
 # Helpers
@@ -81,13 +82,15 @@ def test_build_artifact_executes_each_effective_realization(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         executed.append(
             (
                 artifact_id,
                 realization,
             )
         )
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
@@ -156,13 +159,15 @@ def test_build_multiple_artifacts_executes_effective_realizations_in_argument_or
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         executed.append(
             (
                 artifact_id,
                 realization,
             )
         )
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
@@ -300,8 +305,10 @@ def test_build_passes_project_root(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         roots.append(project_root)
+
+        return ()
 
     monkeypatch.chdir(tmp_path)
 
@@ -508,7 +515,7 @@ def test_build_execution_error_is_reported(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         raise cmd_build.BuildError("cannot execute build")
 
     monkeypatch.setattr(
@@ -549,13 +556,15 @@ def test_build_artifact_accepts_selected_realization(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         executed.append(
             (
                 artifact_id,
                 realization,
             )
         )
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
@@ -666,13 +675,15 @@ def test_build_realization_executes_across_project_artifacts(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         executed.append(
             (
                 artifact_id,
                 realization,
             )
         )
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
@@ -746,13 +757,15 @@ def test_build_all_executes_effective_realizations_across_project(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         executed.append(
             (
                 artifact_id,
                 realization,
             )
         )
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
@@ -1325,7 +1338,7 @@ def test_build_realization_continues_after_independent_artifact_failure(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         attempted.append(
             (
                 artifact_id,
@@ -1337,6 +1350,8 @@ def test_build_realization_continues_after_independent_artifact_failure(
             raise cmd_build.BuildError(
                 "smith-dog build failed",
             )
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
@@ -1388,7 +1403,7 @@ def test_build_realization_reports_each_independent_artifact_failure(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         attempted.append(
             artifact_id,
         )
@@ -1396,6 +1411,8 @@ def test_build_realization_reports_each_independent_artifact_failure(
         raise cmd_build.BuildError(
             f"{artifact_id} build failed",
         )
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
@@ -1539,7 +1556,7 @@ def test_build_artifact_continues_after_independent_realization_failure(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         attempted.append(
             (
                 artifact_id,
@@ -1551,6 +1568,8 @@ def test_build_artifact_continues_after_independent_realization_failure(
             raise cmd_build.BuildError(
                 "artwork_default build failed",
             )
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
@@ -1610,7 +1629,7 @@ def test_build_artifact_reports_each_independent_realization_failure(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         attempted.append(
             realization,
         )
@@ -1618,6 +1637,8 @@ def test_build_artifact_reports_each_independent_realization_failure(
         raise cmd_build.BuildError(
             f"{realization} build failed",
         )
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
@@ -1678,7 +1699,7 @@ def test_build_artifacts_continue_after_realization_failure_in_prior_artifact(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         attempted.append(
             (
                 artifact_id,
@@ -1690,6 +1711,8 @@ def test_build_artifacts_continue_after_realization_failure_in_prior_artifact(
             raise cmd_build.BuildError(
                 "smith-dog shape_default build failed",
             )
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
@@ -2191,7 +2214,7 @@ def test_build_requested_realization_does_not_fall_back_to_available_realization
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         attempted.append(
             (
                 artifact_id,
@@ -2203,6 +2226,8 @@ def test_build_requested_realization_does_not_fall_back_to_available_realization
             raise cmd_build.ConfigError(
                 "Realization 'shape_ornament' is not available for Artifact 'smith-dog'."
             )
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
@@ -2479,8 +2504,10 @@ def test_build_materializes_ingested_artifact_before_realization_execution(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         operations.append(f"execute:{artifact_id}:{realization}")
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
@@ -2569,8 +2596,10 @@ def test_build_all_materializes_each_ingested_artifact_before_execution(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         operations.append(f"execute:{artifact_id}:{realization}")
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
@@ -2641,12 +2670,14 @@ def test_build_selected_realization_materializes_artifact_before_execution(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         assert (project_root / "artifacts" / artifact_id / "artifact.toml").is_file()
 
         assert (project_root / "artifacts" / artifact_id / "artifact.png").is_file()
 
         operations.append(f"execute:{artifact_id}:{realization}")
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,

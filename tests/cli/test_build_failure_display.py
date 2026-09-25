@@ -32,7 +32,10 @@ def _emit_failed_build(
     event_sink=None,
 ) -> None:
     """
-    Emit representative failure lifecycle events and fail execution.
+    Emit representative semantic failure events and fail execution.
+
+    The engine-facing event channel remains available even though routine
+    CLI presentation does not narrate the build or Stage lifecycle.
     """
 
     assert artifact_id == "skippy"
@@ -115,11 +118,11 @@ def _invoke_failed_build(
 # =========================================================
 
 
-def test_failed_build_reports_stage_failure(
+def test_failed_build_reports_authoritative_diagnostic(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Stage failure is visible before command termination.
+    Routine BUILD failure presents the authoritative execution diagnostic.
     """
 
     result = _invoke_failed_build(
@@ -127,22 +130,7 @@ def test_failed_build_reports_stage_failure(
     )
 
     assert result.exit_code != 0
-    assert "Stage failed: raster" in result.output
-
-
-def test_failed_build_reports_build_failure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Artifact build failure is visible before command termination.
-    """
-
-    result = _invoke_failed_build(
-        monkeypatch,
-    )
-
-    assert result.exit_code != 0
-    assert "Build failed: skippy" in result.output
+    assert "raster execution failed" in result.output
 
 
 def test_failed_build_reports_diagnostic_once(
@@ -157,15 +145,36 @@ def test_failed_build_reports_diagnostic_once(
     )
 
     assert result.exit_code != 0
-
     assert result.output.count("raster execution failed") == 1
 
 
-def test_failed_build_does_not_report_completion(
+def test_failed_build_does_not_narrate_execution_lifecycle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Failed execution never appears to complete successfully.
+    Routine BUILD failure does not narrate internal execution lifecycle events.
+
+    Semantic execution events remain available to observers, but normal CLI
+    output stays focused on the actionable failure diagnostic.
+    """
+
+    result = _invoke_failed_build(
+        monkeypatch,
+    )
+
+    assert result.exit_code != 0
+
+    assert "Building skippy" not in result.output
+    assert "Stage started: raster" not in result.output
+    assert "Stage failed: raster" not in result.output
+    assert "Build failed: skippy" not in result.output
+
+
+def test_failed_build_does_not_report_successful_manufacturing_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Failed execution never appears to produce a successful manufacturing result.
     """
 
     result = _invoke_failed_build(
@@ -176,27 +185,6 @@ def test_failed_build_does_not_report_completion(
 
     assert "Stage completed: raster" not in result.output
     assert "Build completed: skippy" not in result.output
-
-
-def test_failed_build_preserves_lifecycle_order(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    CLI output preserves the semantic failure lifecycle order.
-    """
-
-    result = _invoke_failed_build(
-        monkeypatch,
-    )
-
-    assert result.exit_code != 0
-
-    output = result.output
-
-    build_started = output.index("Building skippy")
-    stage_started = output.index("Stage started: raster")
-    stage_failed = output.index("Stage failed: raster")
-    build_failed = output.index("Build failed: skippy")
-    diagnostic = output.index("raster execution failed")
-
-    assert build_started < stage_started < stage_failed < build_failed < diagnostic
+    assert " built " not in result.output
+    assert " current " not in result.output
+    assert "artwork_default.3mf" not in result.output

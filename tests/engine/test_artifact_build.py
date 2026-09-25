@@ -25,6 +25,7 @@ from lowkey_artifact_builder.config import (
     write_artifact_config,
 )
 from lowkey_artifact_builder.engine import (
+    ProductState,
     execute_artifact_build,
     rebuild_artifact,
 )
@@ -878,3 +879,159 @@ def test_artifact_build_executes_only_selected_canonical_default_realization(
             "ornament",
         ),
     ]
+
+
+def test_artifact_build_restores_missing_published_3mf_from_current_package(
+    tmp_path: Path,
+) -> None:
+    """
+    A current canonical package Product remains accessible to the operator.
+
+    Removing the Realization-named convenience publication does not make the
+    canonical package Product stale. A subsequent artifact build restores the
+    publication from that current Product.
+    """
+
+    write_artifact_config(
+        "shape-artifact",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    plans = execute_artifact_build(
+        "shape-artifact",
+        project_root=tmp_path,
+    )
+
+    assert len(plans) == 1
+
+    execution_plan = plans[0]
+
+    canonical = (
+        tmp_path
+        / "artifacts"
+        / "shape-artifact"
+        / "shape"
+        / "shape_default"
+        / "40-package"
+        / "artifact.3mf"
+    )
+
+    published = tmp_path / "artifacts" / "shape-artifact" / "shape_default.3mf"
+
+    assert canonical.is_file()
+    assert published.is_file()
+
+    canonical_bytes = canonical.read_bytes()
+
+    published.unlink()
+
+    assert canonical.is_file()
+    assert not published.exists()
+
+    plans = execute_artifact_build(
+        "shape-artifact",
+        project_root=tmp_path,
+    )
+
+    assert len(plans) == 1
+
+    execution_plan = plans[0]
+
+    assert canonical.is_file()
+    assert canonical.read_bytes() == canonical_bytes
+
+    assert published.is_file()
+    assert published.read_bytes() == canonical_bytes
+
+    package = next(stage for stage in execution_plan.stages if stage.stage_name == "package")
+
+    assert package.product_states
+    assert all(state is ProductState.CURRENT for state in package.product_states)
+    assert not package.requires_execution
+
+
+def test_artifact_build_publication_recovery_does_not_reexecute_package(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Restoring convenience publication does not rerun a current package Stage.
+
+    Publication is derived accessibility for the canonical package Product,
+    not persistent-state evidence that determines whether package production
+    is current.
+    """
+
+    write_artifact_config(
+        "shape-artifact",
+        {
+            "model": "shape",
+        },
+        project_root=tmp_path,
+    )
+
+    execute_artifact_build(
+        "shape-artifact",
+        project_root=tmp_path,
+    )
+
+    canonical = (
+        tmp_path
+        / "artifacts"
+        / "shape-artifact"
+        / "shape"
+        / "shape_default"
+        / "40-package"
+        / "artifact.3mf"
+    )
+
+    published = tmp_path / "artifacts" / "shape-artifact" / "shape_default.3mf"
+
+    assert canonical.is_file()
+    assert published.is_file()
+
+    published.unlink()
+
+    assert not published.exists()
+
+    original_execute_dependency_build = artifact_build.execute_dependency_build
+    observed_package_execution: list[bool] = []
+
+    def observe_execute_dependency_build(
+        plan,
+        *,
+        event_sink=None,
+    ):
+        execution_plan = original_execute_dependency_build(
+            plan,
+            event_sink=event_sink,
+        )
+
+        package = next(stage for stage in execution_plan.stages if stage.stage_name == "package")
+
+        observed_package_execution.append(
+            package.requires_execution,
+        )
+
+        return execution_plan
+
+    monkeypatch.setattr(
+        artifact_build,
+        "execute_dependency_build",
+        observe_execute_dependency_build,
+    )
+
+    execute_artifact_build(
+        "shape-artifact",
+        project_root=tmp_path,
+    )
+
+    assert observed_package_execution == [
+        False,
+    ]
+
+    assert canonical.is_file()
+    assert published.is_file()

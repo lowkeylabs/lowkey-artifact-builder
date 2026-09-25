@@ -6,11 +6,12 @@ building a configured artifact.
 
 Callers identify the artifact they want planned or built. The engine owns
 build-plan creation, Variant selection, dependency-aware orchestration,
-persistent-state-aware incremental execution, and production of the requested
-artifact.
+persistent-state-aware incremental execution, production of the requested
+artifact, and publication of an accessible manufacturing result.
 
 Callers do not construct BuildPlans or select an execution strategy.
 """
+
 # File: src/lowkey_artifact_builder/engine/artifact_build.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
@@ -43,6 +44,61 @@ from .plan import (
 from .product_resolver import (
     ProductResolver,
 )
+
+# =========================================================
+# Publication
+# =========================================================
+
+
+def _publish_manufacturing_product(
+    plan: BuildPlan,
+) -> None:
+    """
+    Publish the current package Product for one Artifact Realization.
+
+    The canonical package Product remains the persistent Product authority.
+    Publication creates a Realization-named convenience copy beside the
+    Artifact configuration so an operator can retrieve the manufacturing
+    result without navigating the Stage workspace.
+
+    Publication is a postcondition of successful artifact-level execution.
+    It is independent of whether the package Stage executed during the
+    current invocation. A current canonical package Product may therefore
+    restore a missing convenience publication without rerunning package
+    production.
+
+    A BuildPlan without a package Stage has no manufacturing Product to
+    publish and is left unchanged.
+    """
+
+    package_stage = next(
+        (stage for stage in plan.stages if stage.name == "package"),
+        None,
+    )
+
+    if package_stage is None:
+        return
+
+    if not package_stage.products:
+        return
+
+    package_product = package_stage.products[0]
+
+    if not package_product.path.is_file():
+        return
+
+    published = plan.artifact_dir / f"{plan.realization_name}.3mf"
+
+    try:
+        shutil.copy2(
+            package_product.path,
+            published,
+        )
+    except OSError as exc:
+        raise RuntimeError(
+            f"Could not publish manufacturing Product {package_product.path} to {published}: {exc}"
+        ) from exc
+
 
 # =========================================================
 # Public interface
@@ -163,8 +219,11 @@ def execute_artifact_build(
     Build one or more selected workflows for one configured artifact.
 
     Build-plan selection is shared with non-executing callers such as dry-run.
-    Each selected BuildPlan is then executed through dependency-aware
-    orchestration.
+    Each selected BuildPlan is executed through dependency-aware orchestration.
+
+    After successful execution, any current canonical package Product is
+    published as the Realization-named convenience 3MF. Publication is
+    independent of whether package production executed during this invocation.
 
     Return the execution plan produced for each selected build plan in
     planning order.
@@ -179,12 +238,24 @@ def execute_artifact_build(
         project_root=project_root,
     )
 
-    return tuple(
-        execute_dependency_build(
+    execution_plans: list[ExecutionPlan] = []
+
+    for plan in plans:
+        execution_plan = execute_dependency_build(
             plan,
             event_sink=event_sink,
         )
-        for plan in plans
+
+        _publish_manufacturing_product(
+            plan,
+        )
+
+        execution_plans.append(
+            execution_plan,
+        )
+
+    return tuple(
+        execution_plans,
     )
 
 
@@ -201,6 +272,9 @@ def rebuild_artifact(
     The selected Realization's generated products are removed before
     dependency-aware execution. Generated products belonging to sibling
     Realizations are preserved.
+
+    After successful execution, any current canonical package Product is
+    published as the Realization-named convenience 3MF.
     """
 
     root = project_root if project_root is not None else Path.cwd()
@@ -227,12 +301,24 @@ def rebuild_artifact(
                 realization_dir,
             )
 
-    return tuple(
-        execute_dependency_build(
+    execution_plans: list[ExecutionPlan] = []
+
+    for plan in plans:
+        execution_plan = execute_dependency_build(
             plan,
             event_sink=event_sink,
         )
-        for plan in plans
+
+        _publish_manufacturing_product(
+            plan,
+        )
+
+        execution_plans.append(
+            execution_plan,
+        )
+
+    return tuple(
+        execution_plans,
     )
 
 

@@ -357,6 +357,9 @@ def _execute_realization(
     Independent Artifact builds continue after individual failures. After
     all requested Artifacts have been attempted, any failures are reported
     together as command failure.
+
+    Routine successful execution presents the resulting manufacturing
+    Product rather than narrating internal Stage lifecycle events.
     """
 
     project_root = Path.cwd()
@@ -387,12 +390,18 @@ def _execute_realization(
                 project_root=project_root,
             )
 
-            execute_artifact_build(
+            execution_plans = execute_artifact_build(
                 artifact_id,
                 realization=realization,
                 project_root=project_root,
-                event_sink=_display_execution_event,
+                event_sink=_observe_execution_event,
             )
+
+            for execution_plan in execution_plans:
+                _display_manufacturing_result(
+                    execution_plan,
+                    project_root=project_root,
+                )
 
         except (
             ConfigError,
@@ -522,6 +531,10 @@ def _execute_realizations(
     Independent Realization builds continue after individual failures.
     After all requested independent builds have been attempted, any
     failures are reported together as command failure.
+
+    Routine successful execution presents one concise manufacturing result
+    for each Realization rather than narrating internal Stage lifecycle
+    events.
     """
 
     project_root = Path.cwd()
@@ -540,6 +553,7 @@ def _execute_realizations(
                 artifact_id,
                 project_root=project_root,
             )
+
         except ConfigError as exc:
             failures.append(
                 str(exc),
@@ -565,12 +579,18 @@ def _execute_realizations(
 
                     continue
 
-                execute_artifact_build(
+                execution_plans = execute_artifact_build(
                     artifact_id,
                     realization=realization,
                     project_root=project_root,
-                    event_sink=_display_execution_event,
+                    event_sink=_observe_execution_event,
                 )
+
+                for execution_plan in execution_plans:
+                    _display_manufacturing_result(
+                        execution_plan,
+                        project_root=project_root,
+                    )
 
             except (
                 ConfigError,
@@ -645,6 +665,21 @@ def _rebuild_all(
 # =========================================================
 # Build observation
 # =========================================================
+
+
+def _observe_execution_event(
+    event: ExecutionEvent,
+) -> None:
+    """
+    Observe one semantic execution event without routine presentation.
+
+    Normal BUILD execution retains the engine's semantic event channel for
+    future CLI verbosity and alternate interfaces, while routine successful
+    output is derived from the completed ExecutionPlan instead of narrating
+    Stage lifecycle events.
+    """
+
+    del event
 
 
 def _display_execution_event(
@@ -844,6 +879,51 @@ def _execute_stage(
         BuildError,
     ) as exc:
         raise click.ClickException(str(exc)) from exc
+
+
+def _manufacturing_result_status(
+    execution_plan: ExecutionPlan,
+) -> str:
+    """
+    Return the operator-facing result of successful manufacturing execution.
+
+    ExecutionPlan records the persistent Product states observed before
+    execution. A Realization whose persistent Products were already CURRENT
+    reused its existing manufacturing result. Any non-current persistent
+    Product means work was required to make the requested result current.
+    """
+
+    if _execution_plan_status(execution_plan) is ProductState.CURRENT:
+        return "current"
+
+    return "built"
+
+
+def _display_manufacturing_result(
+    execution_plan: ExecutionPlan,
+    *,
+    project_root: Path,
+) -> None:
+    """
+    Present one successful manufacturing result.
+
+    Routine BUILD output emphasizes the Artifact, Realization, whether work
+    was required, and the accessible Realization-named 3MF. Canonical Stage
+    Product paths remain an engine concern.
+    """
+
+    status = _manufacturing_result_status(
+        execution_plan,
+    )
+
+    published = (
+        project_root
+        / "artifacts"
+        / execution_plan.artifact_id
+        / f"{execution_plan.realization}.3mf"
+    )
+
+    click.echo(f"{execution_plan.artifact_id} {execution_plan.realization} {status} {published}")
 
 
 if __name__ == "__main__":

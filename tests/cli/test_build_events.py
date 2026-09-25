@@ -20,6 +20,7 @@ from click.testing import CliRunner
 
 import lowkey_artifact_builder.cli.cmd_build as cmd_build
 from lowkey_artifact_builder.cli._main import cli
+from lowkey_artifact_builder.engine import ExecutionPlan
 
 # =========================================================
 # Helpers
@@ -99,13 +100,15 @@ def test_build_command_delegates_artifact_execution_to_engine(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         executed.append(
             (
                 artifact_id,
                 realization,
             )
         )
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
@@ -176,7 +179,7 @@ def test_build_command_supplies_event_sink_to_artifact_execution(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         nonlocal observed_sink
 
         assert artifact_id == "example"
@@ -184,6 +187,8 @@ def test_build_command_supplies_event_sink_to_artifact_execution(
         assert project_root == tmp_path
 
         observed_sink = event_sink
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
@@ -203,7 +208,7 @@ def test_build_command_supplies_event_sink_to_artifact_execution(
 
     assert result.exit_code == 0, result.output or repr(result.exception)
 
-    assert observed_sink is not None
+    assert observed_sink is cmd_build._observe_execution_event
 
 
 # =========================================================
@@ -255,10 +260,12 @@ def test_dry_run_prepares_build_without_executing_artifact_build(
         realization: str,
         project_root: Path,
         event_sink=None,
-    ) -> None:
+    ) -> tuple[ExecutionPlan, ...]:
         nonlocal executed
 
         executed = True
+
+        return ()
 
     monkeypatch.setattr(
         cmd_build,
