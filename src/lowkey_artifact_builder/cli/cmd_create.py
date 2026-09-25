@@ -1,11 +1,17 @@
 """
 Artifact creation command.
 
-Ingests source artwork into the project's preserved-original registry.
+Registers Artifact identity in the project's preserved-original registry.
 
-CREATE owns source ingestion only. Model defaults and Variant configuration
-are registered reusable configuration. Artifact workspace materialization and
-Product realization are responsibilities of BUILD.
+CREATE owns Artifact registration and source ingestion only. Source-backed
+Artifacts are registered by a canonical PNG in originals/. Source-less
+Artifacts are registered by a zero-content .artifact marker in originals/.
+
+Source artwork presented to CREATE is intake material. Successful ingestion
+consumes that source into the authoritative originals/ registry.
+
+Artifact workspace materialization and Product realization are
+responsibilities of BUILD.
 """
 
 # File: src/lowkey_artifact_builder/cli/cmd_create.py
@@ -22,7 +28,9 @@ import click
 
 from lowkey_artifact_builder.cli.display import (
     console,
+    display_create_status,
 )
+from lowkey_artifact_builder.config import list_artifacts
 
 # =========================================================
 # CLI
@@ -30,49 +38,76 @@ from lowkey_artifact_builder.cli.display import (
 
 
 @click.command("create")
-@click.argument(
-    "artifact_ids",
-    nargs=-1,
+@click.option(
+    "--artifact-id",
+    type=str,
+    help="Assign the Artifact ID explicitly.",
 )
 @click.option(
     "--source",
     type=str,
-    help="Use the specified PNG as the Artifact source.",
+    help="Ingest the specified PNG as the Artifact source.",
 )
 @click.option(
-    "--clean",
+    "--all-sources",
     is_flag=True,
-    help="Remove verified duplicate PNGs from the batch intake queue.",
+    help="Ingest all root-level PNG sources.",
 )
 def cli(
-    artifact_ids: tuple[str, ...],
+    artifact_id: str | None,
     source: str | None,
-    clean: bool,
+    all_sources: bool,
 ) -> None:
     """
-    Ingest Artifact source artwork into originals/.
+    Inspect intake state or explicitly register Artifact identity and sources.
     """
 
     project_root = Path.cwd()
 
-    if not artifact_ids:
-        _create_intake_batch(
-            source=source,
-            clean=clean,
+    if all_sources:
+        if source is not None:
+            raise click.UsageError("--all-sources cannot be combined with --source.")
+
+        if artifact_id is not None:
+            raise click.UsageError("--all-sources cannot be combined with --artifact-id.")
+
+        _create_all_sources(
             project_root=project_root,
         )
         return
 
-    if len(artifact_ids) != 1:
-        raise click.UsageError("Artifact creation accepts at most one explicit artifact ID.")
+    if source is not None:
+        source_path = _validate_source(
+            project_root / source,
+        )
 
-    if clean:
-        raise click.UsageError("--clean applies only to bare batch intake.")
+        resolved_artifact_id = artifact_id if artifact_id is not None else source_path.stem
 
-    _create_artifact(
-        artifact_ids[0],
-        source=source,
-        project_root=project_root,
+        _create_source_artifact(
+            resolved_artifact_id,
+            source_path=source_path,
+            project_root=project_root,
+        )
+        return
+
+    if artifact_id is not None:
+        _create_sourceless_artifact(
+            artifact_id,
+            project_root=project_root,
+        )
+        return
+
+    artifact_ids = tuple(
+        list_artifacts(
+            project_root=project_root,
+        )
+    )
+
+    sources = _discover_sources(project_root)
+
+    display_create_status(
+        artifact_ids,
+        sources,
     )
 
 
@@ -81,101 +116,177 @@ def cli(
 # =========================================================
 
 
-def _create_intake_batch(
+def _create_sourceless_artifact(
+    artifact_id: str,
     *,
-    source: str | None,
-    clean: bool,
     project_root: Path,
 ) -> None:
     """
-    Ingest the root-level PNG intake queue.
+    Register one source-less Artifact.
 
-    Root-level intake PNGs are owned by the batch workflow. The complete
-    intake queue is preflighted before any persistent project state is
-    modified.
+    A zero-content .artifact marker establishes persistent Artifact identity
+    without implying that source artwork or Artifact configuration exists.
 
-    Successfully ingested sources are moved into the authoritative originals/
-    registry. Verified duplicates are reported and left in the intake queue
-    unless --clean requests their removal.
+    CREATE does not materialize the Artifact workspace.
+    """
+
+    _preflight_artifact_identity(
+        artifact_id,
+        project_root=project_root,
+    )
+
+    originals_dir = project_root / "originals"
+    originals_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    marker = originals_dir / f"{artifact_id}.artifact"
+
+    try:
+        marker.touch(
+            exist_ok=False,
+        )
+    except OSError as exc:
+        raise click.ClickException(f"Could not register Artifact {artifact_id!r}: {exc}") from exc
+
+    console.print(f"Registered source-less Artifact [bold]{artifact_id}[/bold].")
+
+
+def _create_source_artifact(
+    artifact_id: str,
+    *,
+    source_path: Path,
+    project_root: Path,
+) -> None:
+    """
+    Register one source-backed Artifact.
+
+    The selected source is intake material and is consumed into originals/
+    under the canonical Artifact identity.
+
+    CREATE does not materialize the Artifact workspace.
+    """
+
+    _preflight_source_intake(
+        ((artifact_id, source_path),),
+        project_root=project_root,
+    )
+
+    _preserve_intake_original(
+        source_path,
+        artifact_id=artifact_id,
+        project_root=project_root,
+    )
+
+    console.print(f"Created Artifact [bold]{artifact_id}[/bold] from {source_path.name}.")
+
+
+def _create_all_sources(
+    *,
+    project_root: Path,
+) -> None:
+    """
+    Register every eligible root-level PNG source.
+
+    Artifact identities derive from source filename stems. The complete intake
+    queue is preflighted before any persistent project state is modified.
+
+    Successfully ingested sources are consumed into originals/. Verified
+    duplicates are reported and remain in the intake queue; duplicate cleanup
+    belongs to the CLEAN command.
 
     CREATE does not materialize Artifact workspaces.
     """
 
-    if source is not None:
-        raise click.UsageError("--source requires an explicit artifact ID.")
-
     sources = _discover_sources(project_root)
 
-    new_sources, duplicate_sources = _preflight_intake_batch(
-        sources,
+    if not sources:
+        return
+
+    requests = tuple((source_path.stem, source_path) for source_path in sources)
+
+    new_requests, duplicate_sources = _preflight_source_intake(
+        requests,
         project_root=project_root,
     )
 
-    for source_path in new_sources:
-        artifact_id = source_path.stem
-
+    for artifact_id, source_path in new_requests:
         _preserve_intake_original(
             source_path,
             artifact_id=artifact_id,
             project_root=project_root,
         )
 
+        console.print(f"Created Artifact [bold]{artifact_id}[/bold] from {source_path.name}.")
+
     for source_path in duplicate_sources:
-        if clean or _confirm_duplicate_cleanup(source_path):
-            _remove_duplicate_intake(
-                source_path,
-            )
+        console.print(
+            f"{source_path.name} remains in the intake queue; "
+            "use artifact clean to remove verified duplicates."
+        )
 
 
-def _preflight_intake_batch(
-    sources: list[Path],
+# =========================================================
+# Intake preflight
+# =========================================================
+
+
+def _preflight_source_intake(
+    requests: tuple[tuple[str, Path], ...],
     *,
     project_root: Path,
-) -> tuple[list[Path], list[Path]]:
+) -> tuple[list[tuple[str, Path]], list[Path]]:
     """
-    Classify the complete root-level intake queue before mutation.
+    Classify a complete source-ingestion request before mutation.
 
-    originals/ is the authoritative registry of ingested Artifact identities.
+    originals/ is the authoritative registry of Artifact identities.
 
-    Artifact identities are case-insensitive. Incoming content may identify a
-    verified duplicate only when its fingerprint matches exactly one preserved
-    original. Multiple preserved originals may legitimately contain identical
-    content; an incoming PNG matching more than one is ambiguous.
+    Both preserved PNGs and source-less .artifact markers establish Artifact
+    identity. Artifact identities are case-insensitive.
 
-    The complete intake queue is classified before any persistent mutation.
+    Incoming content may identify a verified duplicate only when its
+    fingerprint matches exactly one preserved original. Multiple preserved
+    originals may legitimately contain identical content; an incoming PNG
+    matching more than one is ambiguous.
+
+    Source-less registrations participate in identity collision detection but
+    cannot participate in content-based duplicate recognition.
+
+    The complete request is classified before any persistent mutation.
     """
 
-    originals = _discover_originals(project_root)
+    registrations = _discover_registrations(project_root)
 
-    originals_by_identity: dict[str, Path] = {}
+    registrations_by_identity: dict[str, Path] = {}
     originals_by_digest: dict[str, list[Path]] = {}
 
-    for original in originals:
-        artifact_id = original.stem
+    for registration in registrations:
+        artifact_id = registration.stem
         identity = artifact_id.casefold()
 
-        existing_original = originals_by_identity.get(identity)
+        existing_registration = registrations_by_identity.get(identity)
 
-        if existing_original is not None:
+        if existing_registration is not None:
             raise click.ClickException(
-                f"Preserved originals define conflicting Artifact IDs "
-                f"{existing_original.stem!r} and {artifact_id!r}."
+                f"Artifact registrations define conflicting Artifact IDs "
+                f"{existing_registration.stem!r} and {artifact_id!r}."
             )
 
-        originals_by_identity[identity] = original
+        registrations_by_identity[identity] = registration
 
-        digest = _sha256(original)
-        originals_by_digest.setdefault(
-            digest,
-            [],
-        ).append(original)
+        if registration.suffix.lower() == ".png":
+            digest = _sha256(registration)
+            originals_by_digest.setdefault(
+                digest,
+                [],
+            ).append(registration)
 
     proposed_ids: dict[str, Path] = {}
-    new_sources: list[Path] = []
+    new_requests: list[tuple[str, Path]] = []
     duplicate_sources: list[Path] = []
 
-    for source_path in sources:
-        artifact_id = source_path.stem
+    for artifact_id, source_path in requests:
         identity = artifact_id.casefold()
 
         previous_source = proposed_ids.get(identity)
@@ -188,13 +299,16 @@ def _preflight_intake_batch(
         proposed_ids[identity] = source_path
 
         source_digest = _sha256(source_path)
-        existing_original = originals_by_identity.get(identity)
+        existing_registration = registrations_by_identity.get(identity)
 
-        if existing_original is not None:
-            if _sha256(existing_original) == source_digest:
+        if existing_registration is not None:
+            if (
+                existing_registration.suffix.lower() == ".png"
+                and _sha256(existing_registration) == source_digest
+            ):
                 console.print(
                     f"{source_path.name} [bold]DUPLICATE[/bold] "
-                    f"of Artifact {existing_original.stem!r}"
+                    f"of Artifact {existing_registration.stem!r}"
                 )
 
                 duplicate_sources.append(source_path)
@@ -202,7 +316,7 @@ def _preflight_intake_batch(
 
             raise click.ClickException(
                 f"Incoming PNG {source_path.name!r} conflicts with "
-                f"existing Artifact {existing_original.stem!r}."
+                f"existing Artifact {existing_registration.stem!r}."
             )
 
         matching_originals = originals_by_digest.get(
@@ -222,53 +336,47 @@ def _preflight_intake_batch(
 
         if len(matching_originals) > 1:
             matching_ids = sorted(original.stem for original in matching_originals)
-            matches = ", ".join(repr(artifact_id) for artifact_id in matching_ids)
+            matches = ", ".join(repr(matching_id) for matching_id in matching_ids)
 
             raise click.ClickException(
                 f"Intake PNG {source_path.name!r} is ambiguous: its content "
                 f"matches multiple Artifacts: {matches}."
             )
 
-        new_sources.append(source_path)
+        new_requests.append(
+            (
+                artifact_id,
+                source_path,
+            )
+        )
 
-    return new_sources, duplicate_sources
-
-
-def _confirm_duplicate_cleanup(
-    source_path: Path,
-) -> bool:
-    """
-    Ask whether one verified duplicate should be removed from the intake queue.
-
-    The safe default is to retain the duplicate.
-    """
-
-    return click.confirm(
-        (
-            f"{source_path.name} has already been ingested and is a "
-            "verified duplicate.\n\n"
-            "Remove the duplicate PNG from the intake directory?"
-        ),
-        default=False,
-    )
+    return new_requests, duplicate_sources
 
 
-def _remove_duplicate_intake(
-    source_path: Path,
+def _preflight_artifact_identity(
+    artifact_id: str,
+    *,
+    project_root: Path,
 ) -> None:
     """
-    Remove one positively verified duplicate from the intake queue.
+    Verify that an Artifact identity is not already registered.
 
-    This operation is performed only after complete batch preflight and
-    successful ingestion of all NEW sources.
+    Source-backed and source-less registrations occupy the same
+    case-insensitive Artifact identity namespace.
     """
 
-    try:
-        source_path.unlink()
-    except OSError as exc:
-        raise click.ClickException(
-            f"Could not remove duplicate PNG {source_path.name!r}: {exc}"
-        ) from exc
+    identity = artifact_id.casefold()
+
+    for registration in _discover_registrations(project_root):
+        if registration.stem.casefold() == identity:
+            raise click.ClickException(
+                f"Artifact {artifact_id!r} conflicts with existing Artifact {registration.stem!r}."
+            )
+
+
+# =========================================================
+# Persistence
+# =========================================================
 
 
 def _preserve_intake_original(
@@ -278,7 +386,7 @@ def _preserve_intake_original(
     project_root: Path,
 ) -> None:
     """
-    Preserve and consume one successfully ingested batch-owned source.
+    Preserve and consume one successfully ingested source.
 
     The Artifact ID determines the canonical preserved filename independently
     of the incoming filename spelling.
@@ -303,103 +411,8 @@ def _preserve_intake_original(
         ) from exc
 
 
-def _copy_original(
-    source_path: Path,
-    *,
-    artifact_id: str,
-    project_root: Path,
-) -> None:
-    """
-    Preserve a caller-owned source under its canonical Artifact identity.
-
-    Explicit ingestion does not consume the caller-owned source.
-    """
-
-    originals_dir = project_root / "originals"
-    originals_dir.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    destination = originals_dir / f"{artifact_id}.png"
-
-    if destination.exists():
-        raise click.ClickException(f"Original PNG for Artifact {artifact_id!r} already exists.")
-
-    try:
-        shutil.copy2(
-            source_path,
-            destination,
-        )
-    except OSError as exc:
-        raise click.ClickException(
-            f"Could not preserve original PNG for Artifact {artifact_id!r}: {exc}"
-        ) from exc
-
-
-def _preflight_original_destination(
-    artifact_id: str,
-    *,
-    project_root: Path,
-) -> None:
-    """
-    Verify that ingestion will not overwrite the canonical preserved original.
-    """
-
-    destination = project_root / "originals" / f"{artifact_id}.png"
-
-    if destination.exists():
-        raise click.ClickException(f"Original PNG for Artifact {artifact_id!r} already exists.")
-
-
-def _create_artifact(
-    artifact_id: str,
-    *,
-    source: str | None,
-    project_root: Path,
-) -> None:
-    """
-    Ingest one explicitly named Artifact source.
-
-    Explicit creation treats the selected source as caller-owned. The source
-    remains in place while an independent canonical original is preserved in
-    project-owned storage.
-
-    CREATE does not materialize the Artifact workspace.
-    """
-
-    originals = _discover_originals(project_root)
-
-    existing_originals = {original.stem.casefold(): original for original in originals}
-
-    existing_original = existing_originals.get(
-        artifact_id.casefold(),
-    )
-
-    if existing_original is not None:
-        raise click.ClickException(
-            f"Artifact {artifact_id!r} conflicts with existing Artifact {existing_original.stem!r}."
-        )
-
-    source_path = _resolve_source(
-        source,
-        project_root=project_root,
-    )
-
-    _preflight_original_destination(
-        artifact_id,
-        project_root=project_root,
-    )
-
-    _copy_original(
-        source_path,
-        artifact_id=artifact_id,
-        project_root=project_root,
-    )
-
-
 # =========================================================
-# Source
+# Discovery
 # =========================================================
 
 
@@ -420,13 +433,14 @@ def _discover_sources(
     )
 
 
-def _discover_originals(
+def _discover_registrations(
     project_root: Path,
 ) -> list[Path]:
     """
-    Discover preserved Artifact originals in deterministic order.
+    Discover registered Artifact identities in deterministic order.
 
-    Preserved PNG filenames establish ingested Artifact identities.
+    A preserved PNG registers a source-backed Artifact. A zero-content
+    .artifact marker registers a source-less Artifact.
     """
 
     originals_dir = project_root / "originals"
@@ -438,54 +452,37 @@ def _discover_originals(
         (
             path
             for path in originals_dir.iterdir()
-            if path.is_file() and path.suffix.lower() == ".png"
+            if path.is_file()
+            and path.suffix.lower()
+            in {
+                ".png",
+                ".artifact",
+            }
         ),
         key=lambda path: path.name.casefold(),
     )
 
 
-def _resolve_source(
-    source: str | None,
-    *,
+def _discover_originals(
     project_root: Path,
-) -> Path:
+) -> list[Path]:
     """
-    Resolve the PNG source selected for an explicitly named Artifact.
+    Discover preserved source artwork in deterministic order.
 
-    An explicitly supplied source is validated directly. Otherwise the user
-    selects from PNG files present in the project root.
+    This helper remains source-specific. Use _discover_registrations when
+    Artifact identity, rather than artwork availability, is the concern.
     """
 
-    if source is not None:
-        return _validate_source(
-            project_root / source,
-        )
+    return [
+        registration
+        for registration in _discover_registrations(project_root)
+        if registration.suffix.lower() == ".png"
+    ]
 
-    sources = _discover_sources(project_root)
 
-    if not sources:
-        raise click.ClickException(f"No PNG source files were found in {project_root}.")
-
-    console.print()
-    console.print("[bold]Available PNG sources[/bold]")
-
-    for index, candidate in enumerate(
-        sources,
-        start=1,
-    ):
-        console.print(f"  {index}. {candidate.name}")
-
-    console.print()
-
-    choice = click.prompt(
-        "Source",
-        type=click.IntRange(
-            1,
-            len(sources),
-        ),
-    )
-
-    return sources[choice - 1]
+# =========================================================
+# Source validation
+# =========================================================
 
 
 def _validate_source(

@@ -30,6 +30,9 @@ from lowkey_artifact_builder.cli.display.config import (
     display_available_variants,
     display_realization_definition,
 )
+from lowkey_artifact_builder.cli.display.create import (
+    display_create_status,
+)
 from lowkey_artifact_builder.cli.display.models import (
     display_model,
     display_model_workplan,
@@ -44,6 +47,7 @@ __all__ = [
     "display_artifact_definition",
     "display_build_plan",
     "display_color_analysis",
+    "display_create_status",
     "display_model",
     "display_model_workplan",
     "display_model_workplans",
