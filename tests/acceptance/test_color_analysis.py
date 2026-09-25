@@ -69,9 +69,9 @@ def test_colors_realizes_never_built_registered_artwork_without_standalone_build
         cli,
         [
             "create",
-            "nydeli",
+            "--artifact-id=nydeli",
+            "--source=nydeli-clean.png",
         ],
-        input="1\n",
     )
 
     assert config_result.exit_code == 0, (
@@ -216,9 +216,9 @@ def test_colors_rebuilds_stale_registered_artwork_without_standalone_build(
         cli,
         [
             "create",
-            "nydeli",
+            "--artifact-id=nydeli",
+            "--source=nydeli-clean.png",
         ],
-        input="1\n",
     )
 
     assert config_result.exit_code == 0, (

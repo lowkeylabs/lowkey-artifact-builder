@@ -72,9 +72,9 @@ def _configure_artifact(
         cli,
         [
             "create",
-            "nydeli",
+            "--artifact-id=nydeli",
+            "--source=nydeli-clean.png",
         ],
-        input="1\n",
     )
 
     assert create_result.exit_code == 0, (

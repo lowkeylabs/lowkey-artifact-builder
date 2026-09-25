@@ -81,9 +81,9 @@ def test_png_builds_complete_3mf(
         cli,
         [
             "create",
-            "nydeli",
+            "--artifact-id=nydeli",
+            "--source=nydeli-clean.png",
         ],
-        input="1\n",
     )
 
     assert config_result.exit_code == 0, (
@@ -355,9 +355,9 @@ def test_png_artwork_with_loop_builds_complete_3mf(
         cli,
         [
             "create",
-            "nydeli",
+            "--artifact-id=nydeli",
+            "--source=nydeli-clean.png",
         ],
-        input="1\n",
     )
 
     assert config_result.exit_code == 0, (
@@ -628,9 +628,9 @@ def test_png_artwork_with_base_builds_complete_3mf(
         cli,
         [
             "create",
-            "nydeli",
+            "--artifact-id=nydeli",
+            "--source=nydeli-clean.png",
         ],
-        input="1\n",
     )
 
     assert config_result.exit_code == 0, (
@@ -872,9 +872,9 @@ def test_png_artwork_with_base_and_loop_builds_complete_3mf(
         cli,
         [
             "create",
-            "nydeli",
+            "--artifact-id=nydeli",
+            "--source=nydeli-clean.png",
         ],
-        input="1\n",
     )
 
     assert config_result.exit_code == 0, (
@@ -1192,9 +1192,9 @@ def test_png_artwork_with_hole_builds_complete_3mf(
         cli,
         [
             "create",
-            "nydeli",
+            "--artifact-id=nydeli",
+            "--source=nydeli-clean.png",
         ],
-        input="1\n",
     )
 
     assert config_result.exit_code == 0, (
@@ -1517,9 +1517,9 @@ def test_png_artwork_with_hole_preserves_through_hole_in_packaged_geometry(
         cli,
         [
             "create",
-            "nydeli",
+            "--artifact-id=nydeli",
+            "--source=nydeli-clean.png",
         ],
-        input="1\n",
     )
 
     assert config_result.exit_code == 0, (
