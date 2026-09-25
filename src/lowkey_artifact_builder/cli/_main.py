@@ -39,17 +39,31 @@ def alias_command(base_cmd: click.Command, name: str, *, help: str | None = None
 
 
 @click.group(invoke_without_command=True)
+@click.option(
+    "-v",
+    "--verbose",
+    count=True,
+    help="Increase diagnostic verbosity. Repeat for debug output.",
+)
 @click.pass_context
 def cli(
     ctx,
+    verbose: int,
 ):
     """
     Artifact builder.
 
     See main project README.md
     """
-    configure_logging()
+    if verbose >= 2:
+        configure_logging("DEBUG")
+    elif verbose == 1:
+        configure_logging("INFO")
+    else:
+        configure_logging()
+
     ctx.ensure_object(dict)
+    ctx.obj["verbosity"] = verbose
 
     #
     # No subcommand?

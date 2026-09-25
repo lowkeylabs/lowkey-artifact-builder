@@ -133,3 +133,75 @@ def test_cli_config_list_models_rejects_artifact_ids() -> None:
     assert result.exit_code != 0
 
     assert "--list-models cannot be used with artifact IDs." in result.output
+
+
+def test_cli_uses_default_logging_without_verbose(
+    monkeypatch,
+) -> None:
+    """The root CLI uses default logging when verbosity is not requested."""
+
+    configured_levels: list[object] = []
+
+    def configure(level=None) -> None:
+        configured_levels.append(level)
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli._main.configure_logging",
+        configure,
+    )
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [],
+    )
+
+    assert result.exit_code == 0
+    assert configured_levels == [None]
+
+
+def test_cli_verbose_enables_info_logging(
+    monkeypatch,
+) -> None:
+    """-v enables INFO diagnostic logging globally."""
+
+    configured_levels: list[object] = []
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli._main.configure_logging",
+        configured_levels.append,
+    )
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        ["-v"],
+    )
+
+    assert result.exit_code == 0
+    assert configured_levels == ["INFO"]
+
+
+def test_cli_double_verbose_enables_debug_logging(
+    monkeypatch,
+) -> None:
+    """-vv enables DEBUG diagnostic logging globally."""
+
+    configured_levels: list[object] = []
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli._main.configure_logging",
+        configured_levels.append,
+    )
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        ["-vv"],
+    )
+
+    assert result.exit_code == 0
+    assert configured_levels == ["DEBUG"]
