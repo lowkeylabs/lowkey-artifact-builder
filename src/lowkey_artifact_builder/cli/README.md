@@ -53,6 +53,51 @@ The operator should not need to create internal directories before using
 the CLI. Missing storage directories are normally equivalent to empty
 collections, not exceptional conditions.
 
+## Presentation
+
+The CLI should present information for operator decisions rather than expose
+internal implementation activity.
+
+Where output is naturally structured as rows and columns, prefer the Python
+`rich` package for terminal presentation.
+
+Use Rich tables for content such as:
+
+- Artifact lists;
+- Realization lists and manufacturing state;
+- color analysis and assignments;
+- configuration summaries where values are naturally tabular;
+- build or batch summaries; and
+- other repeated structured records.
+
+Tables should normally include concise column headers that identify the
+operator-relevant meaning of each value.
+
+For example:
+
+```text
+Realization          Type       State       3MF
+artwork_default      built-in   current     artwork_default.3mf
+shape_default        built-in   not built   —
+shape_ornament       built-in   current     shape_ornament.3mf
+large-ornament       custom     stale       large-ornament.3mf
+```
+
+Prefer Rich's semantic formatting capabilities over manually aligning columns,
+drawing separators, or embedding terminal escape sequences in application
+logic.
+
+Rich presentation remains a UI concern. Reusable application operations should
+return structured information or semantic events rather than Rich tables,
+renderables, terminal markup, or presentation-specific strings.
+
+Do not force naturally simple output into a table. A short success message,
+single path, warning, prompt, or actionable error should remain simple when a
+table would add visual weight without helping the operator.
+
+Routine output should remain terse. Rich is used to improve readability and
+operator comprehension, not to increase the amount of information displayed.
+
 ## Commands
 
 ### `artifact create`
@@ -100,7 +145,7 @@ outputs.
 artifact show baird-lilo
 ```
 
-Conceptually:
+Conceptually, and preferably rendered as a `rich` table:
 
 ```text
 Realization          Type       State       3MF

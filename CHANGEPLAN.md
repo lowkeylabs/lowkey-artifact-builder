@@ -241,6 +241,14 @@ should likewise retain its established semantics.
 
 Treat these commands as existing capabilities, not blank surfaces to redesign.
 
+Preserve established create, build, and clean semantics unless we identify a specific operator-workflow improvement that justifies changing them. Optimize the value chain around those commands rather than redesigning those commands from first principles.
+
+The existing create, build, and clean workflows are the starting point for the production value chain. Significant previous CHANGEPLAN work established their semantics and tests. This plan should preserve those behaviors by default and make only focused changes needed to improve the operator workflow, presentation, reuse across interfaces, or value-chain efficiency.
+
+Bare commands may intentionally differ from their mutating forms. In particular, bare commands such as artifact create and artifact build may be read-only situational-awareness operations that reduce operator cognitive load by showing current state and guiding the operator toward useful next actions. This is a deliberate CLI design pattern, not behavior to be factored into separate commands.
+
+“Thin CLI” means that reusable domain/application behavior should live below the presentation layer. It does not require one command to correspond to one application operation, nor does it prohibit a command from selecting read-only versus mutating behavior according to its arguments.
+
 We may intentionally change an established command if implementation experience
 shows that a different interaction materially reduces operator work or makes
 the manufacturing path clearer. Such a change must be justified by the value
@@ -395,6 +403,8 @@ what happened
 whether work remains
 3MF or other relevant manufacturing Product
 ```
+
+Where operator-facing information is naturally tabular, prefer Rich tables with concise headers rather than manually formatted columns or unstructured repeated lines.
 
 Avoid narrating internal orchestration.
 
