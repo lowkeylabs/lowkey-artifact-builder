@@ -3,6 +3,7 @@
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 
+import pytest
 from click.testing import CliRunner
 
 from lowkey_artifact_builder.cli._main import cli
@@ -161,10 +162,17 @@ def test_cli_uses_default_logging_without_verbose(
     assert configured_levels == [None]
 
 
-def test_cli_verbose_enables_info_logging(
+# =========================================================
+# Semantic verbosity and diagnostic logging
+# =========================================================
+
+
+def test_cli_verbose_sets_semantic_verbosity_without_changing_logging(
     monkeypatch,
 ) -> None:
-    """-v enables INFO diagnostic logging globally."""
+    """
+    -v selects manufacturing-progress messaging independently of logging.
+    """
 
     configured_levels: list[object] = []
 
@@ -181,13 +189,15 @@ def test_cli_verbose_enables_info_logging(
     )
 
     assert result.exit_code == 0
-    assert configured_levels == ["INFO"]
+    assert configured_levels == [None]
 
 
-def test_cli_double_verbose_enables_debug_logging(
+def test_cli_very_verbose_sets_semantic_verbosity_without_changing_logging(
     monkeypatch,
 ) -> None:
-    """-vv enables DEBUG diagnostic logging globally."""
+    """
+    -vv selects semantic diagnostics independently of logging.
+    """
 
     configured_levels: list[object] = []
 
@@ -204,4 +214,95 @@ def test_cli_double_verbose_enables_debug_logging(
     )
 
     assert result.exit_code == 0
+    assert configured_levels == [None]
+
+
+def test_cli_log_level_controls_diagnostic_logging(
+    monkeypatch,
+) -> None:
+    """
+    --log-level explicitly controls Python diagnostic logging.
+    """
+
+    configured_levels: list[object] = []
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli._main.configure_logging",
+        configured_levels.append,
+    )
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        ["--log-level=DEBUG"],
+    )
+
+    assert result.exit_code == 0
     assert configured_levels == ["DEBUG"]
+
+
+def test_cli_quiet_does_not_change_diagnostic_logging(
+    monkeypatch,
+) -> None:
+    """
+    --quiet affects semantic messaging only.
+    """
+
+    configured_levels: list[object] = []
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.cli._main.configure_logging",
+        configured_levels.append,
+    )
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [
+            "--quiet",
+            "--log-level=INFO",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert configured_levels == ["INFO"]
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--verbose"],
+        ["--very-verbose"],
+        ["--quiet"],
+    ],
+)
+def test_cli_accepts_semantic_messaging_options(args) -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        args,
+    )
+
+    assert result.exit_code == 0
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--quiet", "--verbose"],
+        ["--quiet", "--very-verbose"],
+        ["--verbose", "--very-verbose"],
+    ],
+)
+def test_cli_rejects_conflicting_semantic_messaging_options(args) -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        args,
+    )
+
+    assert result.exit_code != 0

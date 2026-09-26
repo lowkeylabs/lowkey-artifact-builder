@@ -45,14 +45,18 @@ MODEL_NAME = "shape"
 
 def _invoke(
     *args: str,
+    cli_args: tuple[str, ...] = (),
 ) -> Any:
     """
     Invoke the artifact build command.
+
+    cli_args contains root-command options such as -v, -vv, and --quiet.
     """
 
     return CliRunner().invoke(
         cli,
         [
+            *cli_args,
             "build",
             *args,
         ],
@@ -87,6 +91,20 @@ def _published_3mf(
     """
 
     return _artifact_dir(project_root) / f"{REALIZATION}.3mf"
+
+
+def _relative_published_3mf(
+    project_root: Path,
+) -> Path:
+    """
+    Return the operator-facing 3MF path relative to the project root.
+    """
+
+    return _published_3mf(
+        project_root,
+    ).relative_to(
+        project_root,
+    )
 
 
 def _install_materialization(
@@ -299,10 +317,45 @@ def _emit_current_realization(
     )
 
 
+def _install_existing_manufacturing_result(
+    project_root: Path,
+) -> tuple[Path, Path]:
+    """
+    Install representative current canonical and published 3MF Products.
+    """
+
+    canonical = _canonical_3mf(
+        project_root,
+    )
+    published = _published_3mf(
+        project_root,
+    )
+
+    canonical.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    canonical.write_bytes(
+        b"existing packaged 3mf",
+    )
+
+    published.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    published.write_bytes(
+        b"existing packaged 3mf",
+    )
+
+    return canonical, published
+
+
 def _invoke_selected_realization(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     execute: Callable[..., tuple[ExecutionPlan, ...]],
+    *,
+    cli_args: tuple[str, ...] = (),
 ) -> Any:
     """
     Invoke one selected-Realization build with deterministic execution.
@@ -326,6 +379,7 @@ def _invoke_selected_realization(
         ARTIFACT_ID,
         "--realization",
         REALIZATION,
+        cli_args=cli_args,
     )
 
 
@@ -359,6 +413,9 @@ def test_build_reports_built_manufacturing_result(
     published = _published_3mf(
         tmp_path,
     )
+    relative_published = _relative_published_3mf(
+        tmp_path,
+    )
 
     assert published.is_file()
 
@@ -367,7 +424,8 @@ def test_build_reports_built_manufacturing_result(
     assert ARTIFACT_ID in output
     assert REALIZATION in output
     assert "built" in output.lower()
-    assert str(published) in output
+    assert str(relative_published) in output
+    assert str(published) not in output
 
 
 def test_build_result_reports_published_3mf_not_internal_canonical_product(
@@ -393,6 +451,9 @@ def test_build_result_reports_published_3mf_not_internal_canonical_product(
     published = _published_3mf(
         tmp_path,
     )
+    relative_published = _relative_published_3mf(
+        tmp_path,
+    )
     canonical = _canonical_3mf(
         tmp_path,
     )
@@ -400,7 +461,8 @@ def test_build_result_reports_published_3mf_not_internal_canonical_product(
     assert canonical.is_file()
     assert published.is_file()
 
-    assert str(published) in result.output
+    assert str(relative_published) in result.output
+    assert str(published) not in result.output
     assert str(canonical) not in result.output
 
 
@@ -420,27 +482,8 @@ def test_build_reports_current_manufacturing_result_without_rebuilding(
     not require manufacturing work to occur on every invocation.
     """
 
-    canonical = _canonical_3mf(
+    canonical, published = _install_existing_manufacturing_result(
         tmp_path,
-    )
-    published = _published_3mf(
-        tmp_path,
-    )
-
-    canonical.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-    canonical.write_bytes(
-        b"existing packaged 3mf",
-    )
-
-    published.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-    published.write_bytes(
-        b"existing packaged 3mf",
     )
 
     result = _invoke_selected_realization(
@@ -454,12 +497,17 @@ def test_build_reports_current_manufacturing_result_without_rebuilding(
     assert canonical.read_bytes() == b"existing packaged 3mf"
     assert published.read_bytes() == b"existing packaged 3mf"
 
+    relative_published = _relative_published_3mf(
+        tmp_path,
+    )
+
     output = result.output
 
     assert ARTIFACT_ID in output
     assert REALIZATION in output
     assert "current" in output.lower()
-    assert str(published) in output
+    assert str(relative_published) in output
+    assert str(published) not in output
 
 
 def test_current_build_is_not_reported_as_built(
@@ -470,27 +518,8 @@ def test_current_build_is_not_reported_as_built(
     BUILD distinguishes reuse of a current Product from newly built work.
     """
 
-    canonical = _canonical_3mf(
+    _install_existing_manufacturing_result(
         tmp_path,
-    )
-    published = _published_3mf(
-        tmp_path,
-    )
-
-    canonical.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-    canonical.write_bytes(
-        b"existing packaged 3mf",
-    )
-
-    published.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-    published.write_bytes(
-        b"existing packaged 3mf",
     )
 
     result = _invoke_selected_realization(
@@ -547,27 +576,8 @@ def test_current_build_default_output_does_not_narrate_stage_reuse(
     The operator does not need one skipped-Stage message per reusable Stage.
     """
 
-    canonical = _canonical_3mf(
+    _install_existing_manufacturing_result(
         tmp_path,
-    )
-    published = _published_3mf(
-        tmp_path,
-    )
-
-    canonical.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-    canonical.write_bytes(
-        b"existing packaged 3mf",
-    )
-
-    published.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-    published.write_bytes(
-        b"existing packaged 3mf",
     )
 
     result = _invoke_selected_realization(
@@ -579,3 +589,102 @@ def test_current_build_default_output_does_not_narrate_stage_reuse(
     assert result.exit_code == 0, result.output or repr(result.exception)
 
     assert "Stage skipped:" not in result.output
+
+
+# =========================================================
+# Semantic messaging
+# =========================================================
+
+
+def test_verbose_build_reports_stage_completion(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    -v reports manufacturing Stage progress.
+    """
+
+    result = _invoke_selected_realization(
+        monkeypatch,
+        tmp_path,
+        _emit_built_realization,
+        cli_args=("-v",),
+    )
+
+    assert result.exit_code == 0, result.output or repr(result.exception)
+
+    output = result.output.lower()
+
+    assert "package" in output
+    assert "completed" in output
+
+
+def test_verbose_build_reports_current_stage_as_reused(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    -v describes reuse of a current Stage Product in operator terminology.
+    """
+
+    _install_existing_manufacturing_result(
+        tmp_path,
+    )
+
+    result = _invoke_selected_realization(
+        monkeypatch,
+        tmp_path,
+        _emit_current_realization,
+        cli_args=("-v",),
+    )
+
+    assert result.exit_code == 0, result.output or repr(result.exception)
+
+    output = result.output.lower()
+
+    assert "package" in output
+    assert "reused" in output
+    assert "skipped" not in output
+
+
+def test_very_verbose_build_reports_product_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    -vv adds semantic Product-state diagnostics.
+    """
+
+    result = _invoke_selected_realization(
+        monkeypatch,
+        tmp_path,
+        _emit_built_realization,
+        cli_args=("-vv",),
+    )
+
+    assert result.exit_code == 0, result.output or repr(result.exception)
+
+    output = result.output.lower()
+
+    assert "package" in output
+    assert "absent" in output
+
+
+def test_quiet_build_suppresses_semantic_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    --quiet suppresses execution progress and the manufacturing result.
+    """
+
+    result = _invoke_selected_realization(
+        monkeypatch,
+        tmp_path,
+        _emit_built_realization,
+        cli_args=("--quiet",),
+    )
+
+    assert result.exit_code == 0, result.output or repr(result.exception)
+
+    assert result.output == ""

@@ -21,7 +21,12 @@ from .cmd_show import cli as cmd_show
 logger = get_logger(__name__)
 
 
-def alias_command(base_cmd: click.Command, name: str, *, help: str | None = None) -> click.Command:
+def alias_command(
+    base_cmd: click.Command,
+    name: str,
+    *,
+    help: str | None = None,
+) -> click.Command:
     """Creates a new independent Command instance sharing the same core logic."""
 
     if help is None:
@@ -42,28 +47,96 @@ def alias_command(base_cmd: click.Command, name: str, *, help: str | None = None
 @click.option(
     "-v",
     "--verbose",
-    count=True,
-    help="Increase diagnostic verbosity. Repeat for debug output.",
+    is_flag=True,
+    help="Show manufacturing progress.",
+)
+@click.option(
+    "-vv",
+    "--very-verbose",
+    is_flag=True,
+    help="Show semantic execution diagnostics.",
+)
+@click.option(
+    "--quiet",
+    is_flag=True,
+    help="Suppress semantic messaging.",
+)
+@click.option(
+    "--log-level",
+    type=click.Choice(
+        [
+            "TRACE",
+            "DEBUG",
+            "INFO",
+            "PROGRESS",
+            "SUCCESS",
+            "WARNING",
+            "ERROR",
+            "CRITICAL",
+        ],
+        case_sensitive=False,
+    ),
+    default=None,
+    help="Set diagnostic logging level.",
 )
 @click.pass_context
 def cli(
-    ctx,
-    verbose: int,
-):
+    ctx: click.Context,
+    verbose: bool,
+    very_verbose: bool,
+    quiet: bool,
+    log_level: str | None,
+) -> None:
     """
     Artifact builder.
 
     See main project README.md
     """
-    if verbose >= 2:
-        configure_logging("DEBUG")
-    elif verbose == 1:
-        configure_logging("INFO")
+
+    #
+    # Semantic messaging and diagnostic logging are independent.
+    #
+    # Exactly one semantic messaging mode may be selected explicitly.
+    #
+    semantic_modes = sum(
+        (
+            quiet,
+            verbose,
+            very_verbose,
+        )
+    )
+
+    if semantic_modes > 1:
+        raise click.UsageError("--quiet, --verbose, and --very-verbose are mutually exclusive.")
+
+    #
+    # Diagnostic logging is controlled only by --log-level.
+    #
+    # Passing None preserves normal logging configuration, including the
+    # LOG_LEVEL environment variable and configured default.
+    #
+    configure_logging(
+        log_level,
+    )
+
+    #
+    # Preserve semantic verbosity as application context for commands that
+    # present structured execution events.
+    #
+    # The numeric representation is intentionally internal and remains
+    # extensible beyond the currently exposed CLI modes.
+    #
+    if quiet:
+        verbosity = -1
+    elif very_verbose:
+        verbosity = 2
+    elif verbose:
+        verbosity = 1
     else:
-        configure_logging()
+        verbosity = 0
 
     ctx.ensure_object(dict)
-    ctx.obj["verbosity"] = verbose
+    ctx.obj["verbosity"] = verbosity
 
     #
     # No subcommand?

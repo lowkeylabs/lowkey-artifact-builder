@@ -208,7 +208,8 @@ def test_build_command_supplies_event_sink_to_artifact_execution(
 
     assert result.exit_code == 0, result.output or repr(result.exception)
 
-    assert observed_sink is cmd_build._observe_execution_event
+    assert observed_sink is not None
+    assert callable(observed_sink)
 
 
 # =========================================================

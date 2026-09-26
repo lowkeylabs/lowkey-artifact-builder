@@ -47,6 +47,10 @@ from lowkey_artifact_builder.engine import (
     prepare_incremental_build,
     rebuild_artifact,
 )
+from lowkey_artifact_builder.messaging import (
+    SemanticMessenger,
+    display_path,
+)
 
 # =========================================================
 # CLI
@@ -54,6 +58,7 @@ from lowkey_artifact_builder.engine import (
 
 
 @click.command("build")
+@click.pass_context
 @click.argument(
     "artifact_ids",
     nargs=-1,
@@ -112,6 +117,7 @@ from lowkey_artifact_builder.engine import (
     help="Clean and rebuild every effective Realization of every project Artifact.",
 )
 def cli(
+    ctx: click.Context,
     artifact_ids: tuple[str, ...],
     stage: str | None,
     realization: str | None,
@@ -141,6 +147,19 @@ def cli(
     stage. Explicit input, parameter, and output bindings apply only to
     this independent stage execution mode.
     """
+
+    verbosity = 0
+
+    if ctx.obj is not None:
+        verbosity = ctx.obj.get(
+            "verbosity",
+            0,
+        )
+
+    messenger = SemanticMessenger(
+        verbosity=verbosity,
+        sink=click.echo,
+    )
 
     if build_all and rebuild_all:
         raise click.UsageError("--build-all and --rebuild-all cannot be used together.")
@@ -218,6 +237,7 @@ def cli(
         _execute_realizations(
             artifact_ids,
             dry_run=dry_run,
+            messenger=messenger,
         )
         return
 
@@ -248,12 +268,14 @@ def cli(
             artifact_ids,
             realization=realization,
             dry_run=dry_run,
+            messenger=messenger,
         )
         return
 
     _execute_realizations(
         artifact_ids,
         dry_run=dry_run,
+        messenger=messenger,
     )
 
 
@@ -347,6 +369,7 @@ def _execute_realization(
     *,
     realization: str,
     dry_run: bool,
+    messenger: SemanticMessenger,
 ) -> None:
     """
     Build one selected Realization for the selected Artifacts.
@@ -394,13 +417,14 @@ def _execute_realization(
                 artifact_id,
                 realization=realization,
                 project_root=project_root,
-                event_sink=_observe_execution_event,
+                event_sink=messenger.execution_event,
             )
 
             for execution_plan in execution_plans:
                 _display_manufacturing_result(
                     execution_plan,
                     project_root=project_root,
+                    messenger=messenger,
                 )
 
         except (
@@ -518,6 +542,7 @@ def _execute_realizations(
     artifact_ids: tuple[str, ...],
     *,
     dry_run: bool,
+    messenger: SemanticMessenger,
 ) -> None:
     """
     Build every effective Realization for the selected Artifacts.
@@ -583,13 +608,14 @@ def _execute_realizations(
                     artifact_id,
                     realization=realization,
                     project_root=project_root,
-                    event_sink=_observe_execution_event,
+                    event_sink=messenger.execution_event,
                 )
 
                 for execution_plan in execution_plans:
                     _display_manufacturing_result(
                         execution_plan,
                         project_root=project_root,
+                        messenger=messenger,
                     )
 
             except (
@@ -665,21 +691,6 @@ def _rebuild_all(
 # =========================================================
 # Build observation
 # =========================================================
-
-
-def _observe_execution_event(
-    event: ExecutionEvent,
-) -> None:
-    """
-    Observe one semantic execution event without routine presentation.
-
-    Normal BUILD execution retains the engine's semantic event channel for
-    future CLI verbosity and alternate interfaces, while routine successful
-    output is derived from the completed ExecutionPlan instead of narrating
-    Stage lifecycle events.
-    """
-
-    del event
 
 
 def _display_execution_event(
@@ -903,6 +914,7 @@ def _display_manufacturing_result(
     execution_plan: ExecutionPlan,
     *,
     project_root: Path,
+    messenger: SemanticMessenger,
 ) -> None:
     """
     Present one successful manufacturing result.
@@ -923,7 +935,12 @@ def _display_manufacturing_result(
         / f"{execution_plan.realization}.3mf"
     )
 
-    click.echo(f"{execution_plan.artifact_id} {execution_plan.realization} {status} {published}")
+    messenger.message(
+        f"{execution_plan.artifact_id} "
+        f"{execution_plan.realization} "
+        f"{status} "
+        f"{display_path(published, project_root=project_root)}"
+    )
 
 
 if __name__ == "__main__":

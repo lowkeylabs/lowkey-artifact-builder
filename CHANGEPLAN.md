@@ -1259,4 +1259,3 @@ use the correct 3MF
 ```
 
 Everything else exists only when it removes an obstacle, corrects a manufacturing defect, reduces unnecessary work, or helps the operator make the next useful decision.
-
