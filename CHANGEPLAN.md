@@ -345,6 +345,45 @@ Do not expose internal Stage, resolver, dependency, filesystem, or implementatio
 
 Paths shown to operators should be concise and useful in the current shell context. When a Product lies beneath the current project root, prefer a path relative to the current working directory rather than a long absolute path.
 
+
+## CLI semantic verbosity and logging
+
+Before continuing the Artwork planning/reuse investigation, clean up BUILD
+observation so subsequent manufacturing work is easier to inspect.
+
+Keep semantic execution messaging independent from Python logging.
+
+### Semantic messaging
+
+- Default BUILD output reports only Artifact/Realization completion and the
+  resulting manufacturing Product.
+- Display operator-facing paths relative to the project root when possible.
+- `-v`, `--verbose` shows manufacturing progress, including Stage completion
+  and reuse.
+- `-vv`, `--very-verbose` shows richer semantic diagnostics, including the
+  Product-state information explaining execution/reuse decisions.
+- `--quiet` suppresses semantic messaging, including normal completion output.
+- Quiet, verbose, and very-verbose are mutually exclusive.
+- Keep the internal verbosity representation extensible; do not unnecessarily
+  constrain future verbosity levels.
+
+Semantic messaging should be derived from structured execution events rather
+than Python log messages. Prefer operator terminology such as `reused` where
+the underlying engine event is `stage.skipped` because an existing Product is
+current.
+
+### Diagnostic logging
+
+- Add top-level `--log-level=LEVEL`.
+- Support the levels already recognized by `logging_config.py`.
+- `--log-level` controls Python diagnostic logging only.
+- `-v`, `-vv`, and `--quiet` do not alter the configured Python log level.
+- `--log-level` may therefore be combined with any semantic messaging mode,
+  including `--quiet`.
+
+Implement this as a small TDD slice using the existing semantic execution-event
+channel. Do not change engine execution behavior as part of this work.
+
 ---
 
 # Current Plan Status
