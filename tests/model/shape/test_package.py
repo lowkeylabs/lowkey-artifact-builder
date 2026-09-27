@@ -2523,3 +2523,108 @@ def test_package_stage_preserves_same_color_artwork_fill_identity(
         assert color.get("displaycolor") == "#0000FF"
 
     resolver.assert_not_called()
+
+
+def test_package_stage_assigns_incorporated_artwork_to_printer_color(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape packaging assigns incorporated Artwork to a physical printer color.
+
+    Shape Extrude supplies persistent Artifact-color identity for incorporated
+    Artwork. Package is the physical color boundary and resolves that measured
+    Artifact color against the configured printer-color selection.
+    """
+
+    component_directory = tmp_path / "extrude"
+    artwork = component_directory / "artwork-1.stl"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    _write_component_stl(
+        artwork,
+        solid_name="artwork-1",
+    )
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "components": [
+                    {
+                        "name": "artwork-1",
+                        "path": "artwork-1.stl",
+                        "color": {
+                            "index": 7,
+                            "rgb": {
+                                "red": 17,
+                                "green": 43,
+                                "blue": 91,
+                            },
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resolver = Mock()
+
+    resolver.return_value = [
+        "physical-blue",
+    ]
+
+    resolver.colors = {
+        "physical-blue": {
+            "rgb": [
+                20,
+                40,
+                90,
+            ],
+        },
+    }
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "example"
+    context.resolver = resolver
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    package.execute(
+        context,
+    )
+
+    resolver.assert_called_once_with(
+        "printer_colors",
+    )
+
+    model = _read_model(
+        artifact,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+
+    assert len(objects) == 1
+    assert objects[0].get("name") == component_name(
+        "example",
+        "artwork-1",
+        "physical-blue",
+    )
+
+    assert len(materials) == 1
+
+    color = materials[0].find(
+        f"{{{CORE_NS}}}base",
+    )
+
+    assert color is not None
+    assert color.get("name") == "physical-blue"
+    assert color.get("displaycolor") == "#14285A"

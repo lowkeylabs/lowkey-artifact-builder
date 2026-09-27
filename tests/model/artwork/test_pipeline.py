@@ -665,11 +665,12 @@ def test_artwork_pipeline_preserves_dynamic_product_identity(
     tmp_path: Path,
 ) -> None:
     """
-    Dynamic Artwork products preserve Artifact and printer identity through
+    Dynamic Artwork products preserve Artifact-color identity through
     rasterization, vectorization, and extrusion.
 
-    Downstream stages consume persistent semantic identity rather than
-    rediscovering color identity from their geometry.
+    Downstream geometry stages consume persistent logical Artifact-color
+    identity rather than rediscovering color identity from geometry.
+    Physical printer-color assignment is introduced only during packaging.
     """
 
     realization = _build_artwork(
@@ -715,19 +716,26 @@ def test_artwork_pipeline_preserves_dynamic_product_identity(
         == [product["artifact_color"] for product in extrude_products]
     )
 
-    assert (
-        [product["printer_color"] for product in raster_products]
-        == [product["printer_color"] for product in vector_products]
-        == [product["printer_color"] for product in extrude_products]
-    )
+    assert all("printer_color" not in product for product in raster_products)
+
+    assert all("printer_color" not in product for product in vector_products)
+
+    assert all("printer_color" not in product for product in extrude_products)
 
 
 def test_artwork_pipeline_products_are_functionally_equivalent(
     tmp_path: Path,
 ) -> None:
     """
-    The complete Artwork pipeline preserves color semantics and meaningful
-    geometry through raster, vector, STL, and 3MF representations.
+    The complete Artwork pipeline preserves logical color identity and
+    meaningful geometry through raster, vector, STL, and 3MF representations.
+
+    Raster, Vector, and Extrude preserve Artifact-color identity without
+    physical printer assignment. Package resolves the configured physical
+    printer colors into the final printable 3MF.
+
+    Physical printer-color assignment is determined by color matching rather
+    than by the ordering of printer_colors.
     """
 
     realization = _build_artwork(
@@ -764,31 +772,21 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
     )
 
     # -----------------------------------------------------
-    # Expected semantic products
+    # Logical Artifact-color identity
     # -----------------------------------------------------
-
-    expected_printer_colors = {
-        "test-white",
-        "test-red",
-    }
-
-    assert {
-        product["printer_color"]["name"] for product in raster_products
-    } == expected_printer_colors
-
-    assert {
-        product["printer_color"]["name"] for product in vector_products
-    } == expected_printer_colors
-
-    assert {
-        product["printer_color"]["name"] for product in extrude_products
-    } == expected_printer_colors
 
     assert (
         [product["artifact_color"] for product in raster_products]
         == [product["artifact_color"] for product in vector_products]
         == [product["artifact_color"] for product in extrude_products]
     )
+
+    for products in (
+        raster_products,
+        vector_products,
+        extrude_products,
+    ):
+        assert all("printer_color" not in product for product in products)
 
     # -----------------------------------------------------
     # Raster geometry
@@ -821,6 +819,7 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
     meshes = tuple(load_stl(path) for path in extrude_paths)
 
     assert all(mesh.vertices for mesh in meshes)
+
     assert all(mesh.triangles for mesh in meshes)
 
     for mesh in meshes:
@@ -856,16 +855,26 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
     assert len(objects) == len(extrude_products)
     assert len(build_items) == len(extrude_products)
 
+    object_names = {object_element.get("name") for object_element in objects}
+
+    # Package performs physical color matching. The configured printer
+    # palette is not a positional mapping from Artifact-color index to
+    # printer-color entry, so verify the resulting component/color pairs
+    # without assuming palette ordering.
     expected_component_names = {
         component_name(
             "example",
-            Path(product["path"]).stem,
-            product["printer_color"]["name"],
-        )
-        for product in extrude_products
+            "color-1",
+            "test-red",
+        ),
+        component_name(
+            "example",
+            "color-2",
+            "test-white",
+        ),
     }
 
-    assert {object_element.get("name") for object_element in objects} == expected_component_names
+    assert object_names == expected_component_names
 
     for object_element in objects:
         vertices = object_element.findall(
@@ -895,6 +904,9 @@ def test_artwork_pipeline_executes_named_realizations_independently(
     Both realizations may consume the same source artwork while using
     different resolved parameters and distinct persistent product
     namespaces.
+
+    Their upstream products preserve the same logical Artifact-color
+    identities without introducing physical printer-color assignment.
     """
 
     _write_workspace(tmp_path)
@@ -982,12 +994,15 @@ def test_artwork_pipeline_executes_named_realizations_independently(
 
     coaster_raster_directory = coaster_directory / "20-raster"
 
-    ornament_raster_manifest = _read_manifest(ornament_raster_directory / "products.json")
+    ornament_raster_manifest = _read_manifest(
+        ornament_raster_directory / "products.json",
+    )
 
-    coaster_raster_manifest = _read_manifest(coaster_raster_directory / "products.json")
+    coaster_raster_manifest = _read_manifest(
+        coaster_raster_directory / "products.json",
+    )
 
     ornament_raster_products = ornament_raster_manifest["products"]
-
     coaster_raster_products = coaster_raster_manifest["products"]
 
     assert ornament_raster_products
@@ -997,9 +1012,9 @@ def test_artwork_pipeline_executes_named_realizations_independently(
         product["artifact_color"] for product in coaster_raster_products
     ]
 
-    assert [product["printer_color"] for product in ornament_raster_products] == [
-        product["printer_color"] for product in coaster_raster_products
-    ]
+    assert all("printer_color" not in product for product in ornament_raster_products)
+
+    assert all("printer_color" not in product for product in coaster_raster_products)
 
     ornament_raster_paths = {
         ornament_raster_directory / product["path"] for product in ornament_raster_products
@@ -1013,7 +1028,9 @@ def test_artwork_pipeline_executes_named_realizations_independently(
 
     assert all(path.is_file() for path in coaster_raster_paths)
 
-    assert ornament_raster_paths.isdisjoint(coaster_raster_paths)
+    assert ornament_raster_paths.isdisjoint(
+        coaster_raster_paths,
+    )
 
     # -----------------------------------------------------
     # Dynamic extrusion products
@@ -1023,12 +1040,15 @@ def test_artwork_pipeline_executes_named_realizations_independently(
 
     coaster_extrude_directory = coaster_directory / "40-extrude"
 
-    ornament_extrude_manifest = _read_manifest(ornament_extrude_directory / "products.json")
+    ornament_extrude_manifest = _read_manifest(
+        ornament_extrude_directory / "products.json",
+    )
 
-    coaster_extrude_manifest = _read_manifest(coaster_extrude_directory / "products.json")
+    coaster_extrude_manifest = _read_manifest(
+        coaster_extrude_directory / "products.json",
+    )
 
     ornament_extrude_products = ornament_extrude_manifest["products"]
-
     coaster_extrude_products = coaster_extrude_manifest["products"]
 
     ornament_stls = {
@@ -1043,7 +1063,9 @@ def test_artwork_pipeline_executes_named_realizations_independently(
 
     assert all(path.is_file() for path in coaster_stls)
 
-    assert ornament_stls.isdisjoint(coaster_stls)
+    assert ornament_stls.isdisjoint(
+        coaster_stls,
+    )
 
     # -----------------------------------------------------
     # Final artifacts
@@ -1215,8 +1237,11 @@ def test_artwork_pipeline_packages_participating_outer_ridge(
 ) -> None:
     """
     A participating Artwork Outer Ridge survives the complete public build
-    pipeline as an independently printable physical component with its
-    resolved semantic printer color.
+    pipeline as an independently printable physical component.
+
+    Extrude records the Outer Ridge's logical Artifact-color attachment
+    identity. Package applies the configured physical Outer Ridge color to
+    the final 3MF component.
 
     The test enters through create_build_plan() and execute_build() rather
     than invoking extrusion or packaging stages directly.
@@ -1287,14 +1312,7 @@ def test_artwork_pipeline_packages_participating_outer_ridge(
     assert ridge_products == [
         {
             "path": "outer-ridge.stl",
-            "printer_color": {
-                "name": "test-red",
-                "rgb": {
-                    "red": 255,
-                    "green": 0,
-                    "blue": 0,
-                },
-            },
+            "artifact_color_index": 2,
         }
     ]
 
@@ -1328,7 +1346,7 @@ def test_artwork_pipeline_packages_participating_outer_ridge(
     ridge_name = component_name(
         "example",
         "outer-ridge",
-        ridge_products[0]["printer_color"]["name"],
+        "test-red",
     )
 
     ridge_objects = [

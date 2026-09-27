@@ -65,17 +65,14 @@ class RegisteredArtworkComponent:
     One component declared by a registered Artwork manifest.
 
     Artifact color identity and measured RGB describe the persistent Artwork
-    region. Printer color identity and RGB describe the selected physical
-    realization. Both semantics remain distinct through Shape composition.
+    region. Physical printer-color assignment belongs to downstream packaging
+    and is not part of registered Shape composition.
     """
 
     index: int
     path: Path
     artifact_color_index: int
     artifact_color: dict[str, int]
-    printer_color_name: str
-    printer_color: dict[str, int]
-    distance: float
 
 
 @dataclass(frozen=True)
@@ -512,9 +509,11 @@ def _registered_artwork_manifest(
     Serialize incorporated registered Artwork for persistent composition.
 
     The common registered coordinate extent, component membership, Artifact
-    color semantics, printer assignment, and placement transformation are
-    preserved so downstream stages can interpret the registered Artwork
-    without rediscovering source geometry or color semantics.
+    color identity, and placement transformation are preserved so downstream
+    stages can interpret the registered Artwork without rediscovering source
+    geometry or color semantics.
+
+    Physical printer-color assignment is deferred to packaging.
     """
 
     return {
@@ -535,11 +534,6 @@ def _registered_artwork_manifest(
                     "index": component.artifact_color_index,
                     "rgb": component.artifact_color,
                 },
-                "printer_color": {
-                    "name": component.printer_color_name,
-                    "rgb": component.printer_color,
-                },
-                "distance": component.distance,
             }
             for component in artwork.components
         ],
@@ -2207,8 +2201,9 @@ def _load_component(
     """
     Read one registered Artwork component declaration.
 
-    Artifact color semantics and the selected printer assignment are consumed
-    independently from the persistent Artwork vector manifest.
+    Shape composition consumes registered geometry and Artifact-color identity.
+    Physical printer-color assignment is not part of the persistent Artwork
+    vector contract.
     """
 
     if not isinstance(
@@ -2225,12 +2220,6 @@ def _load_component(
     )
     artifact_color = product.get(
         "artifact_color",
-    )
-    printer_color = product.get(
-        "printer_color",
-    )
-    distance = product.get(
-        "distance",
     )
 
     if (
@@ -2329,90 +2318,6 @@ def _load_component(
             f"Registered Artwork product {index} requires valid Artifact RGB metadata."
         )
 
-    if not isinstance(
-        printer_color,
-        dict,
-    ):
-        raise ValueError(f"Registered Artwork product {index} requires printer color metadata.")
-
-    printer_color_name = printer_color.get(
-        "name",
-    )
-    printer_rgb = printer_color.get(
-        "rgb",
-    )
-
-    if (
-        not isinstance(
-            printer_color_name,
-            str,
-        )
-        or not printer_color_name
-    ):
-        raise ValueError(f"Registered Artwork product {index} requires a printer color name.")
-
-    if not isinstance(
-        printer_rgb,
-        dict,
-    ):
-        raise ValueError(f"Registered Artwork product {index} requires printer RGB metadata.")
-
-    printer_red = printer_rgb.get(
-        "red",
-    )
-    printer_green = printer_rgb.get(
-        "green",
-    )
-    printer_blue = printer_rgb.get(
-        "blue",
-    )
-
-    if (
-        not isinstance(
-            printer_red,
-            int,
-        )
-        or isinstance(
-            printer_red,
-            bool,
-        )
-        or not 0 <= printer_red <= 255
-        or not isinstance(
-            printer_green,
-            int,
-        )
-        or isinstance(
-            printer_green,
-            bool,
-        )
-        or not 0 <= printer_green <= 255
-        or not isinstance(
-            printer_blue,
-            int,
-        )
-        or isinstance(
-            printer_blue,
-            bool,
-        )
-        or not 0 <= printer_blue <= 255
-    ):
-        raise ValueError(f"Registered Artwork product {index} requires valid printer RGB metadata.")
-
-    if (
-        not isinstance(
-            distance,
-            int | float,
-        )
-        or isinstance(
-            distance,
-            bool,
-        )
-        or distance < 0.0
-    ):
-        raise ValueError(
-            f"Registered Artwork product {index} requires a nonnegative assignment distance."
-        )
-
     return RegisteredArtworkComponent(
         index=index,
         path=manifest_path.parent / relative_path,
@@ -2422,15 +2327,6 @@ def _load_component(
             "green": artifact_green,
             "blue": artifact_blue,
         },
-        printer_color_name=printer_color_name,
-        printer_color={
-            "red": printer_red,
-            "green": printer_green,
-            "blue": printer_blue,
-        },
-        distance=float(
-            distance,
-        ),
     )
 
 

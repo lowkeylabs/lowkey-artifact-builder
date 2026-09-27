@@ -1,10 +1,12 @@
 """
-Tests for Artwork attachment-color selection.
+Tests for Artwork attachment-layer selection.
 
-Attachment-color selection is Artwork-owned Model policy. Given a
-cardinal attachment position, Artwork determines the semantic physical
-printer color belonging to the Artwork at that envelope attachment
-point.
+Attachment selection is Artwork-owned geometric policy. Given a cardinal
+attachment position, Artwork determines which registered Artifact-color
+layer occupies the Artwork at that envelope attachment point.
+
+Physical printer-color assignment is not part of registered Artwork and
+is resolved downstream during packaging.
 """
 # File: tests/model/artwork/test_attachment.py
 # Copyright 2026 LowKeyLabs LLC
@@ -23,6 +25,7 @@ from lowkey_artifact_builder.model.models.artwork.stages.extrude import (
 )
 
 pytestmark = pytest.mark.slow
+
 
 # =========================================================
 # Test support
@@ -52,7 +55,6 @@ def _layer(
     path: Path,
     *,
     index: int,
-    color: str,
 ) -> VectorLayer:
     """
     Return one registered Artwork color layer.
@@ -63,9 +65,6 @@ def _layer(
         path=path,
         artifact_color_index=index,
         artifact_color=(index, index, index),
-        printer_color_name=color,
-        printer_color=(index, index, index),
-        distance=0.0,
     )
 
 
@@ -73,15 +72,15 @@ def _artwork(
     tmp_path: Path,
 ) -> VectorManifest:
     """
-    Return registered Artwork with a different color at each cardinal edge.
+    Return registered Artwork with a different layer at each cardinal edge.
 
     The occupied envelope is the square:
 
         x = 20 .. 80
         y = 20 .. 80
 
-    Color regions occupy strips at its four cardinal edges while a fifth
-    color occupies the center.
+    Artifact-color regions occupy strips at its four cardinal edges while
+    a fifth Artifact color occupies the center.
     """
 
     envelope = tmp_path / "envelope.svg"
@@ -122,31 +121,11 @@ def _artwork(
         registered_extent=100,
         envelope=envelope,
         layers=(
-            _layer(
-                top,
-                index=1,
-                color="top-color",
-            ),
-            _layer(
-                right,
-                index=2,
-                color="right-color",
-            ),
-            _layer(
-                bottom,
-                index=3,
-                color="bottom-color",
-            ),
-            _layer(
-                left,
-                index=4,
-                color="left-color",
-            ),
-            _layer(
-                center,
-                index=5,
-                color="center-color",
-            ),
+            _layer(top, index=1),
+            _layer(right, index=2),
+            _layer(bottom, index=3),
+            _layer(left, index=4),
+            _layer(center, index=5),
         ),
     )
 
@@ -159,19 +138,19 @@ def _artwork(
 @pytest.mark.parametrize(
     ("position", "expected"),
     [
-        (0, "top-color"),
-        (90, "right-color"),
-        (180, "bottom-color"),
-        (-90, "left-color"),
+        (0, 1),
+        (90, 2),
+        (180, 3),
+        (-90, 4),
     ],
 )
-def test_attachment_selects_artwork_color_at_cardinal_edge(
+def test_attachment_selects_artifact_color_at_cardinal_edge(
     tmp_path: Path,
     position: int,
-    expected: str,
+    expected: int,
 ) -> None:
     """
-    Each cardinal attachment selects the Artwork color at that edge.
+    Each cardinal attachment selects the Artifact-color layer at that edge.
     """
 
     artwork = _artwork(
@@ -196,11 +175,11 @@ def test_attachment_selects_nearest_occupied_color_inward_from_boundary(
     tmp_path: Path,
 ) -> None:
     """
-    Boundary ambiguity resolves to the nearest occupied Artwork color inward.
+    Boundary ambiguity resolves to the nearest occupied Artifact-color layer.
 
     The top envelope boundary is y=20. No color layer contains the exact
     cardinal boundary point at x=50. The first occupied color encountered
-    inward along the same axis is the inset strip.
+    inward along the same axis is the inset layer.
     """
 
     envelope = tmp_path / "envelope.svg"
@@ -226,16 +205,8 @@ def test_attachment_selects_nearest_occupied_color_inward_from_boundary(
         registered_extent=100,
         envelope=envelope,
         layers=(
-            _layer(
-                inset,
-                index=1,
-                color="nearest-color",
-            ),
-            _layer(
-                center,
-                index=2,
-                color="center-color",
-            ),
+            _layer(inset, index=7),
+            _layer(center, index=8),
         ),
     )
 
@@ -244,23 +215,22 @@ def test_attachment_selects_nearest_occupied_color_inward_from_boundary(
             artwork,
             position=0,
         )
-        == "nearest-color"
+        == 7
     )
 
 
 # =========================================================
-# Semantic identity
+# Logical identity
 # =========================================================
 
 
-def test_attachment_returns_semantic_printer_color_identity(
+def test_attachment_returns_artifact_color_index(
     tmp_path: Path,
 ) -> None:
     """
-    Attachment selection preserves semantic physical printer color identity.
+    Attachment selection returns logical Artifact-color identity.
 
-    Selection does not replace the printer color identity with Artifact RGB
-    or printer RGB.
+    Physical printer color and RGB are downstream packaging concerns.
     """
 
     envelope = tmp_path / "envelope.svg"
@@ -285,9 +255,6 @@ def test_attachment_returns_semantic_printer_color_identity(
                 path=layer,
                 artifact_color_index=7,
                 artifact_color=(10, 20, 30),
-                printer_color_name="physical-gold",
-                printer_color=(200, 150, 40),
-                distance=12.5,
             ),
         ),
     )
@@ -297,7 +264,7 @@ def test_attachment_returns_semantic_printer_color_identity(
         position=0,
     )
 
-    assert result == "physical-gold"
+    assert result == 7
 
 
 # =========================================================
@@ -325,5 +292,5 @@ def test_attachment_color_selection_is_deterministic(
     }
 
     assert results == {
-        "right-color",
+        2,
     }

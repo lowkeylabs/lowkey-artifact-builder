@@ -5,11 +5,9 @@ The package stage consumes dimensionalized Artwork components through the
 extrusion manifest and packages them through the shared 3MF component
 representation.
 
-Filesystem layout remains a build-engine responsibility. Artifact color
-information and physical printer assignments are established upstream.
-Packaging must use the printer assignment for the physical 3MF component
-while preserving the distinction between Artifact and printer color
-semantics at its input boundary.
+Filesystem layout remains a build-engine responsibility. Extrusion preserves
+Artifact-color identity and logical feature attachment, while Package resolves
+physical printer assignments and feature-color overrides for the final 3MF.
 """
 # File: tests/model/artwork/test_package.py
 # Copyright 2026 LowKeyLabs LLC
@@ -24,22 +22,38 @@ from typing import Any
 import pytest
 
 from lowkey_artifact_builder.colors import PaletteColor
-from lowkey_artifact_builder.formats.threemf import (
-    Component,
-    Mesh,
-    component_name,
-)
+from lowkey_artifact_builder.formats.threemf import Component, Mesh, component_name
 from lowkey_artifact_builder.model.models.artwork.stages import package
 
-# =========================================================
-# Test support
-# =========================================================
+
+class StubResolver:
+    """Minimal configuration resolver for package-stage tests."""
+
+    def __init__(
+        self,
+        values: dict[str, Any],
+        *,
+        colors: dict[str, dict[str, Any]],
+    ) -> None:
+        self._values = values
+        self.colors = colors
+
+    def __call__(self, name: str) -> Any:
+        return self._values.get(name)
+
+    def has(
+        self,
+        name: str,
+    ) -> bool:
+        """
+        Return whether a configured value exists.
+        """
+
+        return name in self._values
 
 
 class StubContext:
-    """
-    Minimal StageContext-compatible object for package-stage tests.
-    """
+    """Minimal StageContext-compatible object for package-stage tests."""
 
     def __init__(
         self,
@@ -47,61 +61,29 @@ class StubContext:
         artifact_id: str,
         inputs: dict[str, Path],
         outputs: dict[str, Path],
+        resolver: StubResolver | None = None,
     ) -> None:
         self.artifact_id = artifact_id
         self._inputs = inputs
         self._outputs = outputs
+        self.resolver = resolver
 
-    def input(
-        self,
-        name: str,
-    ) -> Path:
+    def input(self, name: str) -> Path:
         return self._inputs[name]
 
-    def output(
-        self,
-        name: str,
-    ) -> Path:
+    def output(self, name: str) -> Path:
         return self._outputs[name]
 
 
-def _write_extrude_manifest(
-    path: Path,
-    products: list[dict[str, Any]],
-) -> None:
-    """
-    Write a minimal Artwork extrusion manifest.
-    """
-
-    path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    path.write_text(
-        json.dumps(
-            {
-                "products": products,
-            }
-        ),
-        encoding="utf-8",
-    )
+def _write_extrude_manifest(path: Path, products: list[dict[str, Any]]) -> None:
+    """Write a minimal Artwork extrusion manifest."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"products": products}), encoding="utf-8")
 
 
-def _color(
-    red: int,
-    green: int,
-    blue: int,
-) -> dict[str, int]:
-    """
-    Return extrusion-manifest RGB metadata.
-    """
-
-    return {
-        "red": red,
-        "green": green,
-        "blue": blue,
-    }
+def _color(red: int, green: int, blue: int) -> dict[str, int]:
+    """Return manifest RGB metadata."""
+    return {"red": red, "green": green, "blue": blue}
 
 
 def _product(
@@ -110,149 +92,66 @@ def _product(
     path: str,
     artifact_color_index: int,
     artifact_rgb: tuple[int, int, int],
-    printer_color_name: str,
-    printer_rgb: tuple[int, int, int],
-    distance: float,
 ) -> dict[str, Any]:
-    """
-    Return one dimensionalized Artwork product.
-
-    Artifact color describes the color discovered from the Artwork.
-    Printer color describes the physical assignment used for packaging.
-    """
-
+    """Return one dimensionalized registered Artwork product."""
     return {
         "index": index,
         "path": path,
         "artifact_color": {
             "index": artifact_color_index,
-            "rgb": _color(
-                *artifact_rgb,
-            ),
+            "rgb": _color(*artifact_rgb),
         },
-        "printer_color": {
-            "name": printer_color_name,
-            "rgb": _color(
-                *printer_rgb,
-            ),
-        },
-        "distance": distance,
     }
 
 
 def _mesh() -> Mesh:
-    """
-    Return a minimal valid mesh for package-stage tests.
-    """
-
+    """Return a minimal valid mesh for package-stage tests."""
     return Mesh(
-        vertices=(
-            (0.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0),
-        ),
+        vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
         triangles=((0, 1, 2),),
     )
 
 
-# =========================================================
-# Packaging-contract tests
-# =========================================================
+def _capture_write(monkeypatch: pytest.MonkeyPatch):
+    """Install test doubles and return a mutable component capture."""
+    captured: list[tuple[Component, ...]] = []
+    monkeypatch.setattr(package, "load_stl", lambda path: _mesh(), raising=False)
+
+    def fake_write(components, output: Path) -> None:
+        captured.append(tuple(components))
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"3mf")
+
+    monkeypatch.setattr(package, "write", fake_write, raising=False)
+    return captured
 
 
 def test_package_uses_declared_artifact_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """
-    Artwork packaging writes only to the output supplied by StageContext.
-    """
-
-    extrude_directory = tmp_path / "somewhere" / "extrusion"
-
-    stl = extrude_directory / "color-1.stl"
-
-    stl.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    stl.write_text(
-        "component",
-        encoding="utf-8",
-    )
-
-    manifest = extrude_directory / "products.json"
-
+    """Artwork packaging writes only to the output supplied by StageContext."""
+    directory = tmp_path / "somewhere" / "extrusion"
+    stl = directory / "color-1.stl"
+    stl.parent.mkdir(parents=True, exist_ok=True)
+    stl.write_text("component", encoding="utf-8")
+    manifest = directory / "products.json"
     _write_extrude_manifest(
         manifest,
-        [
-            _product(
-                index=1,
-                path=stl.name,
-                artifact_color_index=1,
-                artifact_rgb=(
-                    250,
-                    250,
-                    250,
-                ),
-                printer_color_name="white",
-                printer_rgb=(
-                    255,
-                    255,
-                    255,
-                ),
-                distance=1.25,
-            ),
-        ],
+        [_product(index=1, path=stl.name, artifact_color_index=1, artifact_rgb=(250, 250, 250))],
     )
-
-    artifact = tmp_path / "deliberately" / "unrelated" / "output" / "location" / "finished.3mf"
-
+    artifact = tmp_path / "deliberately" / "unrelated" / "finished.3mf"
     context = StubContext(
         artifact_id="example",
-        inputs={
-            "extrude.manifest": manifest,
-        },
-        outputs={
-            "artifact": artifact,
-        },
+        inputs={"extrude.manifest": manifest},
+        outputs={"artifact": artifact},
+        resolver=StubResolver(
+            {"printer_colors": ["white"]},
+            colors={"white": {"rgb": [255, 255, 255]}},
+        ),
     )
-
-    monkeypatch.setattr(
-        package,
-        "load_stl",
-        lambda path: _mesh(),
-        raising=False,
-    )
-
-    received_output: Path | None = None
-
-    def fake_write(
-        components,
-        output: Path,
-    ) -> None:
-        nonlocal received_output
-
-        received_output = output
-
-        output.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        output.write_bytes(b"3mf")
-
-    monkeypatch.setattr(
-        package,
-        "write",
-        fake_write,
-        raising=False,
-    )
-
+    _capture_write(monkeypatch)
     package.execute(context)  # type: ignore[arg-type]
-
-    assert received_output == artifact
     assert artifact.is_file()
 
 
@@ -260,281 +159,97 @@ def test_package_resolves_dynamic_stls_relative_to_manifest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """
-    Artwork component paths are resolved relative to their manifest.
-    """
-
-    manifest_directory = tmp_path / "dynamic-products"
-
-    first_stl = manifest_directory / "color-1.stl"
-    second_stl = manifest_directory / "color-2.stl"
-
-    manifest_directory.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    first_stl.write_text(
-        "first",
-        encoding="utf-8",
-    )
-
-    second_stl.write_text(
-        "second",
-        encoding="utf-8",
-    )
-
-    manifest = manifest_directory / "manifest.json"
-
+    """Artwork component paths are resolved relative to their manifest."""
+    directory = tmp_path / "dynamic-products"
+    directory.mkdir(parents=True, exist_ok=True)
+    first_stl = directory / "color-1.stl"
+    second_stl = directory / "color-2.stl"
+    first_stl.write_text("first", encoding="utf-8")
+    second_stl.write_text("second", encoding="utf-8")
+    manifest = directory / "manifest.json"
     _write_extrude_manifest(
         manifest,
         [
             _product(
-                index=2,
-                path=second_stl.name,
-                artifact_color_index=2,
-                artifact_rgb=(
-                    8,
-                    245,
-                    14,
-                ),
-                printer_color_name="green",
-                printer_rgb=(
-                    0,
-                    255,
-                    0,
-                ),
-                distance=2.5,
+                index=2, path=second_stl.name, artifact_color_index=2, artifact_rgb=(8, 245, 14)
             ),
             _product(
-                index=1,
-                path=first_stl.name,
-                artifact_color_index=1,
-                artifact_rgb=(
-                    250,
-                    250,
-                    250,
-                ),
-                printer_color_name="white",
-                printer_rgb=(
-                    255,
-                    255,
-                    255,
-                ),
-                distance=1.25,
+                index=1, path=first_stl.name, artifact_color_index=1, artifact_rgb=(250, 250, 250)
             ),
         ],
     )
-
     artifact = tmp_path / "other-place" / "artifact.3mf"
-
     context = StubContext(
         artifact_id="portrait",
-        inputs={
-            "extrude.manifest": manifest,
-        },
-        outputs={
-            "artifact": artifact,
-        },
+        inputs={"extrude.manifest": manifest},
+        outputs={"artifact": artifact},
+        resolver=StubResolver(
+            {"printer_colors": ["green", "white"]},
+            colors={
+                "green": {"rgb": [0, 255, 0]},
+                "white": {"rgb": [255, 255, 255]},
+            },
+        ),
     )
-
-    loaded_paths: list[Path] = []
-
-    def fake_load_stl(
-        path: Path,
-    ) -> Mesh:
-        loaded_paths.append(path)
-        return _mesh()
-
+    loaded: list[Path] = []
     monkeypatch.setattr(
-        package,
-        "load_stl",
-        fake_load_stl,
-        raising=False,
+        package, "load_stl", lambda path: loaded.append(path) or _mesh(), raising=False
     )
-
-    def fake_write(
-        components,
-        output: Path,
-    ) -> None:
-        output.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-        output.write_bytes(b"3mf")
-
     monkeypatch.setattr(
         package,
         "write",
-        fake_write,
+        lambda components, output: (
+            output.parent.mkdir(parents=True, exist_ok=True),
+            output.write_bytes(b"3mf"),
+        ),
         raising=False,
     )
-
     package.execute(context)  # type: ignore[arg-type]
-
-    assert loaded_paths == [
-        first_stl,
-        second_stl,
-    ]
+    assert loaded == [first_stl, second_stl]
 
 
-def test_package_preserves_component_identity_and_printer_assignment(
+def test_package_preserves_component_identity_and_resolves_printer_assignment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """
-    Packaging preserves extrusion-product identity and physical printer
-    assignment as distinct component properties.
-
-    The extrusion product identifies the independently printable 3MF
-    component. The printer assignment supplies its semantic physical color
-    and RGB.
-
-    Component presentation is delegated to the shared 3MF naming policy.
-
-    Artifact RGB remains distinct input information and must not replace
-    the printer RGB selected during rasterization.
-    """
-
-    extrude_directory = tmp_path / "extrude"
-
-    first_stl = extrude_directory / "color-1.stl"
-    second_stl = extrude_directory / "color-2.stl"
-
-    extrude_directory.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    first_stl.write_text(
-        "first",
-        encoding="utf-8",
-    )
-
-    second_stl.write_text(
-        "second",
-        encoding="utf-8",
-    )
-
-    manifest = extrude_directory / "products.json"
-
+    """Package preserves component identity while resolving physical color."""
+    directory = tmp_path / "extrude"
+    directory.mkdir(parents=True, exist_ok=True)
+    first = directory / "color-1.stl"
+    second = directory / "color-2.stl"
+    first.write_text("first", encoding="utf-8")
+    second.write_text("second", encoding="utf-8")
+    manifest = directory / "products.json"
     _write_extrude_manifest(
         manifest,
         [
-            _product(
-                index=1,
-                path=first_stl.name,
-                artifact_color_index=1,
-                artifact_rgb=(
-                    17,
-                    43,
-                    91,
-                ),
-                printer_color_name="physical-blue",
-                printer_rgb=(
-                    20,
-                    40,
-                    90,
-                ),
-                distance=1.25,
-            ),
-            _product(
-                index=2,
-                path=second_stl.name,
-                artifact_color_index=2,
-                artifact_rgb=(
-                    214,
-                    31,
-                    42,
-                ),
-                printer_color_name="physical-red",
-                printer_rgb=(
-                    220,
-                    38,
-                    38,
-                ),
-                distance=2.75,
-            ),
+            _product(index=1, path=first.name, artifact_color_index=1, artifact_rgb=(17, 43, 91)),
+            _product(index=2, path=second.name, artifact_color_index=2, artifact_rgb=(214, 31, 42)),
         ],
     )
-
     artifact = tmp_path / "artifact.3mf"
-
     context = StubContext(
         artifact_id="portrait",
-        inputs={
-            "extrude.manifest": manifest,
-        },
-        outputs={
-            "artifact": artifact,
-        },
+        inputs={"extrude.manifest": manifest},
+        outputs={"artifact": artifact},
+        resolver=StubResolver(
+            {"printer_colors": ["physical-blue", "physical-red"]},
+            colors={
+                "physical-blue": {"rgb": [20, 40, 90]},
+                "physical-red": {"rgb": [220, 38, 38]},
+            },
+        ),
     )
-
-    monkeypatch.setattr(
-        package,
-        "load_stl",
-        lambda path: _mesh(),
-        raising=False,
-    )
-
-    captured_components: tuple[Component, ...] | None = None
-
-    def fake_write(
-        components,
-        output: Path,
-    ) -> None:
-        nonlocal captured_components
-
-        captured_components = tuple(components)
-
-        output.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        output.write_bytes(b"3mf")
-
-    monkeypatch.setattr(
-        package,
-        "write",
-        fake_write,
-        raising=False,
-    )
-
+    captured = _capture_write(monkeypatch)
     package.execute(context)  # type: ignore[arg-type]
-
-    assert captured_components is not None
-
-    assert tuple(component.name for component in captured_components) == (
-        component_name(
-            "portrait",
-            "color-1",
-            "physical-blue",
-        ),
-        component_name(
-            "portrait",
-            "color-2",
-            "physical-red",
-        ),
+    assert len(captured) == 1
+    assert tuple(c.name for c in captured[0]) == (
+        component_name("portrait", "color-1", "physical-blue"),
+        component_name("portrait", "color-2", "physical-red"),
     )
-
-    assert tuple(component.color for component in captured_components) == (
-        PaletteColor(
-            name="physical-blue",
-            rgb=(
-                20,
-                40,
-                90,
-            ),
-        ),
-        PaletteColor(
-            name="physical-red",
-            rgb=(
-                220,
-                38,
-                38,
-            ),
-        ),
+    assert tuple(c.color for c in captured[0]) == (
+        PaletteColor(name="physical-blue", rgb=(20, 40, 90)),
+        PaletteColor(name="physical-red", rgb=(220, 38, 38)),
     )
 
 
@@ -542,51 +257,137 @@ def test_package_does_not_use_artifact_rgb_as_physical_component_color(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Artifact RGB is not substituted for Package's assigned printer RGB."""
+    directory = tmp_path / "extrude"
+    directory.mkdir(parents=True, exist_ok=True)
+    stl = directory / "color-1.stl"
+    stl.write_text("component", encoding="utf-8")
+    artifact_rgb = (17, 43, 91)
+    printer_rgb = (20, 40, 90)
+    manifest = directory / "products.json"
+    _write_extrude_manifest(
+        manifest,
+        [_product(index=1, path=stl.name, artifact_color_index=1, artifact_rgb=artifact_rgb)],
+    )
+    artifact = tmp_path / "artifact.3mf"
+    context = StubContext(
+        artifact_id="portrait",
+        inputs={"extrude.manifest": manifest},
+        outputs={"artifact": artifact},
+        resolver=StubResolver(
+            {"printer_colors": ["physical-blue"]},
+            colors={"physical-blue": {"rgb": list(printer_rgb)}},
+        ),
+    )
+    captured = _capture_write(monkeypatch)
+    package.execute(context)  # type: ignore[arg-type]
+    assert len(captured[0]) == 1
+    assert captured[0][0].color == PaletteColor(name="physical-blue", rgb=printer_rgb)
+
+    component_color = captured[0][0].color
+    assert component_color == PaletteColor(
+        name="physical-blue",
+        rgb=printer_rgb,
+    )
+    assert component_color is not None
+    assert component_color.rgb != artifact_rgb
+
+
+def test_package_does_not_require_canonical_artifact_directories(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Artwork packaging remains independent of workspace filesystem policy."""
+    directory = tmp_path / "input"
+    directory.mkdir(parents=True, exist_ok=True)
+    stl = directory / "component.stl"
+    stl.write_text("component", encoding="utf-8")
+    manifest = directory / "manifest.json"
+    _write_extrude_manifest(
+        manifest,
+        [_product(index=1, path=stl.name, artifact_color_index=1, artifact_rgb=(250, 205, 10))],
+    )
+    artifact = tmp_path / "result" / "whatever-name-we-want.bin"
+    context = StubContext(
+        artifact_id="not-a-directory-name",
+        inputs={"extrude.manifest": manifest},
+        outputs={"artifact": artifact},
+        resolver=StubResolver(
+            {"printer_colors": ["gold"]},
+            colors={"gold": {"rgb": [255, 215, 0]}},
+        ),
+    )
+    _capture_write(monkeypatch)
+    package.execute(context)  # type: ignore[arg-type]
+    assert artifact.is_file()
+
+
+# =========================================================
+# Physical printer assignment and feature-color boundary
+# =========================================================
+
+
+def test_package_assigns_printer_colors_to_artifact_layers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
-    Artifact RGB is not substituted for the assigned printer RGB when
-    constructing the physical 3MF component.
+    Package assigns physical printer colors to ordinary Artwork layers.
+
+
+    Extrusion supplies Artifact-color identity and printable geometry but no
+    physical printer assignment. Package resolves the Artifact colors against
+    printer_colors and uses those assignments for the final 3MF components.
     """
 
     extrude_directory = tmp_path / "extrude"
-
-    stl = extrude_directory / "color-1.stl"
-
     extrude_directory.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    stl.write_text(
-        "component",
+    red_stl = extrude_directory / "color-1.stl"
+    blue_stl = extrude_directory / "color-2.stl"
+
+    red_stl.write_text(
+        "red",
         encoding="utf-8",
     )
 
-    manifest = extrude_directory / "products.json"
-
-    artifact_rgb = (
-        17,
-        43,
-        91,
+    blue_stl.write_text(
+        "blue",
+        encoding="utf-8",
     )
 
-    printer_rgb = (
-        20,
-        40,
-        90,
-    )
+    extrude_manifest = extrude_directory / "products.json"
 
     _write_extrude_manifest(
-        manifest,
+        extrude_manifest,
         [
-            _product(
-                index=1,
-                path=stl.name,
-                artifact_color_index=1,
-                artifact_rgb=artifact_rgb,
-                printer_color_name="physical-blue",
-                printer_rgb=printer_rgb,
-                distance=1.25,
-            ),
+            {
+                "index": 1,
+                "path": red_stl.name,
+                "artifact_color": {
+                    "index": 1,
+                    "rgb": _color(
+                        250,
+                        10,
+                        10,
+                    ),
+                },
+            },
+            {
+                "index": 2,
+                "path": blue_stl.name,
+                "artifact_color": {
+                    "index": 2,
+                    "rgb": _color(
+                        10,
+                        10,
+                        250,
+                    ),
+                },
+            },
         ],
     )
 
@@ -595,11 +396,35 @@ def test_package_does_not_use_artifact_rgb_as_physical_component_color(
     context = StubContext(
         artifact_id="portrait",
         inputs={
-            "extrude.manifest": manifest,
+            "extrude.manifest": extrude_manifest,
         },
         outputs={
             "artifact": artifact,
         },
+        resolver=StubResolver(
+            {
+                "printer_colors": [
+                    "red",
+                    "blue",
+                ],
+            },
+            colors={
+                "red": {
+                    "rgb": [
+                        255,
+                        0,
+                        0,
+                    ],
+                },
+                "blue": {
+                    "rgb": [
+                        0,
+                        0,
+                        255,
+                    ],
+                },
+            },
+        ),
     )
 
     monkeypatch.setattr(
@@ -617,14 +442,18 @@ def test_package_does_not_use_artifact_rgb_as_physical_component_color(
     ) -> None:
         nonlocal captured_components
 
-        captured_components = tuple(components)
+        captured_components = tuple(
+            components,
+        )
 
         output.parent.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        output.write_bytes(b"3mf")
+        output.write_bytes(
+            b"3mf",
+        )
 
     monkeypatch.setattr(
         package,
@@ -636,75 +465,127 @@ def test_package_does_not_use_artifact_rgb_as_physical_component_color(
     package.execute(context)  # type: ignore[arg-type]
 
     assert captured_components is not None
-    assert len(captured_components) == 1
 
-    component = captured_components[0]
-
-    assert component.color == PaletteColor(
-        name="physical-blue",
-        rgb=printer_rgb,
+    assert tuple(component.color for component in captured_components) == (
+        PaletteColor(
+            name="red",
+            rgb=(
+                255,
+                0,
+                0,
+            ),
+        ),
+        PaletteColor(
+            name="blue",
+            rgb=(
+                0,
+                0,
+                255,
+            ),
+        ),
     )
 
-    assert component.color.rgb != artifact_rgb
+    assert artifact.is_file()
 
 
-def test_package_does_not_require_canonical_artifact_directories(
+def test_package_assigns_printer_colors_globally_one_to_one(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Artwork packaging remains independent of workspace filesystem policy.
+    Package assigns printer colors globally and one-to-one.
+
+
+    Two Artifact colors may both be closest to the same physical printer
+    color independently. Packaging must nevertheless assign each selected
+    printer color to at most one registered Artwork layer.
     """
 
-    manifest_directory = tmp_path / "input"
-
-    stl = manifest_directory / "component.stl"
-
-    manifest_directory.mkdir(
+    extrude_directory = tmp_path / "extrude"
+    extrude_directory.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    stl.write_text(
-        "component",
+    first_stl = extrude_directory / "color-1.stl"
+    second_stl = extrude_directory / "color-2.stl"
+
+    first_stl.write_text(
+        "first",
         encoding="utf-8",
     )
 
-    manifest = manifest_directory / "manifest.json"
+    second_stl.write_text(
+        "second",
+        encoding="utf-8",
+    )
+
+    extrude_manifest = extrude_directory / "products.json"
 
     _write_extrude_manifest(
-        manifest,
+        extrude_manifest,
         [
-            _product(
-                index=1,
-                path=stl.name,
-                artifact_color_index=1,
-                artifact_rgb=(
-                    250,
-                    205,
-                    10,
-                ),
-                printer_color_name="gold",
-                printer_rgb=(
-                    255,
-                    215,
-                    0,
-                ),
-                distance=3.5,
-            ),
+            {
+                "index": 1,
+                "path": first_stl.name,
+                "artifact_color": {
+                    "index": 1,
+                    "rgb": _color(
+                        250,
+                        0,
+                        0,
+                    ),
+                },
+            },
+            {
+                "index": 2,
+                "path": second_stl.name,
+                "artifact_color": {
+                    "index": 2,
+                    "rgb": _color(
+                        245,
+                        0,
+                        0,
+                    ),
+                },
+            },
         ],
     )
 
-    artifact = tmp_path / "result" / "whatever-name-we-want.bin"
+    artifact = tmp_path / "artifact.3mf"
 
     context = StubContext(
-        artifact_id="not-a-directory-name",
+        artifact_id="portrait",
         inputs={
-            "extrude.manifest": manifest,
+            "extrude.manifest": extrude_manifest,
         },
         outputs={
             "artifact": artifact,
         },
+        resolver=StubResolver(
+            {
+                "printer_colors": [
+                    "red",
+                    "blue",
+                ],
+            },
+            colors={
+                "red": {
+                    "rgb": [
+                        255,
+                        0,
+                        0,
+                    ],
+                },
+                "blue": {
+                    "rgb": [
+                        0,
+                        0,
+                        255,
+                    ],
+                },
+            },
+        ),
     )
 
     monkeypatch.setattr(
@@ -714,15 +595,26 @@ def test_package_does_not_require_canonical_artifact_directories(
         raising=False,
     )
 
+    captured_components: tuple[Component, ...] | None = None
+
     def fake_write(
         components,
         output: Path,
     ) -> None:
+        nonlocal captured_components
+
+        captured_components = tuple(
+            components,
+        )
+
         output.parent.mkdir(
             parents=True,
             exist_ok=True,
         )
-        output.write_bytes(b"3mf")
+
+        output.write_bytes(
+            b"3mf",
+        )
 
     monkeypatch.setattr(
         package,
@@ -733,34 +625,39 @@ def test_package_does_not_require_canonical_artifact_directories(
 
     package.execute(context)  # type: ignore[arg-type]
 
-    assert artifact.is_file()
+    assert captured_components is not None
+    assert len(captured_components) == 2
+
+    assert {component.color.name for component in captured_components} == {
+        "red",
+        "blue",
+    }
 
 
-def test_package_includes_participating_loop_as_independent_component(
+def test_package_loop_inherits_attached_artifact_layer_printer_color(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    A participating Loop declared by extrusion is packaged as an
-    independently printable 3MF component.
+    A Loop without an explicit physical color inherits the printer color
+    assigned to its attached Artifact-color layer.
 
-    Physical component identity is independent of printer-color identity.
-    A Loop may therefore use the same physical printer color as an Artwork
-    color layer while remaining a distinctly named printable component.
+    Extrusion records that logical relationship as artifact_color_index.
+    Package resolves the referenced Artifact color to its physical printer
+    assignment and applies that same assignment to the Loop component.
 
-    Packaged component names combine that stable component identity with the
-    resolved physical printer-color name.
+    loop_color is an optional Package override. Its absence must not be
+    resolved as a required configuration value.
     """
 
     extrude_directory = tmp_path / "extrude"
-
-    artwork_stl = extrude_directory / "color-1.stl"
-    loop_stl = extrude_directory / "loop.stl"
-
     extrude_directory.mkdir(
         parents=True,
         exist_ok=True,
     )
+
+    artwork_stl = extrude_directory / "color-1.stl"
+    loop_stl = extrude_directory / "loop.stl"
 
     artwork_stl.write_text(
         "artwork",
@@ -772,52 +669,58 @@ def test_package_includes_participating_loop_as_independent_component(
         encoding="utf-8",
     )
 
-    manifest = extrude_directory / "products.json"
+    extrude_manifest = extrude_directory / "products.json"
 
     _write_extrude_manifest(
-        manifest,
+        extrude_manifest,
         [
-            _product(
-                index=1,
-                path=artwork_stl.name,
-                artifact_color_index=1,
-                artifact_rgb=(
-                    255,
-                    255,
-                    255,
-                ),
-                printer_color_name="white",
-                printer_rgb=(
-                    255,
-                    255,
-                    255,
-                ),
-                distance=0.0,
-            ),
+            {
+                "index": 1,
+                "path": artwork_stl.name,
+                "artifact_color": {
+                    "index": 7,
+                    "rgb": _color(
+                        250,
+                        250,
+                        250,
+                    ),
+                },
+            },
             {
                 "path": loop_stl.name,
-                "printer_color": {
-                    "name": "white",
-                    "rgb": {
-                        "red": 255,
-                        "green": 255,
-                        "blue": 255,
-                    },
-                },
+                "artifact_color_index": 7,
             },
         ],
     )
 
     artifact = tmp_path / "artifact.3mf"
 
+    resolver = StubResolver(
+        {
+            "printer_colors": [
+                "white",
+            ],
+        },
+        colors={
+            "white": {
+                "rgb": [
+                    255,
+                    255,
+                    255,
+                ],
+            },
+        },
+    )
+
     context = StubContext(
         artifact_id="ornament",
         inputs={
-            "extrude.manifest": manifest,
+            "extrude.manifest": extrude_manifest,
         },
         outputs={
             "artifact": artifact,
         },
+        resolver=resolver,
     )
 
     loaded_paths: list[Path] = []
@@ -877,98 +780,87 @@ def test_package_includes_participating_loop_as_independent_component(
     assert len(captured_components) == 2
 
     assert tuple(component.name for component in captured_components) == (
-        component_name("ornament", "color-1", "white"),
-        component_name("ornament", "loop", "white"),
-    )
-
-    assert captured_components[0].color == PaletteColor(
-        name="white",
-        rgb=(
-            255,
-            255,
-            255,
+        component_name(
+            "ornament",
+            "color-1",
+            "white",
+        ),
+        component_name(
+            "ornament",
+            "loop",
+            "white",
         ),
     )
 
-    assert captured_components[1].color == PaletteColor(
-        name="white",
-        rgb=(
-            255,
-            255,
-            255,
+    assert tuple(component.color for component in captured_components) == (
+        PaletteColor(
+            name="white",
+            rgb=(
+                255,
+                255,
+                255,
+            ),
+        ),
+        PaletteColor(
+            name="white",
+            rgb=(
+                255,
+                255,
+                255,
+            ),
         ),
     )
 
     assert artifact.is_file()
 
 
-def test_package_includes_participating_outer_ridge_as_independent_component(
+def test_package_base_inherits_attached_artifact_layer_printer_color(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    A participating Outer Ridge declared by extrusion is packaged as an
-    independently printable 3MF component.
-
-    Packaging preserves the Outer Ridge's resolved physical printer-color
-    identity without requiring Registered Artwork color metadata.
-
-    Packaged component names combine stable component identity with the
-    resolved physical printer-color name.
+    Base inherits the physical printer color assigned to the Artifact-color
+    layer referenced by its artifact_color_index.
     """
 
     extrude_directory = tmp_path / "extrude"
-
-    artwork_stl = extrude_directory / "color-1.stl"
-    outer_ridge_stl = extrude_directory / "outer-ridge.stl"
-
     extrude_directory.mkdir(
         parents=True,
         exist_ok=True,
     )
 
+    artwork_stl = extrude_directory / "color-1.stl"
+    base_stl = extrude_directory / "base.stl"
+
     artwork_stl.write_text(
         "artwork",
         encoding="utf-8",
     )
-
-    outer_ridge_stl.write_text(
-        "outer ridge",
+    base_stl.write_text(
+        "base",
         encoding="utf-8",
     )
 
-    manifest = extrude_directory / "products.json"
+    extrude_manifest = extrude_directory / "products.json"
 
     _write_extrude_manifest(
-        manifest,
+        extrude_manifest,
         [
-            _product(
-                index=1,
-                path=artwork_stl.name,
-                artifact_color_index=1,
-                artifact_rgb=(
-                    255,
-                    255,
-                    255,
-                ),
-                printer_color_name="white",
-                printer_rgb=(
-                    255,
-                    255,
-                    255,
-                ),
-                distance=0.0,
-            ),
             {
-                "path": outer_ridge_stl.name,
-                "printer_color": {
-                    "name": "test-black",
-                    "rgb": {
-                        "red": 0,
-                        "green": 0,
-                        "blue": 0,
-                    },
+                "index": 1,
+                "path": artwork_stl.name,
+                "artifact_color": {
+                    "index": 7,
+                    "rgb": _color(
+                        250,
+                        250,
+                        250,
+                    ),
                 },
+            },
+            {
+                "path": base_stl.name,
+                "artifact_color_index": 7,
             },
         ],
     )
@@ -978,28 +870,33 @@ def test_package_includes_participating_outer_ridge_as_independent_component(
     context = StubContext(
         artifact_id="ornament",
         inputs={
-            "extrude.manifest": manifest,
+            "extrude.manifest": extrude_manifest,
         },
         outputs={
             "artifact": artifact,
         },
+        resolver=StubResolver(
+            {
+                "printer_colors": [
+                    "white",
+                ],
+            },
+            colors={
+                "white": {
+                    "rgb": [
+                        255,
+                        255,
+                        255,
+                    ],
+                },
+            },
+        ),
     )
-
-    loaded_paths: list[Path] = []
-
-    def fake_load_stl(
-        path: Path,
-    ) -> Mesh:
-        loaded_paths.append(
-            path,
-        )
-
-        return _mesh()
 
     monkeypatch.setattr(
         package,
         "load_stl",
-        fake_load_stl,
+        lambda path: _mesh(),
         raising=False,
     )
 
@@ -1019,10 +916,7 @@ def test_package_includes_participating_outer_ridge_as_independent_component(
             parents=True,
             exist_ok=True,
         )
-
-        output.write_bytes(
-            b"3mf",
-        )
+        output.write_bytes(b"3mf")
 
     monkeypatch.setattr(
         package,
@@ -1033,17 +927,329 @@ def test_package_includes_participating_outer_ridge_as_independent_component(
 
     package.execute(context)  # type: ignore[arg-type]
 
-    assert loaded_paths == [
-        artwork_stl,
-        outer_ridge_stl,
-    ]
+    assert captured_components is not None
+
+    assert tuple(component.name for component in captured_components) == (
+        component_name(
+            "ornament",
+            "color-1",
+            "white",
+        ),
+        component_name(
+            "ornament",
+            "base",
+            "white",
+        ),
+    )
+
+    assert tuple(component.color.name for component in captured_components) == (
+        "white",
+        "white",
+    )
+
+
+def test_package_outer_ridge_inherits_attached_artifact_layer_printer_color(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Outer Ridge inherits the physical printer color assigned to the
+    Artifact-color layer referenced by its artifact_color_index.
+    """
+
+    extrude_directory = tmp_path / "extrude"
+    extrude_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_stl = extrude_directory / "color-1.stl"
+    outer_ridge_stl = extrude_directory / "outer-ridge.stl"
+
+    artwork_stl.write_text(
+        "artwork",
+        encoding="utf-8",
+    )
+    outer_ridge_stl.write_text(
+        "outer ridge",
+        encoding="utf-8",
+    )
+
+    extrude_manifest = extrude_directory / "products.json"
+
+    _write_extrude_manifest(
+        extrude_manifest,
+        [
+            {
+                "index": 1,
+                "path": artwork_stl.name,
+                "artifact_color": {
+                    "index": 7,
+                    "rgb": _color(
+                        250,
+                        250,
+                        250,
+                    ),
+                },
+            },
+            {
+                "path": outer_ridge_stl.name,
+                "artifact_color_index": 7,
+            },
+        ],
+    )
+
+    artifact = tmp_path / "artifact.3mf"
+
+    context = StubContext(
+        artifact_id="ornament",
+        inputs={
+            "extrude.manifest": extrude_manifest,
+        },
+        outputs={
+            "artifact": artifact,
+        },
+        resolver=StubResolver(
+            {
+                "printer_colors": [
+                    "white",
+                ],
+            },
+            colors={
+                "white": {
+                    "rgb": [
+                        255,
+                        255,
+                        255,
+                    ],
+                },
+            },
+        ),
+    )
+
+    monkeypatch.setattr(
+        package,
+        "load_stl",
+        lambda path: _mesh(),
+        raising=False,
+    )
+
+    captured_components: tuple[Component, ...] | None = None
+
+    def fake_write(
+        components,
+        output: Path,
+    ) -> None:
+        nonlocal captured_components
+
+        captured_components = tuple(
+            components,
+        )
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_bytes(b"3mf")
+
+    monkeypatch.setattr(
+        package,
+        "write",
+        fake_write,
+        raising=False,
+    )
+
+    package.execute(context)  # type: ignore[arg-type]
 
     assert captured_components is not None
-    assert len(captured_components) == 2
 
-    assert captured_components[0].name == component_name("ornament", "color-1", "white")
+    assert tuple(component.name for component in captured_components) == (
+        component_name(
+            "ornament",
+            "color-1",
+            "white",
+        ),
+        component_name(
+            "ornament",
+            "outer-ridge",
+            "white",
+        ),
+    )
 
-    assert captured_components[0].color == PaletteColor(
+    assert tuple(component.color.name for component in captured_components) == (
+        "white",
+        "white",
+    )
+
+
+def test_package_explicit_feature_colors_override_inherited_printer_color(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Explicit feature-color parameters override inherited physical color.
+
+
+    Feature geometry continues to reference its attached Artifact color through
+    artifact_color_index, but Package owns physical feature-color overrides.
+
+
+    Loop, Base, and Outer Ridge may each override the physical printer color
+    they would otherwise inherit.
+    """
+
+    extrude_directory = tmp_path / "extrude"
+    extrude_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    artwork_stl = extrude_directory / "color-1.stl"
+    loop_stl = extrude_directory / "loop.stl"
+    base_stl = extrude_directory / "base.stl"
+    outer_ridge_stl = extrude_directory / "outer-ridge.stl"
+
+    for path in (
+        artwork_stl,
+        loop_stl,
+        base_stl,
+        outer_ridge_stl,
+    ):
+        path.write_text(
+            path.stem,
+            encoding="utf-8",
+        )
+
+    extrude_manifest = extrude_directory / "products.json"
+
+    _write_extrude_manifest(
+        extrude_manifest,
+        [
+            {
+                "index": 1,
+                "path": artwork_stl.name,
+                "artifact_color": {
+                    "index": 7,
+                    "rgb": _color(
+                        250,
+                        250,
+                        250,
+                    ),
+                },
+            },
+            {
+                "path": loop_stl.name,
+                "artifact_color_index": 7,
+            },
+            {
+                "path": base_stl.name,
+                "artifact_color_index": 7,
+            },
+            {
+                "path": outer_ridge_stl.name,
+                "artifact_color_index": 7,
+            },
+        ],
+    )
+
+    artifact = tmp_path / "artifact.3mf"
+
+    context = StubContext(
+        artifact_id="ornament",
+        inputs={
+            "extrude.manifest": extrude_manifest,
+        },
+        outputs={
+            "artifact": artifact,
+        },
+        resolver=StubResolver(
+            {
+                "printer_colors": [
+                    "white",
+                ],
+                "loop_color": "red",
+                "artwork_base_color": "black",
+                "artwork_outer_ridge_color": "blue",
+            },
+            colors={
+                "white": {
+                    "rgb": [
+                        255,
+                        255,
+                        255,
+                    ],
+                },
+                "red": {
+                    "rgb": [
+                        255,
+                        0,
+                        0,
+                    ],
+                },
+                "black": {
+                    "rgb": [
+                        0,
+                        0,
+                        0,
+                    ],
+                },
+                "blue": {
+                    "rgb": [
+                        0,
+                        0,
+                        255,
+                    ],
+                },
+            },
+        ),
+    )
+
+    monkeypatch.setattr(
+        package,
+        "load_stl",
+        lambda path: _mesh(),
+        raising=False,
+    )
+
+    captured_components: tuple[Component, ...] | None = None
+
+    def fake_write(
+        components,
+        output: Path,
+    ) -> None:
+        nonlocal captured_components
+
+        captured_components = tuple(
+            components,
+        )
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_bytes(b"3mf")
+
+    monkeypatch.setattr(
+        package,
+        "write",
+        fake_write,
+        raising=False,
+    )
+
+    package.execute(context)  # type: ignore[arg-type]
+
+    assert captured_components is not None
+    assert len(captured_components) == 4
+
+    colors_by_component = {component.name: component.color for component in captured_components}
+
+    assert colors_by_component[
+        component_name(
+            "ornament",
+            "color-1",
+            "white",
+        )
+    ] == PaletteColor(
         name="white",
         rgb=(
             255,
@@ -1052,10 +1258,29 @@ def test_package_includes_participating_outer_ridge_as_independent_component(
         ),
     )
 
-    assert captured_components[1].name == component_name("ornament", "outer-ridge", "test-black")
+    assert colors_by_component[
+        component_name(
+            "ornament",
+            "loop",
+            "red",
+        )
+    ] == PaletteColor(
+        name="red",
+        rgb=(
+            255,
+            0,
+            0,
+        ),
+    )
 
-    assert captured_components[1].color == PaletteColor(
-        name="test-black",
+    assert colors_by_component[
+        component_name(
+            "ornament",
+            "base",
+            "black",
+        )
+    ] == PaletteColor(
+        name="black",
         rgb=(
             0,
             0,
@@ -1063,4 +1288,17 @@ def test_package_includes_participating_outer_ridge_as_independent_component(
         ),
     )
 
-    assert artifact.is_file()
+    assert colors_by_component[
+        component_name(
+            "ornament",
+            "outer-ridge",
+            "blue",
+        )
+    ] == PaletteColor(
+        name="blue",
+        rgb=(
+            0,
+            0,
+            255,
+        ),
+    )

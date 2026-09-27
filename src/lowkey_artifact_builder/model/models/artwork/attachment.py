@@ -186,19 +186,21 @@ def select_attachment_color(
     artwork: VectorManifest,
     *,
     position: int,
-) -> str:
+) -> int:
     """
-    Return the semantic printer color at one cardinal Artwork attachment.
+    Return the Artifact-color identity at one cardinal Artwork attachment.
 
     Attachment selection is performed by select_attachment_layer(). This
-    convenience interface exposes only the semantic physical printer color
-    for consumers that do not require the complete physical color assignment.
+    convenience interface exposes the selected registered Artifact-color
+    identity for consumers that do not require the complete layer.
+
+    Physical printer-color assignment is a downstream packaging concern.
     """
 
     return select_attachment_layer(
         artwork,
         position=position,
-    ).printer_color_name
+    ).artifact_color_index
 
 
 # =========================================================

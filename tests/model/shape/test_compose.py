@@ -78,6 +78,10 @@ def _write_vector_manifest(
 ) -> None:
     """
     Write a representative registered Artwork vector product set.
+
+    Registered Artwork vector products preserve Artifact-color identity and
+    geometry only. Physical printer-color assignment is a packaging concern
+    and therefore is not part of the Vector producer contract.
     """
 
     path.parent.mkdir(
@@ -138,15 +142,6 @@ def _write_vector_manifest(
                                 "blue": 250,
                             },
                         },
-                        "printer_color": {
-                            "name": "white",
-                            "rgb": {
-                                "red": 255,
-                                "green": 255,
-                                "blue": 255,
-                            },
-                        },
-                        "distance": 1.25,
                     },
                     {
                         "index": 2,
@@ -159,19 +154,12 @@ def _write_vector_manifest(
                                 "blue": 5,
                             },
                         },
-                        "printer_color": {
-                            "name": "black",
-                            "rgb": {
-                                "red": 0,
-                                "green": 0,
-                                "blue": 0,
-                            },
-                        },
-                        "distance": 1.5,
                     },
                 ],
-            }
-        ),
+            },
+            indent=2,
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -382,10 +370,11 @@ def test_load_registered_artwork_preserves_component_metadata(
     tmp_path: Path,
 ) -> None:
     """
-    Shape retains Artwork and printer color semantics supplied by Artwork.
+    Shape retains logical Artwork color semantics supplied by Artwork.
 
-    Artifact color identity and measured RGB remain distinct from the selected
-    printer color identity and RGB when Shape consumes registered Artwork.
+    Artifact color identity and measured RGB remain available when Shape
+    consumes registered Artwork. Physical printer-color assignment belongs
+    downstream at the packaging boundary.
     """
 
     manifest = tmp_path / "vector" / "products.json"
@@ -408,13 +397,6 @@ def test_load_registered_artwork_preserves_component_metadata(
         "green": 250,
         "blue": 250,
     }
-    assert first.printer_color_name == "white"
-    assert first.printer_color == {
-        "red": 255,
-        "green": 255,
-        "blue": 255,
-    }
-    assert first.distance == pytest.approx(1.25)
 
     assert second.index == 2
     assert second.artifact_color_index == 2
@@ -423,13 +405,6 @@ def test_load_registered_artwork_preserves_component_metadata(
         "green": 5,
         "blue": 5,
     }
-    assert second.printer_color_name == "black"
-    assert second.printer_color == {
-        "red": 0,
-        "green": 0,
-        "blue": 0,
-    }
-    assert second.distance == pytest.approx(1.5)
 
 
 def test_load_registered_artwork_reads_common_registered_extent(
@@ -1651,13 +1626,6 @@ def test_registered_artwork_components_share_one_transform(
                     "green": 250,
                     "blue": 250,
                 },
-                printer_color_name="white",
-                printer_color={
-                    "red": 255,
-                    "green": 255,
-                    "blue": 255,
-                },
-                distance=1.25,
             ),
             compose.RegisteredArtworkComponent(
                 index=2,
@@ -1668,13 +1636,6 @@ def test_registered_artwork_components_share_one_transform(
                     "green": 5,
                     "blue": 5,
                 },
-                printer_color_name="black",
-                printer_color={
-                    "red": 0,
-                    "green": 0,
-                    "blue": 0,
-                },
-                distance=1.5,
             ),
         ),
     )
@@ -2130,13 +2091,6 @@ def test_composition_manifest_preserves_artwork_registered_extent(
                     "green": 0,
                     "blue": 0,
                 },
-                printer_color_name="red",
-                printer_color={
-                    "red": 255,
-                    "green": 0,
-                    "blue": 0,
-                },
-                distance=0.0,
             ),
         ),
     )
@@ -2920,9 +2874,10 @@ def test_compose_manifest_preserves_registered_artwork_membership(
     """
     Shape composition persists incorporated Artwork component membership.
 
-    Dynamic Artwork membership and its Artifact/printer color semantics come
-    from the producer manifest and are retained explicitly so downstream
-    stages never rediscover either membership or color meaning.
+    Dynamic Artwork membership and its Artifact color semantics come from the
+    producer manifest and are retained explicitly so downstream stages do not
+    rediscover membership or logical color meaning. Physical printer-color
+    assignment belongs to packaging.
     """
 
     artwork_dir = tmp_path / "artwork"
@@ -2983,15 +2938,6 @@ def test_compose_manifest_preserves_registered_artwork_membership(
                     "blue": 250,
                 },
             },
-            "printer_color": {
-                "name": "white",
-                "rgb": {
-                    "red": 255,
-                    "green": 255,
-                    "blue": 255,
-                },
-            },
-            "distance": 1.25,
         },
         {
             "index": 2,
@@ -3004,15 +2950,6 @@ def test_compose_manifest_preserves_registered_artwork_membership(
                     "blue": 5,
                 },
             },
-            "printer_color": {
-                "name": "black",
-                "rgb": {
-                    "red": 0,
-                    "green": 0,
-                    "blue": 0,
-                },
-            },
-            "distance": 1.5,
         },
     ]
 
@@ -3284,8 +3221,10 @@ def test_load_registered_artwork_accepts_artwork_vector_extent(
     Shape consumes the registered extent published by Artwork vectorization.
 
     Artwork publishes one scalar extent for its square common registered
-    coordinate system. Shape must consume that producer contract directly
-    rather than requiring a Shape-specific manifest representation.
+    coordinate system. Shape consumes that producer contract directly.
+
+    Registered Vector products carry Artifact-color identity only; physical
+    printer-color assignment is not required by Shape composition.
     """
 
     manifest = tmp_path / "products.json"
@@ -3293,7 +3232,7 @@ def test_load_registered_artwork_accepts_artwork_vector_extent(
     component = tmp_path / "color-1.svg"
 
     envelope.write_text(
-        '<svg xmlns="http://www.w3.org/2000/svg"><rect x="2" y="3" width="10" height="8"/></svg>',
+        ('<svg xmlns="http://www.w3.org/2000/svg"><rect x="2" y="3" width="10" height="8"/></svg>'),
         encoding="utf-8",
     )
 
@@ -3319,15 +3258,6 @@ def test_load_registered_artwork_accepts_artwork_vector_extent(
                                 "blue": 250,
                             },
                         },
-                        "printer_color": {
-                            "name": "white",
-                            "rgb": {
-                                "red": 255,
-                                "green": 255,
-                                "blue": 255,
-                            },
-                        },
-                        "distance": 1.25,
                     },
                 ],
             }
@@ -3343,62 +3273,19 @@ def test_load_registered_artwork_accepts_artwork_vector_extent(
         width=16.0,
         height=16.0,
     )
+    assert artwork.envelope == envelope
+    assert len(artwork.components) == 1
 
+    loaded = artwork.components[0]
 
-def test_load_registered_artwork_preserves_artwork_vector_color_metadata(
-    tmp_path: Path,
-) -> None:
-    """
-    Registered Artwork preserves Artifact and printer color semantics.
-
-    Shape consumes the persistent Artifact color identity and measured RGB
-    independently from the selected physical printer color identity and RGB.
-    """
-
-    manifest = tmp_path / "vector" / "products.json"
-
-    _write_vector_manifest(
-        manifest,
-    )
-
-    artwork = compose.load_registered_artwork(
-        manifest,
-    )
-
-    first = artwork.components[0]
-    second = artwork.components[1]
-
-    assert first.artifact_color_index == 1
-    assert first.artifact_color == {
+    assert loaded.index == 1
+    assert loaded.path == component
+    assert loaded.artifact_color_index == 1
+    assert loaded.artifact_color == {
         "red": 250,
         "green": 250,
         "blue": 250,
     }
-    assert first.printer_color_name == "white"
-    assert first.printer_color == {
-        "red": 255,
-        "green": 255,
-        "blue": 255,
-    }
-    assert first.distance == pytest.approx(
-        1.25,
-    )
-
-    assert second.artifact_color_index == 2
-    assert second.artifact_color == {
-        "red": 5,
-        "green": 5,
-        "blue": 5,
-    }
-    assert second.printer_color_name == "black"
-    assert second.printer_color == {
-        "red": 0,
-        "green": 0,
-        "blue": 0,
-    }
-    assert second.distance == pytest.approx(
-        1.5,
-    )
 
 
 def test_compose_stage_succeeds_without_registered_artwork(

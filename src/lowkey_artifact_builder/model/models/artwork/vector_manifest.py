@@ -22,11 +22,13 @@ from pathlib import Path
 )
 class VectorLayer:
     """
-    One registered vector color layer.
+    One registered Artifact-color vector layer.
 
     Artifact color identity and RGB describe the color discovered from
-    the Artwork. Printer color identity and RGB describe the physical
-    assignment established during rasterization.
+    the Artwork and preserved with its registered vector geometry.
+
+    Physical printer-color assignment is downstream packaging
+    configuration and is not part of Registered Artwork.
     """
 
     index: int
@@ -40,16 +42,6 @@ class VectorLayer:
         int,
         int,
     ]
-
-    printer_color_name: str
-
-    printer_color: tuple[
-        int,
-        int,
-        int,
-    ]
-
-    distance: float
 
 
 @dataclass(

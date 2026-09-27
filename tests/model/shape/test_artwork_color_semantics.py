@@ -41,8 +41,9 @@ def _write_registered_artwork_manifest(
     """
     Write representative registered Artwork using the current vector contract.
 
-    Artifact color identity and measured RGB remain distinct from the physical
-    printer assignment selected during Artwork rasterization.
+    Registered Artwork Vector products preserve Artifact-color identity and
+    measured RGB. Physical printer-color assignment belongs to downstream
+    packaging and is deliberately absent from this contract.
     """
 
     path.parent.mkdir(
@@ -103,15 +104,6 @@ def _write_registered_artwork_manifest(
                                 91,
                             ),
                         },
-                        "printer_color": {
-                            "name": "physical-blue",
-                            "rgb": _rgb(
-                                20,
-                                40,
-                                90,
-                            ),
-                        },
-                        "distance": 1.25,
                     },
                     {
                         "index": 2,
@@ -124,15 +116,6 @@ def _write_registered_artwork_manifest(
                                 47,
                             ),
                         },
-                        "printer_color": {
-                            "name": "physical-red",
-                            "rgb": _rgb(
-                                200,
-                                60,
-                                50,
-                            ),
-                        },
-                        "distance": 2.5,
                     },
                 ],
             }
@@ -146,15 +129,15 @@ def _write_registered_artwork_manifest(
 # =========================================================
 
 
-def test_shape_consumes_artifact_and_printer_color_semantics(
+def test_shape_consumes_artifact_color_identity(
     tmp_path: Path,
 ) -> None:
     """
-    Shape consumes both semantic color layers published by Artwork.
+    Shape consumes logical Artifact-color identity published by Artwork.
 
-    Artifact color identity and measured RGB describe the persistent Artwork
-    region. Printer color identity and RGB describe its selected physical
-    realization. Shape must not collapse those distinct semantics.
+    Artifact color index and measured RGB describe each persistent registered
+    Artwork region. Physical printer-color assignment is not part of the
+    registered Artwork Vector contract.
     """
 
     manifest = tmp_path / "vector" / "products.json"
@@ -177,15 +160,6 @@ def test_shape_consumes_artifact_and_printer_color_semantics(
         43,
         91,
     )
-    assert first.printer_color_name == "physical-blue"
-    assert first.printer_color == _rgb(
-        20,
-        40,
-        90,
-    )
-    assert first.distance == pytest.approx(
-        1.25,
-    )
 
     assert second.index == 2
     assert second.artifact_color_index == 11
@@ -194,15 +168,6 @@ def test_shape_consumes_artifact_and_printer_color_semantics(
         61,
         47,
     )
-    assert second.printer_color_name == "physical-red"
-    assert second.printer_color == _rgb(
-        200,
-        60,
-        50,
-    )
-    assert second.distance == pytest.approx(
-        2.5,
-    )
 
 
 # =========================================================
@@ -210,14 +175,15 @@ def test_shape_consumes_artifact_and_printer_color_semantics(
 # =========================================================
 
 
-def test_shape_composition_preserves_artifact_and_printer_color_semantics(
+def test_shape_composition_preserves_artifact_color_identity(
     tmp_path: Path,
 ) -> None:
     """
-    Shape composition preserves registered Artwork color semantics unchanged.
+    Shape composition preserves registered Artwork color identity unchanged.
 
-    Incorporation changes Artwork placement but does not reinterpret Artifact
-    RGB or its already-selected printer assignment.
+    Incorporation changes Artwork placement but does not reinterpret its
+    persistent Artifact-color index or measured RGB. Physical printer-color
+    assignment remains deferred to downstream packaging.
     """
 
     vector_manifest = tmp_path / "vector" / "products.json"
@@ -282,15 +248,6 @@ def test_shape_composition_preserves_artifact_and_printer_color_semantics(
                     91,
                 ),
             },
-            "printer_color": {
-                "name": "physical-blue",
-                "rgb": _rgb(
-                    20,
-                    40,
-                    90,
-                ),
-            },
-            "distance": 1.25,
         },
         {
             "index": 2,
@@ -303,15 +260,6 @@ def test_shape_composition_preserves_artifact_and_printer_color_semantics(
                     47,
                 ),
             },
-            "printer_color": {
-                "name": "physical-red",
-                "rgb": _rgb(
-                    200,
-                    60,
-                    50,
-                ),
-            },
-            "distance": 2.5,
         },
     ]
 
@@ -321,17 +269,16 @@ def test_shape_composition_preserves_artifact_and_printer_color_semantics(
 # =========================================================
 
 
-def test_shape_extrusion_uses_registered_artwork_printer_assignment(
+def test_shape_extrusion_preserves_artifact_color_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Shape physical extrusion uses Artwork's selected printer assignment.
+    Shape extrusion preserves incorporated Artwork color identity.
 
-    Artifact RGB describes the Artwork itself and may differ from the physical
-    printer RGB. Dimensionalization must therefore carry printer identity and
-    RGB into the physical component manifest rather than substituting Artifact
-    RGB.
+    Physical dimensionalization changes geometry but does not select a printer
+    color. The persistent Artifact-color index and measured RGB remain attached
+    to the resulting component for downstream Shape packaging.
     """
 
     source = tmp_path / "compose" / "color-1.svg"
@@ -368,15 +315,6 @@ def test_shape_extrusion_uses_registered_artwork_printer_assignment(
                         91,
                     ),
                 },
-                "printer_color": {
-                    "name": "physical-blue",
-                    "rgb": _rgb(
-                        20,
-                        40,
-                        90,
-                    ),
-                },
-                "distance": 1.25,
             },
         ],
     }
@@ -417,20 +355,12 @@ def test_shape_extrusion_uses_registered_artwork_printer_assignment(
             "artwork-1",
             "artwork-1.stl",
             {
-                "name": "physical-blue",
-                "rgb": [
-                    20,
-                    40,
-                    90,
-                ],
+                "index": 7,
+                "rgb": _rgb(
+                    17,
+                    43,
+                    91,
+                ),
             },
         ),
     )
-
-    physical_color = rendered[0][2]
-
-    assert physical_color["rgb"] != [
-        17,
-        43,
-        91,
-    ]

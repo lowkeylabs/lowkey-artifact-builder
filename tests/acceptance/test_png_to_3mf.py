@@ -42,15 +42,11 @@ def test_png_builds_complete_3mf(
     """
     A PNG Artwork input builds into a semantically colored standalone 3MF.
 
-    Raster and vector processing preserve registered Artwork independently of
-    manufacturing dimensions. Extrusion introduces physical dimensions, and
-    packaging preserves each independently printable Artwork component's
-    product identity, semantic printer color identity, and RGB representation.
+    Registered Artwork preserves logical Artifact-color identity through
+    extrusion. Physical printer-color assignment occurs only during Package.
+    The completed 3MF preserves every independently printable Artwork
+    component with a resolved physical printer color.
     """
-
-    # -----------------------------------------------------
-    # Arrange temporary project
-    # -----------------------------------------------------
 
     repository_root = Path(__file__).resolve().parents[2]
 
@@ -59,7 +55,6 @@ def test_png_builds_complete_3mf(
     assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
 
     project_root = tmp_path
-
     source = project_root / "nydeli-clean.png"
 
     shutil.copy2(
@@ -91,7 +86,7 @@ def test_png_builds_complete_3mf(
     )
 
     # -----------------------------------------------------
-    # Materialize Artifact workspace from preserved original
+    # Materialize Artifact workspace
     # -----------------------------------------------------
 
     materialize_artifact(
@@ -136,10 +131,6 @@ def test_png_builds_complete_3mf(
     assert plan.model_name == "artwork"
     assert plan.realization_name == "artwork_default"
 
-    # -----------------------------------------------------
-    # Verify backward-compatible envelope configuration
-    # -----------------------------------------------------
-
     assert plan.resolver("artwork_envelope_mode") == "shrink-wrap"
 
     assert (
@@ -154,7 +145,7 @@ def test_png_builds_complete_3mf(
     )
 
     # -----------------------------------------------------
-    # Build explicit artwork.default through public CLI
+    # Build through public CLI
     # -----------------------------------------------------
 
     build_result = runner.invoke(
@@ -191,7 +182,7 @@ def test_png_builds_complete_3mf(
     output = artifact_product.path
 
     # -----------------------------------------------------
-    # Verify physical component contract
+    # Verify logical extrusion contract
     # -----------------------------------------------------
 
     assert extrude_manifest.is_file()
@@ -210,6 +201,37 @@ def test_png_builds_complete_3mf(
     )
 
     assert products
+
+    for product in products:
+        assert "printer_color" not in product
+
+        artifact_color = product.get(
+            "artifact_color",
+        )
+
+        if artifact_color is not None:
+            assert isinstance(
+                artifact_color,
+                dict,
+            )
+
+            assert isinstance(
+                artifact_color["index"],
+                int,
+            )
+
+            rgb = artifact_color["rgb"]
+
+            assert isinstance(
+                rgb,
+                dict,
+            )
+
+            assert set(rgb) == {
+                "red",
+                "green",
+                "blue",
+            }
 
     # -----------------------------------------------------
     # Verify final product
@@ -260,41 +282,42 @@ def test_png_builds_complete_3mf(
 
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
 
-    expected_names = {
-        component_name(
-            "nydeli",
-            Path(product["path"]).stem,
-            product["printer_color"]["name"],
+    #
+    # Every extruded physical component must survive
+    # packaging as exactly one independently printable
+    # 3MF object.
+    #
+    assert len(objects_by_name) == len(products)
+
+    component_stems = {Path(product["path"]).stem for product in products}
+
+    packaged_names = {name for name in objects_by_name if name is not None}
+
+    for component_stem in component_stems:
+        matching_names = [name for name in packaged_names if component_stem in name]
+
+        assert len(matching_names) == 1, (
+            "Expected exactly one packaged object for "
+            f"extruded component {component_stem!r}; "
+            f"found {matching_names!r} in {sorted(packaged_names)!r}"
         )
-        for product in products
-    }
 
-    assert set(objects_by_name) == expected_names
-
-    assert len(materials) == len(products)
+    # -----------------------------------------------------
+    # Verify physical printer-color assignment occurs
+    # in the packaged 3MF
+    # -----------------------------------------------------
 
     materials_by_id = {material.get("id"): material for material in materials}
 
-    # -----------------------------------------------------
-    # Verify component identity and semantic printer color
-    # survive packaging independently
-    # -----------------------------------------------------
+    assert materials_by_id
 
-    for product in products:
-        printer_color = product["printer_color"]
+    for object_ in objects:
+        pid = object_.get("pid")
 
-        semantic_name = printer_color["name"]
-        rgb = printer_color["rgb"]
+        assert pid is not None
+        assert pid in materials_by_id
 
-        object_name = component_name(
-            "nydeli",
-            Path(product["path"]).stem,
-            printer_color["name"],
-        )
-
-        object_ = objects_by_name[object_name]
-
-        material = materials_by_id[object_.get("pid")]
+        material = materials_by_id[pid]
 
         color = material.find(
             f"{{{CORE_NS}}}base",
@@ -302,13 +325,20 @@ def test_png_builds_complete_3mf(
 
         assert color is not None
 
-        assert color.get("name") == semantic_name
+        semantic_name = color.get("name")
+        display_color = color.get("displaycolor")
 
-        assert color.get("displaycolor") == (
-            f"#{rgb['red']:02X}{rgb['green']:02X}{rgb['blue']:02X}"
-        )
+        assert semantic_name
+        assert display_color
+        assert display_color.startswith("#")
+        assert len(display_color) == 7
 
         assert object_.get("pindex") == "0"
+
+        object_name = object_.get("name")
+
+        assert object_name is not None
+        assert object_name.endswith(f" - {semantic_name}")
 
 
 @pytest.mark.slow
@@ -318,8 +348,12 @@ def test_png_artwork_with_loop_builds_complete_3mf(
 ) -> None:
     """
     Standalone Artwork with a participating Loop builds through the normal
-    pipeline into a complete 3MF containing the Loop as an independently
-    printable physical component with its resolved semantic printer color.
+    pipeline into a complete 3MF.
+
+    Extrude preserves the Loop's logical attachment to an Artifact-color layer
+    without assigning a physical printer color. Package resolves the physical
+    printer assignment for that Artifact-color layer and applies the same
+    assignment to the Loop when no explicit loop_color override exists.
     """
 
     # -----------------------------------------------------
@@ -333,7 +367,6 @@ def test_png_artwork_with_loop_builds_complete_3mf(
     assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
 
     project_root = tmp_path
-
     source = project_root / "nydeli-clean.png"
 
     shutil.copy2(
@@ -454,7 +487,7 @@ loop_position = 0
     output = artifact_product.path
 
     # -----------------------------------------------------
-    # Verify Loop extrusion product
+    # Verify Loop extrusion contract
     # -----------------------------------------------------
 
     assert extrude_manifest.is_file()
@@ -472,33 +505,40 @@ loop_position = 0
         list,
     )
 
+    assert products
+
     loop_product = next(product for product in products if product["path"] == "loop.stl")
 
-    printer_color = loop_product["printer_color"]
+    #
+    # Extrude owns geometry and logical attachment,
+    # not physical printer assignment.
+    #
+    assert "printer_color" not in loop_product
 
-    assert isinstance(
-        printer_color["name"],
-        str,
+    loop_artifact_color_index = loop_product.get(
+        "artifact_color_index",
     )
 
-    assert printer_color["name"]
-
-    rgb = printer_color["rgb"]
-
     assert isinstance(
-        rgb["red"],
+        loop_artifact_color_index,
         int,
     )
 
-    assert isinstance(
-        rgb["green"],
-        int,
+    assert loop_artifact_color_index > 0
+
+    attached_artwork_product = next(
+        product
+        for product in products
+        if (
+            isinstance(
+                product.get("artifact_color"),
+                dict,
+            )
+            and product["artifact_color"].get("index") == loop_artifact_color_index
+        )
     )
 
-    assert isinstance(
-        rgb["blue"],
-        int,
-    )
+    assert "printer_color" not in attached_artwork_product
 
     loop_stl = extrude_manifest.parent / loop_product["path"]
 
@@ -537,12 +577,12 @@ loop_position = 0
         model = ET.fromstring(
             archive.read(
                 model_name,
-            ),
+            )
         )
 
     # -----------------------------------------------------
     # Verify Loop survives as independently printable
-    # component
+    # component and inherits its Artifact-layer color
     # -----------------------------------------------------
 
     objects = model.findall(
@@ -553,33 +593,65 @@ loop_position = 0
         f".//{{{CORE_NS}}}basematerials",
     )
 
-    loop_name = component_name(
-        "nydeli",
-        "loop",
-        printer_color["name"],
-    )
-
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
-
-    assert loop_name in objects_by_name
-
-    loop_object = objects_by_name[loop_name]
 
     materials_by_id = {material.get("id"): material for material in materials}
 
-    loop_material = materials_by_id[loop_object.get("pid")]
+    loop_matches = [
+        object_ for name, object_ in objects_by_name.items() if name is not None and "loop" in name
+    ]
 
-    color = loop_material.find(
+    assert len(loop_matches) == 1
+
+    loop_object = loop_matches[0]
+
+    attached_stem = Path(attached_artwork_product["path"]).stem
+
+    attached_matches = [
+        object_
+        for name, object_ in objects_by_name.items()
+        if name is not None and attached_stem in name
+    ]
+
+    assert len(attached_matches) == 1
+
+    attached_object = attached_matches[0]
+
+    loop_pid = loop_object.get("pid")
+    attached_pid = attached_object.get("pid")
+
+    assert loop_pid is not None
+    assert attached_pid is not None
+
+    assert loop_pid in materials_by_id
+    assert attached_pid in materials_by_id
+
+    loop_material = materials_by_id[loop_pid]
+
+    attached_material = materials_by_id[attached_pid]
+
+    loop_color = loop_material.find(
         f"{{{CORE_NS}}}base",
     )
 
-    assert color is not None
+    attached_color = attached_material.find(
+        f"{{{CORE_NS}}}base",
+    )
 
-    assert color.get("name") == printer_color["name"]
+    assert loop_color is not None
+    assert attached_color is not None
 
-    assert color.get("displaycolor") == (f"#{rgb['red']:02X}{rgb['green']:02X}{rgb['blue']:02X}")
+    #
+    # No loop_color override exists. Package must therefore
+    # apply the same physical printer color to the Loop as
+    # to the Artifact-color layer referenced by
+    # artifact_color_index.
+    #
+    assert loop_color.get("name") == attached_color.get("name")
+    assert loop_color.get("displaycolor") == attached_color.get("displaycolor")
 
     assert loop_object.get("pindex") == "0"
+    assert attached_object.get("pindex") == "0"
 
 
 @pytest.mark.slow
@@ -591,13 +663,11 @@ def test_png_artwork_with_base_builds_complete_3mf(
     An ordinary Artwork Realization may enable Base through parameter
     overrides and build through the normal pipeline.
 
-    The resulting standalone 3MF contains Base as an independently printable
-    physical component with its resolved semantic physical color identity.
+    Extrude preserves Base's logical attachment to an Artifact-color layer
+    without assigning a physical printer color. Package applies the explicit
+    artwork_base_color override and emits Base as an independently printable
+    physical component.
     """
-
-    # -----------------------------------------------------
-    # Arrange temporary project
-    # -----------------------------------------------------
 
     repository_root = Path(__file__).resolve().parents[2]
 
@@ -606,7 +676,6 @@ def test_png_artwork_with_base_builds_complete_3mf(
     assert fixture_source.is_file()
 
     project_root = tmp_path
-
     source = project_root / "nydeli-clean.png"
 
     shutil.copy2(
@@ -621,7 +690,7 @@ def test_png_artwork_with_base_builds_complete_3mf(
     runner = CliRunner()
 
     # -----------------------------------------------------
-    # Configure through the public CLI
+    # Configure through public CLI
     # -----------------------------------------------------
 
     config_result = runner.invoke(
@@ -637,17 +706,13 @@ def test_png_artwork_with_base_builds_complete_3mf(
         f"Artifact configuration failed:\n{config_result.output}\n{config_result.exception!r}"
     )
 
-    # -----------------------------------------------------
-    # Materialize Artifact workspace from preserved original
-    # -----------------------------------------------------
-
     materialize_artifact(
         "nydeli",
         project_root=project_root,
     )
 
     # -----------------------------------------------------
-    # Enable Base on the ordinary artwork_default Realization
+    # Enable Base with explicit physical override
     # -----------------------------------------------------
 
     artifact_config = project_root / "artifacts" / "nydeli" / "artifact.toml"
@@ -667,7 +732,7 @@ artwork_base_color = "test-black"
         )
 
     # -----------------------------------------------------
-    # Plan customized ordinary Artwork Realization
+    # Plan customized realization
     # -----------------------------------------------------
 
     plans = create_build_plans(
@@ -688,7 +753,7 @@ artwork_base_color = "test-black"
     assert plan.resolver("artwork_base_color") == "test-black"
 
     # -----------------------------------------------------
-    # Build through the ordinary public CLI
+    # Build through public CLI
     # -----------------------------------------------------
 
     build_result = runner.invoke(
@@ -725,7 +790,7 @@ artwork_base_color = "test-black"
     output = artifact_product.path
 
     # -----------------------------------------------------
-    # Verify Base extrusion product
+    # Verify Base extrusion contract
     # -----------------------------------------------------
 
     assert extrude_manifest.is_file()
@@ -745,14 +810,22 @@ artwork_base_color = "test-black"
 
     base_product = next(product for product in products if product["path"] == "base.stl")
 
-    assert base_product["printer_color"] == {
-        "name": "test-black",
-        "rgb": {
-            "red": 0,
-            "green": 0,
-            "blue": 0,
-        },
-    }
+    #
+    # Extrude owns geometry and logical attachment,
+    # not physical printer assignment.
+    #
+    assert "printer_color" not in base_product
+
+    artifact_color_index = base_product.get(
+        "artifact_color_index",
+    )
+
+    assert isinstance(
+        artifact_color_index,
+        int,
+    )
+
+    assert artifact_color_index > 0
 
     base_stl = extrude_manifest.parent / base_product["path"]
 
@@ -786,7 +859,8 @@ artwork_base_color = "test-black"
         )
 
     # -----------------------------------------------------
-    # Verify independently printable Base identity
+    # Verify explicit Base physical override is applied
+    # by Package
     # -----------------------------------------------------
 
     objects = model.findall(
@@ -802,7 +876,7 @@ artwork_base_color = "test-black"
     base_name = component_name(
         "nydeli",
         "base",
-        base_product["printer_color"]["name"],
+        "test-black",
     )
 
     assert base_name in objects_by_name
@@ -833,10 +907,13 @@ def test_png_artwork_with_base_and_loop_builds_complete_3mf(
     """
     Base and Loop compose through the ordinary standalone Artwork pipeline.
 
-    An ordinary Artwork Realization may enable both Features through parameter
-    overrides. The completed 3MF preserves Artwork, Base, and Loop as
-    independently printable physical components with their resolved semantic
-    physical color identities.
+    Extrude preserves logical Artifact-color attachment for both Features
+    without assigning physical printer colors.
+
+    Package applies the explicit artwork_base_color override to Base. Loop has
+    no explicit loop_color override, so Package gives it the same physical
+    printer color as the Artifact-color layer referenced by its
+    artifact_color_index.
     """
 
     # -----------------------------------------------------
@@ -850,7 +927,6 @@ def test_png_artwork_with_base_and_loop_builds_complete_3mf(
     assert fixture_source.is_file()
 
     project_root = tmp_path
-
     source = project_root / "nydeli-clean.png"
 
     shutil.copy2(
@@ -976,6 +1052,10 @@ loop_raise = 3.0
     extrude_manifest = extrude_manifest_product.path
     output = artifact_product.path
 
+    # -----------------------------------------------------
+    # Verify logical extrusion contract
+    # -----------------------------------------------------
+
     assert extrude_manifest.is_file()
 
     extrusion_data = json.loads(
@@ -991,9 +1071,7 @@ loop_raise = 3.0
         list,
     )
 
-    # -----------------------------------------------------
-    # Verify composed physical component contract
-    # -----------------------------------------------------
+    assert products
 
     products_by_path = {product["path"]: product for product in products}
 
@@ -1013,45 +1091,54 @@ loop_raise = 3.0
     assert artwork_products
 
     base_product = products_by_path["base.stl"]
+
     loop_product = products_by_path["loop.stl"]
 
-    assert base_product["printer_color"] == {
-        "name": "test-black",
-        "rgb": {
-            "red": 0,
-            "green": 0,
-            "blue": 0,
-        },
-    }
+    #
+    # Extrude owns geometry and logical attachment,
+    # not physical printer assignment.
+    #
+    assert "printer_color" not in base_product
+    assert "printer_color" not in loop_product
+
+    base_artifact_color_index = base_product.get(
+        "artifact_color_index",
+    )
+
+    loop_artifact_color_index = loop_product.get(
+        "artifact_color_index",
+    )
+
+    assert isinstance(
+        base_artifact_color_index,
+        int,
+    )
+
+    assert base_artifact_color_index > 0
+
+    assert isinstance(
+        loop_artifact_color_index,
+        int,
+    )
+
+    assert loop_artifact_color_index > 0
+
+    loop_attached_artwork_product = next(
+        product
+        for product in artwork_products
+        if (
+            isinstance(
+                product.get("artifact_color"),
+                dict,
+            )
+            and product["artifact_color"].get("index") == loop_artifact_color_index
+        )
+    )
 
     for product in (
         base_product,
         loop_product,
     ):
-        printer_color = product["printer_color"]
-
-        assert isinstance(
-            printer_color["name"],
-            str,
-        )
-
-        assert printer_color["name"]
-
-        rgb = printer_color["rgb"]
-
-        assert isinstance(
-            rgb["red"],
-            int,
-        )
-        assert isinstance(
-            rgb["green"],
-            int,
-        )
-        assert isinstance(
-            rgb["blue"],
-            int,
-        )
-
         stl = extrude_manifest.parent / product["path"]
 
         assert stl.is_file()
@@ -1060,6 +1147,10 @@ loop_raise = 3.0
     # -----------------------------------------------------
     # Verify complete packaged 3MF
     # -----------------------------------------------------
+
+    assert output.is_relative_to(
+        project_root,
+    )
 
     assert output.is_file()
     assert output.stat().st_size > 0
@@ -1071,10 +1162,14 @@ loop_raise = 3.0
     with zipfile.ZipFile(
         output,
     ) as archive:
+        names = set(
+            archive.namelist(),
+        )
+
+        assert "[Content_Types].xml" in names
+
         model_name = next(
-            name
-            for name in archive.namelist()
-            if name.startswith("3D/") and name.endswith(".model")
+            name for name in names if name.startswith("3D/") and name.endswith(".model")
         )
 
         model = ET.fromstring(
@@ -1097,52 +1192,114 @@ loop_raise = 3.0
 
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
 
-    expected_names = {
-        component_name(
-            "nydeli",
-            Path(product["path"]).stem,
-            product["printer_color"]["name"],
-        )
-        for product in products
-    }
+    assert len(objects_by_name) == len(products)
 
-    assert set(objects_by_name) == expected_names
+    packaged_names = {name for name in objects_by_name if name is not None}
+
+    for product in products:
+        component_stem = Path(product["path"]).stem
+
+        matching_names = [name for name in packaged_names if component_stem in name]
+
+        assert len(matching_names) == 1, (
+            "Expected exactly one packaged object for "
+            f"extruded component {component_stem!r}; "
+            f"found {matching_names!r} in "
+            f"{sorted(packaged_names)!r}"
+        )
 
     materials_by_id = {material.get("id"): material for material in materials}
 
     # -----------------------------------------------------
-    # Verify semantic physical identities survive packaging
+    # Verify explicit Base physical override is applied
+    # only by Package
     # -----------------------------------------------------
 
-    for product in products:
-        printer_color = product["printer_color"]
+    base_name = component_name(
+        "nydeli",
+        "base",
+        "test-black",
+    )
 
-        semantic_name = printer_color["name"]
-        rgb = printer_color["rgb"]
+    assert base_name in objects_by_name
 
-        object_name = component_name(
-            "nydeli",
-            Path(product["path"]).stem,
-            printer_color["name"],
-        )
+    base_object = objects_by_name[base_name]
 
-        object_ = objects_by_name[object_name]
+    base_pid = base_object.get("pid")
 
-        material = materials_by_id[object_.get("pid")]
+    assert base_pid is not None
+    assert base_pid in materials_by_id
 
-        color = material.find(
-            f"{{{CORE_NS}}}base",
-        )
+    base_material = materials_by_id[base_pid]
 
-        assert color is not None
+    base_color = base_material.find(
+        f"{{{CORE_NS}}}base",
+    )
 
-        assert color.get("name") == semantic_name
+    assert base_color is not None
+    assert base_color.get("name") == "test-black"
+    assert base_color.get("displaycolor") == "#000000"
+    assert base_object.get("pindex") == "0"
 
-        assert color.get("displaycolor") == (
-            f"#{rgb['red']:02X}{rgb['green']:02X}{rgb['blue']:02X}"
-        )
+    # -----------------------------------------------------
+    # Verify Loop inherits the packaged physical color of
+    # its attached Artifact-color layer
+    # -----------------------------------------------------
 
-        assert object_.get("pindex") == "0"
+    loop_matches = [
+        object_ for name, object_ in objects_by_name.items() if name is not None and "loop" in name
+    ]
+
+    assert len(loop_matches) == 1
+
+    loop_object = loop_matches[0]
+
+    attached_stem = Path(loop_attached_artwork_product["path"]).stem
+
+    attached_matches = [
+        object_
+        for name, object_ in objects_by_name.items()
+        if name is not None and attached_stem in name
+    ]
+
+    assert len(attached_matches) == 1
+
+    attached_object = attached_matches[0]
+
+    loop_pid = loop_object.get("pid")
+    attached_pid = attached_object.get("pid")
+
+    assert loop_pid is not None
+    assert attached_pid is not None
+
+    assert loop_pid in materials_by_id
+    assert attached_pid in materials_by_id
+
+    loop_material = materials_by_id[loop_pid]
+
+    attached_material = materials_by_id[attached_pid]
+
+    loop_color = loop_material.find(
+        f"{{{CORE_NS}}}base",
+    )
+
+    attached_color = attached_material.find(
+        f"{{{CORE_NS}}}base",
+    )
+
+    assert loop_color is not None
+    assert attached_color is not None
+
+    #
+    # No loop_color override exists. Package must therefore
+    # apply the physical printer assignment of the referenced
+    # Artifact-color layer.
+    #
+    assert loop_color.get("name") == attached_color.get("name")
+    assert loop_color.get("displaycolor") == attached_color.get("displaycolor")
+
+    assert loop_object.get("pindex") == "0"
+    assert attached_object.get("pindex") == "0"
 
 
 @pytest.mark.slow
@@ -1155,8 +1312,11 @@ def test_png_artwork_with_hole_builds_complete_3mf(
 
     Hole is configured through ordinary Artwork Realization parameters and
     remains subtractive geometry rather than an independently printable
-    component. The final 3MF preserves the printable Artwork, Base, and
-    Outer Ridge components and their semantic printer-color identities.
+    component.
+
+    Extrude preserves logical Artifact-color attachment for printable
+    components without assigning physical printer colors. Package resolves
+    physical colors, including explicit Base and Outer Ridge overrides.
     """
 
     # -----------------------------------------------------
@@ -1170,7 +1330,6 @@ def test_png_artwork_with_hole_builds_complete_3mf(
     assert fixture_source.is_file(), f"Acceptance artwork does not exist: {fixture_source}"
 
     project_root = tmp_path
-
     source = project_root / "nydeli-clean.png"
 
     shutil.copy2(
@@ -1185,7 +1344,7 @@ def test_png_artwork_with_hole_builds_complete_3mf(
     runner = CliRunner()
 
     # -----------------------------------------------------
-    # Configure through the public CLI
+    # Configure through public CLI
     # -----------------------------------------------------
 
     config_result = runner.invoke(
@@ -1200,10 +1359,6 @@ def test_png_artwork_with_hole_builds_complete_3mf(
     assert config_result.exit_code == 0, (
         f"Artifact configuration failed:\n{config_result.output}\n{config_result.exception!r}"
     )
-
-    # -----------------------------------------------------
-    # Materialize Artifact workspace from preserved original
-    # -----------------------------------------------------
 
     materialize_artifact(
         "nydeli",
@@ -1239,7 +1394,7 @@ artwork_hole_edge_distance = 1.0
         )
 
     # -----------------------------------------------------
-    # Plan customized ordinary Artwork Realization
+    # Plan customized realization
     # -----------------------------------------------------
 
     plans = create_build_plans(
@@ -1257,7 +1412,11 @@ artwork_hole_edge_distance = 1.0
     assert plan.realization_name == "artwork_default"
 
     assert plan.resolver("artwork_base_raise") == 2.0
+    assert plan.resolver("artwork_base_color") == "test-black"
+
     assert plan.resolver("artwork_outer_ridge_width") == 2.0
+    assert plan.resolver("artwork_outer_ridge_raise") == 1.0
+    assert plan.resolver("artwork_outer_ridge_color") == "test-white"
 
     assert plan.resolver("artwork_hole_diameter") == 6.0
     assert plan.resolver("artwork_hole_position") == 0
@@ -1301,7 +1460,7 @@ artwork_hole_edge_distance = 1.0
     output = artifact_product.path
 
     # -----------------------------------------------------
-    # Verify extrusion component contract
+    # Verify logical extrusion contract
     # -----------------------------------------------------
 
     assert extrude_manifest.is_file()
@@ -1326,10 +1485,33 @@ artwork_hole_edge_distance = 1.0
     assert "base.stl" in product_paths
     assert "outer-ridge.stl" in product_paths
 
-    # Hole is subtractive geometry, never a product.
+    #
+    # Hole is subtractive geometry, never an independently
+    # printable product.
+    #
     assert "hole.stl" not in product_paths
 
     assert all("hole" not in Path(product["path"]).stem for product in products)
+
+    #
+    # Extrude owns geometry and logical color relationships.
+    # It must not contain physical printer assignments.
+    #
+    assert all("printer_color" not in product for product in products)
+
+    base_product = next(product for product in products if product["path"] == "base.stl")
+
+    ridge_product = next(product for product in products if product["path"] == "outer-ridge.stl")
+
+    assert isinstance(
+        base_product.get("artifact_color_index"),
+        int,
+    )
+
+    assert isinstance(
+        ridge_product.get("artifact_color_index"),
+        int,
+    )
 
     # -----------------------------------------------------
     # Verify physical STL products exist
@@ -1391,86 +1573,77 @@ artwork_hole_edge_distance = 1.0
 
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
 
-    expected_names = {
-        component_name(
-            "nydeli",
-            Path(product["path"]).stem,
-            product["printer_color"]["name"],
+    #
+    # Every extruded component survives Package exactly once.
+    #
+    assert len(objects_by_name) == len(products)
+
+    packaged_names = {name for name in objects_by_name if name is not None}
+
+    for product in products:
+        component_stem = Path(product["path"]).stem
+
+        matching_names = [name for name in packaged_names if component_stem in name]
+
+        assert len(matching_names) == 1, (
+            "Expected exactly one packaged object for "
+            f"extruded component {component_stem!r}; "
+            f"found {matching_names!r} in "
+            f"{sorted(packaged_names)!r}"
         )
-        for product in products
-    }
 
-    assert set(objects_by_name) == expected_names
-
-    base_product = next(product for product in products if product["path"] == "base.stl")
-
-    outer_ridge_product = next(
-        product for product in products if product["path"] == "outer-ridge.stl"
-    )
+    # -----------------------------------------------------
+    # Verify explicit feature-color overrides are applied
+    # only by Package
+    # -----------------------------------------------------
 
     base_name = component_name(
         "nydeli",
         "base",
-        base_product["printer_color"]["name"],
+        "test-black",
     )
 
-    outer_ridge_name = component_name(
+    ridge_name = component_name(
         "nydeli",
         "outer-ridge",
-        outer_ridge_product["printer_color"]["name"],
+        "test-white",
     )
 
     assert base_name in objects_by_name
-    assert outer_ridge_name in objects_by_name
-
-    # Hole remains subtractive geometry and therefore has no packaged object.
-    assert all(not name.startswith("hole - ") for name in objects_by_name if name is not None)
-
-    assert len(materials) == len(products)
+    assert ridge_name in objects_by_name
 
     materials_by_id = {material.get("id"): material for material in materials}
 
-    # -----------------------------------------------------
-    # Verify semantic printer colors survive packaging
-    # -----------------------------------------------------
+    base_object = objects_by_name[base_name]
 
-    for product in products:
-        printer_color = product["printer_color"]
+    base_material = materials_by_id[base_object.get("pid")]
 
-        semantic_name = printer_color["name"]
-        rgb = printer_color["rgb"]
+    base_color = base_material.find(
+        f"{{{CORE_NS}}}base",
+    )
 
-        object_name = component_name(
-            "nydeli",
-            Path(product["path"]).stem,
-            printer_color["name"],
-        )
+    assert base_color is not None
+    assert base_color.get("name") == "test-black"
+    assert base_color.get("displaycolor") == "#000000"
+    assert base_object.get("pindex") == "0"
 
-        object_ = objects_by_name[object_name]
+    ridge_object = objects_by_name[ridge_name]
 
-        material = materials_by_id[object_.get("pid")]
+    ridge_material = materials_by_id[ridge_object.get("pid")]
 
-        color = material.find(
-            f"{{{CORE_NS}}}base",
-        )
+    ridge_color = ridge_material.find(
+        f"{{{CORE_NS}}}base",
+    )
 
-        assert color is not None
+    assert ridge_color is not None
+    assert ridge_color.get("name") == "test-white"
+    assert ridge_color.get("displaycolor") == "#FFFFFF"
+    assert ridge_object.get("pindex") == "0"
 
-        assert color.get("name") == semantic_name
-
-        assert color.get("displaycolor") == (
-            f"#{rgb['red']:02X}{rgb['green']:02X}{rgb['blue']:02X}"
-        )
-
-        assert object_.get("pindex") == "0"
-
-    # -----------------------------------------------------
-    # Verify configured Feature colors remain authoritative
-    # -----------------------------------------------------
-
-    assert base_product["printer_color"]["name"] == "test-black"
-
-    assert outer_ridge_product["printer_color"]["name"] == "test-white"
+    #
+    # Hole remains subtractive after Package as well.
+    #
+    assert all("hole" not in name for name in packaged_names)
 
 
 @pytest.mark.slow

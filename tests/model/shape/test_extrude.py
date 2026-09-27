@@ -4114,14 +4114,16 @@ def test_incorporated_artwork_components_share_physical_z_dimensionalization(
         assert bounds[5] == pytest.approx(3.25)
 
 
-def test_incorporated_artwork_manifest_preserves_printer_assignment(
+def test_incorporated_artwork_manifest_preserves_artifact_color_identity(
     tmp_path: Path,
 ) -> None:
     """
-    Artwork dimensionalization preserves its selected printer assignment.
+    Artwork dimensionalization preserves logical Artifact-color identity.
 
-    Artifact RGB remains persistent Artwork information, while physical Shape
-    components use the independently selected printer identity and RGB.
+    Shape Extrude carries the incorporated Artwork color identity through
+    physical dimensionalization without selecting or preserving a physical
+    printer-color assignment. Physical printer-color assignment belongs to
+    downstream Shape packaging.
     """
 
     composition = tmp_path / "composition.svg"
@@ -4204,12 +4206,12 @@ def test_incorporated_artwork_manifest_preserves_printer_assignment(
     )
 
     assert artwork_component_data["color"] == {
-        "name": "physical-blue",
-        "rgb": [
-            20,
-            40,
-            90,
-        ],
+        "index": 7,
+        "rgb": {
+            "red": 17,
+            "green": 43,
+            "blue": 91,
+        },
     }
 
 
@@ -4605,3 +4607,91 @@ def test_incorporated_artwork_preserves_registered_asymmetric_geometry(
     assert bounds[1] == pytest.approx(-20.0, abs=0.002)
     assert bounds[2] == pytest.approx(-10.0, abs=0.002)
     assert bounds[3] == pytest.approx(30.0, abs=0.002)
+
+
+def test_render_artwork_components_preserves_artifact_color_without_printer_assignment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Shape extrusion preserves logical Artwork color identity only.
+
+    Compose supplies registered Artwork geometry and Artifact-color identity.
+    Physical printer-color assignment is not required by extrusion and belongs
+    to downstream Shape packaging.
+    """
+
+    compose_directory = tmp_path / "compose"
+    extrude_directory = tmp_path / "extrude"
+
+    compose_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    extrude_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    component = compose_directory / "color-1.svg"
+
+    component.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"/>',
+        encoding="utf-8",
+    )
+
+    artwork = {
+        "registered_extent": {
+            "width": 100.0,
+            "height": 100.0,
+        },
+        "transform": {
+            "scale": 0.01,
+            "translate_x": -0.5,
+            "translate_y": -0.5,
+        },
+        "components": [
+            {
+                "index": 1,
+                "path": component.name,
+                "artifact_color": {
+                    "index": 7,
+                    "rgb": {
+                        "red": 17,
+                        "green": 43,
+                        "blue": 91,
+                    },
+                },
+            },
+        ],
+    }
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        lambda source, output: output.touch(),
+    )
+
+    products = extrude._render_artwork_components(
+        artwork,
+        compose_directory,
+        extrude_directory,
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_artwork_raise=1.0,
+    )
+
+    assert products == (
+        (
+            "artwork-1",
+            "artwork-1.stl",
+            {
+                "index": 7,
+                "rgb": {
+                    "red": 17,
+                    "green": 43,
+                    "blue": 91,
+                },
+            },
+        ),
+    )

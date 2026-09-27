@@ -21,10 +21,6 @@ from typing import Any
 import pytest
 from PIL import Image
 
-from lowkey_artifact_builder.colors import (
-    ColorAssignmentResult,
-    PaletteColor,
-)
 from lowkey_artifact_builder.model.models.artwork.stages import raster
 
 # =========================================================
@@ -98,9 +94,6 @@ def _resolver() -> StubResolver:
 
     return StubResolver(
         {
-            "printer_colors": [
-                "white",
-            ],
             "artwork_pixels": 20,
             "artwork_min_island_area": 4,
             "artwork_island_connectivity": 8,
@@ -134,36 +127,6 @@ def _write_layer(
 
     finally:
         image.close()
-
-
-def _assignment(
-    *,
-    measured: tuple[int, int, int] = (
-        255,
-        255,
-        255,
-    ),
-    distance: float = 0.0,
-) -> raster.ColorAssignment:
-    """
-    Return a real color assignment for raster-stage tests.
-    """
-
-    return raster.ColorAssignment(
-        measured=raster.MeasuredColor(
-            index=1,
-            rgb=measured,
-        ),
-        color=PaletteColor(
-            name="white",
-            rgb=(
-                255,
-                255,
-                255,
-            ),
-        ),
-        distance=distance,
-    )
 
 
 def _execute_stubbed_raster(
@@ -360,12 +323,6 @@ def test_raster_uses_declared_prepare_trace(
 
     loaded_sources: list[Path] = []
 
-    monkeypatch.setattr(
-        raster,
-        "resolve_palette",
-        lambda names, colors: ("palette",),
-    )
-
     def fake_load(
         source: Path,
     ) -> object:
@@ -389,17 +346,6 @@ def test_raster_uses_declared_prepare_trace(
         raster,
         "get_fill_rgb",
         lambda tree, object_id: (255, 255, 255),
-    )
-
-    assignment = _assignment()
-
-    monkeypatch.setattr(
-        raster,
-        "assign_colors",
-        lambda measured, palette: ColorAssignmentResult(
-            assignments=(assignment,),
-            distance=assignment.distance,
-        ),
     )
 
     monkeypatch.setattr(
@@ -442,7 +388,7 @@ def test_raster_uses_declared_prepare_trace(
     monkeypatch.setattr(
         raster,
         "_write_manifest",
-        lambda path, layers, assignments, **kwargs: path.write_text(
+        lambda path, layers, artifact_colors, **kwargs: path.write_text(
             "{}",
             encoding="utf-8",
         ),
@@ -494,12 +440,6 @@ def test_raster_places_dynamic_pngs_beside_declared_manifest(
 
     monkeypatch.setattr(
         raster,
-        "resolve_palette",
-        lambda names, colors: ("palette",),
-    )
-
-    monkeypatch.setattr(
-        raster,
         "load",
         lambda source: object(),
     )
@@ -514,17 +454,6 @@ def test_raster_places_dynamic_pngs_beside_declared_manifest(
         raster,
         "get_fill_rgb",
         lambda tree, object_id: (255, 255, 255),
-    )
-
-    assignment = _assignment()
-
-    monkeypatch.setattr(
-        raster,
-        "assign_colors",
-        lambda measured, palette: ColorAssignmentResult(
-            assignments=(assignment,),
-            distance=assignment.distance,
-        ),
     )
 
     monkeypatch.setattr(
@@ -573,7 +502,7 @@ def test_raster_places_dynamic_pngs_beside_declared_manifest(
     monkeypatch.setattr(
         raster,
         "_write_manifest",
-        lambda path, layers, assignments, **kwargs: path.write_text(
+        lambda path, layers, artifact_colors, **kwargs: path.write_text(
             "{}",
             encoding="utf-8",
         ),
@@ -590,8 +519,10 @@ def test_raster_manifest_describes_stage_local_products(
     tmp_path: Path,
 ) -> None:
     """
-    The raster manifest records dynamic PNG products using filenames
-    relative to the manifest rather than canonical artifact paths.
+    The raster manifest records registered Artifact-color products.
+
+    Raster products use paths relative to the manifest and preserve Artifact
+    color identity without physical printer-color assignment.
     """
 
     output_directory = tmp_path / "wherever" / "rasters"
@@ -602,13 +533,11 @@ def test_raster_manifest_describes_stage_local_products(
 
     manifest = output_directory / "products.json"
 
-    assignment = _assignment(
-        measured=(
-            250,
-            250,
-            250,
+    artifact_colors = (
+        raster.MeasuredColor(
+            index=1,
+            rgb=(250, 250, 250),
         ),
-        distance=1.25,
     )
 
     bounds = raster.RasterBounds(
@@ -620,8 +549,7 @@ def test_raster_manifest_describes_stage_local_products(
     raster._write_manifest(
         manifest,
         [layer],
-        (assignment,),
-        assignment_distance=assignment.distance,
+        artifact_colors,
         pixels=20,
         bounds=bounds,
     )
@@ -634,9 +562,6 @@ def test_raster_manifest_describes_stage_local_products(
 
     assert data == {
         "pixels": 20,
-        "printer_assignment": {
-            "distance": 1.25,
-        },
         "registration": {
             "x": 2.5,
             "y": 3.5,
@@ -655,18 +580,61 @@ def test_raster_manifest_describes_stage_local_products(
                         "blue": 250,
                     },
                 },
-                "printer_color": {
-                    "name": "white",
-                    "rgb": {
-                        "red": 255,
-                        "green": 255,
-                        "blue": 255,
-                    },
-                },
-                "distance": 1.25,
             }
         ],
     }
+
+
+def test_raster_manifest_excludes_physical_printer_assignment(
+    tmp_path: Path,
+) -> None:
+    """
+    Raster products do not contain physical printer-color assignment.
+
+    Physical printer colors do not affect raster geometry and belong to
+    downstream packaging.
+    """
+
+    output_directory = tmp_path / "rasters"
+
+    layer = output_directory / "color-1.png"
+
+    _write_layer(layer)
+
+    manifest = output_directory / "products.json"
+
+    artifact_color = raster.MeasuredColor(
+        index=1,
+        rgb=(
+            17,
+            43,
+            91,
+        ),
+    )
+
+    raster._write_manifest(
+        manifest,
+        [layer],
+        (artifact_color,),
+        pixels=20,
+        bounds=raster.RasterBounds(
+            x=0.0,
+            y=0.0,
+            size=20.0,
+        ),
+    )
+
+    data = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    product = data["products"][0]
+
+    assert "printer_assignment" not in data
+    assert "printer_color" not in product
+    assert "distance" not in product
 
 
 # =========================================================
@@ -753,7 +721,10 @@ def test_raster_manifest_records_source_registration_bounds(
 
     manifest = output_directory / "products.json"
 
-    assignment = _assignment()
+    artifact_color = raster.MeasuredColor(
+        index=1,
+        rgb=(255, 255, 255),
+    )
 
     bounds = raster.RasterBounds(
         x=12.5,
@@ -764,8 +735,7 @@ def test_raster_manifest_records_source_registration_bounds(
     raster._write_manifest(
         manifest,
         [layer],
-        (assignment,),
-        assignment_distance=assignment.distance,
+        (artifact_color,),
         pixels=100,
         bounds=bounds,
     )
@@ -812,47 +782,25 @@ def test_raster_manifest_records_one_artifact_color_per_traced_region(
 
     manifest = output_directory / "products.json"
 
-    assignments = (
-        raster.ColorAssignment(
-            measured=raster.MeasuredColor(
-                index=1,
-                rgb=(17, 43, 91),
-            ),
-            color=PaletteColor(
-                name="physical-a",
-                rgb=(10, 40, 90),
-            ),
-            distance=1.0,
+    artifact_colors = (
+        raster.MeasuredColor(
+            index=1,
+            rgb=(17, 43, 91),
         ),
-        raster.ColorAssignment(
-            measured=raster.MeasuredColor(
-                index=2,
-                rgb=(103, 47, 29),
-            ),
-            color=PaletteColor(
-                name="physical-b",
-                rgb=(100, 50, 30),
-            ),
-            distance=2.0,
+        raster.MeasuredColor(
+            index=2,
+            rgb=(103, 47, 29),
         ),
-        raster.ColorAssignment(
-            measured=raster.MeasuredColor(
-                index=3,
-                rgb=(211, 173, 61),
-            ),
-            color=PaletteColor(
-                name="physical-c",
-                rgb=(210, 170, 60),
-            ),
-            distance=3.0,
+        raster.MeasuredColor(
+            index=3,
+            rgb=(211, 173, 61),
         ),
     )
 
     raster._write_manifest(
         manifest,
         layers,
-        assignments,
-        assignment_distance=6.0,
+        artifact_colors,
         pixels=20,
         bounds=raster.RasterBounds(
             x=0.0,
@@ -880,8 +828,7 @@ def test_raster_manifest_preserves_traced_rgb_as_artifact_rgb(
     """
     Artifact RGB is the RGB discovered by multicolor tracing.
 
-    It is preserved independently of the RGB of the assigned physical
-    printer color.
+    Physical printer-color assignment is not part of the raster product.
     """
 
     output_directory = tmp_path / "rasters"
@@ -892,31 +839,19 @@ def test_raster_manifest_preserves_traced_rgb_as_artifact_rgb(
 
     manifest = output_directory / "products.json"
 
-    assignment = raster.ColorAssignment(
-        measured=raster.MeasuredColor(
-            index=1,
-            rgb=(
-                17,
-                43,
-                91,
-            ),
+    artifact_color = raster.MeasuredColor(
+        index=1,
+        rgb=(
+            17,
+            43,
+            91,
         ),
-        color=PaletteColor(
-            name="physical-blue",
-            rgb=(
-                20,
-                40,
-                90,
-            ),
-        ),
-        distance=1.25,
     )
 
     raster._write_manifest(
         manifest,
         [layer],
-        (assignment,),
-        assignment_distance=assignment.distance,
+        (artifact_color,),
         pixels=20,
         bounds=raster.RasterBounds(
             x=0.0,
@@ -943,293 +878,23 @@ def test_raster_manifest_preserves_traced_rgb_as_artifact_rgb(
     }
 
 
-def test_raster_manifest_keeps_artifact_color_separate_from_physical_color(
-    tmp_path: Path,
-) -> None:
-    """
-    Artifact color information is represented independently from the
-    physical color assigned to manufacture that region.
-    """
-
-    output_directory = tmp_path / "rasters"
-
-    layer = output_directory / "color-1.png"
-
-    _write_layer(layer)
-
-    manifest = output_directory / "products.json"
-
-    assignment = raster.ColorAssignment(
-        measured=raster.MeasuredColor(
-            index=1,
-            rgb=(
-                17,
-                43,
-                91,
-            ),
-        ),
-        color=PaletteColor(
-            name="physical-blue",
-            rgb=(
-                20,
-                40,
-                90,
-            ),
-        ),
-        distance=1.25,
-    )
-
-    raster._write_manifest(
-        manifest,
-        [layer],
-        (assignment,),
-        assignment_distance=assignment.distance,
-        pixels=20,
-        bounds=raster.RasterBounds(
-            x=0.0,
-            y=0.0,
-            size=20.0,
-        ),
-    )
-
-    data = json.loads(
-        manifest.read_text(
-            encoding="utf-8",
-        )
-    )
-
-    product = data["products"][0]
-
-    assert product["artifact_color"] == {
-        "index": 1,
-        "rgb": {
-            "red": 17,
-            "green": 43,
-            "blue": 91,
-        },
-    }
-
-    assert product["printer_color"] == {
-        "name": "physical-blue",
-        "rgb": {
-            "red": 20,
-            "green": 40,
-            "blue": 90,
-        },
-    }
-
-    assert product["artifact_color"]["rgb"] != product["printer_color"]["rgb"]
-
-
-# =========================================================
-# Printer-assignment tests
-# =========================================================
-
-
-def test_raster_assigns_artifact_colors_from_printer_colors(
+def test_raster_executes_without_printer_colors(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Raster assigns traced Artifact colors using configured printer colors.
+    Rasterization does not require physical printer-color configuration.
 
-    Obsolete Artwork palette configuration is not required.
-    """
-
-    colors = {
-        "printer-red": {
-            "rgb": [
-                255,
-                0,
-                0,
-            ],
-        },
-        "printer-green": {
-            "rgb": [
-                0,
-                255,
-                0,
-            ],
-        },
-        "printer-blue": {
-            "rgb": [
-                0,
-                0,
-                255,
-            ],
-        },
-        "printer-white": {
-            "rgb": [
-                255,
-                255,
-                255,
-            ],
-        },
-        "printer-black": {
-            "rgb": [
-                0,
-                0,
-                0,
-            ],
-        },
-    }
-
-    resolver = StubResolver(
-        {
-            "printer_colors": [
-                "printer-red",
-                "printer-green",
-                "printer-blue",
-                "printer-white",
-                "printer-black",
-            ],
-            "artwork_pixels": 20,
-            "artwork_min_island_area": 4,
-            "artwork_island_connectivity": 8,
-        },
-        colors=colors,
-    )
-
-    observed_names: tuple[str, ...] | None = None
-    observed_measured: (
-        tuple[
-            tuple[int, tuple[int, int, int]],
-            ...,
-        ]
-        | None
-    ) = None
-
-    real_resolve_palette = raster.resolve_palette
-    real_assign_colors = raster.assign_colors
-
-    def observe_palette(
-        names: Any,
-        catalog: Any,
-    ) -> Any:
-        nonlocal observed_names
-
-        observed_names = tuple(names)
-
-        return real_resolve_palette(
-            names,
-            catalog,
-        )
-
-    def observe_assignment(
-        measured: Any,
-        palette: Any,
-    ) -> ColorAssignmentResult:
-        nonlocal observed_measured
-
-        observed_measured = tuple(
-            (
-                color.index,
-                color.rgb,
-            )
-            for color in measured
-        )
-
-        return real_assign_colors(
-            measured,
-            palette,
-        )
-
-    monkeypatch.setattr(
-        raster,
-        "resolve_palette",
-        observe_palette,
-    )
-
-    monkeypatch.setattr(
-        raster,
-        "assign_colors",
-        observe_assignment,
-    )
-
-    _execute_stubbed_raster(
-        tmp_path,
-        monkeypatch,
-        resolver=resolver,
-        trace_colors=(
-            (250, 10, 10),
-            (10, 250, 10),
-            (10, 10, 250),
-        ),
-    )
-
-    assert observed_names == (
-        "printer-red",
-        "printer-green",
-        "printer-blue",
-        "printer-white",
-        "printer-black",
-    )
-
-    assert observed_measured == (
-        (
-            1,
-            (250, 10, 10),
-        ),
-        (
-            2,
-            (10, 250, 10),
-        ),
-        (
-            3,
-            (10, 10, 250),
-        ),
-    )
-
-
-def test_raster_selects_three_distinct_printer_colors_from_five_candidates(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Three Artifact colors receive three distinct printer assignments
-    selected from five available printer colors.
+    Raster owns registered Artifact-color geometry. Physical printer-color
+    assignment is downstream packaging configuration.
     """
 
     resolver = StubResolver(
         {
-            "printer_colors": [
-                "red",
-                "green",
-                "blue",
-                "white",
-                "black",
-            ],
             "artwork_pixels": 20,
             "artwork_min_island_area": 4,
             "artwork_island_connectivity": 8,
-        },
-        colors={
-            "red": {
-                "red": 255,
-                "green": 0,
-                "blue": 0,
-            },
-            "green": {
-                "red": 0,
-                "green": 255,
-                "blue": 0,
-            },
-            "blue": {
-                "red": 0,
-                "green": 0,
-                "blue": 255,
-            },
-            "white": {
-                "red": 255,
-                "green": 255,
-                "blue": 255,
-            },
-            "black": {
-                "red": 0,
-                "green": 0,
-                "blue": 0,
-            },
-        },
+        }
     )
 
     data = _execute_stubbed_raster(
@@ -1237,151 +902,26 @@ def test_raster_selects_three_distinct_printer_colors_from_five_candidates(
         monkeypatch,
         resolver=resolver,
         trace_colors=(
-            (255, 0, 0),
-            (0, 255, 0),
-            (0, 0, 255),
+            (17, 43, 91),
+            (103, 47, 29),
+            (211, 173, 61),
         ),
     )
 
-    printer_names = [product["printer_color"]["name"] for product in data["products"]]
-
-    assert printer_names == [
-        "red",
-        "green",
-        "blue",
-    ]
-
-    assert len(set(printer_names)) == 3
-
-    assert "white" not in printer_names
-    assert "black" not in printer_names
-
-
-def test_raster_rejects_insufficient_printer_colors(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Raster fails explicitly when there are fewer distinct printer
-    candidates than traced Artifact colors.
-    """
-
-    resolver = StubResolver(
+    assert [product["artifact_color"]["rgb"] for product in data["products"]] == [
         {
-            "printer_colors": [
-                "red",
-                "green",
-            ],
-            "artwork_pixels": 20,
-            "artwork_min_island_area": 4,
-            "artwork_island_connectivity": 8,
+            "red": 17,
+            "green": 43,
+            "blue": 91,
         },
-        colors={
-            "red": {
-                "red": 255,
-                "green": 0,
-                "blue": 0,
-            },
-            "green": {
-                "red": 0,
-                "green": 255,
-                "blue": 0,
-            },
+        {
+            "red": 103,
+            "green": 47,
+            "blue": 29,
         },
-    )
-
-    with pytest.raises(
-        raster.RasterError,
-        match="Palette color count cannot be smaller than measured color count",
-    ):
-        _execute_stubbed_raster(
-            tmp_path,
-            monkeypatch,
-            resolver=resolver,
-            trace_colors=(
-                (255, 0, 0),
-                (0, 255, 0),
-                (0, 0, 255),
-            ),
-        )
-
-
-def test_raster_manifest_records_aggregate_printer_assignment_distance(
-    tmp_path: Path,
-) -> None:
-    """
-    Raster persists the aggregate perceptual distance of the complete
-    printer assignment.
-    """
-
-    output_directory = tmp_path / "rasters"
-
-    layers = [
-        output_directory / "color-1.png",
-        output_directory / "color-2.png",
-        output_directory / "color-3.png",
+        {
+            "red": 211,
+            "green": 173,
+            "blue": 61,
+        },
     ]
-
-    for layer in layers:
-        _write_layer(layer)
-
-    manifest = output_directory / "products.json"
-
-    assignments = (
-        raster.ColorAssignment(
-            measured=raster.MeasuredColor(
-                index=1,
-                rgb=(250, 10, 10),
-            ),
-            color=PaletteColor(
-                name="red",
-                rgb=(255, 0, 0),
-            ),
-            distance=1.25,
-        ),
-        raster.ColorAssignment(
-            measured=raster.MeasuredColor(
-                index=2,
-                rgb=(10, 250, 10),
-            ),
-            color=PaletteColor(
-                name="green",
-                rgb=(0, 255, 0),
-            ),
-            distance=2.0,
-        ),
-        raster.ColorAssignment(
-            measured=raster.MeasuredColor(
-                index=3,
-                rgb=(10, 10, 250),
-            ),
-            color=PaletteColor(
-                name="blue",
-                rgb=(0, 0, 255),
-            ),
-            distance=3.5,
-        ),
-    )
-
-    raster._write_manifest(
-        manifest,
-        layers,
-        assignments,
-        assignment_distance=6.75,
-        pixels=20,
-        bounds=raster.RasterBounds(
-            x=0.0,
-            y=0.0,
-            size=20.0,
-        ),
-    )
-
-    data = json.loads(
-        manifest.read_text(
-            encoding="utf-8",
-        )
-    )
-
-    assert data["printer_assignment"]["distance"] == pytest.approx(
-        6.75,
-    )

@@ -99,7 +99,10 @@ class VectorError(RuntimeError):
 )
 class RasterLayer:
     """
-    One raster layer described by the raster manifest.
+    One registered Artifact-color raster layer described by the raster manifest.
+
+    Raster layers carry stable Artifact-color identity and geometry only.
+    Physical printer-color assignment is downstream packaging configuration.
     """
 
     index: int
@@ -113,16 +116,6 @@ class RasterLayer:
         int,
         int,
     ]
-
-    printer_color_name: str
-
-    printer_color: tuple[
-        int,
-        int,
-        int,
-    ]
-
-    distance: float
 
 
 @dataclass(
@@ -304,7 +297,11 @@ def _load_raster_manifest(
     list[RasterLayer],
 ]:
     """
-    Load raster registration and products from the raster manifest.
+    Load raster registration and registered Artifact-color products.
+
+    Raster products contain geometry registration and stable Artifact-color
+    identity only. Physical printer-color assignment is downstream packaging
+    configuration.
     """
 
     try:
@@ -425,14 +422,6 @@ def _load_raster_manifest(
             "artifact_color",
         )
 
-        printer_color_data = product.get(
-            "printer_color",
-        )
-
-        distance = product.get(
-            "distance",
-        )
-
         if (
             isinstance(
                 index,
@@ -506,68 +495,6 @@ def _load_raster_manifest(
             ),
         )
 
-        if not isinstance(
-            printer_color_data,
-            dict,
-        ):
-            raise VectorError(f"Raster product {index} has no valid printer color.")
-
-        printer_color_name = printer_color_data.get(
-            "name",
-        )
-
-        printer_rgb_data = printer_color_data.get(
-            "rgb",
-        )
-
-        if (
-            not isinstance(
-                printer_color_name,
-                str,
-            )
-            or not printer_color_name.strip()
-        ):
-            raise VectorError(f"Raster product {index} has no valid printer color name.")
-
-        printer_color_name = printer_color_name.strip()
-
-        if not isinstance(
-            printer_rgb_data,
-            dict,
-        ):
-            raise VectorError(f"Raster product {index} has no valid printer RGB.")
-
-        printer_color = (
-            _color_component(
-                printer_rgb_data,
-                "red",
-                index,
-            ),
-            _color_component(
-                printer_rgb_data,
-                "green",
-                index,
-            ),
-            _color_component(
-                printer_rgb_data,
-                "blue",
-                index,
-            ),
-        )
-
-        if (
-            isinstance(
-                distance,
-                bool,
-            )
-            or not isinstance(
-                distance,
-                int | float,
-            )
-            or distance < 0
-        ):
-            raise VectorError(f"Raster product {index} has no valid assignment distance.")
-
         path = manifest.parent / filename
 
         if not path.is_file():
@@ -579,9 +506,6 @@ def _load_raster_manifest(
                 path=path,
                 artifact_color_index=artifact_color_index,
                 artifact_color=artifact_color,
-                printer_color_name=printer_color_name,
-                printer_color=printer_color,
-                distance=float(distance),
             )
         )
 
@@ -594,11 +518,6 @@ def _load_raster_manifest(
 
     if len(artifact_color_indexes) != len(set(artifact_color_indexes)):
         raise VectorError("Artifact color indexes must be unique.")
-
-    printer_color_names = [layer.printer_color_name for layer in result]
-
-    if len(printer_color_names) != len(set(printer_color_names)):
-        raise VectorError("Raster product printer color names must be unique.")
 
     result.sort(
         key=lambda layer: layer.index,
@@ -1163,8 +1082,9 @@ def _write_manifest(
     Envelope and dynamic-product paths are relative to the manifest's
     stage-local product location.
 
-    Artifact color identity and RGB are preserved independently from the
-    physical printer-color assignment used to reproduce each region.
+    Stable Artifact-color identity and RGB cross the Registered Artwork
+    boundary with the vector geometry. Physical printer-color assignment
+    is downstream packaging configuration.
     """
 
     products = [
@@ -1179,15 +1099,6 @@ def _write_manifest(
                     "blue": raster.artifact_color[2],
                 },
             },
-            "printer_color": {
-                "name": raster.printer_color_name,
-                "rgb": {
-                    "red": raster.printer_color[0],
-                    "green": raster.printer_color[1],
-                    "blue": raster.printer_color[2],
-                },
-            },
-            "distance": raster.distance,
         }
         for raster, vector in layers
     ]

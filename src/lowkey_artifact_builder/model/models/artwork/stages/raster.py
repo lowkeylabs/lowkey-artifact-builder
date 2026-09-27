@@ -33,11 +33,7 @@ from typing import Any
 from PIL import Image
 
 from lowkey_artifact_builder.colors import (
-    ColorAssignment,
-    ColorError,
     MeasuredColor,
-    assign_colors,
-    resolve_palette,
 )
 from lowkey_artifact_builder.engine import (
     StageContext,
@@ -165,9 +161,6 @@ def execute(
 
     Parameters:
 
-        printer_colors
-            Ordered physical printer colors available for assignment.
-
         artwork_pixels
             Width and height of every registered raster layer.
 
@@ -180,9 +173,12 @@ def execute(
     Outputs:
 
         manifest
-            JSON manifest describing generated raster layers,
-            Artifact colors, printer assignments, and perceptual
-            assignment distances.
+            JSON manifest describing generated raster layers and their
+            stable Artifact-color identities.
+
+    Physical printer-color assignment is not a raster concern. Raster
+    preserves the Artifact colors discovered by multicolor tracing and
+    produces registered geometry for downstream stages.
     """
 
     trace = context.input(
@@ -191,13 +187,6 @@ def execute(
 
     manifest = context.output(
         "manifest",
-    )
-
-    printer_colors = _color_names(
-        "printer_colors",
-        context.resolver(
-            "printer_colors",
-        ),
     )
 
     pixels = _positive_integer(
@@ -229,40 +218,23 @@ def execute(
     )
 
     try:
-        palette = resolve_palette(
-            printer_colors,
-            context.resolver.colors,
-        )
-
         tree = load(trace)
 
         objects = get_trace_objects(tree)
 
-        trace_colors = tuple(
-            get_fill_rgb(
-                tree,
-                object_id,
-            )
-            for object_id in objects
-        )
-
-        measured_colors = tuple(
+        artifact_colors = tuple(
             MeasuredColor(
                 index=index,
-                rgb=color,
+                rgb=get_fill_rgb(
+                    tree,
+                    object_id,
+                ),
             )
-            for index, color in enumerate(
-                trace_colors,
+            for index, object_id in enumerate(
+                objects,
                 start=1,
             )
         )
-
-        assignment_result = assign_colors(
-            measured_colors,
-            palette,
-        )
-
-        assignments = assignment_result.assignments
 
         bounds = _square_bounds(
             trace,
@@ -272,7 +244,7 @@ def execute(
         layers = _render_layers(
             trace,
             objects,
-            tuple(assignment.color.rgb for assignment in assignments),
+            tuple(color.rgb for color in artifact_colors),
             directory=manifest.parent,
             bounds=bounds,
             pixels=pixels,
@@ -287,14 +259,12 @@ def execute(
         _write_manifest(
             manifest,
             layers,
-            assignments,
-            assignment_distance=assignment_result.distance,
+            artifact_colors,
             pixels=pixels,
             bounds=bounds,
         )
 
     except (
-        ColorError,
         SVGError,
         InkscapeError,
         OSError,
@@ -796,10 +766,11 @@ def _render_layers(
     pixels: int,
 ) -> list[Path]:
     """
-    Render mutually exclusive registered color layers.
+    Render mutually exclusive registered Artifact-color layers.
 
-    The supplied colors are the assigned configured palette colors,
-    not the measured trace colors.
+    The supplied colors are the Artifact RGB values discovered from the
+    multicolor trace. Physical printer-color assignment is a downstream
+    packaging concern.
     """
 
     outputs: list[Path] = []
@@ -1113,12 +1084,11 @@ def _cleanup_layers(
 def _write_manifest(
     path: Path,
     layers: list[Path],
-    assignments: tuple[
-        ColorAssignment,
+    artifact_colors: tuple[
+        MeasuredColor,
         ...,
     ],
     *,
-    assignment_distance: float,
     pixels: int,
     bounds: RasterBounds,
 ) -> None:
@@ -1130,25 +1100,12 @@ def _write_manifest(
     map source-coordinate geometry into raster coordinates without
     reconstructing raster-stage policy.
 
-    Each product records:
+    Each product records its stable Artifact color-region identity and
+    the RGB value discovered by multicolor tracing.
 
-        artifact_color
-            Stable Artifact color-region identity and the RGB value
-            discovered by multicolor tracing.
-
-        printer_color
-            Physical printer-color identity and RGB assigned to reproduce
-            the Artifact color.
-
-        distance
-            Perceptual distance between the Artifact RGB and assigned
-            printer RGB.
-
-    The complete printer assignment records its aggregate perceptual
-    distance independently from the individual product distances.
-
-    Artifact color information and printer-color assignment remain
-    explicitly distinct product information.
+    Physical printer-color assignment is intentionally absent. It does
+    not affect raster geometry and is resolved downstream during
+    packaging.
     """
 
     products = [
@@ -1156,30 +1113,21 @@ def _write_manifest(
             "index": index,
             "path": layer.name,
             "artifact_color": {
-                "index": assignment.measured.index,
+                "index": artifact_color.index,
                 "rgb": {
-                    "red": assignment.measured.rgb[0],
-                    "green": assignment.measured.rgb[1],
-                    "blue": assignment.measured.rgb[2],
+                    "red": artifact_color.rgb[0],
+                    "green": artifact_color.rgb[1],
+                    "blue": artifact_color.rgb[2],
                 },
             },
-            "printer_color": {
-                "name": assignment.color.name,
-                "rgb": {
-                    "red": assignment.color.rgb[0],
-                    "green": assignment.color.rgb[1],
-                    "blue": assignment.color.rgb[2],
-                },
-            },
-            "distance": assignment.distance,
         }
         for index, (
             layer,
-            assignment,
+            artifact_color,
         ) in enumerate(
             zip(
                 layers,
-                assignments,
+                artifact_colors,
                 strict=True,
             ),
             start=1,
@@ -1188,9 +1136,6 @@ def _write_manifest(
 
     data = {
         "pixels": pixels,
-        "printer_assignment": {
-            "distance": assignment_distance,
-        },
         "registration": {
             "x": bounds.x,
             "y": bounds.y,

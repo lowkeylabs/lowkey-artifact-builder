@@ -3,7 +3,7 @@ Tests for independent Artwork Hole and Loop composition.
 
 Hole and Loop are independent optional Artwork Features. Sharing cardinal
 placement mechanics must not couple their participation, position, planar
-geometry, physical extrusion, or semantic color behavior.
+geometry, physical extrusion, or logical Artifact-color attachment behavior.
 """
 # File: tests/model/artwork/test_hole_loop_composition.py
 # Copyright 2026 lowkeylabs LLC
@@ -122,7 +122,7 @@ def _write_vector_manifest(
     path: Path,
 ) -> None:
     """
-    Write Registered Artwork with distinct cardinal attachment colors.
+    Write Registered Artwork with distinct cardinal Artifact-color layers.
 
     The envelope uses the canonical single-path representation produced by
     the Artwork Prepare stage and registered by the Vector stage.
@@ -190,15 +190,6 @@ def _write_vector_manifest(
                                 "blue": 0,
                             },
                         },
-                        "printer_color": {
-                            "name": "red",
-                            "rgb": {
-                                "red": 255,
-                                "green": 0,
-                                "blue": 0,
-                            },
-                        },
-                        "distance": 0.0,
                     },
                     {
                         "index": 2,
@@ -211,15 +202,6 @@ def _write_vector_manifest(
                                 "blue": 0,
                             },
                         },
-                        "printer_color": {
-                            "name": "green",
-                            "rgb": {
-                                "red": 0,
-                                "green": 255,
-                                "blue": 0,
-                            },
-                        },
-                        "distance": 0.0,
                     },
                 ],
             }
@@ -317,15 +299,6 @@ def _write_recessed_envelope_vector_manifest(
                                 "blue": 0,
                             },
                         },
-                        "printer_color": {
-                            "name": "red",
-                            "rgb": {
-                                "red": 255,
-                                "green": 0,
-                                "blue": 0,
-                            },
-                        },
-                        "distance": 0.0,
                     },
                 ],
             }
@@ -759,14 +732,9 @@ def test_execute_resolves_hole_and_loop_independently(
     assert "loop.stl" in products
     assert "hole.stl" not in products
 
-    # Loop position is top, so its derived semantic color remains the
-    # registered top attachment color. Hole position 90/right must not
-    # redirect Loop color derivation to green.
+    # Loop position is top, so its logical color identity remains the
+    # registered top Artifact color. Hole position 90/right must not
+    # redirect Loop attachment selection to the right-hand Artifact color.
     loop_product = products["loop.stl"]
 
-    assert loop_product["printer_color"]["name"] == "red"
-    assert loop_product["printer_color"]["rgb"] == {
-        "red": 255,
-        "green": 0,
-        "blue": 0,
-    }
+    assert loop_product["artifact_color_index"] == 1

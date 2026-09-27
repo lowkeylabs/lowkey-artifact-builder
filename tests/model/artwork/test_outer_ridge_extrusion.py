@@ -129,15 +129,6 @@ def _write_vector_manifest(
                                 "blue": 0,
                             },
                         },
-                        "printer_color": {
-                            "name": "test-red",
-                            "rgb": {
-                                "red": 255,
-                                "green": 0,
-                                "blue": 0,
-                            },
-                        },
-                        "distance": 0.0,
                     },
                     {
                         "index": 2,
@@ -150,15 +141,6 @@ def _write_vector_manifest(
                                 "blue": 255,
                             },
                         },
-                        "printer_color": {
-                            "name": "test-blue",
-                            "rgb": {
-                                "red": 0,
-                                "green": 0,
-                                "blue": 255,
-                            },
-                        },
-                        "distance": 0.0,
                     },
                 ],
             }
@@ -994,14 +976,16 @@ def test_base_shifts_artwork_and_outer_ridge_by_same_supporting_plane(
 
 
 @pytest.mark.slow
-def test_execute_declares_outer_ridge_with_resolved_semantic_color(
+def test_execute_declares_outer_ridge_with_attachment_color_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
     A participating Outer Ridge is declared as an independently printable
-    extrusion product with its complete resolved semantic physical color
-    identity.
+    extrusion product with its logical Artifact-color attachment identity.
+
+    Physical printer-color assignment and explicit Outer Ridge color
+    overrides are downstream packaging concerns.
     """
 
     vector_manifest = tmp_path / "vector" / "products.json"
@@ -1020,7 +1004,6 @@ def test_execute_declares_outer_ridge_with_resolved_semantic_color(
             artwork_raise=1.0,
             artwork_outer_ridge_width=2.0,
             artwork_outer_ridge_raise=1.25,
-            artwork_outer_ridge_color="test-black",
         ),
     )
 
@@ -1047,13 +1030,6 @@ def test_execute_declares_outer_ridge_with_resolved_semantic_color(
     assert ridge_products == [
         {
             "path": "outer-ridge.stl",
-            "printer_color": {
-                "name": "test-black",
-                "rgb": {
-                    "red": 0,
-                    "green": 0,
-                    "blue": 0,
-                },
-            },
+            "artifact_color_index": 1,
         }
     ]

@@ -140,43 +140,14 @@ def _write_raster_manifest(
     """
     Write a raster manifest for vector-stage tests.
 
-    Legacy test shorthand using name/color describes an Artifact color
-    whose current printer assignment has the same RGB value.
+    Raster products carry registered Artifact-color identity and geometry.
+    Physical printer-color assignment is downstream packaging configuration.
     """
 
     path.parent.mkdir(
         parents=True,
         exist_ok=True,
     )
-
-    normalized_products: list[dict[str, Any]] = []
-
-    for product in products:
-        if "artifact_color" in product:
-            normalized_products.append(
-                product,
-            )
-            continue
-
-        index = product["index"]
-        name = product["name"]
-        color = product["color"]
-
-        normalized_products.append(
-            {
-                "index": index,
-                "path": product["path"],
-                "artifact_color": {
-                    "index": index,
-                    "rgb": color,
-                },
-                "printer_color": {
-                    "name": name,
-                    "rgb": color,
-                },
-                "distance": 0.0,
-            }
-        )
 
     data = {
         "registration": (
@@ -189,7 +160,7 @@ def _write_raster_manifest(
                 "pixels": 20,
             }
         ),
-        "products": normalized_products,
+        "products": products,
     }
 
     path.write_text(
@@ -266,12 +237,14 @@ def test_vector_uses_declared_raster_manifest(
             {
                 "index": 1,
                 "path": raster.name,
-                "name": "white",
-                "color": _color(
-                    255,
-                    255,
-                    255,
-                ),
+                "artifact_color": {
+                    "index": 1,
+                    "rgb": _color(
+                        255,
+                        255,
+                        255,
+                    ),
+                },
             }
         ],
     )
@@ -366,22 +339,26 @@ def test_vector_places_dynamic_svgs_beside_declared_manifest(
             {
                 "index": 2,
                 "path": second_raster.name,
-                "name": "black",
-                "color": _color(
-                    0,
-                    0,
-                    0,
-                ),
+                "artifact_color": {
+                    "index": 2,
+                    "rgb": _color(
+                        0,
+                        0,
+                        0,
+                    ),
+                },
             },
             {
                 "index": 1,
                 "path": first_raster.name,
-                "name": "white",
-                "color": _color(
-                    255,
-                    255,
-                    255,
-                ),
+                "artifact_color": {
+                    "index": 1,
+                    "rgb": _color(
+                        255,
+                        255,
+                        255,
+                    ),
+                },
             },
         ],
     )
@@ -473,12 +450,14 @@ def test_vector_manifest_describes_stage_local_products(
             {
                 "index": 1,
                 "path": raster.name,
-                "name": "gold",
-                "color": _color(
-                    255,
-                    215,
-                    0,
-                ),
+                "artifact_color": {
+                    "index": 1,
+                    "rgb": _color(
+                        255,
+                        215,
+                        0,
+                    ),
+                },
             }
         ],
     )
@@ -549,15 +528,6 @@ def test_vector_manifest_describes_stage_local_products(
                         "blue": 0,
                     },
                 },
-                "printer_color": {
-                    "name": "gold",
-                    "rgb": {
-                        "red": 255,
-                        "green": 215,
-                        "blue": 0,
-                    },
-                },
-                "distance": 0.0,
             }
         ],
     }
@@ -599,15 +569,6 @@ def test_vector_preserves_artifact_color_identity_and_rgb(
                         91,
                     ),
                 },
-                "printer_color": {
-                    "name": "physical-blue",
-                    "rgb": _color(
-                        20,
-                        40,
-                        90,
-                    ),
-                },
-                "distance": 1.25,
             }
         ],
     )
@@ -674,15 +635,6 @@ def test_vector_preserves_artifact_color_identity_and_rgb(
         },
     }
 
-    assert product["printer_color"] == {
-        "name": "physical-blue",
-        "rgb": {
-            "red": 20,
-            "green": 40,
-            "blue": 90,
-        },
-    }
-
 
 def test_registered_artwork_manifest_is_sufficient_to_recover_artifact_colors(
     tmp_path: Path,
@@ -726,15 +678,6 @@ def test_registered_artwork_manifest_is_sufficient_to_recover_artifact_colors(
                         91,
                     ),
                 },
-                "printer_color": {
-                    "name": "physical-blue",
-                    "rgb": _color(
-                        20,
-                        40,
-                        90,
-                    ),
-                },
-                "distance": 1.25,
             },
             {
                 "index": 2,
@@ -747,15 +690,6 @@ def test_registered_artwork_manifest_is_sufficient_to_recover_artifact_colors(
                         61,
                     ),
                 },
-                "printer_color": {
-                    "name": "physical-gold",
-                    "rgb": _color(
-                        210,
-                        170,
-                        60,
-                    ),
-                },
-                "distance": 2.5,
             },
         ],
     )
@@ -846,8 +780,8 @@ def test_vector_binary_trace_does_not_rediscover_color(
     """
     Vector tracing derives geometry only from the registered raster mask.
 
-    Artifact and printer color semantics come from the raster manifest rather
-    than being rediscovered or reinterpreted during binary mask tracing.
+    Stable Artifact-color identity comes from the raster manifest rather than
+    being rediscovered or reinterpreted during binary mask tracing.
     """
 
     raster_directory = tmp_path / "raster"
@@ -874,15 +808,6 @@ def test_vector_binary_trace_does_not_rediscover_color(
                         91,
                     ),
                 },
-                "printer_color": {
-                    "name": "physical-blue",
-                    "rgb": _color(
-                        20,
-                        40,
-                        90,
-                    ),
-                },
-                "distance": 1.25,
             },
         ],
     )
@@ -970,14 +895,111 @@ def test_vector_binary_trace_does_not_rediscover_color(
                     91,
                 ),
             },
-            "printer_color": {
-                "name": "physical-blue",
-                "rgb": _color(
-                    20,
-                    40,
-                    90,
-                ),
-            },
-            "distance": 1.25,
         },
     ]
+
+
+def test_vector_manifest_excludes_physical_printer_assignment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Registered Artwork does not contain physical printer-color assignment.
+
+    Vector preserves Artifact-color identity while changing geometry
+    representation. Physical printer colors belong to downstream packaging.
+    """
+
+    raster_directory = tmp_path / "raster"
+
+    raster = raster_directory / "color-1.png"
+
+    _write_raster(
+        raster,
+        box=(5, 5, 15, 15),
+    )
+
+    raster_manifest = raster_directory / "products.json"
+
+    _write_raster_manifest(
+        raster_manifest,
+        [
+            {
+                "index": 1,
+                "path": raster.name,
+                "artifact_color": {
+                    "index": 7,
+                    "rgb": _color(
+                        17,
+                        43,
+                        91,
+                    ),
+                },
+            }
+        ],
+    )
+
+    prepared_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    _write_prepared_envelope(
+        prepared_envelope,
+    )
+
+    vector_manifest = tmp_path / "vector" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "raster.manifest": raster_manifest,
+            "prepare.envelope": prepared_envelope,
+        },
+        outputs={
+            "manifest": vector_manifest,
+        },
+        resolver=_resolver(),
+    )
+
+    def fake_trace_mask(
+        source: Path,
+        output: Path,
+        *,
+        crop: vector.RasterCrop,
+    ) -> None:
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output.write_text(
+            "<svg/>",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        vector,
+        "_trace_mask",
+        fake_trace_mask,
+    )
+
+    vector.execute(
+        context,  # type: ignore[arg-type]
+    )
+
+    data = json.loads(
+        vector_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    product = data["products"][0]
+
+    assert product["artifact_color"] == {
+        "index": 7,
+        "rgb": {
+            "red": 17,
+            "green": 43,
+            "blue": 91,
+        },
+    }
+
+    assert "printer_color" not in product
+    assert "distance" not in product

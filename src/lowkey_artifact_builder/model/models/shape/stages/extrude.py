@@ -436,9 +436,9 @@ def _render_artwork_components(
     transform, the same Shape physical X/Y scaling, and the same physical
     Z interval.
 
-    Artifact color semantics remain persistent Artwork information. The
-    already-selected printer assignment supplies physical component color
-    metadata consumed by packaging.
+    Artifact-color identity remains persistent Artwork information through
+    extrusion. Physical printer-color assignment belongs to downstream
+    packaging and is not required or resolved here.
 
     The persistent registered coordinate extent is required so downstream
     physical dimensionalization retains the Artwork coordinate-system
@@ -490,7 +490,13 @@ def _render_artwork_components(
         transform["translate_y"],
     )
 
-    rendered: list[tuple[str, str, dict[str, object]]] = []
+    rendered: list[
+        tuple[
+            str,
+            str,
+            dict[str, object],
+        ]
+    ] = []
 
     for component in components:
         if not isinstance(
@@ -510,48 +516,56 @@ def _render_artwork_components(
         if not source_path.is_file():
             raise ValueError(f"Registered Artwork component does not exist: {source_path}")
 
-        printer_color = component.get(
-            "printer_color",
+        artifact_color = component.get(
+            "artifact_color",
         )
 
         if not isinstance(
-            printer_color,
+            artifact_color,
             dict,
         ):
             raise ValueError(
-                f"Registered Artwork component {index} requires printer color metadata."
+                f"Registered Artwork component {index} requires Artifact color metadata."
             )
 
-        printer_color_name = printer_color.get(
-            "name",
+        artifact_color_index = artifact_color.get(
+            "index",
         )
 
         if (
             not isinstance(
-                printer_color_name,
-                str,
+                artifact_color_index,
+                int,
             )
-            or not printer_color_name
+            or isinstance(
+                artifact_color_index,
+                bool,
+            )
+            or artifact_color_index <= 0
         ):
-            raise ValueError(f"Registered Artwork component {index} requires a printer color name.")
+            raise ValueError(
+                f"Registered Artwork component {index} requires a positive Artifact color index."
+            )
 
-        printer_rgb = printer_color.get(
+        artifact_rgb = artifact_color.get(
             "rgb",
         )
 
         if not isinstance(
-            printer_rgb,
+            artifact_rgb,
             dict,
         ):
-            raise ValueError(f"Registered Artwork component {index} requires printer RGB metadata.")
+            raise ValueError(
+                f"Registered Artwork component {index} requires Artifact RGB metadata."
+            )
 
-        red = printer_rgb.get(
+        red = artifact_rgb.get(
             "red",
         )
-        green = printer_rgb.get(
+        green = artifact_rgb.get(
             "green",
         )
-        blue = printer_rgb.get(
+        blue = artifact_rgb.get(
             "blue",
         )
 
@@ -567,16 +581,16 @@ def _render_artwork_components(
             )
         ):
             raise ValueError(
-                f"Registered Artwork component {index} requires valid printer RGB metadata."
+                f"Registered Artwork component {index} requires valid Artifact RGB metadata."
             )
 
-        physical_color: dict[str, object] = {
-            "name": printer_color_name,
-            "rgb": [
-                red,
-                green,
-                blue,
-            ],
+        logical_color: dict[str, object] = {
+            "index": artifact_color_index,
+            "rgb": {
+                "red": red,
+                "green": green,
+                "blue": blue,
+            },
         }
 
         component_name = f"artwork-{index}"
@@ -611,7 +625,7 @@ def _render_artwork_components(
             (
                 component_name,
                 component_path,
-                physical_color,
+                logical_color,
             )
         )
 

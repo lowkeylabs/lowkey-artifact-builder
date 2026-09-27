@@ -303,6 +303,10 @@ def test_artwork_fill_region_uses_authoritative_artwork_envelope(
     Shape must not infer the fill boundary from individual Artwork component
     bounds. Components remain registered payloads whose separate geometry does
     not redefine the producer-published occupied envelope.
+
+    Registered Artwork components preserve Artifact-color identity only.
+    Physical printer-color assignment is a downstream packaging concern and
+    does not participate in registered fill geometry.
     """
 
     envelope = tmp_path / "envelope.svg"
@@ -354,13 +358,6 @@ def test_artwork_fill_region_uses_authoritative_artwork_envelope(
                     "green": 250,
                     "blue": 250,
                 },
-                printer_color_name="white",
-                printer_color={
-                    "red": 255,
-                    "green": 255,
-                    "blue": 255,
-                },
-                distance=1.25,
             ),
             compose.RegisteredArtworkComponent(
                 index=2,
@@ -371,13 +368,6 @@ def test_artwork_fill_region_uses_authoritative_artwork_envelope(
                     "green": 5,
                     "blue": 5,
                 },
-                printer_color_name="black",
-                printer_color={
-                    "red": 0,
-                    "green": 0,
-                    "blue": 0,
-                },
-                distance=1.5,
             ),
         ),
     )
@@ -405,16 +395,39 @@ def test_artwork_fill_region_uses_authoritative_artwork_envelope(
     #
     assert fill.inner_boundary.tag == compose.SVG_RECT
 
-    assert float(fill.inner_boundary.get("x", "nan")) == pytest.approx(
+    assert float(
+        fill.inner_boundary.get(
+            "x",
+            "nan",
+        )
+    ) == pytest.approx(
         -0.30,
     )
-    assert float(fill.inner_boundary.get("y", "nan")) == pytest.approx(
+
+    assert float(
+        fill.inner_boundary.get(
+            "y",
+            "nan",
+        )
+    ) == pytest.approx(
         -0.25,
     )
-    assert float(fill.inner_boundary.get("width", "nan")) == pytest.approx(
+
+    assert float(
+        fill.inner_boundary.get(
+            "width",
+            "nan",
+        )
+    ) == pytest.approx(
         0.60,
     )
-    assert float(fill.inner_boundary.get("height", "nan")) == pytest.approx(
+
+    assert float(
+        fill.inner_boundary.get(
+            "height",
+            "nan",
+        )
+    ) == pytest.approx(
         0.50,
     )
 
@@ -2144,101 +2157,19 @@ def test_artwork_fill_color_resolves_through_shared_palette(
     }
 
 
-def test_artwork_fill_remains_distinct_from_base_when_colors_match(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Artwork fill remains a distinct physical component from the structural base.
-
-    Equal semantic colors do not merge or otherwise erase component identity.
-    """
-
-    composition = tmp_path / "composition.svg"
-    composition_manifest = tmp_path / "composition-products.json"
-    output_manifest = tmp_path / "extrude" / "products.json"
-
-    _write_physical_fill_composition(
-        composition,
-    )
-    _write_physical_fill_manifest(
-        composition_manifest,
-        artwork_fill=_physical_fill_region(),
-    )
-
-    def fake_render_stl_source(
-        source: str,
-        output: Path,
-    ) -> None:
-        del source
-
-        output.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-        output.write_text(
-            "solid test\nendsolid test\n",
-            encoding="utf-8",
-        )
-
-    monkeypatch.setattr(
-        extrude,
-        "render_stl_source",
-        fake_render_stl_source,
-    )
-
-    context = _physical_fill_extrude_context(
-        composition=composition,
-        composition_manifest=composition_manifest,
-        output_manifest=output_manifest,
-    )
-
-    values = {
-        "shape_size": 100.0,
-        "shape_base_raise": 2.0,
-        "shape_base_color": "white",
-        "shape_outer_ridge_color": "white",
-        "shape_outer_ridge_raise": 1.0,
-        "shape_outer_ridge_style": "integrated",
-        "shape_artwork_raise": 0.6,
-        "shape_artwork_fill_color": "white",
-    }
-
-    context.resolver.side_effect = values.__getitem__
-
-    extrude.execute(
-        context,
-    )
-
-    products = json.loads(
-        output_manifest.read_text(
-            encoding="utf-8",
-        )
-    )
-
-    base = next(component for component in products["components"] if component["name"] == "base")
-
-    fill = next(
-        component for component in products["components"] if component["name"] == "artwork-fill"
-    )
-
-    assert base["color"] == fill["color"]
-
-    assert base["name"] == "base"
-    assert fill["name"] == "artwork-fill"
-
-    assert base["path"] != fill["path"]
-
-
 def test_artwork_fill_remains_distinct_from_artwork_when_colors_match(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Artwork fill remains distinct from incorporated Artwork of the same color.
+    Artwork fill remains distinct from incorporated Artwork destined for the
+    same physical color.
 
-    Shared semantic color does not merge Shape-owned fill with an Artwork
-    component or erase either component's semantic role.
+    Incorporated Artwork preserves logical Artifact-color identity through
+    extrusion, while Shape-owned Artwork fill preserves its configured
+    semantic color. Those different pre-package color representations do not
+    merge or erase either physical component. Package resolves incorporated
+    Artwork to its physical printer color downstream.
     """
 
     composition = tmp_path / "composition.svg"
@@ -2311,8 +2242,34 @@ def test_artwork_fill_remains_distinct_from_artwork_when_colors_match(
         component for component in products["components"] if component["name"] == "artwork-fill"
     )
 
-    assert artwork["color"] == fill["color"]
+    #
+    # Incorporated Artwork retains logical Artifact-color identity.
+    #
+    assert artwork["color"] == {
+        "index": 1,
+        "rgb": {
+            "red": 250,
+            "green": 250,
+            "blue": 250,
+        },
+    }
 
+    #
+    # Shape-owned fill retains its semantic Shape color. Physical assignment
+    # of the incorporated Artwork remains a Package responsibility.
+    #
+    assert fill["color"] == {
+        "name": "white",
+        "rgb": [
+            255,
+            255,
+            255,
+        ],
+    }
+
+    #
+    # Color representation does not determine physical component identity.
+    #
     assert artwork["name"] == "artwork-1"
     assert fill["name"] == "artwork-fill"
 

@@ -36,7 +36,9 @@ from typing import Any
 from lowkey_artifact_builder.engine import (
     StageContext,
 )
-from lowkey_artifact_builder.model.models.artwork.base_color import resolve_base_color_identity
+from lowkey_artifact_builder.model.models.artwork.attachment import (
+    select_attachment_layer,
+)
 from lowkey_artifact_builder.model.models.artwork.hole import (
     HoleGeometry,
     create_hole_geometry,
@@ -46,14 +48,8 @@ from lowkey_artifact_builder.model.models.artwork.loop import (
     LoopGeometry,
     create_loop_geometry,
 )
-from lowkey_artifact_builder.model.models.artwork.loop_color import (
-    resolve_loop_color_identity,
-)
 from lowkey_artifact_builder.model.models.artwork.outer_ridge import (
     artwork_scale_for_outer_ridge,
-)
-from lowkey_artifact_builder.model.models.artwork.outer_ridge_color import (
-    resolve_outer_ridge_color_identity,
 )
 from lowkey_artifact_builder.model.models.artwork.vector_manifest import (
     VectorLayer,
@@ -86,79 +82,12 @@ def execute(
     """
     Execute the artwork extrusion stage.
 
-    The stage consumes:
+    Registered Artwork geometry and Artifact-color identity are dimensionalized
+    into independently printable STL components.
 
-        vector.manifest
-            Manifest describing the registered vector color layers,
-            their common registered coordinate extent, and the registered
-            occupied Artwork envelope.
-
-        artwork_size
-            Maximum physical X/Y extent of the occupied Artwork envelope
-            in millimeters.
-
-        artwork_raise
-            Physical extrusion height of the artwork geometry in
-            millimeters.
-
-        artwork_outer_ridge_width
-            Physical width reserved around the Artwork perimeter for the
-            optional standalone Outer Ridge. A value greater than zero
-            uniformly scales Artwork proper inside artwork_size.
-
-        artwork_outer_ridge_raise
-            Physical extrusion height of a participating standalone Outer
-            Ridge.
-
-        artwork_outer_ridge_color
-            Optional explicit physical semantic color of a participating
-            Outer Ridge. When not explicitly configured, Artwork derives
-            the Outer Ridge color from the existing attachment-color
-            semantics.
-
-        artwork_base_raise
-            Physical extrusion height of the optional standalone Artwork
-            Base. A value greater than zero causes the Base to participate.
-
-        artwork_base_color
-            Optional explicit physical semantic color of a participating
-            Base. When not explicitly configured, Artwork derives the Base
-            color from the existing attachment-color semantics.
-
-        loop_inner_diameter
-            Inner diameter of the optional Artwork Loop. A value greater
-            than zero causes the Loop to participate.
-
-        loop_width
-            Radial width of a participating Loop.
-
-        loop_position
-            Cardinal attachment position of a participating Loop.
-
-        loop_raise
-            Physical extrusion height of a participating Loop.
-
-        loop_color
-            Physical semantic color of a participating Loop. When not
-            explicitly configured, Artwork resolves the effective color
-            from the registered Artwork at the attachment position.
-
-    The stage produces:
-
-        manifest
-            Manifest describing the dynamically generated Artwork STL
-            components while preserving their physical printer color
-            identities.
-
-        outer-ridge.stl
-            Independently printable Outer Ridge component when Outer Ridge
-            participates.
-
-        base.stl
-            Independently printable Base component when Base participates.
-
-        loop.stl
-            Independently printable Loop component when Loop participates.
+    Physical printer-color assignment belongs to downstream packaging.
+    Feature components record their logical Artifact-color relationships rather
+    than resolving physical printer colors during extrusion.
     """
 
     vector_manifest = context.input(
@@ -297,8 +226,7 @@ def execute(
         outer_ridge_product: (
             tuple[
                 Path,
-                str,
-                tuple[int, int, int] | None,
+                int,
             ]
             | None
         ) = None
@@ -335,22 +263,26 @@ def execute(
                     f"Outer Ridge STL: {outer_ridge_output}"
                 )
 
-            outer_ridge_color = resolve_outer_ridge_color_identity(
+            outer_ridge_position = int(
+                context.resolver(
+                    "loop_position",
+                )
+            )
+
+            outer_ridge_attachment_layer = select_attachment_layer(
                 vector_products,
-                resolver=context.resolver,
+                position=outer_ridge_position,
             )
 
             outer_ridge_product = (
                 outer_ridge_output,
-                outer_ridge_color.name,
-                outer_ridge_color.rgb,
+                outer_ridge_attachment_layer.artifact_color_index,
             )
 
         base_product: (
             tuple[
                 Path,
-                str,
-                tuple[int, int, int] | None,
+                int,
             ]
             | None
         ) = None
@@ -377,22 +309,33 @@ def execute(
                     f"OpenSCAD completed without creating the expected Base STL: {base_output}"
                 )
 
-            base_color = resolve_base_color_identity(
-                vector_products,
-                resolver=context.resolver,
-            )
+            if loop_inner_diameter > 0.0:
+                loop_position = int(
+                    context.resolver(
+                        "loop_position",
+                    )
+                )
+
+                base_attachment_layer = select_attachment_layer(
+                    vector_products,
+                    position=loop_position,
+                )
+
+            else:
+                base_attachment_layer = select_attachment_layer(
+                    vector_products,
+                    position=0,
+                )
 
             base_product = (
                 base_output,
-                base_color.name,
-                base_color.rgb,
+                base_attachment_layer.artifact_color_index,
             )
 
         loop_product: (
             tuple[
                 Path,
-                str,
-                tuple[int, int, int] | None,
+                int,
             ]
             | None
         ) = None
@@ -431,15 +374,6 @@ def execute(
                 position=loop_position,
             )
 
-            #
-            # create_loop_geometry() already owns the simple relationship
-            # between an Artwork boundary and the Loop's inner radius.
-            #
-            # Supply Bounds whose selected cardinal boundary is the actual
-            # envelope intersection rather than the rectangular occupied
-            # extent. The other boundaries remain unchanged because they do
-            # not participate in the selected Loop placement.
-            #
             if loop_position == 0:
                 loop_envelope_bounds = Bounds(
                     min_x=physical_envelope_bounds.min_x,
@@ -502,15 +436,14 @@ def execute(
                     f"OpenSCAD completed without creating the expected Loop STL: {loop_output}"
                 )
 
-            loop_color = resolve_loop_color_identity(
+            attachment_layer = select_attachment_layer(
                 vector_products,
-                resolver=context.resolver,
+                position=loop_position,
             )
 
             loop_product = (
                 loop_output,
-                loop_color.name,
-                loop_color.rgb,
+                attachment_layer.artifact_color_index,
             )
 
         _write_manifest(
@@ -643,8 +576,9 @@ def _load_vector_manifest(
     envelope identifies the registered occupied Artwork envelope used
     by standalone extrusion for physical sizing and centering.
 
-    Artifact color identity and RGB remain distinct from the physical
-    printer identity and RGB assigned during rasterization.
+    Registered vector products carry stable Artifact-color identity and
+    geometry only. Physical printer-color assignment belongs to downstream
+    packaging.
     """
 
     try:
@@ -722,14 +656,6 @@ def _load_vector_manifest(
             "artifact_color",
         )
 
-        printer_color_data = product.get(
-            "printer_color",
-        )
-
-        distance = product.get(
-            "distance",
-        )
-
         if (
             isinstance(
                 index,
@@ -803,68 +729,6 @@ def _load_vector_manifest(
             ),
         )
 
-        if not isinstance(
-            printer_color_data,
-            dict,
-        ):
-            raise ExtrudeError(f"Vector product {index} has no valid printer color.")
-
-        printer_color_name = printer_color_data.get(
-            "name",
-        )
-
-        printer_rgb_data = printer_color_data.get(
-            "rgb",
-        )
-
-        if (
-            not isinstance(
-                printer_color_name,
-                str,
-            )
-            or not printer_color_name.strip()
-        ):
-            raise ExtrudeError(f"Vector product {index} has no valid printer color name.")
-
-        printer_color_name = printer_color_name.strip()
-
-        if not isinstance(
-            printer_rgb_data,
-            dict,
-        ):
-            raise ExtrudeError(f"Vector product {index} has no valid printer RGB.")
-
-        printer_color = (
-            _color_component(
-                printer_rgb_data,
-                "red",
-                index,
-            ),
-            _color_component(
-                printer_rgb_data,
-                "green",
-                index,
-            ),
-            _color_component(
-                printer_rgb_data,
-                "blue",
-                index,
-            ),
-        )
-
-        if (
-            isinstance(
-                distance,
-                bool,
-            )
-            or not isinstance(
-                distance,
-                int | float,
-            )
-            or distance < 0
-        ):
-            raise ExtrudeError(f"Vector product {index} has no valid assignment distance.")
-
         path = manifest.parent / filename
 
         if not path.is_file():
@@ -879,9 +743,6 @@ def _load_vector_manifest(
                 path=path,
                 artifact_color_index=artifact_color_index,
                 artifact_color=artifact_color,
-                printer_color_name=printer_color_name,
-                printer_color=printer_color,
-                distance=float(distance),
             )
         )
 
@@ -894,11 +755,6 @@ def _load_vector_manifest(
 
     if len(artifact_color_indexes) != len(set(artifact_color_indexes)):
         raise ExtrudeError("Artifact color indexes must be unique.")
-
-    printer_color_names = [layer.printer_color_name for layer in result]
-
-    if len(printer_color_names) != len(set(printer_color_names)):
-        raise ExtrudeError("Vector product printer color names must be unique.")
 
     result.sort(
         key=lambda layer: layer.index,
@@ -2214,35 +2070,32 @@ def _write_manifest(
     artwork_raise: float,
     outer_ridge_product: tuple[
         Path,
-        str,
-        tuple[int, int, int],
+        int,
     ]
     | None = None,
     base_product: tuple[
         Path,
-        str,
-        tuple[int, int, int],
+        int,
     ]
     | None = None,
     loop_product: tuple[
         Path,
-        str,
-        tuple[int, int, int],
+        int,
     ]
     | None = None,
 ) -> None:
     """
     Write the extrusion product manifest.
 
-    Registered Artwork products preserve their Artifact color information
-    and physical printer assignments unchanged.
+    Registered Artwork products preserve their Artifact-color identity
+    while recording the independently printable STL geometry produced by
+    this stage. Physical printer-color assignment belongs to downstream
+    packaging.
 
-    Participating Outer Ridge, Base, and Loop Features are recorded as
-    independently printable physical components with their complete resolved
-    semantic printer color identities.
-
-    Outer Ridge, Base, and Loop are not Registered Artwork and therefore do
-    not acquire synthetic Artifact color or color-assignment metadata.
+    Participating Outer Ridge, Base, and Loop components record the
+    Artifact color from which they inherit their physical color. Packaging
+    later resolves those Artifact-color relationships to physical printer
+    assignments.
     """
 
     products = [
@@ -2257,15 +2110,6 @@ def _write_manifest(
                     "blue": vector.artifact_color[2],
                 },
             },
-            "printer_color": {
-                "name": vector.printer_color_name,
-                "rgb": {
-                    "red": vector.printer_color[0],
-                    "green": vector.printer_color[1],
-                    "blue": vector.printer_color[2],
-                },
-            },
-            "distance": vector.distance,
         }
         for vector, stl in layers
     ]
@@ -2273,63 +2117,39 @@ def _write_manifest(
     if outer_ridge_product is not None:
         (
             outer_ridge_stl,
-            outer_ridge_color,
-            outer_ridge_printer_color,
+            artifact_color_index,
         ) = outer_ridge_product
 
         products.append(
             {
                 "path": outer_ridge_stl.name,
-                "printer_color": {
-                    "name": outer_ridge_color,
-                    "rgb": {
-                        "red": outer_ridge_printer_color[0],
-                        "green": outer_ridge_printer_color[1],
-                        "blue": outer_ridge_printer_color[2],
-                    },
-                },
+                "artifact_color_index": artifact_color_index,
             }
         )
 
     if base_product is not None:
         (
             base_stl,
-            base_color,
-            base_printer_color,
+            artifact_color_index,
         ) = base_product
 
         products.append(
             {
                 "path": base_stl.name,
-                "printer_color": {
-                    "name": base_color,
-                    "rgb": {
-                        "red": base_printer_color[0],
-                        "green": base_printer_color[1],
-                        "blue": base_printer_color[2],
-                    },
-                },
+                "artifact_color_index": artifact_color_index,
             }
         )
 
     if loop_product is not None:
         (
             loop_stl,
-            loop_color,
-            loop_printer_color,
+            artifact_color_index,
         ) = loop_product
 
         products.append(
             {
                 "path": loop_stl.name,
-                "printer_color": {
-                    "name": loop_color,
-                    "rgb": {
-                        "red": loop_printer_color[0],
-                        "green": loop_printer_color[1],
-                        "blue": loop_printer_color[2],
-                    },
-                },
+                "artifact_color_index": artifact_color_index,
             }
         )
 

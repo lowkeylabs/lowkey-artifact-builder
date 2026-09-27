@@ -86,16 +86,19 @@ def test_artwork_prepare_parameters() -> None:
     )
 
 
-def test_artwork_raster_is_independent_of_physical_size() -> None:
+def test_artwork_raster_parameters() -> None:
     """
-    Raster generation establishes the printer realization in registered
-    raster coordinates without depending on physical manufacturing size.
+    Raster generation establishes registered Artifact-color geometry.
+
+    Rasterization depends on raster resolution and cleanup policy, but not
+    on physical printer-color assignment. Printer colors do not change
+    registered Artwork geometry and are resolved downstream during
+    packaging.
     """
 
     stages = {stage.name: stage for stage in MODEL.stages}
 
     assert stages["raster"].parameters == (
-        "printer_colors",
         "artwork_pixels",
         "artwork_min_island_area",
         "artwork_island_connectivity",
@@ -117,14 +120,12 @@ def test_artwork_vector_is_independent_of_physical_size() -> None:
 
 def test_artwork_extrude_introduces_physical_dimensions() -> None:
     """
-    Extrusion is the Artwork model's physical dimensionalization boundary.
+    Extrusion is the Artwork model's physical geometry boundary.
 
-    Physical Artwork configuration consumed during extrusion is declared
-    by the extrusion stage. Optional standalone features may add further
-    extrusion parameters without changing this architectural boundary.
-
-    Printer assignment is persistent product information established
-    upstream rather than an extrusion configuration parameter.
+    Extrusion owns dimensional and attachment configuration that changes
+    printable geometry. Physical printer-color assignment and explicit
+    feature-color overrides do not change geometry and are owned downstream
+    by packaging.
     """
 
     stages = {stage.name: stage for stage in MODEL.stages}
@@ -136,7 +137,12 @@ def test_artwork_extrude_introduces_physical_dimensions() -> None:
         "artwork_raise",
     }.issubset(parameters)
 
-    assert "printer_colors" not in parameters
+    assert {
+        "printer_colors",
+        "loop_color",
+        "artwork_base_color",
+        "artwork_outer_ridge_color",
+    }.isdisjoint(parameters)
 
 
 def test_artwork_stage_products() -> None:
@@ -185,3 +191,22 @@ def test_artwork_model_parameters() -> None:
         "artwork_size",
         "artwork_raise",
     }.issubset(parameters)
+
+
+def test_artwork_package_parameters() -> None:
+    """
+    Packaging owns physical printer-color assignment.
+
+    Printer colors and explicit physical feature-color overrides affect the
+    final printable 3MF representation without changing prepared, rasterized,
+    vectorized, or extruded Artwork geometry.
+    """
+
+    stages = {stage.name: stage for stage in MODEL.stages}
+
+    assert stages["package"].parameters == (
+        "printer_colors",
+        "loop_color",
+        "artwork_base_color",
+        "artwork_outer_ridge_color",
+    )

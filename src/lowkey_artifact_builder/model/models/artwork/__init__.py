@@ -109,7 +109,6 @@ STAGES = (
         ),
         dependencies=("prepare",),
         parameters=(
-            "printer_colors",
             "artwork_pixels",
             "artwork_min_island_area",
             "artwork_island_connectivity",
@@ -155,12 +154,9 @@ STAGES = (
             "loop_width",
             "loop_position",
             "loop_raise",
-            "loop_color",
             "artwork_base_raise",
-            "artwork_base_color",
             "artwork_outer_ridge_width",
             "artwork_outer_ridge_raise",
-            "artwork_outer_ridge_color",
         ),
         products=(
             ProductSpec(
@@ -178,6 +174,12 @@ STAGES = (
         name="package",
         description=("Package the artwork STL components into the final 3MF."),
         dependencies=("extrude",),
+        parameters=(
+            "printer_colors",
+            "loop_color",
+            "artwork_base_color",
+            "artwork_outer_ridge_color",
+        ),
         products=(
             ProductSpec(
                 name="artifact",

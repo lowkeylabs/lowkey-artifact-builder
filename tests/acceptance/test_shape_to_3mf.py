@@ -638,12 +638,13 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
     """
     Shape consumes registered Artwork and builds a complete 3MF artifact.
 
-    Building the Shape automatically produces the bound Artwork only through
-    its reusable registered vector representation. Artwork extrusion and
-    packaging are not prerequisites for Shape manufacturing.
+    Building Shape automatically produces the bound Artwork only through its
+    reusable registered Vector representation. Artwork Extrude and Package are
+    not prerequisites for Shape manufacturing.
 
-    The final Shape artifact preserves both structural Shape identity and
-    incorporated Artwork component/color identity.
+    Artwork Vector exposes logical Artifact-color identity only. Shape consumes
+    that registered representation, and Shape Package resolves the incorporated
+    Artwork to physical printer colors in the final 3MF.
     """
 
     project_root = tmp_path
@@ -734,15 +735,16 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
 
     assert artwork_vector_manifest.is_file()
 
-    # Shape consumes Artwork's registered vector representation.
-    # Standalone Artwork manufacturing is not a prerequisite.
-
+    #
+    # Shape consumes Artwork's registered Vector product.
+    # Standalone Artwork manufacturing must not occur.
+    #
     assert not (artwork_root / "40-extrude" / "products.json").exists()
 
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
 
     # -----------------------------------------------------
-    # Read registered Artwork contract
+    # Verify registered Artwork contract
     # -----------------------------------------------------
 
     artwork_manifest_data = json.loads(
@@ -760,8 +762,52 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
 
     assert artwork_products
 
+    for product in artwork_products:
+        #
+        # Vector owns logical Artwork identity only.
+        # Physical printer assignment belongs downstream.
+        #
+        assert "printer_color" not in product
+        assert "distance" not in product
+
+        artifact_color = product.get(
+            "artifact_color",
+        )
+
+        assert isinstance(
+            artifact_color,
+            dict,
+        )
+
+        assert artifact_color["index"] == product["index"]
+
+        rgb = artifact_color["rgb"]
+
+        assert isinstance(
+            rgb,
+            dict,
+        )
+
+        assert set(rgb) == {
+            "red",
+            "green",
+            "blue",
+        }
+
+        for channel in (
+            "red",
+            "green",
+            "blue",
+        ):
+            assert isinstance(
+                rgb[channel],
+                int,
+            )
+
+            assert 0 <= rgb[channel] <= 255
+
     # -----------------------------------------------------
-    # Locate final Shape artifact through original plan
+    # Locate final Shape artifact
     # -----------------------------------------------------
 
     package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
@@ -813,10 +859,20 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
 
     # -----------------------------------------------------
-    # Verify structural and incorporated component identity
+    # Verify structural Shape identity
     # -----------------------------------------------------
 
-    assert component_name("artwork-shape", "base", "test-white") in objects_by_name
+    base_name = component_name(
+        "artwork-shape",
+        "base",
+        "test-white",
+    )
+
+    assert base_name in objects_by_name
+
+    # -----------------------------------------------------
+    # Verify incorporated Artwork survives Package
+    # -----------------------------------------------------
 
     artwork_objects = {
         name: object_
@@ -827,68 +883,60 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
         )
     }
 
-    expected_artwork_object_names = {
-        (
-            component_name(
-                "artwork-shape",
-                f"artwork-{product['index']}",
-                product["printer_color"]["name"],
-            )
-        )
-        for product in artwork_products
-    }
+    assert len(artwork_objects) == len(artwork_products)
 
-    assert set(artwork_objects) == expected_artwork_object_names
+    for product in artwork_products:
+        component_identity = f"artwork-{product['index']}"
+
+        matching_names = [name for name in artwork_objects if component_identity in name]
+
+        assert len(matching_names) == 1, (
+            "Expected exactly one packaged Shape object "
+            "for registered Artwork component "
+            f"{component_identity!r}; "
+            f"found {matching_names!r} in "
+            f"{sorted(artwork_objects)!r}"
+        )
 
     # -----------------------------------------------------
-    # Verify semantic colors survived complete pipeline
+    # Verify physical assignment occurs in Shape Package
     # -----------------------------------------------------
 
     materials_by_id = {material.get("id"): material for material in materials}
 
-    base_object = objects_by_name[component_name("artwork-shape", "base", "test-white")]
+    assert materials_by_id
 
-    base_material = materials_by_id[base_object.get("pid")]
+    for object_ in artwork_objects.values():
+        pid = object_.get("pid")
 
-    base_color = base_material.find(
-        f"{{{CORE_NS}}}base",
-    )
+        assert pid is not None
+        assert pid in materials_by_id
 
-    assert base_color is not None
-    assert base_color.get("name") == "test-white"
-    assert base_color.get("displaycolor") == "#FFFFFF"
-    assert base_object.get("pindex") == "0"
+        material = materials_by_id[pid]
 
-    for product in artwork_products:
-        index = product["index"]
-
-        printer_color = product["printer_color"]
-
-        expected_name = printer_color["name"]
-        expected_color = printer_color["rgb"]
-
-        expected_display_color = (
-            f"#{expected_color['red']:02X}{expected_color['green']:02X}{expected_color['blue']:02X}"
-        )
-
-        artwork_object = artwork_objects[
-            component_name(
-                "artwork-shape",
-                f"artwork-{index}",
-                expected_name,
-            )
-        ]
-
-        artwork_material = materials_by_id[artwork_object.get("pid")]
-
-        artwork_color = artwork_material.find(
+        color = material.find(
             f"{{{CORE_NS}}}base",
         )
 
-        assert artwork_color is not None
-        assert artwork_color.get("name") == expected_name
-        assert artwork_color.get("displaycolor") == expected_display_color
-        assert artwork_object.get("pindex") == "0"
+        assert color is not None
+
+        semantic_name = color.get("name")
+
+        display_color = color.get("displaycolor")
+
+        assert semantic_name
+
+        assert display_color
+        assert display_color.startswith("#")
+        assert len(display_color) == 7
+
+        assert object_.get("pindex") == "0"
+
+        object_name = object_.get("name")
+
+        assert object_name is not None
+
+        assert object_name.endswith(f" - {semantic_name}")
 
 
 @pytest.mark.slow

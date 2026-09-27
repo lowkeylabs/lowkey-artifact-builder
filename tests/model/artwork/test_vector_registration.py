@@ -329,18 +329,12 @@ def test_registered_envelope_remains_registered_with_common_layer_crop(
             path=first_raster,
             artifact_color_index=1,
             artifact_color=(255, 255, 255),
-            printer_color_name="white",
-            printer_color=(255, 255, 255),
-            distance=0.0,
         ),
         vector.RasterLayer(
             index=2,
             path=second_raster,
             artifact_color_index=2,
             artifact_color=(0, 0, 0),
-            printer_color_name="black",
-            printer_color=(0, 0, 0),
-            distance=0.0,
         ),
     ]
 
@@ -1094,9 +1088,19 @@ def test_vector_layers_share_one_registered_coordinate_system(
 
     assert data["registered_extent"] == first_crop.size
 
-    assert [product["printer_color"]["name"] for product in data["products"]] == [
-        "white",
-        "black",
+    assert [product["index"] for product in data["products"]] == [
+        1,
+        2,
+    ]
+
+    assert [product["artifact_color"]["index"] for product in data["products"]] == [
+        1,
+        2,
+    ]
+
+    assert [product["artifact_color"]["rgb"] for product in data["products"]] == [
+        _color(255, 255, 255),
+        _color(0, 0, 0),
     ]
 
     assert [product["index"] for product in data["products"]] == [
@@ -1225,15 +1229,16 @@ def test_vector_registration_is_based_on_union_of_all_layers(
     assert data["registered_extent"] == 18
 
 
-def test_vector_manifest_contains_no_physical_manufacturing_dimensions(
+def test_vector_manifest_contains_only_registered_artwork_identity_and_geometry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Reusable registered Artwork contains no physical manufacturing dimensions.
+    Reusable Registered Artwork contains only geometry and Artifact-color identity.
 
-    Physical X/Y size and Z extrusion semantics belong to the downstream
-    consumer rather than the registered vector product.
+    Physical manufacturing dimensions, printer-color assignments, and assignment
+    distances belong to downstream consumers and must not cross the vector-stage
+    boundary.
     """
 
     raster_directory = tmp_path / "raster"
@@ -1252,8 +1257,10 @@ def test_vector_manifest_contains_no_physical_manufacturing_dimensions(
             {
                 "index": 1,
                 "path": raster.name,
-                "name": "white",
-                "color": _color(255, 255, 255),
+                "artifact_color": {
+                    "index": 1,
+                    "rgb": _color(255, 255, 255),
+                },
             },
         ],
     )
@@ -1315,14 +1322,18 @@ def test_vector_manifest_contains_no_physical_manufacturing_dimensions(
         "products",
     }
 
-    for product in data["products"]:
-        assert set(product) == {
-            "index",
-            "path",
-            "artifact_color",
-            "printer_color",
-            "distance",
-        }
+    assert len(data["products"]) == 1
+
+    assert set(data["products"][0]) == {
+        "index",
+        "path",
+        "artifact_color",
+    }
+
+    assert data["products"][0]["artifact_color"] == {
+        "index": 1,
+        "rgb": _color(255, 255, 255),
+    }
 
 
 def test_registered_vector_artwork_exposes_envelope(
@@ -1851,18 +1862,12 @@ def test_vector_registration_preserves_common_coordinates_between_envelope_and_l
             path=first_raster,
             artifact_color_index=1,
             artifact_color=(255, 255, 255),
-            printer_color_name="white",
-            printer_color=(255, 255, 255),
-            distance=0.0,
         ),
         vector.RasterLayer(
             index=2,
             path=second_raster,
             artifact_color_index=2,
             artifact_color=(0, 0, 0),
-            printer_color_name="black",
-            printer_color=(0, 0, 0),
-            distance=0.0,
         ),
     ]
 
