@@ -1,13 +1,24 @@
 """
 Artwork model definition.
 
-The Artwork model converts source raster artwork into registered
-multicolor geometry and, when required, physically dimensionalized
-printable components.
+The Artwork model converts source raster artwork into registered,
+color-separated geometry that may be consumed by another model or
+physically dimensionalized into standalone printable components.
 
 Artifact colors are discovered from the source artwork during
-preparation. Physical printer-color assignments are established during
-rasterization and preserved as product information downstream.
+preparation. Raster and vector processing preserve Artifact-color
+identity while producing registered geometry without assigning physical
+printer colors.
+
+Standalone extrusion converts registered Artwork into physical geometry
+while preserving Artifact-color identity and logical Artifact-color
+attachments for participating Artwork Features. Physical printer-color
+assignment is deferred until packaging.
+
+Standalone packaging resolves Artifact colors against the configured
+printer colors, applies inherited or explicit physical colors to
+participating Artwork Features, and produces the final multicomponent
+3MF.
 
 Filesystem layout, dependency resolution, configuration resolution,
 and execution planning are responsibilities of the build engine.
@@ -105,7 +116,7 @@ STAGES = (
         name="raster",
         description=(
             "Build registered, mutually exclusive raster color layers "
-            "and establish printer-color assignments."
+            "while preserving Artifact-color identity."
         ),
         dependencies=("prepare",),
         parameters=(
@@ -119,8 +130,7 @@ STAGES = (
                 path="products.json",
                 description=(
                     "Manifest describing the generated raster color "
-                    "layers and their Artifact and printer color "
-                    "assignments."
+                    "layers and their Artifact-color identities."
                 ),
             ),
         ),
@@ -163,8 +173,9 @@ STAGES = (
                 name="manifest",
                 path="products.json",
                 description=(
-                    "Manifest describing the generated artwork STL "
-                    "components and their preserved color assignments."
+                    "Manifest describing the generated Artwork STL "
+                    "components and their preserved Artifact-color "
+                    "identities and logical Feature attachments."
                 ),
             ),
         ),
@@ -172,7 +183,10 @@ STAGES = (
     StageSpec(
         id=50,
         name="package",
-        description=("Package the artwork STL components into the final 3MF."),
+        description=(
+            "Resolve physical printer-color assignments and package "
+            "the Artwork STL components into the final 3MF."
+        ),
         dependencies=("extrude",),
         parameters=(
             "printer_colors",

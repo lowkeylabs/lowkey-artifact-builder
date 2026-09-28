@@ -1696,4 +1696,3 @@ The initial Shape model does not include:
 -   arbitrary custom Shape outlines.
 
 These capabilities may be added later by deliberately extending the Shape definition.
-
