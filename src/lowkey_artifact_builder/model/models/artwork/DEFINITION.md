@@ -1,510 +1,320 @@
 # Artwork Model Definition
 
-The `artwork` model converts raster source artwork into registered,
+The `artwork` model converts raster source artwork into registered, color-separated geometry.
 
-color-separated geometry.
-
-Registered Artwork may be dimensionalized into a standalone multicolor
-
-3MF or consumed as an intermediate product by another model.
+Registered Artwork may be dimensionalized into a standalone multicolor 3MF or consumed as an intermediate product by another model.
 
 This document defines the semantic contract of the Artwork model.
 
 ## Purpose
 
-Artwork interprets raster source artwork and converts it into reusable
-
-registered geometry.
+Artwork interprets raster source artwork and converts it into reusable registered geometry.
 
 The Artwork model supports:
 
 -   a raster source image;
-
 -   Artwork-envelope derivation;
-
 -   source-driven color separation;
-
 -   measured Artifact colors;
-
 -   assignment of physical printer colors to Artifact colors;
-
 -   comparison with alternative library and catalog color assignments;
-
 -   registered raster color layers;
-
 -   registered vector color layers;
-
 -   optional physical dimensionalization;
-
 -   a printable multicomponent 3MF.
 
 Artwork deliberately separates:
 
 -   interpretation of source artwork;
-
--   discovery of the colors represented by that artwork;
-
--   assignment of physical filament colors to those discovered colors;
-    and
-
--   physical dimensionalization.
+-   discovery of the Artifact colors represented by that artwork;
+-   construction of registered Artifact-color geometry;
+-   physical dimensionalization of that geometry; and
+-   assignment of physical printer colors to the dimensionalized Artifact-color components during packaging.
 
 ## Source
 
 Artwork consumes one raster source:
 
 ``` text
-
 source
 ```
 
-The build system materializes the source into the artifact workspace
+The build system materializes the source into the artifact workspace before Artwork processing begins.
 
-before Artwork processing begins.
+Artwork stages consume the materialized source through the build-engine context rather than depending on the source's original filesystem location.
 
-Artwork stages consume the materialized source through the build-engine
-
-context rather than depending on the source's original filesystem
-
-location.
-
-\## Artifact Colors
+## Artifact Colors
 
 Artwork color separation is controlled by:
 
 ``` text
-
 artifact_color_count
 ```
 
-`artifact_color_count` defines the number of color regions requested
-when
+`artifact_color_count` defines the number of color regions requested when the source image is traced as multicolor Artwork.
 
-the source image is traced as multicolor Artwork.
-
-Unless explicitly configured, `artifact_color_count` is derived from the
-
-number of configured:
+Unless explicitly configured, `artifact_color_count` is derived from the number of configured:
 
 ``` text
-
 printer_colors
 ```
 
-The default therefore permits Artwork to use the available printer color
+The default therefore permits Artwork to use the available printer color capacity without requiring every Artwork to contain that many colors.
 
-capacity without requiring every Artwork to contain that many colors.
-
-An explicitly configured `artifact_color_count` permits source Artwork
-
-with a known smaller palette to request only the colors actually
-represented
-
-by the Artwork.
+An explicitly configured `artifact_color_count` permits source Artwork with a known smaller palette to request only the colors actually represented by the Artwork.
 
 For example, a three-color logo may configure:
 
 ``` text
-
 artifact_color_count = 3
 ```
 
 even when five printer colors are available.
 
-Artwork preparation supplies the source's color information to
-multicolor
+Artwork preparation supplies the source's color information to multicolor tracing. It does not first quantize the source to printer, library, or catalog filament colors.
 
-tracing. It does not first quantize the source to printer, library, or
-catalog
+Multicolor tracing produces `artifact_color_count` traced color regions and assigns an RGB representation to each region.
 
-filament colors.
+Deriving `artifact_color_count` from the number of configured `printer_colors` does not make `printer_colors` a material input to registered Artwork geometry.
 
-Multicolor tracing produces `artifact_color_count` traced color regions
-and
+Once `artifact_color_count` has been resolved, registered Artwork processing depends on that requested Artifact-color count rather than on the identities of the configured physical printer colors.
 
-assigns an RGB representation to each region.
+Changing physical printer-color selection without changing the effective `artifact_color_count` therefore does not change the Artifact colors or registered Artwork geometry.
 
 Those measured RGB representations are the:
 
 ``` text
-
 artifact_colors
 ```
 
-`artifact_colors` describe the colors discovered in the prepared
-Artwork.
+`artifact_colors` describe the colors discovered in the prepared Artwork.
 
-Artifact colors are derived product information rather than configured
-
-physical filament identities.
+Artifact colors are derived product information rather than configured physical filament identities.
 
 An Artifact color has:
 
 -   a stable color-region identity within the prepared Artwork; and
-
 -   an RGB representation measured from the multicolor trace.
 
-Artifact colors are not required to equal the RGB representation of any
+Artifact colors are not required to equal the RGB representation of any printer, library, or catalog color.
 
-printer, library, or catalog color.
-
-Physical filament availability does not determine the RGB values of
-
-`artifact_colors`.
+Physical filament availability does not determine the RGB values of `artifact_colors`.
 
 The number of Artifact colors is:
 
 ``` text
-
 artifact_color_count
 ```
 
-Artwork does not manufacture additional Artifact colors merely because
-
-additional printer tools or filament colors are available.
+Artwork does not manufacture additional Artifact colors merely because additional printer tools or filament colors are available.
 
 ## Color Availability
 
-Artwork assigns or compares its Artifact colors against three distinct
-
-physical color-availability scopes:
+Artwork may resolve or compare physical color assignments for its Artifact colors against three distinct physical color-availability scopes:
 
 ``` text
-
-printer_colors
-
-library_colors
-
-color catalog
+printer_colors library_colors color catalog
 ```
 
 `printer_colors` identifies colors currently available to the printer.
 
-`library_colors` identifies colors physically available from the user's
+`library_colors` identifies colors physically available from the user's filament library.
 
-filament library.
+The color catalog identifies known physical filament colors and provides their semantic identities and RGB representations.
 
-The color catalog identifies known physical filament colors and provides
+`printer_colors` and `library_colors` are independent resolved configuration parameters. Neither is required to be a subset of the other.
 
-their semantic identities and RGB representations.
+Every resolved `printer_colors` or `library_colors` entry used by Artwork color assignment must reference a known color-catalog identity.
 
-`printer_colors` and `library_colors` are independent resolved
-configuration
+The complete physical color catalog is distinct from the printer and library availability sets.
 
-parameters. Neither is required to be a subset of the other.
-
-Every resolved `printer_colors` or `library_colors` entry used by
-Artwork
-
-color assignment must reference a known color-catalog identity.
-
-The complete physical color catalog is distinct from the printer and
-library
-
-availability sets.
-
-Catalog entries explicitly identified as synthetic test colors do not
-
-participate in physical catalog-wide assignment.
+Catalog entries explicitly identified as synthetic test colors do not participate in physical catalog-wide assignment.
 
 Physical color assignment does not change:
 
 -   `artifact_colors`;
-
 -   `artifact_color_count`;
-
 -   `printer_colors`;
-
 -   `library_colors`; or
-
 -   the color catalog.
+
+Physical color availability is not part of registered Artwork geometry.
+
+Changing `printer_colors`, `library_colors`, or the color catalog does not change the Artifact-color identities or geometry already established by registered Artwork processing.
 
 ## Color Assignment
 
-Artifact colors may be assigned to physical filament colors from three
-
-availability scopes.
+Artifact colors may be assigned to physical filament colors from three availability scopes.
 
 The resulting assignment sets are:
 
 ``` text
-
-printer_assignments
-
-library_assignments
-
-catalog_assignments
+printer_assignments library_assignments catalog_assignments
 ```
 
-`printer_assignments` assigns Artifact colors to distinct colors
-selected
+`printer_assignments` assigns Artifact colors to distinct colors selected from `printer_colors`.
 
-from `printer_colors`.
+`library_assignments` assigns Artifact colors to distinct colors selected from `library_colors`.
 
-`library_assignments` assigns Artifact colors to distinct colors
-selected
+`catalog_assignments` assigns Artifact colors to distinct physical colors selected from the complete physical color catalog.
 
-from `library_colors`.
-
-`catalog_assignments` assigns Artifact colors to distinct physical
-colors
-
-selected from the complete physical color catalog.
-
-Each assignment maps one Artifact color to one physical color and
-records:
+Each assignment maps one Artifact color to one physical color and records:
 
 -   the Artifact color identity;
-
 -   the Artifact color RGB representation;
-
 -   the selected physical color semantic identity;
-
 -   the selected physical color RGB representation; and
+-   the perceptual distance between the Artifact color and selected physical color.
 
--   the perceptual distance between the Artifact color and selected
-    physical
-
-  color.
-
-Assignment uses the generic perceptual color-distance semantics defined
-by
-
-the shared color infrastructure.
+Assignment uses the generic perceptual color-distance semantics defined by the shared color infrastructure.
 
 Assignments within one scope are determined jointly.
 
-For a scope containing at least `artifact_color_count` available
-physical
+For a scope containing at least `artifact_color_count` available physical colors, Artwork selects a one-to-one assignment between Artifact colors and distinct candidate physical colors that minimizes aggregate perceptual distance.
 
-colors, Artwork selects a one-to-one assignment between Artifact colors
-and
+Two different Artifact colors are not assigned the same physical color within one assignment set.
 
-distinct candidate physical colors that minimizes aggregate perceptual
+The aggregate distance of an assignment set is the sum of the individual Artifact-to-physical-color perceptual distances in that assignment.
 
-distance.
+The aggregate distance therefore measures how closely the selected physical palette represents the complete set of Artifact colors.
 
-Two different Artifact colors are not assigned the same physical color
-within
-
-one assignment set.
-
-The aggregate distance of an assignment set is the sum of the individual
-
-Artifact-to-physical-color perceptual distances in that assignment.
-
-The aggregate distance therefore measures how closely the selected
-physical
-
-palette represents the complete set of Artifact colors.
-
-Assignment is deterministic for the same Artifact colors, candidate
-colors,
-
-and applicable assignment policy.
+Assignment is deterministic for the same Artifact colors, candidate colors, and applicable assignment policy.
 
 Printer and library assignments minimize aggregate perceptual distance.
 
-Catalog assignment first minimizes aggregate perceptual distance. Among
+Catalog assignment first minimizes aggregate perceptual distance. Among catalog assignments having the same minimum aggregate perceptual distance, Artwork prefers an assignment using more colors already present in `library_colors`.
 
-catalog assignments having the same minimum aggregate perceptual
-distance,
+Library preference is strictly secondary. It must not cause a catalog assignment having greater aggregate perceptual distance to replace an assignment having lower aggregate perceptual distance.
 
-Artwork prefers an assignment using more colors already present in
+This catalog tie-breaking rule is Artwork policy. Generic color-assignment infrastructure may provide a model-independent mechanism for expressing secondary preference, but it does not own printer, library, catalog, or filament-availability semantics.
 
-`library_colors`.
+Physical color assignment is distinct from Artifact-color geometry.
 
-Library preference is strictly secondary. It must not cause a catalog
+Registered Artwork products preserve Artifact-color identity. They do not embed a physical printer-color assignment into that identity.
 
-assignment having greater aggregate perceptual distance to replace an
+For standalone Artwork manufacturing, the physical assignment used by the manufactured artifact is resolved during packaging.
 
-assignment having lower aggregate perceptual distance.
-
-This catalog tie-breaking rule is Artwork policy. Generic
-color-assignment
-
-infrastructure may provide a model-independent mechanism for expressing
-
-secondary preference, but it does not own printer, library, catalog, or
-
-filament-availability semantics.
+Library and catalog assignments are alternative analyses and do not alter registered Artwork geometry or standalone extrusion products.
 
 Printer, library, and catalog assignments are independent.
 
-A physical color selected by one assignment scope does not constrain the
-
-physical colors selected by another scope.
+A physical color selected by one assignment scope does not constrain the physical colors selected by another scope.
 
 ## Printer Assignments
 
-`printer_assignments` define the physical semantic colors used to
-manufacture
-
-the current Artwork realization.
+`printer_assignments` define the physical semantic colors used to manufacture the current Artwork realization.
 
 The number of printer assignments is:
 
 ``` text
-
 artifact_color_count
 ```
 
-A printer assignment therefore selects the best
-
-`artifact_color_count` distinct colors from `printer_colors`.
+A printer assignment therefore selects the best `artifact_color_count` distinct colors from `printer_colors`.
 
 When:
 
 ``` text
-
 artifact_color_count < len(printer_colors)
 ```
 
 some configured printer colors remain unused by the Artwork.
 
-For example, three-color Artwork on a printer configured with five
-colors
+For example, three-color Artwork on a printer configured with five colors uses the best three-color assignment and does not create two additional Artifact colors merely to use every configured printer color.
 
-uses the best three-color assignment and does not create two additional
+Execution requiring physical printer assignment requires enough distinct printer colors to assign every Artifact color.
 
-Artifact colors merely to use every configured printer color.
+Printer assignment is a packaging concern for standalone Artwork.
 
-Execution requiring physical printer assignment requires enough distinct
+The registered raster and vector products preserve Artifact-color identity and Artifact RGB representation without assigning physical printer colors.
 
-printer colors to assign every Artifact color.
+Standalone extrusion likewise preserves Artifact-color identity while producing physical geometry. It does not establish the physical printer assignment of the extruded components.
 
-The semantic physical color identity established by
-`printer_assignments`
+During standalone packaging, Artwork resolves the Artifact colors against `printer_colors` and assigns the resulting physical semantic colors to the packaged components.
 
-is preserved through registered raster products, registered vector
-products,
-
-standalone extrusion, and standalone packaging.
+Changing `printer_colors` without changing upstream material parameters therefore does not require registered rasterization, vectorization, or standalone extrusion to be repeated. It changes the physical printer assignment established by packaging.
 
 ## Library Assignments
 
-`library_assignments` describe the best physical realization available
-from:
+`library_assignments` describe the best physical realization available from:
 
 ``` text
-
 library_colors
 ```
 
-The assignment selects `artifact_color_count` distinct library colors
-that
-
-minimize aggregate perceptual distance to the complete set of Artifact
-
-colors.
+The assignment selects `artifact_color_count` distinct library colors that minimize aggregate perceptual distance to the complete set of Artifact colors.
 
 Library assignment is diagnostic.
 
-It permits comparison between the currently configured printer
-realization
+It permits comparison between the currently configured printer realization and an alternative realization using filament already present in the user's library.
 
-and an alternative realization using filament already present in the
-user's
-
-library.
+Library assignment does not alter Artifact-color identity or registered, vectorized, or extruded Artwork geometry.
 
 Library assignment does not automatically:
 
 -   change `printer_colors`;
-
 -   install filament;
-
 -   change Artifact configuration; or
-
 -   change persistent manufacturing products.
 
 ## Catalog Assignments
 
-`catalog_assignments` describe the best physical realization available
-from
+`catalog_assignments` describe the best physical realization available from the complete physical color catalog.
 
-the complete physical color catalog.
-
-The assignment selects `artifact_color_count` distinct physical catalog
-
-colors that minimize aggregate perceptual distance to the complete set
-of
-
-Artifact colors.
+The assignment selects `artifact_color_count` distinct physical catalog colors that minimize aggregate perceptual distance to the complete set of Artifact colors.
 
 Catalog assignment is diagnostic.
 
 It permits comparison between:
 
 -   the current printer realization;
-
 -   the best realization using filament already in the user's library;
-    and
+
+and
 
 -   the best realization using known physical catalog colors.
+
+Catalog assignment does not alter Artifact-color identity or registered, vectorized, or extruded Artwork geometry.
 
 Catalog assignment does not automatically:
 
 -   purchase filament;
-
 -   change `printer_colors`;
-
 -   change `library_colors`;
-
 -   change Artifact configuration; or
-
 -   change persistent manufacturing products.
 
 ## Color Analysis
 
-Artwork color analysis exposes the individual and aggregate perceptual
-
-distances associated with:
+Artwork color analysis exposes the individual and aggregate perceptual distances associated with:
 
 ``` text
-
-printer_assignments
-
-library_assignments
-
-catalog_assignments
+printer_assignments library_assignments catalog_assignments
 ```
 
-Individual assignment distance identifies how closely a selected
-physical
+Individual assignment distance identifies how closely a selected physical filament color represents one Artifact color.
 
-filament color represents one Artifact color.
-
-Aggregate assignment distance identifies how closely an entire selected
-
-physical palette represents the complete Artifact color set.
+Aggregate assignment distance identifies how closely an entire selected physical palette represents the complete Artifact color set.
 
 These distances permit evaluation of both:
 
 -   individual Artifact colors that are reproduced poorly; and
+-   the relative quality of printer, library, and catalog palette alternatives.
 
--   the relative quality of printer, library, and catalog palette
-    alternatives.
+Color analysis operates on persistent Artifact color information derived from prepared Artwork.
 
-Color analysis operates on persistent Artifact color information derived
-from
+Standalone Artwork extrusion and packaging are not prerequisites for analyzing Artifact colors or calculating alternative assignments.
 
-prepared Artwork.
+Color analysis may calculate candidate physical assignments without making those assignments material properties of registered Artwork or standalone extrusion products.
 
-Standalone Artwork extrusion and packaging are not prerequisites for
-
-analyzing Artifact colors or calculating alternative assignments.
+The physical printer assignment used by a standalone manufactured Artwork artifact becomes authoritative when that Artwork is packaged.
 
 ## Prepare
 
-Preparation converts the source image into prepared Artwork described
-by:
+Preparation converts the source image into prepared Artwork described by:
 
 ``` text
-
-trace.svg
-
-envelope.svg
+trace.svg envelope.svg
 ```
 
 The trace represents the prepared multicolor Artwork.
@@ -516,126 +326,74 @@ Pixels outside the envelope do not belong to the Artwork.
 Artwork envelope derivation is controlled by:
 
 ``` text
-
 artwork_envelope_mode
 ```
 
 Supported envelope modes are:
 
 ``` text
-
-alpha
-
-shrink-wrap
+alpha shrink-wrap
 ```
 
 The default envelope mode is:
 
 ``` text
-
 shrink-wrap
 ```
 
 `alpha` derives the Artwork envelope from meaningful source alpha.
 
-`shrink-wrap` derives a conservative outer envelope by distinguishing
+`shrink-wrap` derives a conservative outer envelope by distinguishing exterior background from enclosed Artwork.
 
-exterior background from enclosed Artwork.
+Shrink-wrap classification depends on whether source regions belong to the exterior background, not merely on their color.
 
-Shrink-wrap classification depends on whether source regions belong to
+An enclosed Artwork region is not excluded solely because its color also occurs in the exterior background.
 
-the exterior background, not merely on their color.
+Envelope derivation affects interpretation of the source Artwork. It does not alter the registered coordinate system or the semantics of downstream Artwork products.
 
-An enclosed Artwork region is not excluded solely because its color also
-
-occurs in the exterior background.
-
-Envelope derivation affects interpretation of the source Artwork. It
-does
-
-not alter the registered coordinate system or the semantics of
-downstream
-
-Artwork products.
-
-Preparation preserves the source color information belonging to the
-Artwork
-
-rather than quantizing it to configured physical filament colors.
+Preparation preserves the source color information belonging to the Artwork rather than quantizing it to configured physical filament colors.
 
 Preparation performs multicolor tracing using:
 
 ``` text
-
 artifact_color_count
 ```
 
 as the requested number of color regions.
 
-The RGB representations assigned to those traced regions by multicolor
-tracing
+The RGB representations assigned to those traced regions by multicolor tracing form `artifact_colors`.
 
-form `artifact_colors`.
+The traced color regions collectively represent the Artwork within the derived envelope.
 
-The traced color regions collectively represent the Artwork within the
-
-derived envelope.
-
-Physical printer, library, or catalog color assignments do not determine
-
-the Artifact colors discovered during preparation.
+Physical printer, library, or catalog color assignments do not determine the Artifact colors discovered during preparation.
 
 ## Raster
 
-Rasterization converts prepared Artwork into registered,
+Rasterization converts prepared Artwork into registered, color-separated raster products.
 
-color-separated raster products.
-
-Raster consumes the Artifact colors measured from the prepared
-multicolor
-
-trace.
-
-Raster establishes the `printer_assignments` required for the current
-
-physical realization.
+Raster consumes the Artifact colors measured from the prepared multicolor trace.
 
 Raster products:
 
 -   use one common coordinate system;
-
 -   preserve Artifact color-region identity;
-
--   preserve the assigned printer semantic color identity;
-
+-   preserve the measured Artifact RGB representation associated with each color region;
+-   do not assign physical printer-color identity;
 -   represent mutually exclusive color regions;
-
 -   collectively cover the Artwork envelope;
-
 -   use `artwork_pixels` as their raster resolution;
-
 -   are described by a raster manifest.
 
-Every location belonging to the registered Artwork is assigned to
-exactly one
+Every location belonging to the registered Artwork is assigned to exactly one raster color region.
 
-raster color region.
-
-Raster island cleanup may remove insignificant disconnected geometry,
-but it
-
-must preserve complete color assignment of retained Artwork rather than
-
-creating unassigned holes within the retained Artwork envelope.
+Raster island cleanup may remove insignificant disconnected geometry, but it must preserve complete color assignment of retained Artwork rather than creating unassigned holes within the retained Artwork envelope.
 
 Dynamic raster products are stored relative to their manifest.
 
 Raster island cleanup is controlled by:
 
 ``` text
-
 artwork_min_island_area
-
 artwork_island_connectivity
 ```
 
@@ -643,37 +401,29 @@ Island area is measured in raster pixels.
 
 Raster processing does not depend on physical `artwork_size`.
 
+Raster processing also does not depend on physical printer-color assignment. Changing `printer_colors` without changing the effective upstream Artifact-color configuration does not change registered raster products.
+
 ## Vector
 
-Vectorization converts registered raster color layers into registered
-
-vector color layers.
+Vectorization converts registered raster color layers into registered vector color layers.
 
 All vector layers:
 
 -   use one common coordinate system;
-
 -   remain registered with one another;
-
 -   preserve Artifact color-region identity;
+-   preserve the measured Artifact RGB representation associated with each region;
+-   do not carry a physical printer-color assignment.
 
--   preserve the assigned printer semantic color identity.
+The Artwork envelope uses the same registered coordinate system as the vector color layers and remains registered with them.
 
-The Artwork envelope uses the same registered coordinate system as the
+The envelope represents the outer occupied region of the registered Artwork.
 
-vector color layers and remains registered with them.
-
-The envelope represents the outer occupied region of the registered
-Artwork.
-
-It is not an independent color layer and does not have physical color
-
-identity.
+It is not an independent color layer and does not have physical color identity.
 
 The common coordinate system is described by:
 
 ``` text
-
 registered_extent
 ```
 
@@ -686,303 +436,201 @@ Registered vector geometry has no physical manufacturing size.
 Vector processing does not depend on:
 
 ``` text
-
 artwork_size
-
 artwork_raise
+printer_colors
 ```
 
 ## Registered Artwork
 
-The vector-stage products, together with the registered Artwork
-envelope,
-
-form the reusable registered representation of Artwork.
+The vector-stage products, together with the registered Artwork envelope, form the reusable registered representation of Artwork.
 
 Registered Artwork consists of:
 
 -   the vector manifest;
-
 -   the color-layer products described by the vector manifest;
-
 -   the Artwork envelope;
-
 -   the common `registered_extent`.
 
 The registered representation provides a downstream consumer with:
 
 -   the Artifact color regions;
-
 -   the vector product associated with each region;
-
+-   the stable Artifact color identity associated with each region;
 -   the Artifact RGB representation associated with each region;
-
--   the assigned printer semantic color identity associated with each
-    region;
-
--   the assigned printer RGB representation associated with each region;
-
 -   the Artwork envelope;
-
 -   the common `registered_extent`.
 
-The envelope represents the outer occupied region of the Artwork in the
+The envelope represents the outer occupied region of the Artwork in the common registered coordinate system.
 
-common registered coordinate system.
+A consuming model may use the envelope to fit or otherwise place the Artwork within its own registered geometry without independently determining the bounds of individual color layers.
 
-A consuming model may use the envelope to fit or otherwise place the
-Artwork
+The `registered_extent` defines the common registered coordinate system. The envelope defines the occupied region within that coordinate system.
 
-within its own registered geometry without independently determining the
+All transformations that preserve Artwork registration must be applied consistently to the envelope and every registered color layer.
 
-bounds of individual color layers.
+Registered Artwork has no physical manufacturing size or physical Z semantics.
 
-The `registered_extent` defines the common registered coordinate system.
+The vector manifest preserves the Artifact color information required by downstream consumers.
 
-The envelope defines the occupied region within that coordinate system.
+Registered Artwork does not carry the physical printer assignment of a standalone Artwork realization.
 
-All transformations that preserve Artwork registration must be applied
+A downstream consumer receives Artifact-color identity and geometry and is responsible for preserving that logical identity until the physical printer-assignment boundary belonging to the consuming manufacturing model.
 
-consistently to the envelope and every registered color layer.
-
-Registered Artwork has no physical manufacturing size or physical Z
-
-semantics.
-
-The vector manifest preserves the Artifact color information and printer
-
-assignment information required by downstream consumers.
-
-Color analysis may use the persistent Artifact color information to
-calculate
-
-printer, library, and catalog assignments without requiring standalone
-
-extrusion or packaging.
+Color analysis may use the persistent Artifact color information to calculate printer, library, and catalog assignments without requiring standalone extrusion or packaging.
 
 ## Extrude
 
-Extrusion is the physical dimensionalization boundary for standalone
-
-Artwork.
+Extrusion is the physical dimensionalization boundary for standalone Artwork.
 
 Extrusion introduces:
 
 ``` text
-
-artwork_size
-
-artwork_raise
+artwork_size artwork_raise
 ```
 
-`artwork_size` defines the maximum physical X/Y extent of the occupied
+`artwork_size` defines the maximum physical X/Y extent of the occupied Artwork envelope.
 
-Artwork envelope.
-
-If the registered Artwork envelope has width `w` and height `h`,
-extrusion
-
-uniformly scales the registered Artwork so that:
+If the registered Artwork envelope has width `w` and height `h`, extrusion uniformly scales the registered Artwork so that:
 
 ``` text
-
 max(physical envelope width, physical envelope height) = artwork_size
 ```
 
 while preserving the envelope's aspect ratio.
 
-The `registered_extent` remains the common dimensionless coordinate
-system.
+The `registered_extent` remains the common dimensionless coordinate system.
 
 It does not itself determine the physical size of standalone Artwork.
 
-One common affine X/Y transformation is applied to the registered
-Artwork.
+One common affine X/Y transformation is applied to the registered Artwork.
 
 That transformation:
 
 -   uniformly scales the Artwork according to its occupied envelope;
-
 -   centers the dimensionalized occupied envelope for standalone
-    Artwork; and
+
+Artwork; and
 
 -   is applied identically to the envelope and every registered color
-    layer.
 
-Individual color layers are not independently fitted, scaled,
-translated, or
+layer.
 
-centered.
+Individual color layers are not independently fitted, scaled, translated, or centered.
 
-Artwork registration is therefore preserved even when the occupied
-envelope is
-
-non-square or offset within the common registered coordinate system.
+Artwork registration is therefore preserved even when the occupied envelope is non-square or offset within the common registered coordinate system.
 
 Each color layer is extruded to a physical height of:
 
 ``` text
-
 artwork_raise
 ```
 
-The common Z placement of the Artwork proper may be translated by
-participating standalone Artwork Features. Feature-specific Z semantics
-are defined exclusively by the applicable Feature subsection.
+The common Z placement of the Artwork proper may be translated by participating standalone Artwork Features. Feature-specific Z semantics are defined exclusively by the applicable Feature subsection.
 
-Extrusion produces independently printable color components described by
+Extrusion produces independently printable physical geometry described by an extrusion manifest.
 
-an extrusion manifest.
+Each ordinary Artwork component preserves the Artifact-color identity of the registered Artwork region from which it was produced.
 
-Extrusion preserves the printer semantic color assignment established
-for
+Extrusion does not resolve that Artifact color to a physical printer color.
 
-each registered Artwork color region.
+Standalone Artwork Features likewise preserve the logical Artifact-color attachment required for later color resolution when their color is inherited from Artwork.
+
+Extrusion therefore establishes physical geometry but not final physical printer assignment.
 
 ## Package
 
-Packaging combines the dimensionalized Artwork components and any
-participating standalone Artwork Feature components into:
+Packaging combines the dimensionalized Artwork components and any participating standalone Artwork Feature components into:
 
 ``` text
-
 artifact.3mf
 ```
 
 The final standalone Artwork artifact is a multicomponent 3MF.
 
-Assigned printer color components remain independently printable
-components.
+Packaging is the physical printer-assignment boundary for standalone Artwork.
 
-Packaging preserves the printer semantic color identity and RGB
+For ordinary Artwork components, packaging resolves the Artifact colors preserved by extrusion against the effective `printer_colors`.
 
-representation established upstream.
+The resulting one-to-one printer assignment determines the physical semantic color and physical RGB representation of each packaged Artwork component.
+
+Participating standalone Artwork Features may either:
+
+-   inherit the physical printer color assigned to the Artifact color to which the Feature is logically attached; or
+-   use an explicitly configured Feature color when the applicable Feature semantics define such an override.
+
+Packaging preserves independently printable component identity while applying these resolved physical color assignments.
+
+Changes to physical printer-color assignment therefore require packaging to be reconsidered but do not, by themselves, change registered Artwork geometry or standalone extrusion geometry.
 
 ## Reuse
 
-Registered Artwork may be consumed by another artifact before standalone
+Registered Artwork may be consumed by another artifact before standalone Artwork extrusion or packaging.
 
-Artwork extrusion or packaging.
-
-For the current Artwork model, a consumer of registered vector Artwork
-
-requires:
+For the current Artwork model, a consumer of registered vector Artwork requires:
 
 ``` text
-
-artwork/prepare
-
-      │
-
-      ├──────────────┐
-
-      │              │
-
-      ▼              │
-
-artwork/raster       │
-
-      │              │
-
-      ▼              │
-
-artwork/vector ◄─────┘
-
-      │
-
-      ▼
-
-   consumer
+artwork/prepare │ ├──────────────┐ │              │ ▼              │ artwork/raster       │ │              │ ▼              │ artwork/vector ◄─────┘ │ ▼ consumer
 ```
 
 The vector stage consumes both:
 
 -   registered raster color layers produced by `artwork/raster`; and
-
 -   the registered Artwork envelope produced by `artwork/prepare`.
 
 The later Artwork stages:
 
 ``` text
-
-artwork/extrude
-
-artwork/package
+artwork/extrude artwork/package
 ```
 
-are not prerequisites merely because another model consumes registered
+are not prerequisites merely because another model consumes registered vector Artwork.
 
-vector Artwork.
+Likewise, color analysis and alternative library or catalog assignment do not require standalone Artwork extrusion or packaging.
 
-Likewise, color analysis and alternative library or catalog assignment
-do not
+The consuming model is responsible for the physical size, placement, and dimensionalization of the registered Artwork within its own object.
 
-require standalone Artwork extrusion or packaging.
+When fitting registered Artwork within another model, the consumer may use the registered Artwork envelope to determine geometric containment while applying one common transformation to the envelope and all registered color layers.
 
-The consuming model is responsible for the physical size, placement, and
-
-dimensionalization of the registered Artwork within its own object.
-
-When fitting registered Artwork within another model, the consumer may
-use the
-
-registered Artwork envelope to determine geometric containment while
-applying
-
-one common transformation to the envelope and all registered color
-layers.
-
-Any region belonging to the consuming model but lying outside the
-registered
-
-Artwork envelope is the responsibility of the consuming model.
+Any region belonging to the consuming model but lying outside the registered Artwork envelope is the responsibility of the consuming model.
 
 Artwork does not assign a fill color to such surrounding geometry.
+
+Because registered Artwork carries Artifact-color identity rather than a standalone physical printer assignment, a consuming model does not inherit a physical printer assignment merely by consuming registered Artwork.
+
+The consuming manufacturing model preserves Artifact-color identity through its own processing and resolves physical printer assignment at the appropriate packaging boundary for its final manufactured product.
 
 ## Features
 
 Features are optional capabilities of the Artwork model.
 
-An Artwork realization may participate in zero or more Features
-according to the effective parameter values defined by each Feature.
-Features are distinct from intrinsic Artwork properties. In particular,
-every Artwork has an envelope; `artwork_envelope_mode` controls how that
-required envelope is derived and does not make the envelope optional.
+An Artwork realization may participate in zero or more Features according to the effective parameter values defined by each Feature.
 
-Each Feature subsection is the authoritative semantic definition of that
-Feature. Feature-specific parameters, participation conditions,
-validation, geometry, physical dimensions, color and material behavior,
-interactions with other Features, and product participation are defined
-within that Feature subsection.
+Features are distinct from intrinsic Artwork properties. In particular, every Artwork has an envelope; `artwork_envelope_mode` controls how that required envelope is derived and does not make the envelope optional.
 
-Feature-specific semantics are not duplicated in unrelated model
-sections. A stage may operate on participating Features without owning
-their semantics.
+Each Feature subsection is the authoritative semantic definition of that Feature. Feature-specific parameters, participation conditions, validation, geometry, physical dimensions, color and material behavior, interactions with other Features, and product participation are defined within that Feature subsection.
 
-Features described here apply when Artwork is physically dimensionalized
-as standalone Artwork unless the Feature explicitly states otherwise.
-Registered Artwork remains reusable, dimensionless Artwork geometry and
-does not acquire standalone physical Feature geometry merely because
-another model consumes it.
+Feature-specific semantics are not duplicated in unrelated model sections. A stage may operate on participating Features without owning their semantics.
+
+Features described here apply when Artwork is physically dimensionalized as standalone Artwork unless the Feature explicitly states otherwise.
+
+Registered Artwork remains reusable, dimensionless Artwork geometry and does not acquire standalone physical Feature geometry merely because another model consumes it.
 
 ### Base
 
-The Base Feature provides optional structural geometry beneath
-standalone Artwork.
+The Base Feature provides optional structural geometry beneath standalone Artwork.
 
 #### Parameters
 
 The Base Feature defines:
 
 ``` text
-artwork_base_raise
-artwork_base_color
+artwork_base_raise artwork_base_color
 ```
 
 `artwork_base_raise` controls Base participation and physical height.
 
-`artwork_base_color` controls the physical semantic color of the Base
-and may be explicitly configured or derived as described below.
+`artwork_base_color` controls the physical semantic color of the Base and may be explicitly configured or derived as described below.
 
 #### Participation
 
@@ -992,25 +640,19 @@ The Base participates when:
 artwork_base_raise > 0
 ```
 
-An effective `artwork_base_raise` of zero means that no Artwork Base
-participates.
+An effective `artwork_base_raise` of zero means that no Artwork Base participates.
 
 A negative `artwork_base_raise` is invalid.
 
-The Base is a standalone Artwork Feature. It is not part of registered
-Artwork supplied to another model.
+The Base is a standalone Artwork Feature. It is not part of registered Artwork supplied to another model.
 
-When registered Artwork is consumed by Shape, Shape owns any supporting
-base used by the Shape realization. The Artwork Base Feature is not
-incorporated into the consumed registered Artwork.
+When registered Artwork is consumed by Shape, Shape owns any supporting base used by the Shape realization. The Artwork Base Feature is not incorporated into the consumed registered Artwork.
 
 #### Geometry
 
 The Base conforms in X/Y to the dimensionalized Artwork envelope.
 
-The Base does not enlarge or shrink the size-controlled Artwork
-envelope. Its planar occupied region is the Artwork envelope after the
-common standalone Artwork dimensional transformation has been applied.
+The Base does not enlarge or shrink the size-controlled Artwork envelope. Its planar occupied region is the Artwork envelope after the common standalone Artwork dimensional transformation has been applied.
 
 #### Z Placement
 
@@ -1025,13 +667,10 @@ and the Artwork proper rests on top of the Base.
 The dimensionalized Artwork color components therefore occupy:
 
 ``` text
-Z = artwork_base_raise
-    ..
-    artwork_base_raise + artwork_raise
+Z = artwork_base_raise .. artwork_base_raise + artwork_raise
 ```
 
-When the Base does not participate, the Artwork color components retain
-their ordinary standalone placement:
+When the Base does not participate, the Artwork color components retain their ordinary standalone placement:
 
 ``` text
 Z = 0 .. artwork_raise
@@ -1039,71 +678,49 @@ Z = 0 .. artwork_raise
 
 #### Color
 
-`artwork_base_color` may explicitly select the Base's physical semantic
-color.
+The Base is logically attached to an Artifact color during standalone extrusion.
 
-When `artwork_base_color` is not explicitly configured, its value is
-derived using the same attachment-color selection semantics used by the
-Loop Feature.
+When `artwork_base_color` is explicitly configured, that value is the authoritative physical semantic color override for the Base during packaging.
 
-If a Loop participates, the derived Base color is the resolved
-`loop_color`. This includes an explicitly configured `loop_color`.
+When `artwork_base_color` is not explicitly configured, the Base inherits the physical printer color assigned during packaging to the Artifact color to which the Base is logically attached.
 
-If no Loop participates, the derived Base color is the attachment color
-that would be selected for a Loop at:
+The extrusion product therefore preserves the Base's logical Artifact-color attachment rather than resolving a physical printer color.
 
-``` text
-loop_position = 0
-```
-
-The derived Base color therefore has a deterministic relationship to the
-Artwork even when no Loop exists.
-
-The complete Base is manufactured using the resolved
-`artwork_base_color`.
+Packaging resolves the final Base physical color.
 
 #### Product Participation
 
-The Base participates only in standalone physical dimensionalization and
-packaging when enabled.
+The Base participates only in standalone physical dimensionalization and packaging when enabled.
 
-It is not part of registered raster or vector Artwork and is not
-required by a consumer of registered Artwork.
+It is not part of registered raster or vector Artwork and is not required by a consumer of registered Artwork.
 
 ### Outer Ridge
 
-The Outer Ridge Feature provides an optional physical perimeter around
-standalone Artwork.
+The Outer Ridge Feature provides an optional physical perimeter around standalone Artwork.
 
-The Outer Ridge follows the Artwork envelope and participates in the physical
-dimensionalization of standalone Artwork.
+The Outer Ridge follows the Artwork envelope and participates in the physical dimensionalization of standalone Artwork.
 
 #### Parameters
 
 The Outer Ridge Feature defines:
 
-```text
-artwork_outer_ridge_width
-artwork_outer_ridge_raise
-artwork_outer_ridge_color
+``` text
+artwork_outer_ridge_width artwork_outer_ridge_raise artwork_outer_ridge_color
 ```
 
-`artwork_outer_ridge_width` controls Outer Ridge participation and the physical
-width of the ridge around the Artwork perimeter.
+`artwork_outer_ridge_width` controls Outer Ridge participation and the physical width of the ridge around the Artwork perimeter.
 
 `artwork_outer_ridge_raise` controls the physical Z height of the Outer Ridge.
 
-`artwork_outer_ridge_color` controls the physical semantic color of the Outer
-Ridge and may be explicitly configured or derived as described below.
+`artwork_outer_ridge_color` controls the physical semantic color of the Outer Ridge and may be explicitly configured or derived as described below.
 
 #### Participation
 
-`artwork_outer_ridge_width` alone determines whether the Outer Ridge
-participates.
+`artwork_outer_ridge_width` alone determines whether the Outer Ridge participates.
 
 An effective value of:
 
-```text
+``` text
 artwork_outer_ridge_width = 0
 ```
 
@@ -1115,192 +732,137 @@ A negative `artwork_outer_ridge_width` is invalid.
 
 Outer Ridge participation does not require Base or Loop participation.
 
-The Outer Ridge is a standalone Artwork Feature. It is not part of registered
-Artwork supplied to another model.
+The Outer Ridge is a standalone Artwork Feature. It is not part of registered Artwork supplied to another model.
 
 #### Geometry
 
 The Outer Ridge follows the perimeter of the dimensionalized Artwork envelope.
 
-`artwork_size` continues to define the maximum physical X/Y extent of the
-standalone Artwork including the Outer Ridge.
+`artwork_size` continues to define the maximum physical X/Y extent of the standalone Artwork including the Outer Ridge.
 
 When the Outer Ridge participates, a perimeter having physical width:
 
-```text
+``` text
 artwork_outer_ridge_width
 ```
 
 is reserved within that size-controlled extent.
 
-The registered Artwork is uniformly scaled in X/Y so that its dimensionalized
-envelope fits within the region remaining inside the reserved Outer Ridge
-perimeter.
+The registered Artwork is uniformly scaled in X/Y so that its dimensionalized envelope fits within the region remaining inside the reserved Outer Ridge perimeter.
 
-The Artwork envelope is not geometrically inset, clipped, or independently
-reshaped to produce the reduced Artwork region.
+The Artwork envelope is not geometrically inset, clipped, or independently reshaped to produce the reduced Artwork region.
 
-Instead, one common uniform scaling transformation is applied to the registered
-Artwork envelope and every registered Artwork color layer. The aspect ratio of
-the registered Artwork and registration among all Artwork components are
-therefore preserved.
+Instead, one common uniform scaling transformation is applied to the registered Artwork envelope and every registered Artwork color layer. The aspect ratio of the registered Artwork and registration among all Artwork components are therefore preserved.
 
-The outer boundary of the Outer Ridge is the Artwork envelope dimensionalized
-at the full `artwork_size`. The inner boundary corresponds to the same Artwork
-envelope after the uniform scaling applied to the Artwork proper.
+The outer boundary of the Outer Ridge is the Artwork envelope dimensionalized at the full `artwork_size`. The inner boundary corresponds to the same Artwork envelope after the uniform scaling applied to the Artwork proper.
 
-The Outer Ridge occupies the region between those two corresponding envelope
-boundaries.
+The Outer Ridge occupies the region between those two corresponding envelope boundaries.
 
 The resulting relationship is:
 
-```text
-maximum outer extent including Outer Ridge = artwork_size
-
-maximum Artwork extent inside Outer Ridge
-    = artwork_size - 2 * artwork_outer_ridge_width
+``` text
+maximum outer extent including Outer Ridge = artwork_size maximum Artwork extent inside Outer Ridge = artwork_size - 2 * artwork_outer_ridge_width
 ```
 
-where the maximum extent refers to the size-controlling X or Y dimension of the
-Artwork envelope.
+where the maximum extent refers to the size-controlling X or Y dimension of the Artwork envelope.
 
-The same uniform scale factor is applied to both X and Y. The non-size-controlling
-dimension is therefore determined by the original Artwork aspect ratio rather
-than independently reduced by `2 * artwork_outer_ridge_width`.
+The same uniform scale factor is applied to both X and Y. The non-size-controlling dimension is therefore determined by the original Artwork aspect ratio rather than independently reduced by `2 * artwork_outer_ridge_width`.
 
-The Outer Ridge does not increase the size-controlled physical extent of the
-standalone Artwork. This differs from attachment geometry such as the Loop,
-which may extend beyond that extent.
+The Outer Ridge does not increase the size-controlled physical extent of the standalone Artwork. This differs from attachment geometry such as the Loop, which may extend beyond that extent.
 
 #### Raise
 
 `artwork_outer_ridge_raise` defines the physical Z height of the Outer Ridge.
 
-When `artwork_outer_ridge_raise` is not explicitly configured, it is derived
-from:
+When `artwork_outer_ridge_raise` is not explicitly configured, it is derived from:
 
-```text
+``` text
 artwork_raise
 ```
 
-so that the ordinary Outer Ridge has the same physical height as the Artwork
-proper.
+so that the ordinary Outer Ridge has the same physical height as the Artwork proper.
 
-An explicitly configured `artwork_outer_ridge_raise` may override that derived
-value.
+An explicitly configured `artwork_outer_ridge_raise` may override that derived value.
 
 The Outer Ridge begins at the same supporting Z plane as the Artwork proper.
 
 The Outer Ridge does not rest on top of the Artwork proper.
-`artwork_outer_ridge_raise` is the complete height of the Outer Ridge measured
-from their common supporting plane rather than an additional height above
-`artwork_raise`.
+
+`artwork_outer_ridge_raise` is the complete height of the Outer Ridge measured from their common supporting plane rather than an additional height above `artwork_raise`.
 
 When no Base participates:
 
-```text
+``` text
 Artwork:
-    Z = 0 .. artwork_raise
 
-Outer Ridge:
-    Z = 0 .. artwork_outer_ridge_raise
+Z = 0 .. artwork_raise Outer Ridge:
+
+Z = 0 .. artwork_outer_ridge_raise
 ```
 
-When the Base Feature participates, the Base translates the common supporting
-plane of both the Artwork proper and Outer Ridge upward by
-`artwork_base_raise`.
+When the Base Feature participates, the Base translates the common supporting plane of both the Artwork proper and Outer Ridge upward by `artwork_base_raise`.
 
 Their resulting physical placements are:
 
-```text
+``` text
 Artwork:
-    Z = artwork_base_raise
-        ..
-        artwork_base_raise + artwork_raise
 
-Outer Ridge:
-    Z = artwork_base_raise
-        ..
-        artwork_base_raise + artwork_outer_ridge_raise
+Z = artwork_base_raise .. artwork_base_raise + artwork_raise Outer Ridge:
+
+Z = artwork_base_raise .. artwork_base_raise + artwork_outer_ridge_raise
 ```
 
 #### Color
 
-`artwork_outer_ridge_color` defines the Outer Ridge's physical semantic color.
+The Outer Ridge is logically attached to an Artifact color during standalone extrusion.
 
-When `artwork_outer_ridge_color` is explicitly configured, that value is
-authoritative.
+When `artwork_outer_ridge_color` is explicitly configured, that value is the authoritative physical semantic color override for the Outer Ridge during packaging.
 
-When `artwork_outer_ridge_color` is not explicitly configured, Artwork derives
-the Outer Ridge color using the same attachment-color selection semantics used
-by the Loop Feature.
+When `artwork_outer_ridge_color` is not explicitly configured, the Outer Ridge inherits the physical printer color assigned during packaging to its attached Artifact color.
 
-The attachment position used for this derivation is the effective
-`loop_position`. A Loop need not participate for `loop_position` to identify
-the attachment position used for color derivation.
+The extrusion product preserves the logical Artifact-color attachment rather than resolving a physical printer color.
 
-The effective `artwork_outer_ridge_color` therefore has the following
-precedence:
-
-1. explicitly configured `artwork_outer_ridge_color`;
-2. Artwork attachment color at the effective `loop_position`.
-
-The complete Outer Ridge is manufactured using the effective
-`artwork_outer_ridge_color`, preserving its semantic physical color identity.
+Packaging resolves the final Outer Ridge physical color.
 
 #### Interaction With Loop
 
 Outer Ridge and Loop are independent optional Features.
 
-When both participate, the Loop attaches to the outer perimeter of the
-size-controlled Artwork object after Outer Ridge geometry has been applied.
+When both participate, the Loop attaches to the outer perimeter of the size-controlled Artwork object after Outer Ridge geometry has been applied.
 
-An explicitly configured `loop_color` remains authoritative.
+Loop and Outer Ridge preserve their respective logical Artifact-color attachments through extrusion.
 
-When `loop_color` is not explicitly configured and the Outer Ridge
-participates, the Loop derives its physical semantic color from the resolved
-`artwork_outer_ridge_color`.
+Their final physical colors are independently resolved during packaging according to their explicit Feature overrides, when present, and otherwise their attached Artifact-color printer assignments.
 
-When no Outer Ridge participates, the Loop retains its ordinary derived-color
-behavior based on the Artwork attachment color at the effective
-`loop_position`.
-
-Loop participation does not require Outer Ridge participation, and Outer Ridge
-participation does not require Loop participation.
+Loop participation does not require Outer Ridge participation, and Outer Ridge participation does not require Loop participation.
 
 #### Interaction With Base
 
 Outer Ridge and Base are independent optional Features.
 
-When both participate, the Outer Ridge and Artwork proper rest on top of the
-Base and share the same supporting Z plane.
+When both participate, the Outer Ridge and Artwork proper rest on top of the Base and share the same supporting Z plane.
 
 Base participation translates the Outer Ridge and Artwork proper equally in Z.
+
 It does not change `artwork_outer_ridge_raise`.
 
 An explicitly configured `artwork_base_color` remains authoritative.
 
-Any Base color derived through the resolved Loop color retains the color
-relationships defined by the participating Features without requiring the Base
-to independently resolve Outer Ridge color.
+Any Base color derived through the resolved Loop color retains the color relationships defined by the participating Features without requiring the Base to independently resolve Outer Ridge color.
 
 Outer Ridge participation does not require Base participation.
 
 #### Product Participation
 
-The Outer Ridge participates only in standalone physical dimensionalization and
-packaging when enabled.
+The Outer Ridge participates only in standalone physical dimensionalization and packaging when enabled.
 
-A participating Outer Ridge is produced as independently printable physical
-geometry using its resolved semantic physical color identity.
+A participating Outer Ridge is produced as independently printable physical geometry while preserving the logical Artifact-color attachment required for packaging-time physical color resolution.
 
-When `artwork_outer_ridge_width` is zero, no Outer Ridge physical component is
-produced.
+When `artwork_outer_ridge_width` is zero, no Outer Ridge physical component is produced.
 
-A participating Outer Ridge must leave a positive physical extent for the
-Artwork proper. Therefore:
+A participating Outer Ridge must leave a positive physical extent for the Artwork proper. Therefore:
 
-```text
+``` text
 2 * artwork_outer_ridge_width < artwork_size
 ```
 
@@ -1308,7 +870,7 @@ must hold whenever artwork_outer_ridge_width is positive.
 
 A value for which:
 
-```text
+``` text
 2 * artwork_outer_ridge_width >= artwork_size
 ```
 
@@ -1316,41 +878,29 @@ is invalid.
 
 The Outer Ridge is not added to prepared, raster, or vector registered Artwork.
 
-A consumer of registered Artwork does not receive Outer Ridge geometry and does
-not require standalone Outer Ridge dimensionalization.
+A consumer of registered Artwork does not receive Outer Ridge geometry and does not require standalone Outer Ridge dimensionalization.
 
-When registered Artwork is consumed by another model, that consuming model
-remains responsible for any perimeter, ridge, border, or other supporting
-physical geometry belonging to its own realization.
-
+When registered Artwork is consumed by another model, that consuming model remains responsible for any perimeter, ridge, border, or other supporting physical geometry belonging to its own realization.
 
 ### Hole
 
-The Hole Feature provides an optional circular through-hole in standalone
-Artwork.
+The Hole Feature provides an optional circular through-hole in standalone Artwork.
 
-The Hole is subtractive geometry. It removes material from the standalone
-Artwork object rather than producing an independently printable physical
-component.
+The Hole is subtractive geometry. It removes material from the standalone Artwork object rather than producing an independently printable physical component.
 
 #### Parameters
 
 The Hole Feature defines:
 
-```text
-artwork_hole_diameter
-artwork_hole_position
-artwork_hole_edge_distance
+``` text
+artwork_hole_diameter artwork_hole_position artwork_hole_edge_distance
 ```
 
-`artwork_hole_diameter` controls Hole participation and the physical diameter
-of the circular opening.
+`artwork_hole_diameter` controls Hole participation and the physical diameter of the circular opening.
 
 `artwork_hole_position` selects the cardinal position of the Hole.
 
-`artwork_hole_edge_distance` defines the physical material distance between the
-nearest edge of the Hole and the outer boundary of the finished
-size-controlled Artwork object along the selected cardinal axis.
+`artwork_hole_edge_distance` defines the physical material distance between the nearest edge of the Hole and the outer boundary of the finished size-controlled Artwork object along the selected cardinal axis.
 
 #### Participation
 
@@ -1358,7 +908,7 @@ size-controlled Artwork object along the selected cardinal axis.
 
 An effective value of:
 
-```text
+``` text
 artwork_hole_diameter = 0
 ```
 
@@ -1370,35 +920,22 @@ A negative `artwork_hole_diameter` is invalid.
 
 Hole participation does not require Base, Outer Ridge, or Loop participation.
 
-The Hole is a standalone Artwork Feature. It is not part of registered Artwork
-supplied to another model.
+The Hole is a standalone Artwork Feature. It is not part of registered Artwork supplied to another model.
 
 #### Position
 
-`artwork_hole_position` selects one of four cardinal positions measured from
-the top of the Artwork:
+`artwork_hole_position` selects one of four cardinal positions measured from the top of the Artwork:
 
-```text
-  0     top
- 90     right
-180     bottom
--90     left
+``` text
+0     top 90     right 180     bottom -90     left
 ```
 
 The Artwork origin is the center used by standalone Artwork dimensionalization.
 
 Each position defines a cardinal axis through `(0, 0)`:
 
-```text
-             0
-             +Y
-              |
-              |
- -90  -X ------+------ +X  90
-              |
-              |
-             -Y
-            180
+``` text
+0 +Y | | -90  -X ------+------ +X  90 | | -Y 180
 ```
 
 The Hole center lies on the selected cardinal axis.
@@ -1409,18 +946,15 @@ The Hole is circular in the X/Y plane.
 
 Let:
 
-```text
-r_hole = artwork_hole_diameter / 2
-d_edge = artwork_hole_edge_distance
+``` text
+r_hole = artwork_hole_diameter / 2 d_edge = artwork_hole_edge_distance
 ```
 
-For the selected `artwork_hole_position`, Artwork determines the point at which
-the selected outward cardinal ray from `(0, 0)` intersects the outer boundary
-of the finished size-controlled Artwork object.
+For the selected `artwork_hole_position`, Artwork determines the point at which the selected outward cardinal ray from `(0, 0)` intersects the outer boundary of the finished size-controlled Artwork object.
 
 The Hole center is placed:
 
-```text
+``` text
 r_hole + d_edge
 ```
 
@@ -1428,21 +962,19 @@ inward from that boundary point along the same cardinal axis.
 
 The nearest edge of the Hole is therefore exactly:
 
-```text
+``` text
 artwork_hole_edge_distance
 ```
 
 from the applicable outer boundary along the selected cardinal axis.
 
-The Hole is contained within the size-controlled Artwork extent. Hole
-participation does not increase that extent and does not cause the Artwork
-proper to be scaled larger or smaller.
+The Hole is contained within the size-controlled Artwork extent. Hole participation does not increase that extent and does not cause the Artwork proper to be scaled larger or smaller.
 
 #### Minimum Remaining Material
 
 A participating Hole must leave at least:
 
-```text
+``` text
 0.4 mm
 ```
 
@@ -1450,7 +982,7 @@ of material between the nearest Hole edge and the applicable outer boundary.
 
 Therefore, whenever the Hole participates:
 
-```text
+``` text
 artwork_hole_edge_distance >= 0.4 mm
 ```
 
@@ -1458,31 +990,23 @@ must hold.
 
 Values less than `0.4 mm` are invalid for a participating Hole.
 
-Hole-specific placement requirements do not apply when
-`artwork_hole_diameter` is zero.
+Hole-specific placement requirements do not apply when `artwork_hole_diameter` is zero.
 
 #### Subtractive Geometry
 
-The Hole removes material throughout the complete Z extent of every
-participating standalone Artwork physical component occupying the Hole's X/Y
-region.
+The Hole removes material throughout the complete Z extent of every participating standalone Artwork physical component occupying the Hole's X/Y region.
 
-The same circular X/Y opening is therefore subtracted from all intersecting
-physical geometry.
+The same circular X/Y opening is therefore subtracted from all intersecting physical geometry.
 
-The resulting opening passes completely through the standalone manufactured
-Artwork object.
+The resulting opening passes completely through the standalone manufactured Artwork object.
 
-The Hole does not define its own Z height or raise. Its Z extent is determined
-by the physical components from which material is removed.
+The Hole does not define its own Z height or raise. Its Z extent is determined by the physical components from which material is removed.
 
 #### Color
 
 The Hole has no physical semantic color.
 
-Because the Hole represents removed material rather than manufactured
-material, it does not participate in Artwork color assignment, attachment-color
-selection, or Feature color derivation.
+Because the Hole represents removed material rather than manufactured material, it does not participate in Artwork color assignment, attachment-color selection, or Feature color derivation.
 
 The Hole does not produce an independently printable color component.
 
@@ -1490,14 +1014,11 @@ The Hole does not produce an independently printable color component.
 
 Hole and Base are independent optional Features.
 
-When both participate, the Hole removes material from the Base wherever the
-Hole's X/Y region intersects the Base.
+When both participate, the Hole removes material from the Base wherever the Hole's X/Y region intersects the Base.
 
-The same Hole remains registered through the Base and Artwork proper so that
-Base participation does not interrupt the through-hole.
+The same Hole remains registered through the Base and Artwork proper so that Base participation does not interrupt the through-hole.
 
-Base participation and the resulting Z translation of the Artwork proper do
-not change the Hole's X/Y center or diameter.
+Base participation and the resulting Z translation of the Artwork proper do not change the Hole's X/Y center or diameter.
 
 Hole participation does not affect Base color.
 
@@ -1505,29 +1026,23 @@ Hole participation does not affect Base color.
 
 Hole and Outer Ridge are independent optional Features.
 
-When no Outer Ridge participates, the boundary used for Hole placement is the
-outer boundary of the dimensionalized Artwork envelope.
+When no Outer Ridge participates, the boundary used for Hole placement is the outer boundary of the dimensionalized Artwork envelope.
 
-When the Outer Ridge participates, the boundary used for Hole placement is the
-outer boundary of the Outer Ridge.
+When the Outer Ridge participates, the boundary used for Hole placement is the outer boundary of the Outer Ridge.
 
-Because the Outer Ridge remains within the size-controlled Artwork extent, Hole
-placement continues to be measured from the outer boundary of that same
-size-controlled object.
+Because the Outer Ridge remains within the size-controlled Artwork extent, Hole placement continues to be measured from the outer boundary of that same size-controlled object.
 
 The nearest Hole edge remains exactly:
 
-```text
+``` text
 artwork_hole_edge_distance
 ```
 
 from that outer boundary.
 
-When the Hole's X/Y region intersects Outer Ridge material, the Hole removes
-that material throughout the complete Z extent of the intersecting Outer Ridge.
+When the Hole's X/Y region intersects Outer Ridge material, the Hole removes that material throughout the complete Z extent of the intersecting Outer Ridge.
 
-Outer Ridge participation does not otherwise change the Hole's diameter or
-cardinal-axis placement.
+Outer Ridge participation does not otherwise change the Hole's diameter or cardinal-axis placement.
 
 Hole participation does not affect Outer Ridge color.
 
@@ -1535,63 +1050,44 @@ Hole participation does not affect Outer Ridge color.
 
 Hole and Loop are independent optional Features.
 
-`artwork_hole_position` and `loop_position` are independent configuration
-parameters.
+`artwork_hole_position` and `loop_position` are independent configuration parameters.
 
-Loop participation does not change the size-controlled outer boundary used for
-Hole placement.
+Loop participation does not change the size-controlled outer boundary used for Hole placement.
 
-In particular, Loop attachment geometry outside the size-controlled Artwork
-extent does not become the boundary from which `artwork_hole_edge_distance` is
-measured.
+In particular, Loop attachment geometry outside the size-controlled Artwork extent does not become the boundary from which `artwork_hole_edge_distance` is measured.
 
-Hole participation does not change Loop geometry, attachment placement, or
-color derivation.
+Hole participation does not change Loop geometry, attachment placement, or color derivation.
 
 The Hole does not participate in Loop attachment-color selection.
 
 #### Product Participation
 
-The Hole participates only in standalone physical dimensionalization and
-packaging when enabled.
+The Hole participates only in standalone physical dimensionalization and packaging when enabled.
 
-A participating Hole is represented by the removal of material from
-intersecting standalone Artwork physical components. It does not produce an
-independent physical product or independently printable component.
+A participating Hole is represented by the removal of material from intersecting standalone Artwork physical components. It does not produce an independent physical product or independently printable component.
 
 The Hole is not added to prepared, raster, or vector registered Artwork.
 
-A consumer of registered Artwork does not receive Hole geometry and does not
-require standalone Hole dimensionalization.
+A consumer of registered Artwork does not receive Hole geometry and does not require standalone Hole dimensionalization.
 
-When registered Artwork is consumed by another model, that consuming model
-remains responsible for any hole, opening, cutout, or other subtractive
-physical geometry belonging to its own realization.
-
+When registered Artwork is consumed by another model, that consuming model remains responsible for any hole, opening, cutout, or other subtractive physical geometry belonging to its own realization.
 
 ### Loop
 
-The Loop Feature provides an optional annular attachment for standalone
-Artwork, including hanging applications such as charms and earrings.
+The Loop Feature provides an optional annular attachment for standalone Artwork, including hanging applications such as charms and earrings.
 
 #### Parameters
 
 The Loop Feature defines:
 
 ``` text
-loop_inner_diameter
-loop_width
-loop_position
-loop_raise
-loop_color
+loop_inner_diameter loop_width loop_position loop_raise loop_color
 ```
 
-The loop outer diameter is derived geometry rather than an independent
-configuration parameter:
+The loop outer diameter is derived geometry rather than an independent configuration parameter:
 
 ``` text
-loop_outer_diameter =
-    loop_inner_diameter + 2 * loop_width
+loop_outer_diameter = loop_inner_diameter + 2 * loop_width
 ```
 
 #### Participation
@@ -1612,82 +1108,53 @@ A participating Loop requires:
 loop_inner_diameter >= 0.5 mm
 ```
 
-Values greater than zero but less than `0.5 mm` are invalid. Negative
-values are invalid.
+Values greater than zero but less than `0.5 mm` are invalid. Negative values are invalid.
 
 When the Loop participates, `loop_width` must be greater than zero.
 
 #### Position
 
-`loop_position` selects one of four cardinal attachment positions
-measured from the top of the Artwork:
+`loop_position` selects one of four cardinal attachment positions measured from the top of the Artwork:
 
 ``` text
-  0     top
- 90     right
-180     bottom
--90     left
+0     top 90     right 180     bottom -90     left
 ```
 
-The Artwork origin is the center used by standalone Artwork
-dimensionalization.
+The Artwork origin is the center used by standalone Artwork dimensionalization.
 
 Each position defines a cardinal axis through `(0, 0)`:
 
 ``` text
-              0
-              +Y
-               |
-               |
- -90  -X ------+------ +X  90
-               |
-               |
-              -Y
-             180
+0 +Y | | -90  -X ------+------ +X  90 | | -Y 180
 ```
 
 The Loop center lies on the selected cardinal axis.
 
 #### Attachment Geometry
 
-For the selected `loop_position`, Artwork determines the point at which
-the selected outward cardinal ray from `(0, 0)` intersects the outer
-edge of the dimensionalized Artwork envelope.
+For the selected `loop_position`, Artwork determines the point at which the selected outward cardinal ray from `(0, 0)` intersects the outer edge of the dimensionalized Artwork envelope.
 
 Let:
 
 ``` text
-r_inner = loop_inner_diameter / 2
-r_outer = r_inner + loop_width
+r_inner = loop_inner_diameter / 2 r_outer = r_inner + loop_width
 ```
 
-The Loop center is placed `r_inner` farther outward from that
-Artwork-boundary point along the same cardinal axis.
+The Loop center is placed `r_inner` farther outward from that Artwork-boundary point along the same cardinal axis.
 
-The inward-facing point of the Loop's inner circle therefore coincides
-with the Artwork boundary on the selected axis.
+The inward-facing point of the Loop's inner circle therefore coincides with the Artwork boundary on the selected axis.
 
-The annular material extends inward from that boundary by exactly
-`loop_width`, producing `loop_width` of radial overlap between the Loop
-and Artwork at the attachment location.
+The annular material extends inward from that boundary by exactly `loop_width`, producing `loop_width` of radial overlap between the Loop and Artwork at the attachment location.
 
-For a top Loop, the Loop center and the topmost point of the inner
-opening lie on `x = 0`. This provides a geometrically centered
-suspension point relative to the Artwork origin. The same rule is
-rotated to the other supported cardinal positions.
+For a top Loop, the Loop center and the topmost point of the inner opening lie on `x = 0`. This provides a geometrically centered suspension point relative to the Artwork origin. The same rule is rotated to the other supported cardinal positions.
 
-This geometric rule does not assert that an asymmetric Artwork object
-will have its physical center of mass at the Artwork origin.
+This geometric rule does not assert that an asymmetric Artwork object will have its physical center of mass at the Artwork origin.
 
 #### Physical Extent
 
-`artwork_size` continues to control the maximum physical X/Y extent of
-the Artwork envelope itself.
+`artwork_size` continues to control the maximum physical X/Y extent of the Artwork envelope itself.
 
-The Loop is attachment geometry outside that size-controlled envelope. A
-participating Loop therefore increases the overall physical extent of
-the standalone manufactured object rather than causing the Artwork
-proper to be scaled smaller.
+The Loop is attachment geometry outside that size-controlled envelope. A participating Loop therefore increases the overall physical extent of the standalone manufactured object rather than causing the Artwork proper to be scaled smaller.
 
 #### Raise
 
@@ -1699,46 +1166,35 @@ When `loop_raise` is not explicitly configured, it is derived from:
 artwork_raise
 ```
 
-so that the ordinary Loop has the same physical height as the Artwork
-proper.
+so that the ordinary Loop has the same physical height as the Artwork proper.
 
 An explicitly configured `loop_raise` may override that derived value.
 
 The Loop begins at the same supporting Z plane as the Artwork proper.
-When the Base Feature participates, the Loop rests on top of the Base
-with the Artwork proper. When the Base does not participate, the Loop
-begins at `Z = 0`.
 
-#### Attachment Color Selection
+When the Base Feature participates, the Loop rests on top of the Base with the Artwork proper. When the Base does not participate, the Loop begins at `Z = 0`.
 
-Artwork defines a deterministic attachment-color selection operation for
-a cardinal position.
+#### Artifact-Color Attachment
 
-At the selected attachment position, Artwork identifies the Artwork
-color at the cardinal-axis attachment point. If that exact boundary
-point is color-ambiguous, Artwork selects the nearest occupied Artwork
-color immediately inward from the attachment point along the same
-cardinal axis.
+Artwork defines a deterministic Artifact-color attachment operation for a cardinal position.
 
-The result is the attachment color for that position.
+At the selected attachment position, Artwork identifies the Artifact color at the cardinal-axis attachment point. If that exact boundary point is color-ambiguous, Artwork selects the nearest occupied Artifact color immediately inward from the attachment point along the same cardinal axis.
 
-This operation is Artwork-owned semantic behavior and is also reused by
-the Base Feature for its derived color.
+The result is the Artifact color to which attachment geometry is logically attached.
+
+This operation establishes logical Artifact-color identity. It does not resolve that Artifact color to a physical printer color.
+
+The logical attachment is preserved through extrusion so that packaging can apply the physical printer assignment associated with the attached Artifact color.
 
 #### Color
 
-`loop_color` defines the Loop's physical semantic color.
+When `loop_color` is explicitly configured, that value is the authoritative physical semantic color override for the Loop during packaging.
 
-When `loop_color` is explicitly configured, that value is authoritative.
+When `loop_color` is not explicitly configured, the Loop inherits the physical printer color assigned during packaging to the Artifact color to which the Loop is logically attached.
 
-When `loop_color` is not explicitly configured, Artwork derives the Loop color
-from the Artwork attachment color selected at the effective `loop_position`.
+Extrusion therefore does not resolve the Loop to a physical printer color. It preserves the Loop's logical Artifact-color attachment.
 
-Interactions in which another participating Feature modifies this derived color
-are defined exclusively by that Feature.
-
-The complete Loop is manufactured using the effective `loop_color`, preserving
-its semantic physical color identity.
+Packaging resolves the final Loop physical color.
 
 #### Interaction With Base
 
@@ -1747,454 +1203,182 @@ Base and Loop are independent optional Features.
 When both participate:
 
 -   the Loop and Artwork proper rest on top of the Base;
--   an explicitly configured `artwork_base_color` remains authoritative;
--   otherwise the Base derives its color from the resolved `loop_color`.
+-   the Base preserves its own logical Artifact-color attachment;
+-   the Loop preserves its own logical Artifact-color attachment;
+-   explicit Base and Loop physical-color overrides remain independent.
+
+Their final physical colors are resolved during packaging.
 
 Loop participation does not itself require Base participation.
 
 #### Product Participation
 
-The Loop participates only in standalone physical dimensionalization and
-packaging when enabled.
+The Loop participates only in standalone physical dimensionalization and packaging when enabled.
 
-It is not part of registered raster or vector Artwork and is not
-required by a consumer of registered Artwork.
+It is not part of registered raster or vector Artwork and is not required by a consumer of registered Artwork.
 
 ## Stages
 
 Artwork defines:
 
 ``` text
-
-10 prepare
-
-20 raster
-
-30 vector
-
-40 extrude
-
-50 package
+10 prepare 20 raster 30 vector 40 extrude 50 package
 ```
 
 with dependencies:
 
 ``` text
-
-prepare
-
-   │
-
-   ├──────────────┐
-
-   │              │
-
-   ▼              │
-
-raster            │
-
-   │              │
-
-   ▼              │
-
-vector ◄──────────┘
-
-   │
-
-   ▼
-
-extrude
-
-   │
-
-   ▼
-
-package
+prepare │ ├──────────────┐ │              │ ▼              │ raster            │ │              │ ▼              │ vector ◄──────────┘ │ ▼ extrude │ ▼ package
 ```
 
 The direct dependencies reflect the products consumed by each stage:
 
 -   `raster` depends on `prepare`;
-
 -   `vector` depends on `raster` for registered color layers;
-
--   `vector` also depends directly on `prepare` for the registered
-    Artwork
-
-  envelope;
-
+-   `vector` also depends directly on `prepare` for the registered Artwork envelope;
 -   `extrude` depends on `vector`;
-
 -   `package` depends on `extrude`.
+
+The stage boundaries also define the Artwork color lifecycle:
+
+``` text
+prepare
+    discover Artifact colors raster
+    registered Artifact-color raster geometry vector
+    registered Artifact-color vector geometry extrude
+    physical geometry retaining Artifact-color identity package
+    physical printer-color assignment and final 3MF
+```
+
+`printer_colors` is material to standalone packaging, not to raster, vector, or extrusion geometry.
+
+Feature physical-color overrides such as `loop_color`, `artwork_base_color`, and `artwork_outer_ridge_color` are likewise packaging concerns. Feature geometry produced during extrusion retains the logical Artifact-color attachment required to apply inherited physical color during packaging.
 
 The principal declared products are:
 
 ``` text
-
-prepare/trace.svg
-
-prepare/envelope.svg
-
-raster/products.json
-
-vector/products.json
-
-extrude/products.json
-
-package/artifact.3mf
+prepare/trace.svg prepare/envelope.svg raster/products.json vector/products.json extrude/products.json package/artifact.3mf
 ```
 
 Product paths are local to their producing stages.
 
-Artifact color analysis and alternative physical color assignment are
-
-consumers of persistent Artwork color information.
+Artifact color analysis and alternative physical color assignment are consumers of persistent Artwork color information.
 
 They do not introduce additional Artwork manufacturing stages.
 
 ## Dynamic Products
 
-Raster, vector, and extrusion stages may produce a variable number of
+Raster, vector, and extrusion stages may produce a variable number of color-specific products.
 
-color-specific products.
+The number of color-specific products is determined by the prepared Artifact color regions rather than by the total number of physical colors available in the printer, library, or catalog.
 
-The number of color-specific products is determined by the prepared
-Artifact
-
-color regions rather than by the total number of physical colors
-available in
-
-the printer, library, or catalog.
+Dynamic raster, vector, and extrusion product identity is based on Artifact colors rather than the physical printer colors later assigned during packaging.
 
 These dynamic products are described by the declared stage manifest.
 
-Consumers use the manifest to discover dynamic products rather than
+Consumers use the manifest to discover dynamic products rather than scanning stage directories.
 
-scanning stage directories.
-
-Dynamic-product paths recorded by a manifest are relative to that
-
-manifest's stage-local product location.
+Dynamic-product paths recorded by a manifest are relative to that manifest's stage-local product location.
 
 ## Model Invariants
 
-The following are model-wide invariants. Feature-specific invariants are
-defined only within the applicable Feature subsection and are not
-repeated here.
+The following are model-wide invariants. Feature-specific invariants are defined only within the applicable Feature subsection and are not repeated here.
 
 A conforming Artwork implementation satisfies the following:
 
-1\. Artwork consumes a materialized raster source image.
-
-2\. Prepared Artwork is limited to its derived Artwork envelope.
-
-3\. Artwork envelope derivation is controlled by
-`artwork_envelope_mode`.
-
-4\. `artwork_envelope_mode` defaults to `shrink-wrap`.
-
-5\. `alpha` envelope derivation determines meaningful source foreground
-from
-
-   source alpha.
-
-6\. `shrink-wrap` envelope derivation produces a conservative outer
-envelope
-
-   by distinguishing exterior background from enclosed Artwork.
-
-7\. Shrink-wrap does not exclude an enclosed Artwork region solely
-because
-
-   its color also occurs in the exterior background.
-
-8\. `artifact_color_count` defines the number of color regions requested
-from
-
-   multicolor source tracing.
-
-9\. Unless explicitly configured, `artifact_color_count` is derived from
-the
-
-   number of configured `printer_colors`.
-
-10\. An explicitly configured `artifact_color_count` may be smaller than
-the
-
-    number of configured printer colors.
-
-11\. Artwork does not create additional Artifact colors merely to use
-all
-
-    available printer colors.
-
-12\. Preparation preserves source color information within the Artwork
-
-    envelope until multicolor tracing performs source color separation.
-
-13\. Preparation does not quantize source Artwork to printer, library,
-or
-
-    catalog filament RGB values before multicolor color discovery.
-
-14\. Multicolor tracing assigns RGB representations to the traced color
-
-    regions.
-
-15\. The RGB representations measured from those traced regions form
-
-    `artifact_colors`.
-
-16\. Artifact colors are derived product information and are not
-required to
-
-    correspond exactly to any physical catalog color.
-
-17\. Physical filament availability does not determine the RGB values
-assigned
-
-    to Artifact colors.
-
-18\. The prepared color regions collectively represent the Artwork
-within its
-
-    envelope.
-
-19\. `printer_assignments` map Artifact colors one-to-one to distinct
-selected
-
-    `printer_colors`.
-
-20\. `library_assignments` map Artifact colors one-to-one to distinct
-selected
-
-    `library_colors`.
-
-21\. `catalog_assignments` map Artifact colors one-to-one to distinct
-selected
-
-    physical catalog colors.
-
-22\. Each physical color assignment preserves the Artifact color
-identity,
-
-    Artifact RGB representation, selected physical semantic identity,
-
-    selected physical RGB representation, and perceptual distance.
-
-23\. Physical color assignment uses the shared generic perceptual
-
-    color-distance semantics.
-
-24\. Each assignment scope minimizes aggregate perceptual distance
-across the
-
-    complete set of Artifact colors.
-
-25\. Aggregate assignment distance is the sum of the individual
-perceptual
-
-    distances in that assignment.
-
-26\. Different Artifact colors receive distinct physical color
-identities
-
-    within one assignment scope.
-
-27\. Assignment is deterministic for the same ordered Artifact colors
-and
-
-    ordered candidate colors.
-
-28\. Printer, library, and catalog assignments are independent.
-
-29\. `printer_assignments` establish the physical semantic color
-identities
-
-    used by the current Artwork manufacturing realization.
-
-30\. When more printer colors are available than Artifact colors, unused
-
-    printer colors remain unused.
-
-31\. Execution requiring printer assignment requires enough distinct
-
-    `printer_colors` to assign every Artifact color.
-
-32\. Library and catalog assignments are diagnostic and do not
-automatically
-
-    modify printer, library, catalog, or Artifact configuration.
-
-33\. Physical catalog-wide assignment excludes catalog entries
-explicitly
-
-    identified as synthetic test colors.
-
-34\. Raster color layers use one common registered coordinate system.
-
-35\. Raster color regions are mutually exclusive.
-
-36\. Registered raster color regions collectively cover retained Artwork
-
-    within the registered Artwork envelope.
-
-37\. Every retained Artwork location belongs to exactly one registered
-raster
-
-    color region.
-
-38\. Raster island cleanup is defined in raster pixel space rather than
-
-    physical space.
-
-39\. Raster island cleanup does not create unassigned retained Artwork
-merely
-
-    by removing an insignificant color island.
-
-40\. Raster processing is independent of physical `artwork_size`.
-
-41\. Vector color layers use one common registered coordinate system.
-
-42\. Vector processing is independent of physical `artwork_size`.
-
-43\. The vector manifest records the common `registered_extent`.
-
-44\. The Artwork envelope uses the same registered coordinate system as
-the
-
-    vector color layers.
-
-45\. The Artwork envelope represents the outer occupied region of
-registered
-
-    Artwork.
-
-46\. The `registered_extent` defines the common registered coordinate
-system;
-
-    the envelope defines the occupied region within that coordinate
-system.
-
-47\. All registration-preserving transformations are applied
-consistently to
-
-    the Artwork envelope and every registered color layer.
-
-48\. A consumer may determine Artwork containment from the registered
-envelope
-
-    without independently determining the bounds of individual color
-layers.
-
-49\. Registered vector Artwork has no predetermined physical
-manufacturing
-
-    size.
-
-50\. Artifact color-region identity and assigned printer semantic color
-
-    identity are preserved through registered raster and vector
-products.
-
-51\. Registered vector Artwork is a reusable intermediate product.
-
-52\. Standalone physical dimensionalization begins at extrusion.
-
-53\. Standalone extrusion uniformly scales the occupied Artwork envelope
-so
-
-    that its maximum physical X/Y extent equals `artwork_size`, while
-applying
-
-    the same registration-preserving transformation to the envelope and
-every
-
-    registered color layer.
-
-54\. All color layers receive the same dimensional transformation and
-remain
-
-    registered.
-
-55\. Standalone extrusion uses `artwork_raise` as the physical Z height.
-
-56\. Standalone extrusion preserves the assigned printer semantic color
-
-    identity of each color component.
-
-57\. Standalone packaging produces a multicomponent printable 3MF.
-
-58\. Standalone packaging preserves the assigned printer semantic color
-
-    identity and RGB representation of each component.
-
-59\. Artwork does not intrinsically provide an underlying structural base. An optional base may be provided by an Artwork Feature.
-
-60\. Artwork does not define a fill color for geometry outside the
-Artwork
-
-    envelope.
-
-61\. Geometry belonging to a consuming model outside the registered
-Artwork
-
-    envelope is the responsibility of that consuming model.
-
-62\. Another model can consume registered vector Artwork without
-requiring
-
-    standalone Artwork extrusion or packaging.
-
-63\. Artifact color analysis operates on persistent Artwork color
-information
-
-    without requiring standalone Artwork extrusion or packaging.
-
-64\. Individual assignment distances describe the quality of physical
-
-    reproduction of individual Artifact colors.
-
-65\. Aggregate assignment distance describes the quality of a complete
-
-    physical color assignment.
-
-66\. Color analysis and alternative assignments do not modify persistent
-
-    Artwork manufacturing products.
+1.  Artwork consumes a materialized raster source image.
+2.  Prepared Artwork is limited to its derived Artwork envelope.
+3.  Artwork envelope derivation is controlled by `artwork_envelope_mode`.
+4.  `artwork_envelope_mode` defaults to `shrink-wrap`.
+5.  `alpha` envelope derivation determines meaningful source foreground from source alpha.
+6.  `shrink-wrap` envelope derivation produces a conservative outer envelope by distinguishing exterior background from enclosed Artwork.
+7.  Shrink-wrap does not exclude an enclosed Artwork region solely because its color also occurs in the exterior background.
+8.  `artifact_color_count` defines the number of color regions requested from multicolor source tracing.
+9.  Unless explicitly configured, `artifact_color_count` is derived from the number of configured `printer_colors`.
+10. An explicitly configured `artifact_color_count` may be smaller than the number of configured printer colors.
+11. Artwork does not create additional Artifact colors merely to use all available printer colors.
+12. Preparation preserves source color information within the Artwork envelope until multicolor tracing performs source color separation.
+13. Preparation does not quantize source Artwork to printer, library, or catalog filament RGB values before multicolor color discovery.
+14. Multicolor tracing assigns RGB representations to the traced color regions.
+15. The RGB representations measured from those traced regions form `artifact_colors`.
+16. Artifact colors are derived product information and are not required to correspond exactly to any physical catalog color.
+17. Physical filament availability does not determine the RGB values assigned to Artifact colors.
+18. The prepared color regions collectively represent the Artwork within its envelope.
+19. `printer_assignments` map Artifact colors one-to-one to distinct selected `printer_colors`.
+20. `library_assignments` map Artifact colors one-to-one to distinct selected `library_colors`.
+21. `catalog_assignments` map Artifact colors one-to-one to distinct selected physical catalog colors.
+22. Each physical color assignment preserves the Artifact color identity, Artifact RGB representation, selected physical semantic identity, selected physical RGB representation, and perceptual distance.
+23. Physical color assignment uses the shared generic perceptual color-distance semantics.
+24. Each assignment scope minimizes aggregate perceptual distance across the complete set of Artifact colors.
+25. Aggregate assignment distance is the sum of the individual perceptual distances in that assignment.
+26. Different Artifact colors receive distinct physical color identities within one assignment scope.
+27. Assignment is deterministic for the same ordered Artifact colors and ordered candidate colors.
+28. Printer, library, and catalog assignments are independent.
+29. `printer_assignments` establish the physical semantic color identities used when packaging the current standalone Artwork manufacturing realization.
+30. When more printer colors are available than Artifact colors, unused printer colors remain unused.
+31. Execution requiring printer assignment requires enough distinct `printer_colors` to assign every Artifact color.
+32. Library and catalog assignments are diagnostic and do not automatically modify printer, library, catalog, or Artifact configuration.
+33. Physical catalog-wide assignment excludes catalog entries explicitly identified as synthetic test colors.
+34. Raster color layers use one common registered coordinate system.
+35. Raster color regions are mutually exclusive.
+36. Registered raster color regions collectively cover retained Artwork within the registered Artwork envelope.
+37. Every retained Artwork location belongs to exactly one registered raster color region.
+38. Raster island cleanup is defined in raster pixel space rather than physical space.
+39. Raster island cleanup does not create unassigned retained Artwork merely by removing an insignificant color island.
+40. Raster processing is independent of physical `artwork_size`.
+41. Vector color layers use one common registered coordinate system.
+42. Vector processing is independent of physical `artwork_size`.
+43. The vector manifest records the common `registered_extent`.
+44. The Artwork envelope uses the same registered coordinate system as the vector color layers.
+45. The Artwork envelope represents the outer occupied region of registered Artwork.
+46. The `registered_extent` defines the common registered coordinate system; the envelope defines the occupied region within that coordinate system.
+47. All registration-preserving transformations are applied consistently to the Artwork envelope and every registered color layer.
+48. A consumer may determine Artwork containment from the registered envelope without independently determining the bounds of individual color layers.
+49. Registered vector Artwork has no predetermined physical manufacturing size.
+50. Artifact color-region identity and Artifact RGB representation are preserved through registered raster and vector products without requiring physical printer-color assignment.
+51. Registered vector Artwork is a reusable intermediate product.
+52. Standalone physical dimensionalization begins at extrusion.
+53. Standalone extrusion uniformly scales the occupied Artwork envelope so that its maximum physical X/Y extent equals `artwork_size`, while applying the same registration-preserving transformation to the envelope and every registered color layer.
+54. All color layers receive the same dimensional transformation and remain registered.
+55. Standalone extrusion uses `artwork_raise` as the physical Z height.
+56. Standalone extrusion preserves Artifact-color identity for ordinary Artwork components and logical Artifact-color attachment for participating Feature components without resolving their final physical printer colors.
+57. Standalone packaging is the physical printer-assignment boundary for Artwork and produces a multicomponent printable 3MF.
+58. Standalone packaging resolves ordinary Artifact-color components against `printer_colors` and applies explicit or inherited physical colors to participating Feature components.
+59. Artwork does not intrinsically provide an underlying structural base. An optional base may be provided by an Artwork Feature.
+60. Artwork does not define a fill color for geometry outside the Artwork envelope.
+61. Geometry belonging to a consuming model outside the registered Artwork envelope is the responsibility of that consuming model.
+62. Another model can consume registered vector Artwork without requiring standalone Artwork extrusion or packaging.
+63. Artifact color analysis operates on persistent Artwork color information without requiring standalone Artwork extrusion or packaging.
+64. Individual assignment distances describe the quality of physical reproduction of individual Artifact colors.
+65. Aggregate assignment distance describes the quality of a complete physical color assignment.
+66. Color analysis and alternative assignments do not modify persistent Artwork manufacturing products.
+67. Changing `printer_colors` without changing effective upstream Artifact-color configuration does not change registered raster, registered vector, or standalone extrusion geometry.
+68. Registered Artwork supplied to another model carries Artifact-color identity rather than the standalone Artwork realization's physical printer assignment.
+69. A consuming model is responsible for resolving physical printer assignment at the packaging boundary of its own manufactured artifact.
+70. An Artwork Feature without an explicit physical-color override inherits the packaged physical printer color of its logically attached Artifact color.
+71. An explicit Feature physical-color override takes precedence over inherited Artifact-color printer assignment.
 
 ## Scope
 
 The Artwork model includes:
 
 -   raster source interpretation;
-
 -   Artwork-envelope derivation;
-
 -   source-driven multicolor separation;
-
 -   Artifact color measurement;
-
--   printer color assignment;
-
+-   standalone packaging-time printer color assignment;
 -   library color assignment;
-
 -   physical-catalog color assignment;
-
 -   individual and aggregate color-distance analysis;
-
 -   registered raster geometry;
-
 -   registered vector geometry;
-
 -   standalone dimensionalization;
-
 -   standalone multicomponent 3MF packaging;
-
 -   reusable registered vector Artwork;
-
 -   optional standalone Artwork Features.
+-   preservation of Artifact-color identity through registered geometry and standalone extrusion;
+-   logical Artifact-color attachment for standalone Feature geometry;
+-   packaging-time Feature color inheritance and explicit Feature color overrides;
 
 Artwork does not define:
 
@@ -2208,16 +1392,10 @@ Artwork does not define:
 
 -   physical sizing of Artwork when consumed by another model;
 
--   fill color for geometry belonging to a consuming model outside the
-    Artwork
-
-  envelope;
+-   fill color for geometry belonging to a consuming model outside the Artwork envelope;
 
 -   automatic mutation of printer or library color configuration;
 
 -   automatic filament installation or purchasing decisions.
 
-Those responsibilities belong to the consuming model, configuration
-layer, or
-
-explicit user action as appropriate.
+Those responsibilities belong to the consuming model, configuration layer, or explicit user action as appropriate.
