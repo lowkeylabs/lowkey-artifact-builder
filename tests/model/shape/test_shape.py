@@ -385,17 +385,21 @@ def test_shape_package_depends_on_extrude_stage() -> None:
     assert package_stage.product_dependencies == ()
 
 
-def test_shape_package_declares_no_geometry_parameters() -> None:
+def test_shape_package_consumes_only_packaging_parameters() -> None:
     """
-    Shape packaging does not construct or dimensionalize geometry.
+    Shape packaging owns physical printer assignment for incorporated Artwork.
 
-    Geometry policy and physical dimensions belong to upstream stages.
-    Packaging assembles already produced physical components.
+    Geometry policy, physical dimensions, and Shape-owned structural colors
+    belong to upstream stages. Packaging consumes printer_colors only to
+    resolve the logical Artifact-color identities of incorporated Artwork
+    into physical printer colors.
     """
 
     package_stage = _package_stage()
 
-    assert package_stage.parameters == ()
+    assert package_stage.parameters == (
+        "printer_colors",
+    )
 
 
 def test_shape_package_produces_final_artifact() -> None:

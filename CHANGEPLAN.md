@@ -457,6 +457,167 @@ This phase reopens only the production guarantees implicated by observed evidenc
 
 ---
 
+## 3.0 Complete the physical-color Package boundary across Models
+
+### Context
+
+Correction of the Artwork color-assignment defect established a stronger
+manufacturing boundary:
+
+> Physical printer-color policy must not invalidate geometry that is otherwise
+> unchanged.
+
+Artwork now preserves logical Artifact-color identity through Raster, Vector,
+and Extrude. Artwork Package owns physical printer-color assignment.
+
+Review of the corresponding Shape boundary exposed the same class of
+materiality problem. Shape Extrude currently declares physical color
+parameters that do not determine geometry, and Artwork-fill participation is
+currently coupled to the presence of `shape_artwork_fill_color`.
+
+Complete the color-boundary correction across Shape before beginning the
+cross-Realization Product-reuse work.
+
+### Required Shape semantics
+
+Separate Shape component participation and geometry from physical color policy.
+
+Shape Extrude owns geometry and component participation.
+
+Shape Package owns physical color assignment.
+
+The intended parameter ownership is:
+
+```text
+Structure
+    shape_geometry
+    shape_sides
+    shape_rotation
+
+Compose
+    shape_size
+    shape_outer_ridge_width
+    shape_outer_ridge_style
+
+Extrude
+    shape_size
+    shape_base_raise
+    shape_outer_ridge_raise
+    shape_outer_ridge_style
+    shape_artwork_raise
+    shape_artwork_fill_raise
+
+Package
+    printer_colors
+    shape_base_color
+    shape_outer_ridge_color
+    shape_artwork_fill_color
+```
+
+`shape_artwork_fill_raise` is a new Shape geometry parameter.
+
+Its semantics are:
+
+```text
+shape_artwork_fill_raise > 0
+    Artwork fill participates
+    value determines physical fill height
+
+shape_artwork_fill_raise <= 0
+    Artwork fill does not participate
+```
+
+`shape_artwork_fill_color` does not determine participation.
+
+When Artwork fill participates:
+
+```text
+explicit shape_artwork_fill_color
+    use the explicitly resolved color
+
+shape_artwork_fill_color not explicitly specified
+    inherit the resolved shape_base_color
+```
+
+Likewise, `shape_outer_ridge_color` remains physical color policy and inherits
+the resolved `shape_base_color` when not explicitly specified.
+
+Changing only physical color policy must not invalidate Structure, Compose, or
+Extrude.
+
+For example:
+
+```text
+recolor / physical color change
+        ↓
+Structure   reused
+Compose     reused
+Extrude     reused
+Package     rebuilt
+```
+
+Changing `shape_artwork_fill_raise` is a geometry/participation change and must
+invalidate Extrude and downstream Package.
+
+### Permanent specification
+
+Update Shape `DEFINITION.md` before production implementation so the permanent
+Model contract defines:
+
+- `shape_artwork_fill_raise`;
+- fill participation independently from fill color;
+- fill physical height;
+- fill-color inheritance from `shape_base_color`;
+- Shape Extrude as the geometry/participation boundary;
+- Shape Package as the physical-color boundary; and
+- the corresponding parameter-materiality invariants.
+
+Do not use CHANGEPLAN as the permanent definition of these semantics.
+
+### TDD slices
+
+After the permanent Shape definition is updated:
+
+1. RED the declarative StageSpecs:
+   - Extrude owns geometry/participation parameters and no physical colors;
+   - Package owns `printer_colors` and Shape physical-color parameters.
+
+2. RED Artwork-fill participation and geometry:
+   - zero/nonparticipating `shape_artwork_fill_raise` produces no fill;
+   - positive `shape_artwork_fill_raise` produces fill;
+   - the value determines fill physical height;
+   - fill participation does not depend on `shape_artwork_fill_color`.
+
+3. RED Package physical-color behavior:
+   - explicit fill color is applied during Package;
+   - absent fill color inherits resolved `shape_base_color`;
+   - base and outer-ridge physical colors are resolved during Package;
+   - incorporated Artwork printer assignment remains Package-owned.
+
+4. RED incremental materiality:
+   - changing physical color policy invalidates Package only;
+   - changing `shape_artwork_fill_raise` invalidates Extrude and Package.
+
+5. Implement the smallest correct changes and prove the corrected behavior
+   through focused Model/engine tests and appropriate manufacturing acceptance
+   coverage.
+
+### Completion
+
+Shape geometry and component participation are independent of physical
+printer-color selection.
+
+Artwork and Shape therefore share the same architectural principle:
+
+> Geometry is produced without unnecessary dependence on physical printer-color
+> policy; physical color assignment occurs at Package.
+
+A recolor that changes only physical color policy can reuse all current
+upstream geometry.
+
+
+---
+
 ## 3.1 Artwork cross-Realization Product reuse
 
 ### Observed behavior
