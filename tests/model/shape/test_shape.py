@@ -293,15 +293,13 @@ def test_shape_extrude_depends_on_compose_stage() -> None:
 
 def test_shape_extrude_consumes_physical_dimensionalization_parameters() -> None:
     """
-    Shape extrusion owns physical dimensionalization of the complete composition.
+    Shape extrusion owns physical geometry and component participation.
 
-    Structural dimensions and colors remain extrusion policy. Incorporated
-    Artwork receives its Shape-owned physical raise here, and the optional
-    Artwork fill color determines whether a corresponding physical fill
-    component is produced.
+    Physical dimensions that affect dimensionalized Shape geometry belong here.
+    Artwork-fill participation and height are controlled by
+    shape_artwork_fill_raise.
 
-    Standalone Artwork dimensionalization parameters do not participate in
-    Shape extrusion.
+    Physical color policy does not participate in extrusion.
     """
 
     extrude_stage = _extrude_stage()
@@ -309,12 +307,10 @@ def test_shape_extrude_consumes_physical_dimensionalization_parameters() -> None
     assert extrude_stage.parameters == (
         "shape_size",
         "shape_base_raise",
-        "shape_base_color",
         "shape_outer_ridge_raise",
         "shape_outer_ridge_style",
-        "shape_outer_ridge_color",
         "shape_artwork_raise",
-        "shape_artwork_fill_color",
+        "shape_artwork_fill_raise",
     )
 
 
@@ -385,20 +381,38 @@ def test_shape_package_depends_on_extrude_stage() -> None:
     assert package_stage.product_dependencies == ()
 
 
+def test_shape_extrude_does_not_consume_physical_color_parameters() -> None:
+    """
+    Physical color assignment is not material to Shape extrusion.
+
+    Changing Shape-owned physical colors or incorporated Artwork printer
+    assignments must not invalidate otherwise unchanged extruded geometry.
+    """
+
+    extrude_stage = _extrude_stage()
+
+    assert "printer_colors" not in extrude_stage.parameters
+    assert "shape_base_color" not in extrude_stage.parameters
+    assert "shape_outer_ridge_color" not in extrude_stage.parameters
+    assert "shape_artwork_fill_color" not in extrude_stage.parameters
+
+
 def test_shape_package_consumes_only_packaging_parameters() -> None:
     """
-    Shape packaging owns physical printer assignment for incorporated Artwork.
+    Shape packaging owns physical color assignment.
 
-    Geometry policy, physical dimensions, and Shape-owned structural colors
-    belong to upstream stages. Packaging consumes printer_colors only to
-    resolve the logical Artifact-color identities of incorporated Artwork
-    into physical printer colors.
+    printer_colors resolves incorporated Artwork Artifact-color identities.
+    Shape-owned base, outer-ridge, and Artwork-fill colors are also physical
+    packaging policy rather than geometry or component-participation policy.
     """
 
     package_stage = _package_stage()
 
     assert package_stage.parameters == (
         "printer_colors",
+        "shape_base_color",
+        "shape_outer_ridge_color",
+        "shape_artwork_fill_color",
     )
 
 

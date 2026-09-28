@@ -23,7 +23,6 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
-from lowkey_artifact_builder.colors import PaletteColor, resolve_palette_color
 from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.tools.openscad import (
     render_stl_source,
@@ -158,6 +157,7 @@ def execute(
     dimensionalized into independently printable physical components.
 
     Shape owns all physical X/Y and Z semantics of the resulting assembly.
+    Physical printer-color assignment belongs to downstream packaging.
     """
 
     composition = context.input(
@@ -178,20 +178,6 @@ def execute(
 
     shape_base_raise = context.resolver(
         "shape_base_raise",
-    )
-
-    shape_base_color = resolve_palette_color(
-        context.resolver(
-            "shape_base_color",
-        ),
-        context.resolver.colors,
-    )
-
-    shape_outer_ridge_color = resolve_palette_color(
-        context.resolver(
-            "shape_outer_ridge_color",
-        ),
-        context.resolver.colors,
     )
 
     shape_outer_ridge_raise = context.resolver(
@@ -231,14 +217,11 @@ def execute(
                     "shape_artwork_raise must be greater than zero when Artwork is incorporated."
                 )
 
-        shape_artwork_fill_color: PaletteColor | None = None
+        shape_artwork_fill_raise = 0.0
 
         if artwork_fill is not None:
-            shape_artwork_fill_color = resolve_palette_color(
-                context.resolver(
-                    "shape_artwork_fill_color",
-                ),
-                context.resolver.colors,
+            shape_artwork_fill_raise = context.resolver(
+                "shape_artwork_fill_raise",
             )
 
         ridge = _load_ridge(
@@ -328,23 +311,20 @@ def execute(
             ...,
         ] = ()
 
-        if artwork_fill is not None:
+        if artwork_fill is not None and shape_artwork_fill_raise > 0.0:
             artwork_fill_components = _render_artwork_fill_component(
                 artwork_fill,
                 manifest.parent,
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
-                shape_artwork_raise=shape_artwork_raise,
+                shape_artwork_fill_raise=shape_artwork_fill_raise,
             )
 
         _write_component_manifest(
             manifest,
             components,
-            base_color=shape_base_color,
-            ridge_color=shape_outer_ridge_color,
             artwork_components=artwork_components,
             artwork_fill_components=artwork_fill_components,
-            artwork_fill_color=shape_artwork_fill_color,
         )
 
         if not manifest.is_file():
@@ -378,7 +358,7 @@ def _render_artwork_fill_component(
     *,
     shape_size: float,
     shape_base_raise: float,
-    shape_artwork_raise: float,
+    shape_artwork_fill_raise: float,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -386,8 +366,9 @@ def _render_artwork_fill_component(
     """
     Dimensionalize the persistent registered Artwork-fill region.
 
-    Artwork fill receives the same Shape-owned physical X/Y mapping and
-    physical Z interval as incorporated Artwork.
+    Artwork fill receives Shape's physical X/Y mapping. Its physical Z
+    interval begins at the top of the structural base and is controlled
+    independently by shape_artwork_fill_raise.
     """
 
     output_path = output_directory / ARTWORK_FILL_COMPONENT_PATH
@@ -396,7 +377,7 @@ def _render_artwork_fill_component(
         artwork_fill,
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
-        shape_artwork_raise=shape_artwork_raise,
+        shape_artwork_fill_raise=shape_artwork_fill_raise,
     )
 
     render_stl_source(
@@ -1280,8 +1261,6 @@ def _write_component_manifest(
         ...,
     ],
     *,
-    base_color: PaletteColor,
-    ridge_color: PaletteColor,
     artwork_components: tuple[
         tuple[str, str, dict[str, object]],
         ...,
@@ -1290,30 +1269,21 @@ def _write_component_manifest(
         tuple[str, str],
         ...,
     ] = (),
-    artwork_fill_color: PaletteColor | None = None,
 ) -> None:
     """
     Write the physical-component manifest for Shape extrusion.
 
-    Structural, Artwork-fill, and incorporated Artwork components preserve
-    their semantic printing-color identity for downstream packaging.
-    """
+    Shape-owned components are identified by component name and path only.
+    Their physical printer-color assignment belongs to downstream packaging.
 
-    colors = {
-        BASE_COMPONENT_NAME: base_color,
-        RIDGE_COMPONENT_NAME: ridge_color,
-    }
+    Incorporated Artwork components retain persistent Artifact-color identity
+    so downstream packaging can resolve their physical printer assignments.
+    """
 
     manifest_components: list[dict[str, object]] = [
         {
             "name": name,
             "path": component_path,
-            "color": {
-                "name": colors[name].name,
-                "rgb": list(
-                    colors[name].rgb,
-                ),
-            },
         }
         for name, component_path in components
     ]
@@ -1331,25 +1301,14 @@ def _write_component_manifest(
             }
         )
 
-    if artwork_fill_components and artwork_fill_color is None:
-        raise ValueError("Physical Artwork-fill components require a semantic color.")
-
     for (
         name,
         component_path,
     ) in artwork_fill_components:
-        assert artwork_fill_color is not None
-
         manifest_components.append(
             {
                 "name": name,
                 "path": component_path,
-                "color": {
-                    "name": artwork_fill_color.name,
-                    "rgb": list(
-                        artwork_fill_color.rgb,
-                    ),
-                },
             }
         )
 
@@ -1482,13 +1441,14 @@ def _build_artwork_fill_scad(
     *,
     shape_size: float,
     shape_base_raise: float,
-    shape_artwork_raise: float,
+    shape_artwork_fill_raise: float,
 ) -> str:
     """
     Build OpenSCAD source for Shape-owned Artwork fill.
 
     Registered fill geometry is dimensionalized using Shape's physical X/Y
-    size and receives the same physical Z interval as incorporated Artwork.
+    size. The fill begins at the top of the structural base and has its own
+    Shape-owned physical height.
     """
 
     outer = _build_registered_fill_boundary_scad(
@@ -1504,7 +1464,7 @@ def _build_artwork_fill_scad(
     return (
         f"shape_size = {shape_size:g};\n"
         f"shape_base_raise = {shape_base_raise:g};\n"
-        f"shape_artwork_raise = {shape_artwork_raise:g};\n"
+        f"shape_artwork_fill_raise = {shape_artwork_fill_raise:g};\n"
         "\n"
         "module registered_artwork_fill_outer_boundary() {\n"
         f"{_indent_scad(outer, 4)}"
@@ -1516,7 +1476,7 @@ def _build_artwork_fill_scad(
         "\n"
         "translate([0, 0, shape_base_raise])\n"
         "    linear_extrude(\n"
-        "        height = shape_artwork_raise,\n"
+        "        height = shape_artwork_fill_raise,\n"
         "        center = false\n"
         "    )\n"
         "        difference() {\n"

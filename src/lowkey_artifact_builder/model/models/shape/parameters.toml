@@ -138,14 +138,27 @@ shape_outer_ridge_style = "integrated"
 
 shape_artwork_raise = 1.0
 
+#
+# Physical height of the optional Artwork fill above the top
+# of the Shape base, in millimeters.
+#
+# Zero disables the fill. Positive values enable the fill.
+#
+# Fill participation and physical height are independent of
+# physical color selection.
+#
+
+shape_artwork_fill_raise = 0.0
 
 #
-# Optional semantic fill color applied beneath incorporated Artwork.
+# Optional physical printing-color override for Artwork fill.
 #
-# "none" means that no additional Artwork fill component is produced.
+# When not explicitly configured, Artwork fill inherits the
+# resolved physical printing color of the Shape base.
 #
-# Incorporated Artwork retains the semantic colors of its own
-# independently printable components.
+# This parameter affects physical color assignment during
+# packaging only. It does not determine fill participation
+# or geometry.
 #
 
-shape_artwork_fill_color = "none"
+## shape_artwork_fill_color = "white"

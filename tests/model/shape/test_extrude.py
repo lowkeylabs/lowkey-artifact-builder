@@ -409,12 +409,9 @@ def _make_extrude_resolver(
     *,
     shape_size: float = 100.0,
     shape_base_raise: float = 2.0,
-    shape_base_color: str = "white",
     shape_outer_ridge_raise: float = 1.0,
     shape_outer_ridge_style: str = "integrated",
-    shape_outer_ridge_color: str = "white",
     shape_artwork_raise: float = 1.0,
-    colors: dict[str, object] | None = None,
 ) -> Mock:
     """
     Create a resolver satisfying the Shape extrude-stage parameter contract.
@@ -424,15 +421,11 @@ def _make_extrude_resolver(
         side_effect={
             "shape_size": shape_size,
             "shape_base_raise": shape_base_raise,
-            "shape_base_color": shape_base_color,
             "shape_outer_ridge_raise": shape_outer_ridge_raise,
             "shape_outer_ridge_style": shape_outer_ridge_style,
-            "shape_outer_ridge_color": shape_outer_ridge_color,
             "shape_artwork_raise": shape_artwork_raise,
         }.__getitem__,
     )
-
-    resolver.colors = {} if colors is None else colors
 
     return resolver
 
@@ -1040,11 +1033,11 @@ def test_negative_raise_integrated_ridge_produces_only_base_component(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    A negative integrated ridge produces no independent ridge-color component.
+    A negative integrated ridge produces no independent ridge component.
 
-    Integrated ridge color applies only to ridge geometry above the base top.
-    With a negative ridge raise, the complete perimeter lies below that top
-    and remains base material. Extrusion therefore materializes only base.stl.
+    With a negative ridge raise, the complete perimeter lies below the base top.
+    Extrusion therefore materializes only base.stl; physical color assignment
+    remains downstream in Package.
     """
 
     composition = tmp_path / "composition.svg"
@@ -1111,14 +1104,6 @@ def test_negative_raise_integrated_ridge_produces_only_base_component(
         {
             "name": "base",
             "path": "base.stl",
-            "color": {
-                "name": "white",
-                "rgb": [
-                    255,
-                    255,
-                    255,
-                ],
-            },
         },
     ]
 
@@ -1801,8 +1786,6 @@ def test_extrude_stage_materializes_declared_component_manifest(
     assert resolver.call_args_list == [
         call("shape_size"),
         call("shape_base_raise"),
-        call("shape_base_color"),
-        call("shape_outer_ridge_color"),
         call("shape_outer_ridge_raise"),
         call("shape_outer_ridge_style"),
     ]
@@ -1817,14 +1800,6 @@ def test_extrude_stage_materializes_declared_component_manifest(
         {
             "name": "base",
             "path": "base.stl",
-            "color": {
-                "name": "white",
-                "rgb": [
-                    255,
-                    255,
-                    255,
-                ],
-            },
         },
     ]
 
@@ -1915,8 +1890,7 @@ def test_integrated_ridge_component_manifest_contains_base_and_ridge(
 
     Structural integration determines the assembled geometry but does not
     erase ridge component identity. Base and ridge remain independently
-    identifiable so downstream packaging can preserve independent printing
-    properties such as color.
+    identifiable so downstream packaging can assign independent printing properties.
     """
 
     composition = tmp_path / "composition.svg"
@@ -1981,26 +1955,10 @@ def test_integrated_ridge_component_manifest_contains_base_and_ridge(
         {
             "name": "base",
             "path": "base.stl",
-            "color": {
-                "name": "white",
-                "rgb": [
-                    255,
-                    255,
-                    255,
-                ],
-            },
         },
         {
             "name": "ridge",
             "path": "ridge.stl",
-            "color": {
-                "name": "white",
-                "rgb": [
-                    255,
-                    255,
-                    255,
-                ],
-            },
         },
     ]
 
@@ -2162,14 +2120,6 @@ def test_integrated_ridge_accepts_minimum_raise(
         {
             "name": "base",
             "path": "base.stl",
-            "color": {
-                "name": "white",
-                "rgb": [
-                    255,
-                    255,
-                    255,
-                ],
-            },
         },
     ]
 
@@ -2256,14 +2206,6 @@ def test_separate_ridge_accepts_minimum_raise_without_physical_ridge_volume(
         {
             "name": "base",
             "path": "base.stl",
-            "color": {
-                "name": "white",
-                "rgb": [
-                    255,
-                    255,
-                    255,
-                ],
-            },
         },
     ]
 
@@ -3230,7 +3172,7 @@ def test_load_ridge_rejects_inner_boundary_without_shape_boundary(
         )
 
 
-def test_base_component_manifest_preserves_semantic_color(
+def test_base_component_manifest_preserves_logical_component_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3253,18 +3195,7 @@ def test_base_component_manifest_preserves_semantic_color(
         composition_manifest,
     )
 
-    resolver = _make_extrude_resolver(
-        shape_base_color="red",
-        colors={
-            "red": {
-                "rgb": [
-                    220,
-                    38,
-                    38,
-                ],
-            },
-        },
-    )
+    resolver = _make_extrude_resolver()
 
     context = Mock(
         spec=StageContext,
@@ -3308,27 +3239,19 @@ def test_base_component_manifest_preserves_semantic_color(
         {
             "name": "base",
             "path": "base.stl",
-            "color": {
-                "name": "red",
-                "rgb": [
-                    220,
-                    38,
-                    38,
-                ],
-            },
         },
     ]
 
 
-def test_positive_integrated_ridge_manifest_preserves_semantic_color(
+def test_positive_integrated_ridge_manifest_preserves_component_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    A positive integrated ridge preserves its independent semantic color.
+    A positive integrated ridge preserves independent component identity.
 
     Only the physical ridge volume above the base top is represented by the
-    ridge component, so that component carries shape_outer_ridge_color.
+    ridge component. Physical printing color is resolved downstream by Package.
     """
 
     composition = tmp_path / "composition.svg"
@@ -3343,19 +3266,7 @@ def test_positive_integrated_ridge_manifest_preserves_semantic_color(
         composition_manifest,
     )
 
-    resolver = _make_extrude_resolver(
-        shape_base_color="white",
-        shape_outer_ridge_color="red",
-        colors={
-            "red": {
-                "rgb": [
-                    220,
-                    38,
-                    38,
-                ],
-            },
-        },
-    )
+    resolver = _make_extrude_resolver()
 
     context = Mock(
         spec=StageContext,
@@ -3399,39 +3310,23 @@ def test_positive_integrated_ridge_manifest_preserves_semantic_color(
         {
             "name": "base",
             "path": "base.stl",
-            "color": {
-                "name": "white",
-                "rgb": [
-                    255,
-                    255,
-                    255,
-                ],
-            },
         },
         {
             "name": "ridge",
             "path": "ridge.stl",
-            "color": {
-                "name": "red",
-                "rgb": [
-                    220,
-                    38,
-                    38,
-                ],
-            },
         },
     ]
 
 
-def test_separate_ridge_manifest_preserves_semantic_color(
+def test_separate_ridge_manifest_preserves_component_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    A physical separate ridge preserves its independent semantic color.
+    A physical separate ridge preserves independent component identity.
 
-    Base and ridge are independently printable components and therefore
-    retain their independently resolved semantic printing colors.
+    Base and ridge remain independently identifiable physical components.
+    Physical printing colors are resolved downstream by Package.
     """
 
     composition = tmp_path / "composition.svg"
@@ -3447,18 +3342,7 @@ def test_separate_ridge_manifest_preserves_semantic_color(
     )
 
     resolver = _make_extrude_resolver(
-        shape_base_color="white",
-        shape_outer_ridge_color="red",
         shape_outer_ridge_style="separate",
-        colors={
-            "red": {
-                "rgb": [
-                    220,
-                    38,
-                    38,
-                ],
-            },
-        },
     )
 
     context = Mock(
@@ -3503,39 +3387,23 @@ def test_separate_ridge_manifest_preserves_semantic_color(
         {
             "name": "base",
             "path": "base.stl",
-            "color": {
-                "name": "white",
-                "rgb": [
-                    255,
-                    255,
-                    255,
-                ],
-            },
         },
         {
             "name": "ridge",
             "path": "ridge.stl",
-            "color": {
-                "name": "red",
-                "rgb": [
-                    220,
-                    38,
-                    38,
-                ],
-            },
         },
     ]
 
 
-def test_ridge_color_does_not_create_component_without_ridge(
+def test_extrude_does_not_create_component_without_registered_ridge(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Ridge color configuration does not create physical ridge geometry.
+    Extrude does not invent ridge geometry.
 
-    A registered composition without a ridge produces only the base component
-    even when an independent ridge color is configured.
+    A registered composition without a ridge produces only the base component.
+    Physical color policy is not an Extrude input.
     """
 
     composition = tmp_path / "composition.svg"
@@ -3550,10 +3418,7 @@ def test_ridge_color_does_not_create_component_without_ridge(
         composition_manifest,
     )
 
-    resolver = _make_extrude_resolver(
-        shape_base_color="white",
-        shape_outer_ridge_color="red",
-    )
+    resolver = _make_extrude_resolver()
 
     context = Mock(
         spec=StageContext,
@@ -3597,14 +3462,6 @@ def test_ridge_color_does_not_create_component_without_ridge(
         {
             "name": "base",
             "path": "base.stl",
-            "color": {
-                "name": "white",
-                "rgb": [
-                    255,
-                    255,
-                    255,
-                ],
-            },
         },
     ]
 
@@ -3616,16 +3473,16 @@ def test_ridge_color_does_not_create_component_without_ridge(
         -0.5,
     ],
 )
-def test_integrated_nonpositive_ridge_has_no_independent_color_component(
+def test_integrated_nonpositive_ridge_has_no_independent_physical_component(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     shape_outer_ridge_raise: float,
 ) -> None:
     """
-    A nonpositive integrated ridge has no independently colored ridge volume.
+    A nonpositive integrated ridge has no independent physical ridge volume.
 
-    The registered ridge remains structurally meaningful, but its configured
-    color cannot manufacture a physical component above the base top.
+    The registered ridge remains structurally meaningful, but Extrude emits no
+    ridge component above the base top.
     """
 
     composition = tmp_path / "composition.svg"
@@ -3641,8 +3498,6 @@ def test_integrated_nonpositive_ridge_has_no_independent_color_component(
     )
 
     resolver = _make_extrude_resolver(
-        shape_base_color="white",
-        shape_outer_ridge_color="red",
         shape_outer_ridge_raise=shape_outer_ridge_raise,
         shape_outer_ridge_style="integrated",
     )
@@ -3689,27 +3544,19 @@ def test_integrated_nonpositive_ridge_has_no_independent_color_component(
         {
             "name": "base",
             "path": "base.stl",
-            "color": {
-                "name": "white",
-                "rgb": [
-                    255,
-                    255,
-                    255,
-                ],
-            },
         },
     ]
 
 
-def test_zero_height_separate_ridge_has_no_independent_color_component(
+def test_zero_height_separate_ridge_has_no_independent_physical_component(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    A zero-height separate ridge has no physical color component.
+    A zero-height separate ridge has no physical ridge component.
 
-    The ridge remains semantically defined, but color metadata does not cause
-    zero-volume physical geometry to be emitted.
+    The ridge remains semantically defined, but zero-volume physical geometry
+    is not emitted.
     """
 
     composition = tmp_path / "composition.svg"
@@ -3726,8 +3573,6 @@ def test_zero_height_separate_ridge_has_no_independent_color_component(
 
     resolver = _make_extrude_resolver(
         shape_base_raise=2.0,
-        shape_base_color="white",
-        shape_outer_ridge_color="red",
         shape_outer_ridge_raise=-2.0,
         shape_outer_ridge_style="separate",
     )
@@ -3774,14 +3619,6 @@ def test_zero_height_separate_ridge_has_no_independent_color_component(
         {
             "name": "base",
             "path": "base.stl",
-            "color": {
-                "name": "white",
-                "rgb": [
-                    255,
-                    255,
-                    255,
-                ],
-            },
         },
     ]
 

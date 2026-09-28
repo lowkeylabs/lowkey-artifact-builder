@@ -12,15 +12,15 @@ Packaging does not determine which physical components a Shape contains.
 Component membership and geometry are established by the upstream extrusion
 stage.
 
-Structural Shape components may already carry resolved semantic printer-color
-identity. Incorporated Artwork components instead preserve persistent
-Artifact-color identity through extrusion. Packaging resolves those logical
-Artwork colors to physical printer colors.
+Shape-owned components preserve logical component identity through extrusion.
+Package resolves their physical printer colors. Incorporated Artwork components
+preserve persistent Artifact-color identity through extrusion; Package resolves
+those logical Artwork colors to physical printer colors.
 """
+
 # File: src/lowkey_artifact_builder/model/models/shape/stages/package.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
-
 from __future__ import annotations
 
 import json
@@ -44,11 +44,10 @@ from lowkey_artifact_builder.formats.threemf import (
     write,
 )
 
+
 # =========================================================
 # Errors
 # =========================================================
-
-
 class PackageError(RuntimeError):
     """
     Raised when Shape packaging cannot be completed.
@@ -58,8 +57,6 @@ class PackageError(RuntimeError):
 # =========================================================
 # Component metadata
 # =========================================================
-
-
 @dataclass(
     frozen=True,
     slots=True,
@@ -68,91 +65,58 @@ class PhysicalComponent:
     """
     Physical Shape component described by the extrusion manifest.
 
-    Structural Shape components may carry a resolved semantic printer color
-    established by Shape policy upstream.
+    Shape-owned components preserve logical component identity only.
+    Their physical printer colors are resolved by Package.
 
-    Incorporated Artwork components instead preserve persistent Artifact-color
-    identity through extrusion. Packaging resolves those logical colors to
-    physical printer colors.
+    Incorporated Artwork components additionally preserve persistent
+    Artifact-color identity so Package can resolve those logical colors
+    against printer_colors.
     """
 
     name: str
-
     path: Path
-
-    color: PaletteColor | None
-
     artifact_color_index: int | None
-
-    artifact_color: (
-        tuple[
-            int,
-            int,
-            int,
-        ]
-        | None
-    )
+    artifact_color: tuple[int, int, int] | None
 
 
 # =========================================================
 # Stage implementation
 # =========================================================
-
-
 def execute(
     context: StageContext,
 ) -> None:
     """
     Execute the Shape package stage.
 
-    The stage consumes:
+    Shape-owned physical colors are resolved here. Base resolves
+    shape_base_color. Ridge and Artwork fill inherit the resolved base color
+    unless their optional Package-time overrides are explicitly configured.
 
-        extrude.manifest
-            Persistent products.json manifest describing independently
-            printable physical Shape components.
-
-    Parameters:
-
-        printer_colors
-            Physical printer colors available for one-to-one assignment to
-            incorporated registered Artwork colors.
-
-            This parameter is required only when incorporated Artwork
-            components participate in the Shape.
-
-    The stage produces:
-
-        artifact
-            Final Shape 3MF artifact.
-
-    Structural Shape components preserve their resolved semantic printer
-    colors.
-
-    Incorporated Artwork components preserve Artifact-color identity through
-    extrusion. Packaging resolves those logical colors against printer_colors
-    using the shared global one-to-one color assignment.
+    Incorporated Artwork preserves Artifact-color identity through extrusion.
+    Package resolves those logical colors against printer_colors using the
+    shared global one-to-one color assignment.
     """
-
-    manifest = context.input(
-        "extrude.manifest",
-    )
-
-    artifact = context.output(
-        "artifact",
-    )
+    manifest = context.input("extrude.manifest")
+    artifact = context.output("artifact")
 
     if not manifest.is_file():
         raise PackageError(f"Shape component manifest does not exist: {manifest}")
 
     try:
-        physical_components = _load_components(
-            manifest,
-        )
+        physical_components = _load_components(manifest)
 
+        shape_components = tuple(
+            component for component in physical_components if component.artifact_color_index is None
+        )
         artwork_components = tuple(
             component
             for component in physical_components
             if component.artifact_color_index is not None
+        )
+
+        shape_colors = _resolve_shape_component_colors(
+            shape_components,
+            context=context,
         )
 
         assigned_colors: dict[int, PaletteColor] = {}
@@ -175,20 +139,15 @@ def execute(
                     "Incorporated Artwork components must preserve Artifact-color identity."
                 )
 
-            printer_color_names = context.resolver(
-                "printer_colors",
-            )
-
+            printer_color_names = context.resolver("printer_colors")
             palette = resolve_palette(
                 printer_color_names,
                 context.resolver.colors,
             )
-
             assignment_result = assign_colors(
                 measured_colors,
                 palette,
             )
-
             assigned_colors = {
                 assignment.measured.index: assignment.color
                 for assignment in assignment_result.assignments
@@ -199,6 +158,7 @@ def execute(
                 physical_component,
                 _resolve_component_color(
                     physical_component,
+                    shape_colors=shape_colors,
                     assigned_colors=assigned_colors,
                 ),
             )
@@ -212,18 +172,13 @@ def execute(
                     physical_component.name,
                     color.name,
                 ),
-                mesh=load_stl(
-                    physical_component.path,
-                ),
+                mesh=load_stl(physical_component.path),
                 color=color,
             )
             for physical_component, color in component_colors
         )
 
-        write(
-            components,
-            artifact,
-        )
+        write(components, artifact)
 
         if not artifact.is_file():
             raise PackageError(
@@ -232,15 +187,12 @@ def execute(
 
     except PackageError:
         raise
-
     except ColorError as exc:
-        raise PackageError(f"Could not resolve incorporated Artwork printer colors: {exc}") from exc
-
+        raise PackageError(f"Could not resolve Shape physical printer colors: {exc}") from exc
     except ThreeMFError as exc:
         raise PackageError(
             f"Could not package Shape components from manifest {manifest}: {exc}"
         ) from exc
-
     except (
         OSError,
         ValueError,
@@ -253,30 +205,92 @@ def execute(
         ) from exc
 
 
+def _resolve_shape_component_colors(
+    components: tuple[PhysicalComponent, ...],
+    *,
+    context: StageContext,
+) -> dict[str, PaletteColor]:
+    """
+    Resolve physical printer colors for Shape-owned components.
+
+    The structural base establishes the inherited Shape color. Outer ridge and
+    Artwork fill inherit that color unless an explicit Package-time override is
+    configured. Physical color policy does not determine participation.
+    """
+    component_names = {component.name for component in components}
+
+    if not component_names:
+        return {}
+
+    supported_names = {"base", "ridge", "artwork-fill"}
+    unsupported_names = component_names - supported_names
+
+    if unsupported_names:
+        unsupported = ", ".join(sorted(unsupported_names))
+        raise PackageError(
+            f"Shape extrusion manifest contains unsupported Shape-owned "
+            f"component(s): {unsupported}."
+        )
+
+    if "base" not in component_names:
+        raise PackageError(
+            "Shape extrusion manifest contains Shape-owned components without a structural base."
+        )
+
+    base_color_name = context.resolver("shape_base_color")
+    base_color = resolve_palette(
+        (base_color_name,),
+        context.resolver.colors,
+    )[0]
+
+    colors: dict[str, PaletteColor] = {"base": base_color}
+
+    if "ridge" in component_names:
+        if context.resolver.has("shape_outer_ridge_color"):
+            ridge_color_name = context.resolver("shape_outer_ridge_color")
+            ridge_color = resolve_palette(
+                (ridge_color_name,),
+                context.resolver.colors,
+            )[0]
+        else:
+            ridge_color = base_color
+        colors["ridge"] = ridge_color
+
+    if "artwork-fill" in component_names:
+        if context.resolver.has("shape_artwork_fill_color"):
+            artwork_fill_color_name = context.resolver("shape_artwork_fill_color")
+            artwork_fill_color = resolve_palette(
+                (artwork_fill_color_name,),
+                context.resolver.colors,
+            )[0]
+        else:
+            artwork_fill_color = base_color
+        colors["artwork-fill"] = artwork_fill_color
+
+    return colors
+
+
 def _resolve_component_color(
     component: PhysicalComponent,
     *,
+    shape_colors: dict[str, PaletteColor],
     assigned_colors: dict[int, PaletteColor],
 ) -> PaletteColor:
     """
     Resolve the physical printer color for one Shape component.
-
-    Structural Shape components preserve their upstream semantic printer
-    color. Incorporated Artwork components use the globally assigned printer
-    color for their persistent Artifact-color identity.
     """
-
     artifact_color_index = component.artifact_color_index
 
     if artifact_color_index is None:
-        if component.color is None:
-            raise PackageError(f"Shape component {component.name!r} has no physical color.")
-
-        return component.color
+        try:
+            return shape_colors[component.name]
+        except KeyError as exc:
+            raise PackageError(
+                f"Shape component {component.name!r} has no resolved physical color."
+            ) from exc
 
     try:
         return assigned_colors[artifact_color_index]
-
     except KeyError as exc:
         raise PackageError(
             f"Shape component {component.name!r} references unknown "
@@ -287,65 +301,34 @@ def _resolve_component_color(
 # =========================================================
 # Component manifest
 # =========================================================
-
-
 def _load_components(
     manifest: Path,
-) -> tuple[
-    PhysicalComponent,
-    ...,
-]:
+) -> tuple[PhysicalComponent, ...]:
     """
     Load physical Shape components from an extrusion manifest.
 
-    Component paths are interpreted relative to the manifest location. This
-    keeps packaging independent from artifact workspace layout while allowing
-    extrusion to describe a variable set of physical manufacturing components.
-
-    Structural Shape components carry resolved semantic printer-color
-    metadata.
-
-    Incorporated Artwork components carry persistent Artifact-color identity.
-    Their physical printer-color assignment is resolved during packaging.
+    Shape-owned components carry logical component identity only. Incorporated
+    Artwork components additionally carry persistent Artifact-color identity.
     """
+    data = json.loads(manifest.read_text(encoding="utf-8"))
 
-    data = json.loads(
-        manifest.read_text(
-            encoding="utf-8",
-        )
-    )
-
-    if not isinstance(
-        data,
-        dict,
-    ):
+    if not isinstance(data, dict):
         raise PackageError(f"Shape component manifest must contain a JSON object: {manifest}")
 
-    raw_components = data.get(
-        "components",
-    )
+    raw_components = data.get("components")
 
-    if not isinstance(
-        raw_components,
-        list,
-    ):
+    if not isinstance(raw_components, list):
         raise PackageError(f"Shape component manifest must contain a components list: {manifest}")
 
     if not raw_components:
         raise PackageError(f"Shape component manifest contains no components: {manifest}")
 
-    components: list[PhysicalComponent] = []
-
-    for raw_component in raw_components:
-        components.append(
-            _load_component(
-                raw_component,
-                manifest=manifest,
-            )
-        )
-
     return tuple(
-        components,
+        _load_component(
+            raw_component,
+            manifest=manifest,
+        )
+        for raw_component in raw_components
     )
 
 
@@ -357,47 +340,23 @@ def _load_component(
     """
     Load and validate one physical component declared by a Shape manifest.
 
-    Structural Shape components carry resolved semantic printer-color
-    metadata.
-
-    Incorporated Artwork components carry persistent Artifact-color identity;
-    physical printer-color assignment is deferred until packaging.
+    Shape-owned components carry name and path only. Incorporated Artwork
+    components additionally carry persistent Artifact-color identity.
     """
-
-    if not isinstance(
-        raw_component,
-        dict,
-    ):
+    if not isinstance(raw_component, dict):
         raise PackageError(
             f"Shape component manifest contains an invalid component entry: {manifest}"
         )
 
-    name = raw_component.get(
-        "name",
-    )
+    name = raw_component.get("name")
+    relative_path = raw_component.get("path")
 
-    relative_path = raw_component.get(
-        "path",
-    )
-
-    if (
-        not isinstance(
-            name,
-            str,
-        )
-        or not name
-    ):
+    if not isinstance(name, str) or not name:
         raise PackageError(
             f"Shape component manifest contains a component without a valid name: {manifest}"
         )
 
-    if (
-        not isinstance(
-            relative_path,
-            str,
-        )
-        or not relative_path
-    ):
+    if not isinstance(relative_path, str) or not relative_path:
         raise PackageError(f"Shape component {name!r} does not declare a valid path: {manifest}")
 
     component_path = manifest.parent / relative_path
@@ -405,37 +364,27 @@ def _load_component(
     if not component_path.is_file():
         raise PackageError(f"Shape {name} component does not exist: {component_path}")
 
-    raw_color = raw_component.get(
-        "color",
-    )
+    raw_color = raw_component.get("color")
 
-    if not isinstance(
-        raw_color,
-        dict,
-    ):
-        raise PackageError(
-            f"Shape component {name!r} does not declare valid color metadata: {manifest}"
-        )
-
-    if "index" in raw_color:
-        (
-            artifact_color_index,
-            artifact_color,
-        ) = _load_artifact_color(
-            raw_color,
-            component_name=name,
-            manifest=manifest,
-        )
-
+    if raw_color is None:
         return PhysicalComponent(
             name=name,
             path=component_path,
-            color=None,
-            artifact_color_index=artifact_color_index,
-            artifact_color=artifact_color,
+            artifact_color_index=None,
+            artifact_color=None,
         )
 
-    color = _load_component_color(
+    if not isinstance(raw_color, dict):
+        raise PackageError(
+            f"Shape component {name!r} does not declare valid Artifact-color metadata: {manifest}"
+        )
+
+    if "index" not in raw_color:
+        raise PackageError(
+            f"Shape component {name!r} declares physical color metadata upstream of Shape Package."
+        )
+
+    artifact_color_index, artifact_color = _load_artifact_color(
         raw_color,
         component_name=name,
         manifest=manifest,
@@ -444,84 +393,8 @@ def _load_component(
     return PhysicalComponent(
         name=name,
         path=component_path,
-        color=color,
-        artifact_color_index=None,
-        artifact_color=None,
-    )
-
-
-def _load_component_color(
-    raw_color: Any,
-    *,
-    component_name: str,
-    manifest: Path,
-) -> PaletteColor:
-    """
-    Load resolved semantic printer-color metadata for one Shape component.
-
-    Structural Shape components contain the authoritative semantic name and
-    RGB value established upstream. Packaging validates and preserves those
-    values.
-    """
-
-    if not isinstance(
-        raw_color,
-        dict,
-    ):
-        raise PackageError(
-            f"Shape component {component_name!r} does not declare valid color metadata: {manifest}"
-        )
-
-    color_name = raw_color.get(
-        "name",
-    )
-
-    raw_rgb = raw_color.get(
-        "rgb",
-    )
-
-    if (
-        not isinstance(
-            color_name,
-            str,
-        )
-        or not color_name
-    ):
-        raise PackageError(
-            f"Shape component {component_name!r} does not declare a valid color name: {manifest}"
-        )
-
-    if (
-        not isinstance(
-            raw_rgb,
-            list,
-        )
-        or len(raw_rgb) != 3
-        or any(
-            not isinstance(
-                channel,
-                int,
-            )
-            or isinstance(
-                channel,
-                bool,
-            )
-            or channel < 0
-            or channel > 255
-            for channel in raw_rgb
-        )
-    ):
-        raise PackageError(
-            f"Shape component {component_name!r} does not declare a valid RGB color: {manifest}"
-        )
-
-    return PaletteColor(
-        name=color_name,
-        rgb=(
-            raw_rgb[0],
-            raw_rgb[1],
-            raw_rgb[2],
-        ),
+        artifact_color_index=artifact_color_index,
+        artifact_color=artifact_color,
     )
 
 
@@ -540,15 +413,12 @@ def _load_artifact_color(
 ]:
     """
     Load persistent Artifact-color identity for incorporated Artwork.
-
     Artifact color consists of a stable positive index and measured RGB.
     Physical printer-color identity is deliberately absent at this boundary.
     """
-
     index = raw_color.get(
         "index",
     )
-
     if (
         isinstance(
             index,
@@ -564,11 +434,9 @@ def _load_artifact_color(
             f"Shape component {component_name!r} does not declare "
             f"a valid Artifact color index: {manifest}"
         )
-
     raw_rgb = raw_color.get(
         "rgb",
     )
-
     if not isinstance(
         raw_rgb,
         dict,
@@ -577,28 +445,24 @@ def _load_artifact_color(
             f"Shape component {component_name!r} does not declare "
             f"valid Artifact RGB metadata: {manifest}"
         )
-
     red = _load_artifact_color_channel(
         raw_rgb,
         "red",
         component_name=component_name,
         manifest=manifest,
     )
-
     green = _load_artifact_color_channel(
         raw_rgb,
         "green",
         component_name=component_name,
         manifest=manifest,
     )
-
     blue = _load_artifact_color_channel(
         raw_rgb,
         "blue",
         component_name=component_name,
         manifest=manifest,
     )
-
     return (
         index,
         (
@@ -619,11 +483,9 @@ def _load_artifact_color_channel(
     """
     Load and validate one Artifact RGB channel.
     """
-
     channel = raw_rgb.get(
         channel_name,
     )
-
     if (
         isinstance(
             channel,
@@ -640,15 +502,12 @@ def _load_artifact_color_channel(
             f"Shape component {component_name!r} does not declare "
             f"a valid Artifact {channel_name} value: {manifest}"
         )
-
     return channel
 
 
 # =========================================================
 # Component naming
 # =========================================================
-
-
 def _component_name(
     artifact_id: str,
     component_name_: str,
@@ -657,7 +516,6 @@ def _component_name(
     """
     Return the shared 3MF presentation name for one Shape component.
     """
-
     return component_name(
         artifact_id,
         component_name_,

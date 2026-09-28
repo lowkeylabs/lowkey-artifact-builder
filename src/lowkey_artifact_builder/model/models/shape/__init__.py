@@ -102,12 +102,10 @@ MODEL = ModelSpec(
             parameters=(
                 "shape_size",
                 "shape_base_raise",
-                "shape_base_color",
                 "shape_outer_ridge_raise",
                 "shape_outer_ridge_style",
-                "shape_outer_ridge_color",
                 "shape_artwork_raise",
-                "shape_artwork_fill_color",
+                "shape_artwork_fill_raise",
             ),
             products=(
                 ProductSpec(
@@ -122,8 +120,17 @@ MODEL = ModelSpec(
         StageSpec(
             id=40,
             name="package",
-            description=("Package physical Shape components into the final artifact."),
+            description=(
+                "Assign physical colors and package physical Shape components "
+                "into the final artifact."
+            ),
             dependencies=("extrude",),
+            parameters=(
+                "printer_colors",
+                "shape_base_color",
+                "shape_outer_ridge_color",
+                "shape_artwork_fill_color",
+            ),
             products=(
                 ProductSpec(
                     name="artifact",

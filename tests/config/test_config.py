@@ -592,7 +592,7 @@ def test_shape_model_defaults_are_resolved(
     tmp_path: Path,
 ) -> None:
     """
-    Shape parameters.toml contributes structural, color, and Artwork defaults.
+    Shape parameters.toml contributes structural, physical, and color defaults.
 
     The baseline Shape defaults to circle geometry with polygon defaults
     available for side count and rotation. Physical size and base thickness
@@ -604,8 +604,10 @@ def test_shape_model_defaults_are_resolved(
     resolved base color rather than independently defaulted.
 
     Incorporated Artwork defaults to a 1 mm Shape-owned physical raise.
-    Artwork fill is disabled by default through the explicit "none"
-    semantic fill color.
+    Artwork fill is disabled by default through a zero physical fill raise.
+    Artwork fill color has no independent model default; when fill participates
+    and no explicit override is configured, Package inherits the resolved base
+    color.
     """
 
     resolver = get_resolver(
@@ -628,25 +630,10 @@ def test_shape_model_defaults_are_resolved(
     assert resolver("shape_outer_ridge_color") == "white"
 
     assert resolver("shape_artwork_raise") == 1.0
+    assert resolver("shape_artwork_fill_raise") == 0.0
 
     assert resolver.has("shape_artwork_fill_color")
-    assert resolver("shape_artwork_fill_color") == "none"
-
-    assert resolver.source("shape_geometry") == "model"
-    assert resolver.source("shape_sides") == "model"
-    assert resolver.source("shape_rotation") == "model"
-
-    assert resolver.source("shape_size") == "model"
-    assert resolver.source("shape_base_raise") == "model"
-    assert resolver.source("shape_base_color") == "model"
-
-    assert resolver.source("shape_outer_ridge_width") == "model"
-    assert resolver.source("shape_outer_ridge_raise") == "model"
-    assert resolver.source("shape_outer_ridge_style") == "model"
-    assert resolver.source("shape_outer_ridge_color") == "derived"
-
-    assert resolver.source("shape_artwork_raise") == "model"
-    assert resolver.source("shape_artwork_fill_color") == "model (overrides derived)"
+    assert resolver("shape_artwork_fill_color") is None
 
 
 # =========================================================

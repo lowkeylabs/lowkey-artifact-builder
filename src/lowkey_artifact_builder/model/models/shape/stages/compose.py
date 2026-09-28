@@ -223,13 +223,13 @@ def execute(
     partition geometry in the same registered coordinate system.
 
     When registered Artwork participates, its declared component membership,
-    one common placement transformation, and optional registered Artwork-fill
-    geometry are retained by the persistent composition manifest.
+    one common placement transformation, and registered Artwork-fill geometry
+    are retained by the persistent composition manifest.
 
     Physical ridge width is interpreted relative to physical Shape size so the
     resulting partition boundary can be represented in registered space.
 
-    Physical Z dimensions remain downstream.
+    Physical Z dimensions and physical color assignment remain downstream.
     """
 
     structure_input = context.input(
@@ -263,7 +263,6 @@ def execute(
             shape_size=shape_size,
             ridge_width=ridge_width,
         )
-
     else:
         shutil.copyfile(
             structure_input,
@@ -290,17 +289,12 @@ def execute(
             composition=composition_output,
         )
 
-        fill_color = str(
-            context.resolver("shape_artwork_fill_color"),
-        )
-
-        artwork_fill = registered_artwork_fill(
+        artwork_fill = registered_artwork_fill_region(
             registered_interior_region(
                 composition_output,
             ),
             artwork,
             transform=artwork_transform,
-            fill_color=fill_color,
         )
 
     _write_composition_manifest(

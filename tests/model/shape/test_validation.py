@@ -199,6 +199,61 @@ def _shape_execution_plan(
     )
 
 
+def _shape_package_execution_plan(
+    *,
+    resolver: StubResolver,
+    package_state: ProductState,
+) -> tuple[
+    BuildPlan,
+    ExecutionPlan,
+]:
+    """
+    Construct a Shape execution plan with the requested persistent
+    state for every package product.
+    """
+
+    package_spec = next(stage for stage in MODEL.stages if stage.name == "package")
+
+    package = PlannedStage(
+        spec=package_spec,
+        inputs=(),
+        products=tuple(
+            PlannedProduct(
+                spec=product,
+                path=(Path("/project/artifacts/example/shape/default/40-package") / product.path),
+            )
+            for product in package_spec.products
+        ),
+    )
+
+    build_plan = BuildPlan(
+        artifact_id="example",
+        model=MODEL,
+        realization_name="default",
+        resolver=resolver,  # type: ignore[arg-type]
+        project_root=Path("/project"),
+        artifact_dir=Path("/project/artifacts/example"),
+        stages=(package,),
+    )
+
+    execution_plan = ExecutionPlan(
+        artifact_id="example",
+        model_name="shape",
+        realization="default",
+        stages=(
+            PlannedStageExecution(
+                stage_name="package",
+                product_states=tuple(package_state for _ in package.products),
+            ),
+        ),
+    )
+
+    return (
+        build_plan,
+        execution_plan,
+    )
+
+
 def _shape_structure_execution_plan(
     *,
     resolver: StubResolver,
@@ -798,23 +853,20 @@ def test_shape_rejects_invalid_base_color(
         )
 
 
-def test_invalid_shape_base_color_fails_when_extrude_requires_execution() -> None:
+def test_invalid_shape_base_color_fails_when_package_requires_execution() -> None:
     """
-    Invalid base color is validated when extrusion must execute.
+    Invalid base color is validated when packaging must execute.
     """
 
     resolver = StubResolver(
         {
-            "shape_base_raise": 2.0,
             "shape_base_color": "",
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "integrated",
         }
     )
 
-    build_plan, execution_plan = _shape_execution_plan(
+    build_plan, execution_plan = _shape_package_execution_plan(
         resolver=resolver,
-        extrude_state=ProductState.ABSENT,
+        package_state=ProductState.ABSENT,
     )
 
     with pytest.raises(
@@ -827,23 +879,20 @@ def test_invalid_shape_base_color_fails_when_extrude_requires_execution() -> Non
         )
 
 
-def test_invalid_historical_shape_base_color_does_not_block_current_extrude() -> None:
+def test_invalid_historical_shape_base_color_does_not_block_current_package() -> None:
     """
-    Invalid historical base color is irrelevant when extrusion is current.
+    Invalid historical base color is irrelevant when packaging is current.
     """
 
     resolver = StubResolver(
         {
-            "shape_base_raise": 2.0,
             "shape_base_color": "",
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "integrated",
         }
     )
 
-    build_plan, execution_plan = _shape_execution_plan(
+    build_plan, execution_plan = _shape_package_execution_plan(
         resolver=resolver,
-        extrude_state=ProductState.CURRENT,
+        package_state=ProductState.CURRENT,
     )
 
     validate_execution(
@@ -890,24 +939,21 @@ def test_shape_rejects_invalid_outer_ridge_color(
         )
 
 
-def test_invalid_shape_ridge_color_fails_when_extrude_requires_execution() -> None:
+def test_invalid_shape_ridge_color_fails_when_package_requires_execution() -> None:
     """
-    Invalid outer-ridge color is validated when extrusion must execute.
+    Invalid outer-ridge color is validated when packaging must execute.
     """
 
     resolver = StubResolver(
         {
-            "shape_base_raise": 2.0,
             "shape_base_color": "white",
             "shape_outer_ridge_color": "",
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "integrated",
         }
     )
 
-    build_plan, execution_plan = _shape_execution_plan(
+    build_plan, execution_plan = _shape_package_execution_plan(
         resolver=resolver,
-        extrude_state=ProductState.ABSENT,
+        package_state=ProductState.ABSENT,
     )
 
     with pytest.raises(
@@ -920,24 +966,20 @@ def test_invalid_shape_ridge_color_fails_when_extrude_requires_execution() -> No
         )
 
 
-def test_invalid_historical_shape_ridge_color_does_not_block_current_extrude() -> None:
+def test_invalid_historical_shape_ridge_color_does_not_block_current_package() -> None:
     """
-    Invalid historical outer-ridge color is irrelevant when extrusion is current.
+    Invalid historical outer-ridge color is irrelevant when packaging is current.
     """
 
     resolver = StubResolver(
         {
-            "shape_base_raise": 2.0,
-            "shape_base_color": "white",
             "shape_outer_ridge_color": "",
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": "integrated",
         }
     )
 
-    build_plan, execution_plan = _shape_execution_plan(
+    build_plan, execution_plan = _shape_package_execution_plan(
         resolver=resolver,
-        extrude_state=ProductState.CURRENT,
+        package_state=ProductState.CURRENT,
     )
 
     validate_execution(

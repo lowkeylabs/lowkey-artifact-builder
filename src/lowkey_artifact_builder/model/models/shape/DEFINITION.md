@@ -2288,4 +2288,3 @@ The initial Shape model does not include:
 
 These capabilities may be added later by deliberately extending the
 Shape definition.
-

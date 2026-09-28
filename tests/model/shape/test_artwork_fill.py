@@ -10,11 +10,10 @@ from __future__ import annotations
 import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 
-from lowkey_artifact_builder.colors import ColorError
 from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.model.models.shape.stages import compose, extrude
 
@@ -107,39 +106,36 @@ def _write_registered_artwork_manifest(
 
 def _compose_context(
     *,
-    structure: Path,
-    artwork_manifest: Path,
-    composition: Path,
-    manifest: Path,
-    fill_color: str,
+    structure_path: Path,
+    registered_artwork_manifest: Path,
+    composition_path: Path,
+    manifest_path: Path,
 ) -> Mock:
     """
-    Create a Shape compose-stage context with registered Artwork.
-    """
+    Build a Shape Compose context containing only Compose-owned parameters.
 
-    context = Mock(
-        spec=StageContext,
-    )
+    Registered Artwork-fill geometry is a composition concern independent of
+    physical printer-color policy. Physical fill participation is decided by
+    Extrude through shape_artwork_fill_raise, and physical fill color is
+    resolved by Package.
+    """
+    context = Mock(spec=StageContext)
 
     inputs = {
-        "structure.structure": structure,
-        "artwork.vector.manifest": artwork_manifest,
+        "structure.structure": structure_path,
+        "artwork.vector.manifest": registered_artwork_manifest,
     }
-
     outputs = {
-        "composition": composition,
-        "manifest": manifest,
+        "composition": composition_path,
+        "manifest": manifest_path,
     }
-
     values = {
         "shape_size": 100.0,
-        "shape_outer_ridge_width": 5.0,
+        "shape_outer_ridge_width": 0.0,
         "shape_outer_ridge_style": "integrated",
-        "shape_artwork_fill_color": fill_color,
     }
 
     context.input.side_effect = inputs.__getitem__
-    context.has_input.side_effect = inputs.__contains__
     context.output.side_effect = outputs.__getitem__
     context.resolver.side_effect = values.__getitem__
 
@@ -864,191 +860,136 @@ def test_artwork_fill_region_applies_registered_group_translation_before_artwork
 # =========================================================
 
 
-def test_artwork_fill_is_absent_when_fill_color_is_none(
+def test_registered_artwork_fill_exists_independent_of_physical_color(
     tmp_path: Path,
 ) -> None:
     """
-    The default none fill policy produces no registered Artwork-fill geometry.
+    Registered Artwork-fill geometry is independent of physical color policy.
 
-    Fill existence is controlled by Shape's fill policy rather than by the
-    mere presence of incorporated Artwork.
+    Compose determines the potential registered fill region from Shape and
+    registered Artwork geometry. It does not use shape_artwork_fill_color to
+    decide whether that geometry exists.
     """
+    structure = tmp_path / "structure.svg"
+    artwork_manifest = tmp_path / "artwork" / "products.json"
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
 
-    envelope = tmp_path / "envelope.svg"
-
-    _write_rectangular_artwork_envelope(
-        envelope,
+    _write_registered_structure(
+        structure,
+    )
+    _write_registered_artwork_manifest(
+        artwork_manifest,
     )
 
-    artwork = _registered_artwork(
-        envelope,
+    context = _compose_context(
+        structure_path=structure,
+        registered_artwork_manifest=artwork_manifest,
+        composition_path=composition,
+        manifest_path=manifest,
     )
 
-    interior = _circle_interior()
-
-    transform = compose.RegisteredArtworkTransform(
-        scale=0.05,
-        width=0.60,
-        height=0.50,
-        translate_x=-0.40,
-        translate_y=-0.40,
+    compose.execute(
+        context,
     )
 
-    fill = compose.registered_artwork_fill(
-        interior,
-        artwork,
-        transform=transform,
-        fill_color="none",
+    products = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
     )
 
-    assert fill is None
+    assert products["artwork_fill"] is not None
+
+    assert all(
+        call.args != ("shape_artwork_fill_color",) for call in context.resolver.call_args_list
+    )
 
 
-def test_artwork_fill_is_present_when_fill_color_is_configured(
+def test_registered_artwork_fill_exists_independent_of_physical_fill_raise(
     tmp_path: Path,
 ) -> None:
     """
-    A configured fill color enables registered Artwork-fill geometry.
+    Registered Artwork-fill geometry is independent of physical fill height.
 
-    The resulting region is the registered Shape interior minus the
-    transformed authoritative Artwork envelope.
+    Compose persists the potential registered fill region. Extrude later uses
+    shape_artwork_fill_raise to decide whether that region participates in the
+    physical Product and how high it is.
     """
+    structure = tmp_path / "structure.svg"
+    artwork_manifest = tmp_path / "artwork" / "products.json"
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
 
-    envelope = tmp_path / "envelope.svg"
-
-    _write_rectangular_artwork_envelope(
-        envelope,
+    _write_registered_structure(
+        structure,
+    )
+    _write_registered_artwork_manifest(
+        artwork_manifest,
     )
 
-    artwork = _registered_artwork(
-        envelope,
+    context = _compose_context(
+        structure_path=structure,
+        registered_artwork_manifest=artwork_manifest,
+        composition_path=composition,
+        manifest_path=manifest,
     )
 
-    interior = _circle_interior()
-
-    transform = compose.RegisteredArtworkTransform(
-        scale=0.05,
-        width=0.60,
-        height=0.50,
-        translate_x=-0.40,
-        translate_y=-0.40,
+    compose.execute(
+        context,
     )
 
-    fill = compose.registered_artwork_fill(
-        interior,
-        artwork,
-        transform=transform,
-        fill_color="white",
-    )
-
-    assert fill is not None
-
-    assert fill.outer_boundary.tag == compose.SVG_CIRCLE
-
-    assert float(
-        fill.outer_boundary.get(
-            "r",
-            "nan",
+    products = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
         )
-    ) == pytest.approx(
-        0.5,
     )
 
-    assert fill.inner_boundary.tag == compose.SVG_RECT
+    assert products["artwork_fill"] is not None
 
-    assert float(
-        fill.inner_boundary.get(
-            "x",
-            "nan",
-        )
-    ) == pytest.approx(
-        -0.30,
-    )
-
-    assert float(
-        fill.inner_boundary.get(
-            "y",
-            "nan",
-        )
-    ) == pytest.approx(
-        -0.25,
-    )
-
-    assert float(
-        fill.inner_boundary.get(
-            "width",
-            "nan",
-        )
-    ) == pytest.approx(
-        0.60,
-    )
-
-    assert float(
-        fill.inner_boundary.get(
-            "height",
-            "nan",
-        )
-    ) == pytest.approx(
-        0.50,
+    assert all(
+        call.args != ("shape_artwork_fill_raise",) for call in context.resolver.call_args_list
     )
 
 
-def test_artwork_fill_color_does_not_change_registered_fill_geometry(
+def test_compose_does_not_resolve_artwork_fill_physical_color(
     tmp_path: Path,
 ) -> None:
     """
-    Semantic fill color does not participate in registered fill geometry.
+    Compose does not resolve Artwork-fill physical color.
 
-    Different enabled colors produce the same registered Shape region for the
-    same Shape interior, Artwork envelope, and common Artwork transform.
+    shape_artwork_fill_color belongs exclusively to Package and therefore
+    cannot influence registered fill geometry.
     """
+    structure = tmp_path / "structure.svg"
+    artwork_manifest = tmp_path / "artwork" / "products.json"
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
 
-    envelope = tmp_path / "envelope.svg"
-
-    _write_rectangular_artwork_envelope(
-        envelope,
+    _write_registered_structure(
+        structure,
+    )
+    _write_registered_artwork_manifest(
+        artwork_manifest,
     )
 
-    artwork = _registered_artwork(
-        envelope,
+    context = _compose_context(
+        structure_path=structure,
+        registered_artwork_manifest=artwork_manifest,
+        composition_path=composition,
+        manifest_path=manifest,
     )
 
-    transform = compose.RegisteredArtworkTransform(
-        scale=0.05,
-        width=0.60,
-        height=0.50,
-        translate_x=-0.40,
-        translate_y=-0.40,
+    compose.execute(
+        context,
     )
 
-    white_fill = compose.registered_artwork_fill(
-        _circle_interior(),
-        artwork,
-        transform=transform,
-        fill_color="white",
+    assert all(
+        call.args != ("shape_artwork_fill_color",) for call in context.resolver.call_args_list
     )
 
-    black_fill = compose.registered_artwork_fill(
-        _circle_interior(),
-        artwork,
-        transform=transform,
-        fill_color="black",
-    )
-
-    assert white_fill is not None
-    assert black_fill is not None
-
-    assert ET.tostring(
-        white_fill.outer_boundary,
-    ) == ET.tostring(
-        black_fill.outer_boundary,
-    )
-
-    assert ET.tostring(
-        white_fill.inner_boundary,
-    ) == ET.tostring(
-        black_fill.inner_boundary,
-    )
+    assert composition.exists()
+    assert manifest.exists()
 
 
 def test_artwork_fill_region_is_independent_of_ridge_style(
@@ -1139,16 +1080,16 @@ def test_artwork_fill_region_is_independent_of_ridge_style(
 # =========================================================
 
 
-def test_compose_stage_persists_no_artwork_fill_when_disabled(
+def test_compose_stage_persists_registered_artwork_fill_geometry(
     tmp_path: Path,
 ) -> None:
     """
-    Disabled Artwork fill remains explicitly absent across composition.
+    Compose persists potential registered Artwork-fill geometry.
 
-    Incorporated Artwork alone does not cause downstream stages to infer or
-    manufacture fill geometry.
+    Physical participation is deliberately unresolved at this stage. Extrude
+    decides later whether the registered fill participates using
+    shape_artwork_fill_raise.
     """
-
     structure = tmp_path / "structure.svg"
     artwork_manifest = tmp_path / "artwork" / "products.json"
     composition = tmp_path / "composition.svg"
@@ -1162,56 +1103,10 @@ def test_compose_stage_persists_no_artwork_fill_when_disabled(
     )
 
     context = _compose_context(
-        structure=structure,
-        artwork_manifest=artwork_manifest,
-        composition=composition,
-        manifest=manifest,
-        fill_color="none",
-    )
-
-    compose.execute(
-        context,
-    )
-
-    products = json.loads(
-        manifest.read_text(
-            encoding="utf-8",
-        )
-    )
-
-    assert products["artwork"] is not None
-    assert products["artwork_fill"] is None
-
-
-def test_compose_stage_persists_enabled_artwork_fill_geometry(
-    tmp_path: Path,
-) -> None:
-    """
-    Enabled Artwork fill survives the persistent composition boundary.
-
-    The persistent fill uses the registered Shape interior as its outer
-    boundary and the transformed authoritative Artwork envelope as its inner
-    boundary.
-    """
-
-    structure = tmp_path / "structure.svg"
-    artwork_manifest = tmp_path / "artwork" / "products.json"
-    composition = tmp_path / "composition.svg"
-    manifest = tmp_path / "products.json"
-
-    _write_registered_structure(
-        structure,
-    )
-    _write_registered_artwork_manifest(
-        artwork_manifest,
-    )
-
-    context = _compose_context(
-        structure=structure,
-        artwork_manifest=artwork_manifest,
-        composition=composition,
-        manifest=manifest,
-        fill_color="white",
+        structure_path=structure,
+        registered_artwork_manifest=artwork_manifest,
+        composition_path=composition,
+        manifest_path=manifest,
     )
 
     compose.execute(
@@ -1228,38 +1123,63 @@ def test_compose_stage_persists_enabled_artwork_fill_geometry(
 
     assert fill is not None
 
-    assert fill["outer_boundary"]["type"] == "circle"
-    assert fill["outer_boundary"]["cx"] == pytest.approx(
-        0.0,
-    )
-    assert fill["outer_boundary"]["cy"] == pytest.approx(
-        0.0,
-    )
-    assert fill["outer_boundary"]["r"] == pytest.approx(
-        0.45,
-    )
+    assert set(fill) == {
+        "outer_boundary",
+        "inner_boundary",
+    }
 
+    assert fill["outer_boundary"]["type"] == "circle"
     assert fill["inner_boundary"]["type"] == "rect"
 
-    #
-    # The exact placement scale is determined by fitting the authoritative
-    # 12 x 10 Artwork envelope inside the registered radius-0.45 interior.
-    #
-    envelope_radius = (6.0**2 + 5.0**2) ** 0.5
-    scale = 0.45 / envelope_radius
 
-    assert fill["inner_boundary"]["x"] == pytest.approx(
-        -6.0 * scale,
+def test_compose_stage_persists_artwork_fill_without_physical_policy(
+    tmp_path: Path,
+) -> None:
+    """
+    Persistent registered Artwork-fill state contains geometry rather than
+    physical participation or printer-color policy.
+    """
+    structure = tmp_path / "structure.svg"
+    artwork_manifest = tmp_path / "artwork" / "products.json"
+    composition = tmp_path / "composition.svg"
+    manifest = tmp_path / "products.json"
+
+    _write_registered_structure(
+        structure,
     )
-    assert fill["inner_boundary"]["y"] == pytest.approx(
-        -5.0 * scale,
+    _write_registered_artwork_manifest(
+        artwork_manifest,
     )
-    assert fill["inner_boundary"]["width"] == pytest.approx(
-        12.0 * scale,
+
+    context = _compose_context(
+        structure_path=structure,
+        registered_artwork_manifest=artwork_manifest,
+        composition_path=composition,
+        manifest_path=manifest,
     )
-    assert fill["inner_boundary"]["height"] == pytest.approx(
-        10.0 * scale,
+
+    compose.execute(
+        context,
     )
+
+    products = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    fill = products["artwork_fill"]
+
+    assert fill is not None
+
+    serialized = json.dumps(
+        fill,
+    )
+
+    assert "shape_artwork_fill_color" not in serialized
+    assert "shape_artwork_fill_raise" not in serialized
+    assert "printer_color" not in serialized
+    assert "printer_head" not in serialized
 
 
 def test_persistent_artwork_fill_remains_registered_and_self_contained(
@@ -1272,7 +1192,6 @@ def test_persistent_artwork_fill_remains_registered_and_self_contained(
     to reconstruct the fill region. No physical X/Y or Z dimensions are
     introduced by composition.
     """
-
     structure = tmp_path / "structure.svg"
     artwork_manifest = tmp_path / "artwork" / "products.json"
     composition = tmp_path / "composition.svg"
@@ -1286,11 +1205,10 @@ def test_persistent_artwork_fill_remains_registered_and_self_contained(
     )
 
     context = _compose_context(
-        structure=structure,
-        artwork_manifest=artwork_manifest,
-        composition=composition,
-        manifest=manifest,
-        fill_color="white",
+        structure_path=structure,
+        registered_artwork_manifest=artwork_manifest,
+        composition_path=composition,
+        manifest_path=manifest,
     )
 
     compose.execute(
@@ -1307,11 +1225,6 @@ def test_persistent_artwork_fill_remains_registered_and_self_contained(
 
     assert fill is not None
 
-    #
-    # The persistent fill contract carries its resulting registered
-    # boundaries directly rather than requiring downstream stages to reopen
-    # the producer's Artwork envelope and repeat composition.
-    #
     assert set(fill) == {
         "outer_boundary",
         "inner_boundary",
@@ -1321,13 +1234,10 @@ def test_persistent_artwork_fill_remains_registered_and_self_contained(
         fill,
     )
 
-    #
-    # Composition contains registered geometry only. Physical Shape
-    # dimensionalization remains downstream.
-    #
     assert "shape_size" not in serialized
     assert "shape_base_raise" not in serialized
     assert "shape_artwork_raise" not in serialized
+    assert "shape_artwork_fill_raise" not in serialized
     assert '"z"' not in serialized.lower()
 
 
@@ -1469,6 +1379,7 @@ def _physical_fill_extrude_context(
     composition: Path,
     composition_manifest: Path,
     output_manifest: Path,
+    artwork_fill_raise: float = 0.6,
 ) -> Mock:
     """
     Configure Shape extrusion for Artwork-fill dimensionalization tests.
@@ -1490,113 +1401,29 @@ def _physical_fill_extrude_context(
     values = {
         "shape_size": 100.0,
         "shape_base_raise": 2.0,
-        "shape_base_color": "white",
-        "shape_outer_ridge_color": "white",
         "shape_outer_ridge_raise": 1.0,
         "shape_outer_ridge_style": "integrated",
         "shape_artwork_raise": 0.6,
-        "shape_artwork_fill_color": "red",
+        "shape_artwork_fill_raise": artwork_fill_raise,
     }
 
     context.input.side_effect = inputs.__getitem__
     context.output.side_effect = outputs.__getitem__
     context.resolver.side_effect = values.__getitem__
 
-    context.resolver.colors = {
-        "white": {
-            "red": 255,
-            "green": 255,
-            "blue": 255,
-        },
-    }
-
     return context
 
 
-def test_extrude_produces_no_artwork_fill_component_when_fill_is_disabled(
+def test_extrude_produces_no_artwork_fill_component_when_fill_raise_is_zero(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Disabled registered Artwork fill does not become a physical component.
+    Zero Artwork-fill raise disables the physical fill component.
 
-    Incorporated Artwork continues through physical dimensionalization, but
-    extrusion must not infer fill geometry when persistent composition declares
-    that no fill exists.
-    """
-
-    composition = tmp_path / "composition.svg"
-    composition_manifest = tmp_path / "composition-products.json"
-    output_manifest = tmp_path / "extrude" / "products.json"
-
-    _write_physical_fill_composition(
-        composition,
-    )
-    _write_physical_fill_manifest(
-        composition_manifest,
-        artwork_fill=None,
-    )
-
-    rendered_paths: list[Path] = []
-
-    def fake_render_stl_source(
-        source: str,
-        output: Path,
-    ) -> None:
-        del source
-
-        output.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-        output.write_text(
-            "solid test\nendsolid test\n",
-            encoding="utf-8",
-        )
-
-        rendered_paths.append(
-            output,
-        )
-
-    monkeypatch.setattr(
-        extrude,
-        "render_stl_source",
-        fake_render_stl_source,
-    )
-
-    context = _physical_fill_extrude_context(
-        composition=composition,
-        composition_manifest=composition_manifest,
-        output_manifest=output_manifest,
-    )
-
-    extrude.execute(
-        context,
-    )
-
-    products = json.loads(
-        output_manifest.read_text(
-            encoding="utf-8",
-        )
-    )
-
-    component_names = {component["name"] for component in products["components"]}
-
-    assert "base" in component_names
-    assert "artwork-1" in component_names
-    assert "artwork-fill" not in component_names
-
-    assert all(path.name != "artwork-fill.stl" for path in rendered_paths)
-
-
-def test_extrude_produces_artwork_fill_component_when_fill_is_enabled(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Persisted registered Artwork fill becomes a distinct physical component.
-
-    Fill does not replace the structural base or incorporated Artwork.
+    Registered fill geometry may exist in the persistent composition, but
+    physical participation belongs to extrusion and is controlled by
+    shape_artwork_fill_raise rather than by physical color policy.
     """
 
     composition = tmp_path / "composition.svg"
@@ -1642,6 +1469,82 @@ def test_extrude_produces_artwork_fill_component_when_fill_is_enabled(
         composition=composition,
         composition_manifest=composition_manifest,
         output_manifest=output_manifest,
+        artwork_fill_raise=0.0,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    products = json.loads(
+        output_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    component_names = {component["name"] for component in products["components"]}
+
+    assert "base" in component_names
+    assert "artwork-1" in component_names
+    assert "artwork-fill" not in component_names
+
+    assert all(path.name != "artwork-fill.stl" for path in rendered_paths)
+
+
+def test_extrude_produces_artwork_fill_component_when_fill_raise_is_positive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Positive Artwork-fill raise enables the physical fill component.
+
+    Physical participation is independent of physical color selection.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    output_manifest = tmp_path / "extrude" / "products.json"
+
+    _write_physical_fill_composition(
+        composition,
+    )
+    _write_physical_fill_manifest(
+        composition_manifest,
+        artwork_fill=_physical_fill_region(),
+    )
+
+    rendered_paths: list[Path] = []
+
+    def fake_render_stl_source(
+        source: str,
+        output: Path,
+    ) -> None:
+        del source
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+        rendered_paths.append(
+            output,
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        fake_render_stl_source,
+    )
+
+    context = _physical_fill_extrude_context(
+        composition=composition,
+        composition_manifest=composition_manifest,
+        output_manifest=output_manifest,
+        artwork_fill_raise=0.4,
     )
 
     extrude.execute(
@@ -1663,16 +1566,15 @@ def test_extrude_produces_artwork_fill_component_when_fill_is_enabled(
     assert tmp_path / "extrude" / "artwork-fill.stl" in rendered_paths
 
 
-def test_artwork_fill_uses_shape_artwork_physical_interval(
+def test_artwork_fill_uses_independent_fill_physical_interval(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Artwork fill receives Shape-owned physical X/Y and Artwork Z dimensions.
+    Artwork fill has its own Shape-owned physical Z dimension.
 
-    For a 100 mm Shape with a 2 mm base and 0.6 mm Artwork raise, fill is
-    dimensionalized using the Shape's 100 mm X/Y mapping and occupies
-    Z = 2.0 through 2.6 mm.
+    Fill begins at the top of the structural base and its height is controlled
+    by shape_artwork_fill_raise independently of shape_artwork_raise.
     """
 
     composition = tmp_path / "composition.svg"
@@ -1714,6 +1616,7 @@ def test_artwork_fill_uses_shape_artwork_physical_interval(
         composition=composition,
         composition_manifest=composition_manifest,
         output_manifest=output_manifest,
+        artwork_fill_raise=0.4,
     )
 
     extrude.execute(
@@ -1724,11 +1627,10 @@ def test_artwork_fill_uses_shape_artwork_physical_interval(
 
     assert "shape_size = 100;" in fill_source
     assert "shape_base_raise = 2;" in fill_source
-    assert "shape_artwork_raise = 0.6;" in fill_source
+    assert "shape_artwork_fill_raise = 0.4;" in fill_source
 
     assert "translate([0, 0, shape_base_raise])" in fill_source
-
-    assert "height = shape_artwork_raise" in fill_source
+    assert "height = shape_artwork_fill_raise" in fill_source
 
     assert "circle(r = 45, $fn = 256);" in fill_source
     assert "square([60, 50], center = false);" in fill_source
@@ -1801,17 +1703,16 @@ def test_artwork_fill_physical_geometry_is_independent_of_ridge_style(
             composition=composition,
             composition_manifest=composition_manifest,
             output_manifest=output_manifest,
+            artwork_fill_raise=0.6,
         )
 
         values = {
             "shape_size": 100.0,
             "shape_base_raise": 2.0,
-            "shape_base_color": "white",
-            "shape_outer_ridge_color": "white",
             "shape_outer_ridge_raise": 1.0,
             "shape_outer_ridge_style": style,
             "shape_artwork_raise": 0.6,
-            "shape_artwork_fill_color": "red",
+            "shape_artwork_fill_raise": 0.6,
         }
 
         context.resolver.side_effect = values.__getitem__
@@ -1963,15 +1864,16 @@ def test_artwork_fill_physically_excludes_incorporated_artwork_envelope(
     )
 
 
-def test_artwork_fill_manifest_preserves_semantic_color(
+def test_artwork_fill_manifest_preserves_shape_component_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Physical Artwork fill preserves its configured semantic color identity.
+    Physical Artwork fill preserves its Shape-owned component identity.
 
-    Shape extrusion records both the semantic color name and its resolved RGB
-    representation for downstream packaging.
+    Extrusion produces physical geometry but does not resolve or persist
+    physical printer-color assignment. Shape-owned physical color is resolved
+    downstream during packaging.
     """
 
     composition = tmp_path / "composition.svg"
@@ -2011,33 +1913,8 @@ def test_artwork_fill_manifest_preserves_semantic_color(
         composition=composition,
         composition_manifest=composition_manifest,
         output_manifest=output_manifest,
+        artwork_fill_raise=0.6,
     )
-
-    values = {
-        "shape_size": 100.0,
-        "shape_base_raise": 2.0,
-        "shape_base_color": "white",
-        "shape_outer_ridge_color": "white",
-        "shape_outer_ridge_raise": 1.0,
-        "shape_outer_ridge_style": "integrated",
-        "shape_artwork_raise": 0.6,
-        "shape_artwork_fill_color": "red",
-    }
-
-    context.resolver.side_effect = values.__getitem__
-
-    context.resolver.colors = {
-        "white": {
-            "red": 255,
-            "green": 255,
-            "blue": 255,
-        },
-        "red": {
-            "red": 255,
-            "green": 0,
-            "blue": 0,
-        },
-    }
 
     extrude.execute(
         context,
@@ -2053,24 +1930,21 @@ def test_artwork_fill_manifest_preserves_semantic_color(
         component for component in products["components"] if component["name"] == "artwork-fill"
     )
 
-    assert fill["color"] == {
-        "name": "red",
-        "rgb": [
-            255,
-            0,
-            0,
-        ],
+    assert fill == {
+        "name": "artwork-fill",
+        "path": "artwork-fill.stl",
     }
 
 
-def test_artwork_fill_color_resolves_through_shared_palette(
+def test_artwork_fill_extrusion_does_not_resolve_physical_color(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Artwork-fill semantic colors use the common palette-resolution mechanism.
+    Artwork-fill extrusion does not resolve physical printer color.
 
-    Shape does not maintain a separate fill-color interpretation.
+    Physical color policy belongs exclusively to Shape Package. Extrusion
+    resolves only the dimensional parameters material to physical geometry.
     """
 
     composition = tmp_path / "composition.svg"
@@ -2110,66 +1984,33 @@ def test_artwork_fill_color_resolves_through_shared_palette(
         composition=composition,
         composition_manifest=composition_manifest,
         output_manifest=output_manifest,
+        artwork_fill_raise=0.6,
     )
-
-    values = {
-        "shape_size": 100.0,
-        "shape_base_raise": 2.0,
-        "shape_base_color": "white",
-        "shape_outer_ridge_color": "white",
-        "shape_outer_ridge_raise": 1.0,
-        "shape_outer_ridge_style": "integrated",
-        "shape_artwork_raise": 0.6,
-        "shape_artwork_fill_color": "blue",
-    }
-
-    context.resolver.side_effect = values.__getitem__
-
-    context.resolver.colors = {
-        "white": {
-            "red": 255,
-            "green": 255,
-            "blue": 255,
-        },
-    }
 
     extrude.execute(
         context,
     )
 
-    products = json.loads(
-        output_manifest.read_text(
-            encoding="utf-8",
-        )
-    )
-
-    fill = next(
-        component for component in products["components"] if component["name"] == "artwork-fill"
-    )
-
-    assert fill["color"] == {
-        "name": "blue",
-        "rgb": [
-            0,
-            0,
-            255,
-        ],
-    }
+    assert context.resolver.call_args_list == [
+        call("shape_size"),
+        call("shape_base_raise"),
+        call("shape_outer_ridge_raise"),
+        call("shape_outer_ridge_style"),
+        call("shape_artwork_raise"),
+        call("shape_artwork_fill_raise"),
+    ]
 
 
-def test_artwork_fill_remains_distinct_from_artwork_when_colors_match(
+def test_artwork_fill_remains_distinct_from_incorporated_artwork(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Artwork fill remains distinct from incorporated Artwork destined for the
-    same physical color.
+    Shape-owned Artwork fill remains distinct from incorporated Artwork.
 
     Incorporated Artwork preserves logical Artifact-color identity through
-    extrusion, while Shape-owned Artwork fill preserves its configured
-    semantic color. Those different pre-package color representations do not
-    merge or erase either physical component. Package resolves incorporated
-    Artwork to its physical printer color downstream.
+    extrusion. Shape-owned Artwork fill preserves only its component identity.
+    Physical printer-color assignment for both remains a Package concern.
     """
 
     composition = tmp_path / "composition.svg"
@@ -2209,20 +2050,8 @@ def test_artwork_fill_remains_distinct_from_artwork_when_colors_match(
         composition=composition,
         composition_manifest=composition_manifest,
         output_manifest=output_manifest,
+        artwork_fill_raise=0.6,
     )
-
-    values = {
-        "shape_size": 100.0,
-        "shape_base_raise": 2.0,
-        "shape_base_color": "white",
-        "shape_outer_ridge_color": "white",
-        "shape_outer_ridge_raise": 1.0,
-        "shape_outer_ridge_style": "integrated",
-        "shape_artwork_raise": 0.6,
-        "shape_artwork_fill_color": "white",
-    }
-
-    context.resolver.side_effect = values.__getitem__
 
     extrude.execute(
         context,
@@ -2242,9 +2071,6 @@ def test_artwork_fill_remains_distinct_from_artwork_when_colors_match(
         component for component in products["components"] if component["name"] == "artwork-fill"
     )
 
-    #
-    # Incorporated Artwork retains logical Artifact-color identity.
-    #
     assert artwork["color"] == {
         "index": 1,
         "rgb": {
@@ -2254,37 +2080,26 @@ def test_artwork_fill_remains_distinct_from_artwork_when_colors_match(
         },
     }
 
-    #
-    # Shape-owned fill retains its semantic Shape color. Physical assignment
-    # of the incorporated Artwork remains a Package responsibility.
-    #
-    assert fill["color"] == {
-        "name": "white",
-        "rgb": [
-            255,
-            255,
-            255,
-        ],
+    assert fill == {
+        "name": "artwork-fill",
+        "path": "artwork-fill.stl",
     }
 
-    #
-    # Color representation does not determine physical component identity.
-    #
     assert artwork["name"] == "artwork-1"
     assert fill["name"] == "artwork-fill"
 
     assert artwork["path"] != fill["path"]
 
 
-def test_invalid_artwork_fill_color_fails_through_shared_color_resolution(
+def test_artwork_fill_extrusion_is_independent_of_invalid_physical_color(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Invalid Artwork-fill colors fail through normal shared color resolution.
+    Artwork-fill extrusion is independent of physical color validity.
 
-    Shape does not maintain a separate validation or interpretation mechanism
-    for enabled Artwork-fill semantic colors.
+    shape_artwork_fill_color is Package-owned policy. Extrusion therefore
+    succeeds without resolving or validating that parameter.
     """
 
     composition = tmp_path / "composition.svg"
@@ -2324,39 +2139,46 @@ def test_invalid_artwork_fill_color_fails_through_shared_color_resolution(
         composition=composition,
         composition_manifest=composition_manifest,
         output_manifest=output_manifest,
+        artwork_fill_raise=0.6,
     )
 
-    values = {
-        "shape_size": 100.0,
-        "shape_base_raise": 2.0,
-        "shape_base_color": "white",
-        "shape_outer_ridge_color": "white",
-        "shape_outer_ridge_raise": 1.0,
-        "shape_outer_ridge_style": "integrated",
-        "shape_artwork_raise": 0.6,
-        "shape_artwork_fill_color": "not-a-real-color",
-    }
+    original_resolver = context.resolver.side_effect
 
-    context.resolver.side_effect = values.__getitem__
+    def resolver(name: str) -> object:
+        if name == "shape_artwork_fill_color":
+            raise AssertionError("Extrude must not resolve shape_artwork_fill_color.")
 
-    with pytest.raises(
-        ColorError,
-        match="not-a-real-color",
-    ):
-        extrude.execute(
-            context,
+        assert original_resolver is not None
+        return original_resolver(name)
+
+    context.resolver.side_effect = resolver
+
+    extrude.execute(
+        context,
+    )
+
+    products = json.loads(
+        output_manifest.read_text(
+            encoding="utf-8",
         )
+    )
+
+    assert any(component["name"] == "artwork-fill" for component in products["components"])
+
+    assert all(
+        call.args != ("shape_artwork_fill_color",) for call in context.resolver.call_args_list
+    )
 
 
-def test_artwork_fill_manifest_does_not_assign_printer_head(
+def test_artwork_fill_manifest_contains_no_physical_color_assignment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Artwork-fill extrusion preserves semantic color without printer assignment.
+    Artwork-fill extrusion contains no physical color assignment.
 
-    Physical printer-head selection remains outside Shape's semantic component
-    manifest.
+    Shape Extrude owns physical geometry and component participation.
+    Shape Package owns physical printer-color assignment.
     """
 
     composition = tmp_path / "composition.svg"
@@ -2396,6 +2218,7 @@ def test_artwork_fill_manifest_does_not_assign_printer_head(
         composition=composition,
         composition_manifest=composition_manifest,
         output_manifest=output_manifest,
+        artwork_fill_raise=0.6,
     )
 
     extrude.execute(
@@ -2412,18 +2235,11 @@ def test_artwork_fill_manifest_does_not_assign_printer_head(
         component for component in products["components"] if component["name"] == "artwork-fill"
     )
 
-    assert fill["name"] == "artwork-fill"
-    assert fill["color"] == {
-        "name": "red",
-        "rgb": [
-            255,
-            0,
-            0,
-        ],
+    assert fill == {
+        "name": "artwork-fill",
+        "path": "artwork-fill.stl",
     }
 
-    assert set(fill) == {
-        "name",
-        "path",
-        "color",
-    }
+    assert "color" not in fill
+    assert "printer_color" not in fill
+    assert "printer_head" not in fill
