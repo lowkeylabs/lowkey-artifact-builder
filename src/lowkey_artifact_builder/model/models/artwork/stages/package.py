@@ -623,12 +623,22 @@ def _component_name(
     color: PaletteColor,
 ) -> str:
     """
-    Return the shared 3MF presentation name for one Artwork component.
+    Return the packaged semantic component name.
+
+    Registered Artwork extrusion products use stage-local color-N filenames,
+    but independently printable packaged Artwork components use the shared
+    artwork-N semantic identity. Feature components retain their semantic
+    filename identity.
     """
+
+    if component.index is not None:
+        semantic_name = f"artwork-{component.index}"
+    else:
+        semantic_name = component.path.stem
 
     return component_name(
         artifact_id,
-        component.path.stem,
+        semantic_name,
         color.name,
     )
 

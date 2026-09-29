@@ -1847,267 +1847,6 @@ def test_recolor_existing_final_rejects_missing_final_without_building(
         )
 
 
-def test_analyze_existing_artwork_colors_uses_existing_manifest_without_execution(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """
-    Existing-final recoloring analyzes an already-existing registered Artwork
-    manifest without executing build stages to create or refresh it.
-    """
-
-    manifest_path = tmp_path / "registered-artwork.json"
-    manifest_path.touch()
-
-    resolver = object()
-
-    plan = cast(
-        BuildPlan,
-        SimpleNamespace(
-            resolver=resolver,
-            stages=(
-                SimpleNamespace(
-                    name="vector",
-                    products=(
-                        SimpleNamespace(
-                            name="manifest",
-                            path=manifest_path,
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    expected = object()
-
-    calls: list[
-        tuple[
-            Path,
-            object,
-        ]
-    ] = []
-
-    def fake_analyze_registered_artwork_colors(
-        *,
-        manifest: Path,
-        resolver: object,
-    ) -> object:
-        calls.append(
-            (
-                manifest,
-                resolver,
-            )
-        )
-        return expected
-
-    monkeypatch.setattr(
-        cmd_color,
-        "analyze_registered_artwork_colors",
-        fake_analyze_registered_artwork_colors,
-    )
-
-    monkeypatch.setattr(
-        cmd_color,
-        "execute_dependency_build",
-        lambda *args, **kwargs: pytest.fail(
-            "existing Artwork color analysis must not execute build stages"
-        ),
-    )
-
-    result = cmd_color._analyze_existing_artwork_colors(
-        plan,
-    )
-
-    assert result is expected
-
-    assert calls == [
-        (
-            manifest_path,
-            resolver,
-        )
-    ]
-
-
-def test_analyze_existing_artwork_colors_rejects_missing_manifest_without_execution(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """
-    Existing-final recoloring requires the registered Artwork manifest to
-    already exist and must not rebuild it when it is missing.
-    """
-
-    manifest_path = tmp_path / "registered-artwork.json"
-
-    plan = cast(
-        BuildPlan,
-        SimpleNamespace(
-            resolver=object(),
-            stages=(
-                SimpleNamespace(
-                    name="vector",
-                    products=(
-                        SimpleNamespace(
-                            name="manifest",
-                            path=manifest_path,
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    monkeypatch.setattr(
-        cmd_color,
-        "analyze_registered_artwork_colors",
-        lambda *args, **kwargs: pytest.fail("missing manifest must not be analyzed"),
-    )
-
-    monkeypatch.setattr(
-        cmd_color,
-        "execute_dependency_build",
-        lambda *args, **kwargs: pytest.fail("missing manifest must not trigger build execution"),
-    )
-
-    with pytest.raises(
-        RuntimeError,
-        match="registered Artwork manifest",
-    ):
-        cmd_color._analyze_existing_artwork_colors(
-            plan,
-        )
-
-
-def test_analyze_existing_shape_artwork_colors_uses_bound_existing_manifest(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """
-    Existing-final Shape recoloring follows the Shape Realization's bound
-    Artwork dependency and analyzes its already-existing registered manifest
-    without executing build stages.
-    """
-
-    manifest_path = tmp_path / "bound-artwork-manifest.json"
-    manifest_path.touch()
-
-    dependency = SimpleNamespace(
-        product_ref=SimpleNamespace(
-            model="artwork",
-            stage="vector",
-            product="manifest",
-        ),
-    )
-
-    artwork_resolver = object()
-
-    artwork_plan = SimpleNamespace(
-        resolver=artwork_resolver,
-        stages=(
-            SimpleNamespace(
-                name="vector",
-                products=(
-                    SimpleNamespace(
-                        name="manifest",
-                        path=manifest_path,
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    shape_plan = cast(
-        BuildPlan,
-        SimpleNamespace(
-            project_root=tmp_path,
-            planned_product_dependencies=(dependency,),
-        ),
-    )
-
-    expected = object()
-
-    dependency_calls: list[
-        tuple[
-            object,
-            Path,
-        ]
-    ] = []
-
-    def fake_create_product_dependency_build_plan(
-        selected_dependency: object,
-        *,
-        project_root: Path,
-    ) -> object:
-        dependency_calls.append(
-            (
-                selected_dependency,
-                project_root,
-            )
-        )
-        return artwork_plan
-
-    analysis_calls: list[
-        tuple[
-            Path,
-            object,
-        ]
-    ] = []
-
-    def fake_analyze_registered_artwork_colors(
-        *,
-        manifest: Path,
-        resolver: object,
-    ) -> object:
-        analysis_calls.append(
-            (
-                manifest,
-                resolver,
-            )
-        )
-        return expected
-
-    monkeypatch.setattr(
-        cmd_color,
-        "create_product_dependency_build_plan",
-        fake_create_product_dependency_build_plan,
-    )
-
-    monkeypatch.setattr(
-        cmd_color,
-        "analyze_registered_artwork_colors",
-        fake_analyze_registered_artwork_colors,
-    )
-
-    monkeypatch.setattr(
-        cmd_color,
-        "execute_dependency_build",
-        lambda *args, **kwargs: pytest.fail(
-            "existing Shape recoloring must not execute build stages"
-        ),
-    )
-
-    result = cmd_color._analyze_existing_shape_artwork_colors(
-        shape_plan,
-    )
-
-    assert result is expected
-
-    assert dependency_calls == [
-        (
-            dependency,
-            tmp_path,
-        )
-    ]
-
-    assert analysis_calls == [
-        (
-            manifest_path,
-            artwork_resolver,
-        )
-    ]
-
-
 def test_analyze_existing_shape_artwork_colors_returns_none_without_artwork_dependency(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -4434,3 +4173,664 @@ def test_colors_cli_without_artifact_id_applies_realization_to_bulk_analysis(
         call(analyses[0]),
         call(analyses[1]),
     ]
+
+
+def test_analyze_existing_named_artwork_uses_canonical_registered_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Existing-final recoloring of a named Artwork manufacturing Realization
+    consumes the canonical registered Artwork manifest.
+
+    Named Artwork Realizations diverge for manufacturing at Extrude/Package;
+    they do not own independent Prepare/Raster/Vector products. Recoloring an
+    existing named final therefore must not require a
+    <named-realization>/30-vector/products.json manifest.
+    """
+
+    canonical_manifest = (
+        tmp_path
+        / "artifacts"
+        / "cat"
+        / "artwork"
+        / "artwork_default"
+        / "30-vector"
+        / "products.json"
+    )
+    canonical_manifest.parent.mkdir(
+        parents=True,
+    )
+    canonical_manifest.write_text(
+        "{}",
+        encoding="utf-8",
+    )
+
+    named_manifest = (
+        tmp_path / "artifacts" / "cat" / "artwork" / "artwork_charm" / "30-vector" / "products.json"
+    )
+
+    assert not named_manifest.exists()
+
+    named_plan = Mock(spec=BuildPlan)
+    named_plan.artifact_id = "cat"
+    named_plan.model_name = "artwork"
+    named_plan.realization_name = "artwork_charm"
+    named_plan.project_root = tmp_path
+    named_plan.resolver = Mock()
+
+    canonical_manifest_product = Mock()
+    canonical_manifest_product.name = "manifest"
+    canonical_manifest_product.path = canonical_manifest
+
+    canonical_vector_stage = Mock()
+    canonical_vector_stage.name = "vector"
+    canonical_vector_stage.products = (canonical_manifest_product,)
+
+    canonical_plan = Mock(spec=BuildPlan)
+    canonical_plan.artifact_id = "cat"
+    canonical_plan.model_name = "artwork"
+    canonical_plan.realization_name = "artwork_default"
+    canonical_plan.project_root = tmp_path
+    canonical_plan.resolver = Mock()
+    canonical_plan.stages = (canonical_vector_stage,)
+
+    created_plans: list[
+        tuple[
+            str,
+            str,
+            Path,
+        ]
+    ] = []
+
+    def fake_create_build_plan(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+        **kwargs: object,
+    ) -> BuildPlan:
+        created_plans.append(
+            (
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
+
+        assert kwargs == {}
+
+        return canonical_plan
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_build_plan",
+        fake_create_build_plan,
+    )
+
+    expected = Mock(
+        spec=ArtworkColorAnalysis,
+    )
+
+    analyzed: list[
+        tuple[
+            Path,
+            object,
+        ]
+    ] = []
+
+    def fake_analyze_registered_artwork_colors(
+        *,
+        manifest: Path,
+        resolver: object,
+    ) -> ArtworkColorAnalysis:
+        analyzed.append(
+            (
+                manifest,
+                resolver,
+            )
+        )
+
+        return expected
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        fake_analyze_registered_artwork_colors,
+    )
+
+    result = cmd_color._analyze_existing_artwork_colors(
+        named_plan,
+    )
+
+    assert result is expected
+
+    assert created_plans == [
+        (
+            "cat",
+            "artwork_default",
+            tmp_path,
+        )
+    ]
+
+    assert analyzed == [
+        (
+            canonical_manifest,
+            named_plan.resolver,
+        )
+    ]
+
+    assert not named_manifest.exists()
+
+
+def test_analyze_existing_artwork_colors_uses_existing_manifest_without_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Existing-final recoloring resolves the canonical registered Artwork
+    manifest and analyzes it without executing build stages to create or
+    refresh it.
+    """
+
+    manifest_path = tmp_path / "registered-artwork.json"
+    manifest_path.touch()
+
+    canonical_resolver = object()
+
+    canonical_plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            resolver=canonical_resolver,
+            stages=(
+                SimpleNamespace(
+                    name="vector",
+                    products=(
+                        SimpleNamespace(
+                            name="manifest",
+                            path=manifest_path,
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    resolved_resolver = object()
+
+    resolved_plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            artifact_id="dog",
+            project_root=tmp_path,
+            resolver=resolved_resolver,
+        ),
+    )
+
+    build_plan_calls: list[
+        tuple[
+            str,
+            str | None,
+            Path,
+        ]
+    ] = []
+
+    def fake_create_build_plan(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+        **kwargs: object,
+    ) -> BuildPlan:
+        build_plan_calls.append(
+            (
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
+        return canonical_plan
+
+    expected = object()
+
+    analysis_calls: list[
+        tuple[
+            Path,
+            object,
+        ]
+    ] = []
+
+    def fake_analyze_registered_artwork_colors(
+        *,
+        manifest: Path,
+        resolver: object,
+    ) -> object:
+        analysis_calls.append(
+            (
+                manifest,
+                resolver,
+            )
+        )
+        return expected
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_build_plan",
+        fake_create_build_plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        fake_analyze_registered_artwork_colors,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda *args, **kwargs: pytest.fail(
+            "existing Artwork color analysis must not execute build stages"
+        ),
+    )
+
+    result = cmd_color._analyze_existing_artwork_colors(
+        resolved_plan,
+    )
+
+    assert build_plan_calls == [
+        (
+            "dog",
+            "artwork_default",
+            tmp_path,
+        )
+    ]
+
+    assert analysis_calls == [
+        (
+            manifest_path,
+            resolved_resolver,
+        )
+    ]
+
+    assert result is expected
+
+
+def test_analyze_existing_artwork_colors_rejects_missing_manifest_without_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Existing-final recoloring requires the canonical registered Artwork
+    manifest to already exist and must not rebuild it when it is missing.
+    """
+
+    manifest_path = tmp_path / "registered-artwork.json"
+
+    canonical_plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            resolver=object(),
+            stages=(
+                SimpleNamespace(
+                    name="vector",
+                    products=(
+                        SimpleNamespace(
+                            name="manifest",
+                            path=manifest_path,
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    resolved_plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            artifact_id="dog",
+            project_root=tmp_path,
+        ),
+    )
+
+    build_plan_calls: list[
+        tuple[
+            str,
+            str | None,
+            Path,
+        ]
+    ] = []
+
+    def fake_create_build_plan(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+        **kwargs: object,
+    ) -> BuildPlan:
+        build_plan_calls.append(
+            (
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
+        return canonical_plan
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_build_plan",
+        fake_create_build_plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        lambda *args, **kwargs: pytest.fail("missing manifest must not be analyzed"),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda *args, **kwargs: pytest.fail("missing manifest must not trigger build execution"),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="registered Artwork manifest",
+    ):
+        cmd_color._analyze_existing_artwork_colors(
+            resolved_plan,
+        )
+
+    assert build_plan_calls == [
+        (
+            "dog",
+            "artwork_default",
+            tmp_path,
+        )
+    ]
+
+
+def test_analyze_existing_shape_artwork_colors_uses_bound_existing_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Existing-final Shape recoloring follows the Shape Realization's bound
+    Artwork dependency, then resolves that Artwork to the canonical registered
+    Artwork manifest without executing build stages.
+    """
+
+    manifest_path = tmp_path / "canonical-artwork-manifest.json"
+    manifest_path.touch()
+
+    dependency = SimpleNamespace(
+        product_ref=SimpleNamespace(
+            model="artwork",
+            stage="vector",
+            product="manifest",
+        ),
+    )
+
+    bound_resolver = object()
+
+    bound_artwork_plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            artifact_id="dog",
+            project_root=tmp_path,
+            resolver=bound_resolver,
+        ),
+    )
+
+    canonical_resolver = object()
+
+    canonical_artwork_plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            resolver=canonical_resolver,
+            stages=(
+                SimpleNamespace(
+                    name="vector",
+                    products=(
+                        SimpleNamespace(
+                            name="manifest",
+                            path=manifest_path,
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    shape_plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            project_root=tmp_path,
+            planned_product_dependencies=(dependency,),
+        ),
+    )
+
+    dependency_calls: list[
+        tuple[
+            object,
+            Path,
+        ]
+    ] = []
+
+    def fake_create_product_dependency_build_plan(
+        selected_dependency: object,
+        *,
+        project_root: Path,
+    ) -> BuildPlan:
+        dependency_calls.append(
+            (
+                selected_dependency,
+                project_root,
+            )
+        )
+        return bound_artwork_plan
+
+    build_plan_calls: list[
+        tuple[
+            str,
+            str | None,
+            Path,
+        ]
+    ] = []
+
+    def fake_create_build_plan(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+        project_root: Path,
+        **kwargs: object,
+    ) -> BuildPlan:
+        build_plan_calls.append(
+            (
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
+        return canonical_artwork_plan
+
+    expected = object()
+
+    analysis_calls: list[
+        tuple[
+            Path,
+            object,
+        ]
+    ] = []
+
+    def fake_analyze_registered_artwork_colors(
+        *,
+        manifest: Path,
+        resolver: object,
+    ) -> object:
+        analysis_calls.append(
+            (
+                manifest,
+                resolver,
+            )
+        )
+        return expected
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_product_dependency_build_plan",
+        fake_create_product_dependency_build_plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_build_plan",
+        fake_create_build_plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        fake_analyze_registered_artwork_colors,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "execute_dependency_build",
+        lambda *args, **kwargs: pytest.fail(
+            "existing Shape recoloring must not execute build stages"
+        ),
+    )
+
+    result = cmd_color._analyze_existing_shape_artwork_colors(
+        shape_plan,
+    )
+
+    assert dependency_calls == [
+        (
+            dependency,
+            tmp_path,
+        )
+    ]
+
+    assert build_plan_calls == [
+        (
+            "dog",
+            "artwork_default",
+            tmp_path,
+        )
+    ]
+
+    assert analysis_calls == [
+        (
+            manifest_path,
+            bound_resolver,
+        )
+    ]
+
+    assert result is expected
+
+
+def test_analyze_existing_artwork_colors_uses_target_resolver_with_canonical_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Existing Artwork color analysis reads geometry/color identity from the
+    canonical registered Artwork manifest while preserving the target
+    Realization's effective color configuration.
+
+    Canonicalization determines product ownership; it must not replace the
+    resolver carrying prospective printer_colors for the recolor operation.
+    """
+
+    artifact_id = "dog"
+
+    target_resolver = Mock(
+        name="target_resolver",
+    )
+    canonical_resolver = Mock(
+        name="canonical_resolver",
+    )
+
+    target_plan = SimpleNamespace(
+        artifact_id=artifact_id,
+        project_root=tmp_path,
+        resolver=target_resolver,
+    )
+
+    canonical_manifest = (
+        tmp_path
+        / "artifacts"
+        / artifact_id
+        / "artwork"
+        / "artwork_default"
+        / "30-vector"
+        / "products.json"
+    )
+    canonical_manifest.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    canonical_manifest.write_text(
+        "{}",
+        encoding="utf-8",
+    )
+
+    canonical_plan = SimpleNamespace(
+        artifact_id=artifact_id,
+        project_root=tmp_path,
+        resolver=canonical_resolver,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_build_plan",
+        Mock(
+            return_value=canonical_plan,
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_registered_artwork_manifest",
+        Mock(
+            return_value=canonical_manifest,
+        ),
+    )
+
+    expected_analysis = Mock(
+        name="analysis",
+    )
+
+    analyze = Mock(
+        return_value=expected_analysis,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        analyze,
+    )
+
+    result = cmd_color._analyze_existing_artwork_colors(
+        target_plan,  # type: ignore[arg-type]
+    )
+
+    assert result is expected_analysis
+
+    cmd_color.create_build_plan.assert_called_once_with(
+        artifact_id,
+        realization="artwork_default",
+        project_root=tmp_path,
+    )
+
+    cmd_color._registered_artwork_manifest.assert_called_once_with(
+        canonical_plan,
+    )
+
+    analyze.assert_called_once_with(
+        manifest=canonical_manifest,
+        resolver=target_resolver,
+    )

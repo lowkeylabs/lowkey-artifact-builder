@@ -1508,12 +1508,16 @@ def test_update_component_names_is_atomic_when_component_is_missing(
     assert path.read_bytes() == before
 
 
-def test_update_component_colors_replaces_presentation_color_idempotently(
+def test_update_component_colors_migrates_legacy_artwork_component_identity(
     tmp_path: Path,
 ) -> None:
     """
-    Component recoloring preserves stable semantic identity and replaces the
-    operator-facing color presentation on repeated recoloring.
+    Recoloring a legacy standalone Artwork 3MF migrates its old color-N
+    component identity to the canonical artwork-N identity.
+
+    Legacy compatibility exists only at the existing-3MF mutation boundary.
+    Once recolored, the component uses the same canonical identity as newly
+    packaged standalone and incorporated Artwork.
     """
 
     path = tmp_path / "artifact.3mf"
@@ -1523,7 +1527,7 @@ def test_update_component_colors_replaces_presentation_color_idempotently(
             Component(
                 name=component_name(
                     "dog",
-                    "artwork-1",
+                    "color-1",
                     "old-red",
                 ),
                 mesh=_mesh(),
@@ -1534,6 +1538,24 @@ def test_update_component_colors_replaces_presentation_color_idempotently(
             ),
         ),
         path,
+    )
+
+    before = _read_model(path)
+
+    before_objects = before.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    assert len(before_objects) == 1
+
+    before_mesh = before_objects[0].find(
+        f"{{{CORE_NS}}}mesh",
+    )
+
+    assert before_mesh is not None
+
+    before_geometry = ET.tostring(
+        before_mesh,
     )
 
     update_component_colors(
@@ -1547,38 +1569,32 @@ def test_update_component_colors_replaces_presentation_color_idempotently(
         },
     )
 
-    update_component_colors(
-        path,
-        artifact_id="dog",
-        colors={
-            "artwork-1": PaletteColor(
-                name="deep-red",
-                rgb=(180, 20, 20),
-            ),
-        },
-    )
+    after = _read_model(path)
 
-    model = _read_model(
-        path,
-    )
-
-    objects = model.findall(
+    after_objects = after.findall(
         f".//{{{CORE_NS}}}object",
     )
 
-    assert len(objects) == 1
+    assert len(after_objects) == 1
 
-    assert objects[0].get("id") == "1"
-    assert objects[0].get("name") == "artwork-1 - deep-red"
+    assert after_objects[0].get("id") == "1"
+    assert after_objects[0].get("name") == ("artwork-1 - fire-engine-red")
 
-    materials = model.findall(
+    after_mesh = after_objects[0].find(
+        f"{{{CORE_NS}}}mesh",
+    )
+
+    assert after_mesh is not None
+    assert ET.tostring(after_mesh) == before_geometry
+
+    materials = after.findall(
         f".//{{{CORE_NS}}}basematerials/{{{CORE_NS}}}base",
     )
 
     assert len(materials) == 1
 
-    assert materials[0].get("name") == "deep-red"
-    assert materials[0].get("displaycolor") == "#B41414"
+    assert materials[0].get("name") == "fire-engine-red"
+    assert materials[0].get("displaycolor") == "#DC2626"
 
 
 def test_update_component_colors_is_atomic_when_component_is_missing(

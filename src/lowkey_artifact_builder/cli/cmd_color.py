@@ -671,14 +671,31 @@ def _analyze_existing_artwork_colors(
     resolved_plan: BuildPlan,
 ) -> ArtworkColorAnalysis:
     """
-    Analyze colors from an already-existing registered Artwork manifest.
+    Analyze colors from the already-existing canonical registered Artwork
+    manifest.
 
-    Existing-final recoloring consumes the planned manifest directly. It does
+    Existing-final recoloring consumes canonical registered Artwork rather
+    than realization-specific manufacturing intermediates. Named Artwork
+    Realizations diverge at manufacturing and therefore do not own independent
+    Prepare/Raster/Vector products.
+
+    The canonical Artwork plan supplies the registered Artwork manifest.
+    Color analysis preserves the supplied plan's effective resolver so
+    prospective recolor configuration, including printer_colors, remains in
+    effect.
+
+    Resolution may plan the canonical registered Artwork product, but it does
     not execute build stages to create or refresh missing prerequisites.
     """
 
+    artwork_plan = create_build_plan(
+        resolved_plan.artifact_id,
+        realization="artwork_default",
+        project_root=resolved_plan.project_root,
+    )
+
     manifest = _registered_artwork_manifest(
-        resolved_plan,
+        artwork_plan,
     )
 
     if not manifest.is_file():

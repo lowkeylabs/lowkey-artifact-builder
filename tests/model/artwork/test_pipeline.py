@@ -735,6 +735,10 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
     physical printer assignment. Package resolves the configured physical
     printer colors into the final printable 3MF.
 
+    Stage-local registered Artwork products use color-N filenames. Package
+    exposes those independently printable components through the canonical
+    artwork-N semantic component identity.
+
     Physical printer-color assignment is determined by color matching rather
     than by the ordering of printer_colors.
     """
@@ -858,24 +862,38 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
 
     object_names = {object_element.get("name") for object_element in objects}
 
+    # -----------------------------------------------------
+    # Packaged Artwork component identity and physical color
+    # -----------------------------------------------------
+
+    #
     # Package performs physical color matching. The configured printer
     # palette is not a positional mapping from Artifact-color index to
     # printer-color entry, so verify the resulting component/color pairs
     # without assuming palette ordering.
+    #
+    # color-N remains the stage-local Raster/Vector/Extrude product naming
+    # convention. Independently printable registered Artwork components use
+    # the shared artwork-N semantic identity in the packaged 3MF.
+    #
     expected_component_names = {
         component_name(
             "example",
-            "color-1",
+            "artwork-1",
             "test-red",
         ),
         component_name(
             "example",
-            "color-2",
+            "artwork-2",
             "test-white",
         ),
     }
 
     assert object_names == expected_component_names
+
+    # -----------------------------------------------------
+    # Packaged geometry
+    # -----------------------------------------------------
 
     for object_element in objects:
         vertices = object_element.findall(
@@ -890,6 +908,10 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
 
         assert vertices
         assert triangles
+
+    # -----------------------------------------------------
+    # Build references every packaged component
+    # -----------------------------------------------------
 
     object_ids = [object_element.get("id") for object_element in objects]
 

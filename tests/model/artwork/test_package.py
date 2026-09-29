@@ -212,44 +212,99 @@ def test_package_preserves_component_identity_and_resolves_printer_assignment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Package preserves component identity while resolving physical color."""
+    """
+    Package gives registered Artwork layers their shared Artwork identity.
+
+    Extrusion products retain their stage-local color-N filenames. Package
+    translates registered Artwork layers to the model-independent artwork-N
+    semantic component identity while resolving their physical printer colors.
+    """
+
     directory = tmp_path / "extrude"
     directory.mkdir(parents=True, exist_ok=True)
+
     first = directory / "color-1.stl"
     second = directory / "color-2.stl"
+
     first.write_text("first", encoding="utf-8")
     second.write_text("second", encoding="utf-8")
+
     manifest = directory / "products.json"
+
     _write_extrude_manifest(
         manifest,
         [
-            _product(index=1, path=first.name, artifact_color_index=1, artifact_rgb=(17, 43, 91)),
-            _product(index=2, path=second.name, artifact_color_index=2, artifact_rgb=(214, 31, 42)),
+            _product(
+                index=1,
+                path=first.name,
+                artifact_color_index=1,
+                artifact_rgb=(17, 43, 91),
+            ),
+            _product(
+                index=2,
+                path=second.name,
+                artifact_color_index=2,
+                artifact_rgb=(214, 31, 42),
+            ),
         ],
     )
+
     artifact = tmp_path / "artifact.3mf"
+
     context = StubContext(
         artifact_id="portrait",
-        inputs={"extrude.manifest": manifest},
-        outputs={"artifact": artifact},
+        inputs={
+            "extrude.manifest": manifest,
+        },
+        outputs={
+            "artifact": artifact,
+        },
         resolver=StubResolver(
-            {"printer_colors": ["physical-blue", "physical-red"]},
+            {
+                "printer_colors": [
+                    "physical-blue",
+                    "physical-red",
+                ],
+            },
             colors={
-                "physical-blue": {"rgb": [20, 40, 90]},
-                "physical-red": {"rgb": [220, 38, 38]},
+                "physical-blue": {
+                    "rgb": [20, 40, 90],
+                },
+                "physical-red": {
+                    "rgb": [220, 38, 38],
+                },
             },
         ),
     )
+
     captured = _capture_write(monkeypatch)
+
     package.execute(context)  # type: ignore[arg-type]
+
     assert len(captured) == 1
-    assert tuple(c.name for c in captured[0]) == (
-        component_name("portrait", "color-1", "physical-blue"),
-        component_name("portrait", "color-2", "physical-red"),
+
+    assert tuple(component.name for component in captured[0]) == (
+        component_name(
+            "portrait",
+            "artwork-1",
+            "physical-blue",
+        ),
+        component_name(
+            "portrait",
+            "artwork-2",
+            "physical-red",
+        ),
     )
-    assert tuple(c.color for c in captured[0]) == (
-        PaletteColor(name="physical-blue", rgb=(20, 40, 90)),
-        PaletteColor(name="physical-red", rgb=(220, 38, 38)),
+
+    assert tuple(component.color for component in captured[0]) == (
+        PaletteColor(
+            name="physical-blue",
+            rgb=(20, 40, 90),
+        ),
+        PaletteColor(
+            name="physical-red",
+            rgb=(220, 38, 38),
+        ),
     )
 
 
@@ -642,12 +697,8 @@ def test_package_loop_inherits_attached_artifact_layer_printer_color(
     A Loop without an explicit physical color inherits the printer color
     assigned to its attached Artifact-color layer.
 
-    Extrusion records that logical relationship as artifact_color_index.
-    Package resolves the referenced Artifact color to its physical printer
-    assignment and applies that same assignment to the Loop component.
-
-    loop_color is an optional Package override. Its absence must not be
-    resolved as a required configuration value.
+    Registered Artwork receives the shared artwork-N component identity while
+    the Loop retains its semantic feature identity.
     """
 
     extrude_directory = tmp_path / "extrude"
@@ -663,7 +714,6 @@ def test_package_loop_inherits_attached_artifact_layer_printer_color(
         "artwork",
         encoding="utf-8",
     )
-
     loop_stl.write_text(
         "loop",
         encoding="utf-8",
@@ -728,10 +778,7 @@ def test_package_loop_inherits_attached_artifact_layer_printer_color(
     def fake_load_stl(
         path: Path,
     ) -> Mesh:
-        loaded_paths.append(
-            path,
-        )
-
+        loaded_paths.append(path)
         return _mesh()
 
     monkeypatch.setattr(
@@ -749,18 +796,13 @@ def test_package_loop_inherits_attached_artifact_layer_printer_color(
     ) -> None:
         nonlocal captured_components
 
-        captured_components = tuple(
-            components,
-        )
+        captured_components = tuple(components)
 
         output.parent.mkdir(
             parents=True,
             exist_ok=True,
         )
-
-        output.write_bytes(
-            b"3mf",
-        )
+        output.write_bytes(b"3mf")
 
     monkeypatch.setattr(
         package,
@@ -782,7 +824,7 @@ def test_package_loop_inherits_attached_artifact_layer_printer_color(
     assert tuple(component.name for component in captured_components) == (
         component_name(
             "ornament",
-            "color-1",
+            "artwork-1",
             "white",
         ),
         component_name(
@@ -795,19 +837,11 @@ def test_package_loop_inherits_attached_artifact_layer_printer_color(
     assert tuple(component.color for component in captured_components) == (
         PaletteColor(
             name="white",
-            rgb=(
-                255,
-                255,
-                255,
-            ),
+            rgb=(255, 255, 255),
         ),
         PaletteColor(
             name="white",
-            rgb=(
-                255,
-                255,
-                255,
-            ),
+            rgb=(255, 255, 255),
         ),
     )
 
@@ -821,6 +855,9 @@ def test_package_base_inherits_attached_artifact_layer_printer_color(
     """
     Base inherits the physical printer color assigned to the Artifact-color
     layer referenced by its artifact_color_index.
+
+    Registered Artwork receives the shared artwork-N component identity while
+    Base retains its semantic feature identity.
     """
 
     extrude_directory = tmp_path / "extrude"
@@ -908,9 +945,7 @@ def test_package_base_inherits_attached_artifact_layer_printer_color(
     ) -> None:
         nonlocal captured_components
 
-        captured_components = tuple(
-            components,
-        )
+        captured_components = tuple(components)
 
         output.parent.mkdir(
             parents=True,
@@ -932,7 +967,7 @@ def test_package_base_inherits_attached_artifact_layer_printer_color(
     assert tuple(component.name for component in captured_components) == (
         component_name(
             "ornament",
-            "color-1",
+            "artwork-1",
             "white",
         ),
         component_name(
@@ -955,6 +990,9 @@ def test_package_outer_ridge_inherits_attached_artifact_layer_printer_color(
     """
     Outer Ridge inherits the physical printer color assigned to the
     Artifact-color layer referenced by its artifact_color_index.
+
+    Registered Artwork receives the shared artwork-N component identity while
+    Outer Ridge retains its semantic feature identity.
     """
 
     extrude_directory = tmp_path / "extrude"
@@ -1042,9 +1080,7 @@ def test_package_outer_ridge_inherits_attached_artifact_layer_printer_color(
     ) -> None:
         nonlocal captured_components
 
-        captured_components = tuple(
-            components,
-        )
+        captured_components = tuple(components)
 
         output.parent.mkdir(
             parents=True,
@@ -1066,7 +1102,7 @@ def test_package_outer_ridge_inherits_attached_artifact_layer_printer_color(
     assert tuple(component.name for component in captured_components) == (
         component_name(
             "ornament",
-            "color-1",
+            "artwork-1",
             "white",
         ),
         component_name(
@@ -1089,13 +1125,12 @@ def test_package_explicit_feature_colors_override_inherited_printer_color(
     """
     Explicit feature-color parameters override inherited physical color.
 
-
     Feature geometry continues to reference its attached Artifact color through
     artifact_color_index, but Package owns physical feature-color overrides.
 
-
-    Loop, Base, and Outer Ridge may each override the physical printer color
-    they would otherwise inherit.
+    Registered Artwork uses the shared artwork-N component identity. Loop,
+    Base, and Outer Ridge retain their semantic feature identities and may each
+    override the physical printer color they would otherwise inherit.
     """
 
     extrude_directory = tmp_path / "extrude"
@@ -1246,7 +1281,7 @@ def test_package_explicit_feature_colors_override_inherited_printer_color(
     assert colors_by_component[
         component_name(
             "ornament",
-            "color-1",
+            "artwork-1",
             "white",
         )
     ] == PaletteColor(

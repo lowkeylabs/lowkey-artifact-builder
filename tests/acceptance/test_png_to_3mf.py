@@ -44,8 +44,10 @@ def test_png_builds_complete_3mf(
 
     Registered Artwork preserves logical Artifact-color identity through
     extrusion. Physical printer-color assignment occurs only during Package.
-    The completed 3MF preserves every independently printable Artwork
-    component with a resolved physical printer color.
+
+    Extrusion products use stage-local color-N filenames. Package exposes
+    registered Artwork as independently printable artwork-N components with
+    resolved physical printer colors.
     """
 
     repository_root = Path(__file__).resolve().parents[2]
@@ -265,7 +267,7 @@ def test_png_builds_complete_3mf(
         model = ET.fromstring(
             archive.read(
                 model_name,
-            ),
+            )
         )
 
     # -----------------------------------------------------
@@ -287,19 +289,43 @@ def test_png_builds_complete_3mf(
     # packaging as exactly one independently printable
     # 3MF object.
     #
+    # Registered Artwork uses stage-local color-N filenames
+    # during Extrude and canonical artwork-N semantic names
+    # after Package.
+    #
     assert len(objects_by_name) == len(products)
-
-    component_stems = {Path(product["path"]).stem for product in products}
 
     packaged_names = {name for name in objects_by_name if name is not None}
 
-    for component_stem in component_stems:
-        matching_names = [name for name in packaged_names if component_stem in name]
+    for product in products:
+        artifact_color = product.get(
+            "artifact_color",
+        )
+
+        if isinstance(
+            artifact_color,
+            dict,
+        ):
+            component_semantic_name = f"artwork-{artifact_color['index']}"
+        else:
+            component_semantic_name = Path(
+                product["path"],
+            ).stem
+
+        matching_names = [
+            name
+            for name in packaged_names
+            if name.startswith(
+                f"{component_semantic_name} - ",
+            )
+        ]
 
         assert len(matching_names) == 1, (
             "Expected exactly one packaged object for "
-            f"extruded component {component_stem!r}; "
-            f"found {matching_names!r} in {sorted(packaged_names)!r}"
+            f"extruded component {product['path']!r} as "
+            f"{component_semantic_name!r}; "
+            f"found {matching_names!r} in "
+            f"{sorted(packaged_names)!r}"
         )
 
     # -----------------------------------------------------
@@ -354,6 +380,9 @@ def test_png_artwork_with_loop_builds_complete_3mf(
     without assigning a physical printer color. Package resolves the physical
     printer assignment for that Artifact-color layer and applies the same
     assignment to the Loop when no explicit loop_color override exists.
+
+    Registered Artwork is packaged using canonical artwork-N component
+    identities rather than stage-local color-N extrusion filenames.
     """
 
     # -----------------------------------------------------
@@ -598,19 +627,35 @@ loop_position = 0
     materials_by_id = {material.get("id"): material for material in materials}
 
     loop_matches = [
-        object_ for name, object_ in objects_by_name.items() if name is not None and "loop" in name
+        object_
+        for name, object_ in objects_by_name.items()
+        if (name is not None and name.startswith("loop - "))
     ]
 
     assert len(loop_matches) == 1
 
     loop_object = loop_matches[0]
 
-    attached_stem = Path(attached_artwork_product["path"]).stem
+    attached_artifact_color = attached_artwork_product.get(
+        "artifact_color",
+    )
+
+    assert isinstance(
+        attached_artifact_color,
+        dict,
+    )
+
+    attached_semantic_name = f"artwork-{attached_artifact_color['index']}"
 
     attached_matches = [
         object_
         for name, object_ in objects_by_name.items()
-        if name is not None and attached_stem in name
+        if (
+            name is not None
+            and name.startswith(
+                f"{attached_semantic_name} - ",
+            )
+        )
     ]
 
     assert len(attached_matches) == 1
@@ -627,7 +672,6 @@ loop_position = 0
     assert attached_pid in materials_by_id
 
     loop_material = materials_by_id[loop_pid]
-
     attached_material = materials_by_id[attached_pid]
 
     loop_color = loop_material.find(
@@ -648,6 +692,7 @@ loop_position = 0
     # artifact_color_index.
     #
     assert loop_color.get("name") == attached_color.get("name")
+
     assert loop_color.get("displaycolor") == attached_color.get("displaycolor")
 
     assert loop_object.get("pindex") == "0"
@@ -914,6 +959,9 @@ def test_png_artwork_with_base_and_loop_builds_complete_3mf(
     no explicit loop_color override, so Package gives it the same physical
     printer color as the Artifact-color layer referenced by its
     artifact_color_index.
+
+    Registered Artwork extrusion products retain stage-local color-N
+    filenames while Package exposes them as canonical artwork-N components.
     """
 
     # -----------------------------------------------------
@@ -1091,7 +1139,6 @@ loop_raise = 3.0
     assert artwork_products
 
     base_product = products_by_path["base.stl"]
-
     loop_product = products_by_path["loop.stl"]
 
     #
@@ -1197,13 +1244,32 @@ loop_raise = 3.0
     packaged_names = {name for name in objects_by_name if name is not None}
 
     for product in products:
-        component_stem = Path(product["path"]).stem
+        artifact_color = product.get(
+            "artifact_color",
+        )
 
-        matching_names = [name for name in packaged_names if component_stem in name]
+        if isinstance(
+            artifact_color,
+            dict,
+        ):
+            component_semantic_name = f"artwork-{artifact_color['index']}"
+        else:
+            component_semantic_name = Path(
+                product["path"],
+            ).stem
+
+        matching_names = [
+            name
+            for name in packaged_names
+            if name.startswith(
+                f"{component_semantic_name} - ",
+            )
+        ]
 
         assert len(matching_names) == 1, (
             "Expected exactly one packaged object for "
-            f"extruded component {component_stem!r}; "
+            f"extruded component {product['path']!r} as "
+            f"{component_semantic_name!r}; "
             f"found {matching_names!r} in "
             f"{sorted(packaged_names)!r}"
         )
@@ -1247,19 +1313,35 @@ loop_raise = 3.0
     # -----------------------------------------------------
 
     loop_matches = [
-        object_ for name, object_ in objects_by_name.items() if name is not None and "loop" in name
+        object_
+        for name, object_ in objects_by_name.items()
+        if (name is not None and name.startswith("loop - "))
     ]
 
     assert len(loop_matches) == 1
 
     loop_object = loop_matches[0]
 
-    attached_stem = Path(loop_attached_artwork_product["path"]).stem
+    attached_artifact_color = loop_attached_artwork_product.get(
+        "artifact_color",
+    )
+
+    assert isinstance(
+        attached_artifact_color,
+        dict,
+    )
+
+    attached_semantic_name = f"artwork-{attached_artifact_color['index']}"
 
     attached_matches = [
         object_
         for name, object_ in objects_by_name.items()
-        if name is not None and attached_stem in name
+        if (
+            name is not None
+            and name.startswith(
+                f"{attached_semantic_name} - ",
+            )
+        )
     ]
 
     assert len(attached_matches) == 1
@@ -1276,7 +1358,6 @@ loop_raise = 3.0
     assert attached_pid in materials_by_id
 
     loop_material = materials_by_id[loop_pid]
-
     attached_material = materials_by_id[attached_pid]
 
     loop_color = loop_material.find(
@@ -1296,6 +1377,7 @@ loop_raise = 3.0
     # Artifact-color layer.
     #
     assert loop_color.get("name") == attached_color.get("name")
+
     assert loop_color.get("displaycolor") == attached_color.get("displaycolor")
 
     assert loop_object.get("pindex") == "0"
@@ -1317,6 +1399,9 @@ def test_png_artwork_with_hole_builds_complete_3mf(
     Extrude preserves logical Artifact-color attachment for printable
     components without assigning physical printer colors. Package resolves
     physical colors, including explicit Base and Outer Ridge overrides.
+
+    Registered Artwork extrusion products retain stage-local color-N
+    filenames while Package exposes them as canonical artwork-N components.
     """
 
     # -----------------------------------------------------
@@ -1491,7 +1576,13 @@ artwork_hole_edge_distance = 1.0
     #
     assert "hole.stl" not in product_paths
 
-    assert all("hole" not in Path(product["path"]).stem for product in products)
+    assert all(
+        "hole"
+        not in Path(
+            product["path"],
+        ).stem
+        for product in products
+    )
 
     #
     # Extrude owns geometry and logical color relationships.
@@ -1581,13 +1672,32 @@ artwork_hole_edge_distance = 1.0
     packaged_names = {name for name in objects_by_name if name is not None}
 
     for product in products:
-        component_stem = Path(product["path"]).stem
+        artifact_color = product.get(
+            "artifact_color",
+        )
 
-        matching_names = [name for name in packaged_names if component_stem in name]
+        if isinstance(
+            artifact_color,
+            dict,
+        ):
+            component_semantic_name = f"artwork-{artifact_color['index']}"
+        else:
+            component_semantic_name = Path(
+                product["path"],
+            ).stem
+
+        matching_names = [
+            name
+            for name in packaged_names
+            if name.startswith(
+                f"{component_semantic_name} - ",
+            )
+        ]
 
         assert len(matching_names) == 1, (
             "Expected exactly one packaged object for "
-            f"extruded component {component_stem!r}; "
+            f"extruded component {product['path']!r} as "
+            f"{component_semantic_name!r}; "
             f"found {matching_names!r} in "
             f"{sorted(packaged_names)!r}"
         )

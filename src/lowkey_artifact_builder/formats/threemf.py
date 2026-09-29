@@ -723,6 +723,10 @@ def update_component_colors(
     presentation color while preserving object identity, geometry, build
     composition, and material association.
 
+    Legacy standalone Artwork components named color-N are accepted when the
+    requested canonical semantic identity is artwork-N. When recolored, the
+    component is migrated to the canonical artwork-N identity.
+
     Raises:
         ThreeMFError:
             If the 3MF cannot be read or written, a requested component does
@@ -790,11 +794,23 @@ def update_component_colors(
             continue
 
         for semantic_name, color in colors.items():
-            prefix = f"{semantic_name} - "
+            prefixes = [
+                f"{semantic_name} - ",
+            ]
 
-            if not current_name.startswith(
-                prefix,
+            if semantic_name.startswith(
+                "artwork-",
             ):
+                index = semantic_name.removeprefix(
+                    "artwork-",
+                )
+
+                if index.isdigit():
+                    prefixes.append(
+                        f"color-{index} - ",
+                    )
+
+            if not any(current_name.startswith(prefix) for prefix in prefixes):
                 continue
 
             found_components.add(
@@ -859,15 +875,20 @@ def update_component_colors(
 
     members["3D/3dmodel.model"] = (
         model_info,
-        _serialize_xml(
+        ET.tostring(
             model,
-            CORE_NS,
+            encoding="utf-8",
+            xml_declaration=True,
         ),
+    )
+
+    temporary_path = path.with_name(
+        f".{path.name}.tmp",
     )
 
     try:
         with zipfile.ZipFile(
-            path,
+            temporary_path,
             mode="w",
         ) as package:
             for info, data in members.values():
@@ -876,11 +897,19 @@ def update_component_colors(
                     data,
                 )
 
-    except (
-        OSError,
-        zipfile.BadZipFile,
-    ) as exc:
-        raise ThreeMFError(f"Could not update 3MF document {path}: {exc}") from exc
+        temporary_path.replace(
+            path,
+        )
+
+    except OSError as exc:
+        try:
+            temporary_path.unlink(
+                missing_ok=True,
+            )
+        except OSError:
+            pass
+
+        raise ThreeMFError(f"Could not write 3MF document {path}: {exc}") from exc
 
 
 def update_component_names(
