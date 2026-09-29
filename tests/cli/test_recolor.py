@@ -384,33 +384,146 @@ printer_colors = ["ornament-black", "ornament-red"]
     }
 
 
-def test_recolor_library_persists_library_palette_at_artifact_scope(
-    monkeypatch,
+def test_recolor_library_preserves_installed_required_colors_and_replaces_first_available_slot(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     """
-    library recolor pins the effective Library palette at Artifact scope.
+    Library recolor installs the Library colors required by the Artifact while
+    minimizing physical filament changes.
+
+    Required colors that are already installed remain in their existing
+    printer slots. Missing required colors replace unneeded installed colors
+    starting with the first available printer slot. Unused printer slots remain
+    unchanged, and recoloring does not change the number of physical printer
+    color slots.
     """
 
-    resolver = Mock()
-    resolver.return_value = [
-        "library-black",
-        "library-white",
-        "library-red",
-    ]
+    current_printer_colors = (
+        "black",
+        "blue",
+        "white",
+        "silver",
+        "brown",
+    )
 
-    plan = SimpleNamespace(
-        resolver=resolver,
+    library_colors = (
+        "black",
+        "white",
+        "fire-engine-red",
+        "orange",
+        "green",
+        "yellow",
+        "purple",
+    )
+
+    library_assignments = ColorAssignmentResult(
+        assignments=(
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=1,
+                    rgb=(10, 10, 10),
+                ),
+                color=PaletteColor(
+                    name="black",
+                    rgb=(0, 0, 0),
+                ),
+                distance=1.0,
+            ),
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=2,
+                    rgb=(230, 30, 30),
+                ),
+                color=PaletteColor(
+                    name="fire-engine-red",
+                    rgb=(220, 38, 38),
+                ),
+                distance=2.0,
+            ),
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=3,
+                    rgb=(250, 250, 250),
+                ),
+                color=PaletteColor(
+                    name="white",
+                    rgb=(255, 255, 255),
+                ),
+                distance=1.0,
+            ),
+        ),
+        distance=4.0,
+    )
+
+    analysis = ArtworkColorAnalysis(
+        system_assignments=library_assignments,
+        printer_assignments=library_assignments,
+        library_assignments=library_assignments,
+        catalog_assignments=library_assignments,
+    )
+
+    resolver = Mock()
+
+    def resolve_parameter(
+        name: str,
+    ) -> list[str]:
+        if name == "printer_colors":
+            return list(current_printer_colors)
+
+        if name == "library_colors":
+            return list(library_colors)
+
+        raise AssertionError(
+            f"Unexpected configuration resolution: {name!r}",
+        )
+
+    resolver.side_effect = resolve_parameter
+
+    scope_plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            resolver=resolver,
+            model_name="artwork",
+            realization_name="artwork_default",
+        ),
+    )
+
+    prepared_plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            resolver=resolver,
+            model_name="artwork",
+            realization_name="artwork_default",
+        ),
     )
 
     monkeypatch.chdir(
         tmp_path,
     )
+
     monkeypatch.setattr(
         cmd_color,
         "_resolve_recolor_scope",
-        lambda artifact_id, *, realization, project_root: plan,
-        raising=False,
+        lambda artifact_id, *, realization, project_root: scope_plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        lambda artifact_id, *, project_root: (prepared_plan,),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_analyze_existing_artwork_colors",
+        lambda plan: analysis,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_existing_final_recolor",
+        lambda plan, *, printer_colors: {},
     )
 
     persisted: list[
@@ -446,73 +559,157 @@ def test_recolor_library_persists_library_palette_at_artifact_scope(
 
     monkeypatch.setattr(
         cmd_color,
-        "_prepare_artifact_recolor",
-        lambda artifact_id, *, project_root: (),
+        "_report_retained_printer_color_overrides",
+        lambda artifact_id, *, project_root: None,
     )
-
-    expected_analysis = object()
 
     monkeypatch.setattr(
         cmd_color,
         "analyze_artifact_colors",
-        lambda artifact_id, *, realization: expected_analysis,
+        lambda artifact_id, *, realization: analysis,
     )
 
-    analysis = cmd_color.run_colors(
+    result = cmd_color.run_colors(
         "nydeli",
         recolor="library",
     )
 
-    assert analysis is expected_analysis
-
-    resolver.assert_called_once_with(
-        "library_colors",
-    )
-
-    resolver.system_value.assert_not_called()
+    assert result is analysis
 
     assert persisted == [
         (
             "nydeli",
             None,
             (
-                "library-black",
-                "library-white",
-                "library-red",
+                "black",
+                "fire-engine-red",
+                "white",
+                "silver",
+                "brown",
             ),
             tmp_path,
         )
     ]
 
 
-def test_recolor_library_persists_library_palette_at_realization_scope(
-    monkeypatch,
+def test_recolor_library_reconciles_effective_printer_colors_at_realization_scope(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     """
-    Realization-scoped library recolor pins the effective Library palette only
-    at the selected Realization scope.
+    Realization-scoped Library recolor selects the Library colors required by
+    registered Artwork and reconciles them with the Realization's effective
+    physical printer slots.
+
+    Required colors already installed retain their slots. Missing required
+    colors replace the first unneeded slots. The resulting printer_colors are
+    persisted only at the selected Realization scope.
     """
 
-    resolver = Mock()
-    resolver.return_value = [
-        "library-black",
-        "library-white",
-        "library-red",
-    ]
+    current_printer_colors = (
+        "black",
+        "blue",
+        "white",
+        "silver",
+        "brown",
+    )
 
-    plan = SimpleNamespace(
-        resolver=resolver,
+    library_colors = (
+        "black",
+        "white",
+        "fire-engine-red",
+        "orange",
+        "green",
+        "yellow",
+        "purple",
+    )
+
+    library_assignments = ColorAssignmentResult(
+        assignments=(
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=1,
+                    rgb=(10, 10, 10),
+                ),
+                color=PaletteColor(
+                    name="black",
+                    rgb=(0, 0, 0),
+                ),
+                distance=1.0,
+            ),
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=2,
+                    rgb=(230, 30, 30),
+                ),
+                color=PaletteColor(
+                    name="fire-engine-red",
+                    rgb=(220, 38, 38),
+                ),
+                distance=2.0,
+            ),
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=3,
+                    rgb=(250, 250, 250),
+                ),
+                color=PaletteColor(
+                    name="white",
+                    rgb=(255, 255, 255),
+                ),
+                distance=1.0,
+            ),
+        ),
+        distance=4.0,
+    )
+
+    analysis = ArtworkColorAnalysis(
+        system_assignments=library_assignments,
+        printer_assignments=library_assignments,
+        library_assignments=library_assignments,
+        catalog_assignments=library_assignments,
+    )
+
+    resolver = Mock()
+
+    def resolve_parameter(
+        name: str,
+    ) -> list[str]:
+        if name == "printer_colors":
+            return list(current_printer_colors)
+
+        if name == "library_colors":
+            return list(library_colors)
+
+        raise AssertionError(
+            f"Unexpected configuration resolution: {name!r}",
+        )
+
+    resolver.side_effect = resolve_parameter
+
+    plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            resolver=resolver,
+            realization_name="artwork_charm",
+            model_name="artwork",
+        ),
     )
 
     monkeypatch.chdir(
         tmp_path,
     )
+
     monkeypatch.setattr(
         cmd_color,
         "_resolve_recolor_scope",
         lambda artifact_id, *, realization, project_root: plan,
-        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_analyze_existing_artwork_colors",
+        lambda resolved_plan: analysis,
     )
 
     persisted: list[
@@ -546,43 +743,67 @@ def test_recolor_library_persists_library_palette_at_realization_scope(
         fake_persist_printer_colors,
     )
 
-    expected_analysis = object()
+    recolored: list[
+        tuple[
+            str,
+            str,
+            Path,
+        ]
+    ] = []
 
-    monkeypatch.setattr(
-        cmd_color,
-        "analyze_artifact_colors",
-        lambda artifact_id, *, realization: expected_analysis,
-    )
+    def fake_recolor_existing_final(
+        artifact_id: str,
+        *,
+        realization: str,
+        project_root: Path,
+    ) -> None:
+        recolored.append(
+            (
+                artifact_id,
+                realization,
+                project_root,
+            )
+        )
 
     monkeypatch.setattr(
         cmd_color,
         "_recolor_existing_final",
-        lambda artifact_id, *, realization, project_root: None,
+        fake_recolor_existing_final,
     )
 
-    analysis = cmd_color.run_colors(
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        lambda artifact_id, *, realization: analysis,
+    )
+
+    result = cmd_color.run_colors(
         "nydeli",
-        realization="shape_ornament",
+        realization="artwork_charm",
         recolor="library",
     )
 
-    assert analysis is expected_analysis
-
-    resolver.assert_called_once_with(
-        "library_colors",
-    )
-
-    resolver.system_value.assert_not_called()
+    assert result is analysis
 
     assert persisted == [
         (
             "nydeli",
-            "shape_ornament",
+            "artwork_charm",
             (
-                "library-black",
-                "library-white",
-                "library-red",
+                "black",
+                "fire-engine-red",
+                "white",
+                "silver",
+                "brown",
             ),
+            tmp_path,
+        )
+    ]
+
+    assert recolored == [
+        (
+            "nydeli",
+            "artwork_charm",
             tmp_path,
         )
     ]
@@ -933,7 +1154,7 @@ def test_artifact_recolor_reports_retained_realization_printer_colors(
 
 
 def test_artifact_library_recolor_reports_retained_realization_printer_colors(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     """
@@ -941,15 +1162,84 @@ def test_artifact_library_recolor_reports_retained_realization_printer_colors(
     overrides that remain authoritative.
     """
 
-    resolver = Mock()
-    resolver.return_value = [
-        "library-black",
-        "library-white",
-        "library-red",
-    ]
+    current_printer_colors = (
+        "black",
+        "blue",
+        "white",
+    )
 
-    plan = SimpleNamespace(
-        resolver=resolver,
+    library_assignments = ColorAssignmentResult(
+        assignments=(
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=1,
+                    rgb=(10, 10, 10),
+                ),
+                color=PaletteColor(
+                    name="black",
+                    rgb=(0, 0, 0),
+                ),
+                distance=1.0,
+            ),
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=2,
+                    rgb=(230, 30, 30),
+                ),
+                color=PaletteColor(
+                    name="library-red",
+                    rgb=(220, 38, 38),
+                ),
+                distance=2.0,
+            ),
+        ),
+        distance=3.0,
+    )
+
+    analysis = ArtworkColorAnalysis(
+        system_assignments=library_assignments,
+        printer_assignments=library_assignments,
+        library_assignments=library_assignments,
+        catalog_assignments=library_assignments,
+    )
+
+    resolver = Mock()
+
+    def resolve_parameter(
+        name: str,
+    ) -> list[str]:
+        if name == "printer_colors":
+            return list(current_printer_colors)
+
+        if name == "library_colors":
+            return [
+                "black",
+                "white",
+                "library-red",
+            ]
+
+        raise AssertionError(
+            f"Unexpected configuration resolution: {name!r}",
+        )
+
+    resolver.side_effect = resolve_parameter
+
+    scope_plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            resolver=resolver,
+            model_name="artwork",
+            realization_name="artwork_default",
+        ),
+    )
+
+    prepared_plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            resolver=resolver,
+            model_name="artwork",
+            realization_name="artwork_default",
+        ),
     )
 
     monkeypatch.chdir(
@@ -959,19 +1249,31 @@ def test_artifact_library_recolor_reports_retained_realization_printer_colors(
     monkeypatch.setattr(
         cmd_color,
         "_resolve_recolor_scope",
-        lambda artifact_id, *, realization, project_root: plan,
+        lambda artifact_id, *, realization, project_root: scope_plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_artifact_recolor",
+        lambda artifact_id, *, project_root: (prepared_plan,),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_analyze_existing_artwork_colors",
+        lambda plan: analysis,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_existing_final_recolor",
+        lambda plan, *, printer_colors: {},
     )
 
     monkeypatch.setattr(
         cmd_color,
         "_persist_printer_colors",
         lambda artifact_id, *, realization, printer_colors, project_root: None,
-    )
-
-    monkeypatch.setattr(
-        cmd_color,
-        "_prepare_artifact_recolor",
-        lambda artifact_id, *, project_root: (),
     )
 
     reported: list[str] = []
@@ -985,7 +1287,7 @@ def test_artifact_library_recolor_reports_retained_realization_printer_colors(
     monkeypatch.setattr(
         cmd_color,
         "analyze_artifact_colors",
-        lambda artifact_id, *, realization: object(),
+        lambda artifact_id, *, realization: analysis,
     )
 
     cmd_color.run_colors(
@@ -1909,19 +2211,80 @@ def test_recolor_library_updates_selected_realization_existing_final(
     tmp_path: Path,
 ) -> None:
     """
-    Realization-scoped library recoloring persists the selected palette,
-    recolors that Realization's existing final 3MF, then reports analysis.
+    Realization-scoped Library recoloring reconciles the required Library colors
+    with the Realization's effective printer slots, persists that physical
+    printer state, recolors the existing final 3MF, then reports analysis.
     """
 
-    resolver = Mock()
-    resolver.return_value = [
-        "library-black",
-        "library-white",
-        "library-red",
-    ]
+    current_printer_colors = (
+        "black",
+        "blue",
+        "white",
+    )
 
-    plan = SimpleNamespace(
-        resolver=resolver,
+    library_assignments = ColorAssignmentResult(
+        assignments=(
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=1,
+                    rgb=(10, 10, 10),
+                ),
+                color=PaletteColor(
+                    name="black",
+                    rgb=(0, 0, 0),
+                ),
+                distance=1.0,
+            ),
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=2,
+                    rgb=(230, 30, 30),
+                ),
+                color=PaletteColor(
+                    name="library-red",
+                    rgb=(220, 38, 38),
+                ),
+                distance=2.0,
+            ),
+        ),
+        distance=3.0,
+    )
+
+    library_analysis = ArtworkColorAnalysis(
+        system_assignments=library_assignments,
+        printer_assignments=library_assignments,
+        library_assignments=library_assignments,
+        catalog_assignments=library_assignments,
+    )
+
+    resolver = Mock()
+
+    def resolve_parameter(
+        name: str,
+    ) -> list[str]:
+        if name == "printer_colors":
+            return list(current_printer_colors)
+
+        if name == "library_colors":
+            return [
+                "black",
+                "white",
+                "library-red",
+            ]
+
+        raise AssertionError(
+            f"Unexpected configuration resolution: {name!r}",
+        )
+
+    resolver.side_effect = resolve_parameter
+
+    plan = cast(
+        BuildPlan,
+        SimpleNamespace(
+            resolver=resolver,
+            realization_name="shape_ornament",
+            model_name="shape",
+        ),
     )
 
     expected_analysis = object()
@@ -1935,6 +2298,12 @@ def test_recolor_library_updates_selected_realization_existing_final(
         cmd_color,
         "_resolve_recolor_scope",
         lambda artifact_id, *, realization, project_root: plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_analyze_existing_shape_artwork_colors",
+        lambda resolved_plan: library_analysis,
     )
 
     def fake_persist_printer_colors(
@@ -1993,6 +2362,7 @@ def test_recolor_library_updates_selected_realization_existing_final(
                 realization,
             )
         )
+
         return expected_analysis
 
     monkeypatch.setattr(
@@ -2015,9 +2385,9 @@ def test_recolor_library_updates_selected_realization_existing_final(
             "dog",
             "shape_ornament",
             (
-                "library-black",
-                "library-white",
+                "black",
                 "library-red",
+                "white",
             ),
             tmp_path,
         ),
@@ -2837,45 +3207,176 @@ def test_recolor_library_at_artifact_scope_prepares_before_persisting_and_recolo
     tmp_path: Path,
 ) -> None:
     """
-    Artifact-scoped Library recoloring validates the complete Realization scope
-    before mutating Artifact configuration or any existing final 3MF.
+    Artifact-scoped Library recoloring determines required Library colors from
+    registered Artwork, reconciles them with the Artifact's effective physical
+    printer slots, and prepares every final-3MF mutation before persistence.
 
-    After successful preparation, the Library palette is persisted once as
-    Artifact printer_colors and every prepared Realization is recolored
-    independently.
+    After successful preparation, the reconciled printer state is persisted
+    once and the exact precomputed final-3MF mutations are applied.
     """
 
-    resolver = Mock()
-    resolver.return_value = [
-        "library-black",
-        "library-white",
-        "library-red",
-    ]
+    current_printer_colors = (
+        "black",
+        "blue",
+        "white",
+    )
 
-    recolor_scope = SimpleNamespace(
-        resolver=resolver,
+    reconciled_printer_colors = (
+        "black",
+        "library-red",
+        "white",
+    )
+
+    library_assignments = ColorAssignmentResult(
+        assignments=(
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=1,
+                    rgb=(10, 10, 10),
+                ),
+                color=PaletteColor(
+                    name="black",
+                    rgb=(0, 0, 0),
+                ),
+                distance=1.0,
+            ),
+            ColorAssignment(
+                measured=MeasuredColor(
+                    index=2,
+                    rgb=(230, 30, 30),
+                ),
+                color=PaletteColor(
+                    name="library-red",
+                    rgb=(220, 38, 38),
+                ),
+                distance=2.0,
+            ),
+        ),
+        distance=3.0,
+    )
+
+    library_analysis = ArtworkColorAnalysis(
+        system_assignments=library_assignments,
+        printer_assignments=library_assignments,
+        library_assignments=library_assignments,
+        catalog_assignments=library_assignments,
+    )
+
+    def make_plan(
+        realization_name: str,
+        model_name: str,
+    ) -> BuildPlan:
+        final_path = tmp_path / f"{realization_name}.3mf"
+        final_path.touch()
+
+        resolver = Mock()
+        resolver.return_value = list(current_printer_colors)
+        resolver.source.return_value = "artifact"
+
+        return cast(
+            BuildPlan,
+            SimpleNamespace(
+                artifact_id="dog",
+                realization_name=realization_name,
+                model_name=model_name,
+                resolver=resolver,
+                stages=(
+                    SimpleNamespace(
+                        name="package",
+                        products=(
+                            SimpleNamespace(
+                                name="artifact",
+                                path=final_path,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+    artwork_plan = make_plan(
+        "artwork_default",
+        "artwork",
+    )
+
+    shape_default_plan = make_plan(
+        "shape_default",
+        "shape",
+    )
+
+    shape_ornament_plan = make_plan(
+        "shape_ornament",
+        "shape",
     )
 
     prepared_plans = (
-        cast(
-            BuildPlan,
-            SimpleNamespace(
-                realization_name="artwork_default",
-            ),
-        ),
-        cast(
-            BuildPlan,
-            SimpleNamespace(
-                realization_name="shape_default",
-            ),
-        ),
-        cast(
-            BuildPlan,
-            SimpleNamespace(
-                realization_name="shape_ornament",
-            ),
+        artwork_plan,
+        shape_default_plan,
+        shape_ornament_plan,
+    )
+
+    scope_resolver = Mock()
+
+    def resolve_scope_parameter(
+        name: str,
+    ) -> list[str]:
+        if name == "printer_colors":
+            return list(current_printer_colors)
+
+        if name == "library_colors":
+            return [
+                "black",
+                "white",
+                "library-red",
+            ]
+
+        raise AssertionError(
+            f"Unexpected configuration resolution: {name!r}",
+        )
+
+    scope_resolver.side_effect = resolve_scope_parameter
+
+    recolor_scope = cast(
+        BuildPlan,
+        SimpleNamespace(
+            resolver=scope_resolver,
+            model_name="artwork",
+            realization_name="artwork_default",
         ),
     )
+
+    prospective_colors = {
+        "artwork_default": {
+            "artwork-1": PaletteColor(
+                name="black",
+                rgb=(0, 0, 0),
+            ),
+            "artwork-2": PaletteColor(
+                name="library-red",
+                rgb=(220, 38, 38),
+            ),
+        },
+        "shape_default": {
+            "artwork-1": PaletteColor(
+                name="black",
+                rgb=(0, 0, 0),
+            ),
+            "artwork-2": PaletteColor(
+                name="library-red",
+                rgb=(220, 38, 38),
+            ),
+        },
+        "shape_ornament": {
+            "artwork-1": PaletteColor(
+                name="black",
+                rgb=(0, 0, 0),
+            ),
+            "artwork-2": PaletteColor(
+                name="library-red",
+                rgb=(220, 38, 38),
+            ),
+        },
+    }
 
     events: list[tuple[object, ...]] = []
 
@@ -2896,17 +3397,45 @@ def test_recolor_library_at_artifact_scope_prepares_before_persisting_and_recolo
     ) -> tuple[BuildPlan, ...]:
         events.append(
             (
-                "prepare",
+                "prepare-scope",
                 artifact_id,
                 project_root,
             )
         )
+
         return prepared_plans
 
     monkeypatch.setattr(
         cmd_color,
         "_prepare_artifact_recolor",
         fake_prepare_artifact_recolor,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_analyze_existing_artwork_colors",
+        lambda plan: library_analysis,
+    )
+
+    def fake_prepare_existing_final_recolor(
+        plan: BuildPlan,
+        *,
+        printer_colors: tuple[str, ...],
+    ) -> dict[str, PaletteColor]:
+        events.append(
+            (
+                "prepare-final",
+                plan.realization_name,
+                printer_colors,
+            )
+        )
+
+        return prospective_colors[plan.realization_name]
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_prepare_existing_final_recolor",
+        fake_prepare_existing_final_recolor,
     )
 
     def fake_persist_printer_colors(
@@ -2932,25 +3461,34 @@ def test_recolor_library_at_artifact_scope_prepares_before_persisting_and_recolo
         fake_persist_printer_colors,
     )
 
-    def fake_recolor_existing_final(
-        artifact_id: str,
+    def fake_update_component_colors(
+        path: Path,
         *,
-        realization: str,
-        project_root: Path,
+        artifact_id: str,
+        colors: dict[str, PaletteColor],
     ) -> None:
         events.append(
             (
-                "recolor",
+                "update",
+                path,
                 artifact_id,
-                realization,
-                project_root,
+                colors,
             )
         )
 
     monkeypatch.setattr(
         cmd_color,
+        "update_component_colors",
+        fake_update_component_colors,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
         "_recolor_existing_final",
-        fake_recolor_existing_final,
+        lambda *args, **kwargs: pytest.fail(
+            "Artifact-scoped Library recoloring must apply precomputed "
+            "component colors rather than recomputing after persistence"
+        ),
     )
 
     monkeypatch.setattr(
@@ -2973,6 +3511,7 @@ def test_recolor_library_at_artifact_scope_prepares_before_persisting_and_recolo
                 realization,
             )
         )
+
         return expected_analysis
 
     monkeypatch.setattr(
@@ -2990,38 +3529,49 @@ def test_recolor_library_at_artifact_scope_prepares_before_persisting_and_recolo
 
     assert events == [
         (
-            "prepare",
+            "prepare-scope",
             "dog",
             tmp_path,
+        ),
+        (
+            "prepare-final",
+            "artwork_default",
+            reconciled_printer_colors,
+        ),
+        (
+            "prepare-final",
+            "shape_default",
+            reconciled_printer_colors,
+        ),
+        (
+            "prepare-final",
+            "shape_ornament",
+            reconciled_printer_colors,
         ),
         (
             "persist",
             "dog",
             None,
-            (
-                "library-black",
-                "library-white",
-                "library-red",
-            ),
+            reconciled_printer_colors,
             tmp_path,
         ),
         (
-            "recolor",
+            "update",
+            tmp_path / "artwork_default.3mf",
             "dog",
-            "artwork_default",
-            tmp_path,
+            prospective_colors["artwork_default"],
         ),
         (
-            "recolor",
+            "update",
+            tmp_path / "shape_default.3mf",
             "dog",
-            "shape_default",
-            tmp_path,
+            prospective_colors["shape_default"],
         ),
         (
-            "recolor",
+            "update",
+            tmp_path / "shape_ornament.3mf",
             "dog",
-            "shape_ornament",
-            tmp_path,
+            prospective_colors["shape_ornament"],
         ),
         (
             "analyze",

@@ -14,6 +14,9 @@ from pathlib import Path
 
 import click
 
+from lowkey_artifact_builder.application.recolor import (
+    reconcile_printer_colors,
+)
 from lowkey_artifact_builder.cli.display import (
     display_color_analysis,
 )
@@ -728,6 +731,41 @@ def _analyze_existing_shape_artwork_colors(
     )
 
 
+def _analyze_existing_recolor_artwork(
+    plan: BuildPlan,
+) -> ArtworkColorAnalysis:
+    """
+    Return the existing registered Artwork analysis governing one recolor scope.
+
+    Artwork Realizations consume their own registered Artwork manifest.
+
+    Shape Realizations consume the registered Artwork manifest bound through
+    their planned Artwork Product dependency.
+
+    Library recoloring requires participating Artwork because its purpose is to
+    select physical Library colors for registered Artwork colors.
+    """
+
+    if plan.model_name == "artwork":
+        return _analyze_existing_artwork_colors(
+            plan,
+        )
+
+    if plan.model_name == "shape":
+        artwork = _analyze_existing_shape_artwork_colors(
+            plan,
+        )
+
+        if artwork is None:
+            raise RuntimeError("Library recoloring requires registered Artwork.")
+
+        return artwork
+
+    raise NotImplementedError(
+        f"Library recoloring is not yet implemented for model {plan.model_name!r}."
+    )
+
+
 def _resolve_color_artifact_ids(
     *,
     project_root: Path,
@@ -1275,18 +1313,85 @@ def run_colors(
             project_root=project_root,
         )
 
-        printer_colors = tuple(
-            plan.resolver(
-                "library_colors",
-            )
-        )
-
         prepared_plans: tuple[BuildPlan, ...] = ()
 
         if realization is None:
             prepared_plans = _prepare_artifact_recolor(
                 artifact_id,
                 project_root=project_root,
+            )
+
+            artwork_plan = next(
+                prepared_plan
+                for prepared_plan in prepared_plans
+                if prepared_plan.model_name == "artwork"
+            )
+
+            artwork = _analyze_existing_recolor_artwork(
+                artwork_plan,
+            )
+        else:
+            artwork = _analyze_existing_recolor_artwork(
+                plan,
+            )
+
+        current_printer_colors = tuple(
+            plan.resolver(
+                "printer_colors",
+            )
+        )
+
+        required_colors = tuple(
+            assignment.color.name for assignment in artwork.library_assignments.assignments
+        )
+
+        printer_colors = reconcile_printer_colors(
+            current_printer_colors,
+            required_colors,
+        )
+
+        prepared_recolors: tuple[
+            tuple[
+                BuildPlan,
+                dict[str, PaletteColor],
+            ],
+            ...,
+        ] = ()
+
+        if realization is None:
+            prospective_recolors: list[
+                tuple[
+                    BuildPlan,
+                    dict[str, PaletteColor],
+                ]
+            ] = []
+
+            for prepared_plan in prepared_plans:
+                effective_printer_colors = printer_colors
+
+                if prepared_plan.resolver.source(
+                    "printer_colors",
+                ).startswith("realization "):
+                    effective_printer_colors = tuple(
+                        prepared_plan.resolver(
+                            "printer_colors",
+                        )
+                    )
+
+                component_colors = _prepare_existing_final_recolor(
+                    prepared_plan,
+                    printer_colors=effective_printer_colors,
+                )
+
+                prospective_recolors.append(
+                    (
+                        prepared_plan,
+                        component_colors,
+                    )
+                )
+
+            prepared_recolors = tuple(
+                prospective_recolors,
             )
 
         _persist_printer_colors(
@@ -1302,11 +1407,18 @@ def run_colors(
                 project_root=project_root,
             )
 
-            for prepared_plan in prepared_plans:
-                _recolor_existing_final(
-                    artifact_id,
-                    realization=prepared_plan.realization_name,
-                    project_root=project_root,
+            for prepared_plan, component_colors in prepared_recolors:
+                if not component_colors:
+                    continue
+
+                final_path = _existing_final_path(
+                    prepared_plan,
+                )
+
+                update_component_colors(
+                    final_path,
+                    artifact_id=artifact_id,
+                    colors=component_colors,
                 )
 
         else:
