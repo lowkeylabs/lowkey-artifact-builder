@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import Mock
 
 import pytest
@@ -1276,3 +1277,158 @@ def test_colors_allows_materialized_artifact_past_lifecycle_preflight(
     assert called
     assert isinstance(result.exception, RuntimeError)
     assert str(result.exception) == "color operation reached"
+
+
+def test_colors_without_artifact_id_skips_unmaterialized_artifacts(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Broad read-only COLORS analyzes usable materialized Artifacts without
+    attempting color analysis or manufacturing for registered but
+    unmaterialized Artifacts.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    analyzed: list[str] = []
+    expected_analysis = object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "discover_artifacts",
+        lambda *, project_root: (
+            ArtifactState(
+                artifact_id="ready",
+                original_path=project_root / "originals" / "ready.png",
+                materialized=True,
+            ),
+            ArtifactState(
+                artifact_id="waiting",
+                original_path=project_root / "originals" / "waiting.png",
+                materialized=False,
+            ),
+        ),
+    )
+
+    def fake_analyze_artifact_colors(
+        artifact_id: str,
+        *,
+        realization: str | None = None,
+    ) -> object:
+        analyzed.append(artifact_id)
+        return expected_analysis
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        fake_analyze_artifact_colors,
+    )
+
+    result = cmd_color.run_colors(
+        None,
+    )
+
+    assert isinstance(result, cmd_color.ColorOperationResult)
+    assert result.analyses == (expected_analysis,)
+    assert result.build_required == ("waiting",)
+    assert analyzed == ["ready"]
+
+
+def test_colors_without_artifact_id_reports_build_required_artifacts(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Broad read-only COLORS returns both usable analyses and the registered
+    Artifacts skipped because BUILD is required.
+
+    Lifecycle recovery information belongs in the reusable operation result
+    so CLI, TUI, GUI, and other clients do not need to rediscover Artifact
+    lifecycle state independently.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    ready_analysis = object()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "discover_artifacts",
+        lambda *, project_root: (
+            ArtifactState(
+                artifact_id="ready",
+                original_path=project_root / "originals" / "ready.png",
+                materialized=True,
+            ),
+            ArtifactState(
+                artifact_id="waiting",
+                original_path=project_root / "originals" / "waiting.png",
+                materialized=False,
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_artifact_colors",
+        lambda artifact_id, *, realization=None: ready_analysis,
+    )
+
+    result = cmd_color.run_colors(
+        None,
+    )
+
+    assert isinstance(result, cmd_color.ColorOperationResult)
+    assert result.analyses == (ready_analysis,)
+    assert result.build_required == ("waiting",)
+
+
+def test_colors_without_artifact_id_displays_build_required_recovery(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Broad COLORS displays usable analyses and reports registered Artifacts
+    that require BUILD before color analysis.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    ready_analysis = cast(
+        cmd_color.ArtworkColorAnalysis,
+        object(),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "run_colors",
+        lambda artifact_id, *, realization=None, recolor=None: (
+            cmd_color.ColorOperationResult(
+                analyses=(ready_analysis,),
+                build_required=("waiting",),
+            )
+        ),
+    )
+
+    displayed: list[object] = []
+
+    monkeypatch.setattr(
+        cmd_color,
+        "display_color_analysis",
+        displayed.append,
+    )
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [
+            "colors",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert displayed == [ready_analysis]
+    assert "Artifact 'waiting' is not materialized." in result.output
+    assert "Try: artifact build waiting" in result.output

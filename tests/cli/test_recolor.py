@@ -26,6 +26,7 @@ from lowkey_artifact_builder.colors import (
 from lowkey_artifact_builder.config import (
     load_artifact_config,
 )
+from lowkey_artifact_builder.config.artifact import ArtifactState
 from lowkey_artifact_builder.engine import BuildPlan
 from lowkey_artifact_builder.model.models.artwork.color_analysis import (
     ArtworkColorAnalysis,
@@ -3882,12 +3883,19 @@ def test_colors_without_artifact_id_analyzes_each_artifact_independently(
 
     monkeypatch.setattr(
         cmd_color,
-        "_resolve_color_artifact_ids",
+        "discover_artifacts",
         lambda *, project_root: (
-            "cat",
-            "dog",
+            ArtifactState(
+                artifact_id="cat",
+                original_path=project_root / "originals" / "cat.png",
+                materialized=True,
+            ),
+            ArtifactState(
+                artifact_id="dog",
+                original_path=project_root / "originals" / "dog.png",
+                materialized=True,
+            ),
         ),
-        raising=False,
     )
 
     cat_analysis = object()
@@ -3929,10 +3937,12 @@ def test_colors_without_artifact_id_analyzes_each_artifact_independently(
         None,
     )
 
-    assert result == (
+    assert isinstance(result, cmd_color.ColorOperationResult)
+    assert result.analyses == (
         cat_analysis,
         dog_analysis,
     )
+    assert result.build_required == ()
 
     assert observed == [
         (
@@ -3959,12 +3969,19 @@ def test_colors_without_artifact_id_analyzes_selected_realization_for_each_artif
 
     monkeypatch.setattr(
         cmd_color,
-        "_resolve_color_artifact_ids",
+        "discover_artifacts",
         lambda *, project_root: (
-            "cat",
-            "dog",
+            ArtifactState(
+                artifact_id="cat",
+                original_path=project_root / "originals" / "cat.png",
+                materialized=True,
+            ),
+            ArtifactState(
+                artifact_id="dog",
+                original_path=project_root / "originals" / "dog.png",
+                materialized=True,
+            ),
         ),
-        raising=False,
     )
 
     cat_analysis = object()
@@ -4007,10 +4024,12 @@ def test_colors_without_artifact_id_analyzes_selected_realization_for_each_artif
         realization="shape_ornament",
     )
 
-    assert result == (
+    assert isinstance(result, cmd_color.ColorOperationResult)
+    assert result.analyses == (
         cat_analysis,
         dog_analysis,
     )
+    assert result.build_required == ()
 
     assert observed == [
         (

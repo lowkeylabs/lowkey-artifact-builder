@@ -9,7 +9,7 @@ Reports physical color analysis for Artifact Realizations.
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import click
@@ -35,7 +35,6 @@ from lowkey_artifact_builder.config import (
 )
 from lowkey_artifact_builder.config.artifact import (
     discover_artifacts,
-    list_artifacts,
 )
 from lowkey_artifact_builder.engine import (
     BuildPlan,
@@ -79,6 +78,24 @@ class ColorBuildRequired(RuntimeError):
         super().__init__(
             f"Color analysis requires existing build products for Artifact {artifact_id!r}."
         )
+
+
+@dataclass(frozen=True)
+class ColorOperationResult:
+    """
+    Result of a broad color operation.
+
+    analyses contains usable color analyses.
+
+    build_required identifies registered Artifacts that were not analyzed
+    because BUILD must materialize them first.
+    """
+
+    analyses: tuple[
+        ArtworkColorAnalysis | ShapeColorAnalysis,
+        ...,
+    ]
+    build_required: tuple[str, ...]
 
 
 def analyze_artifact_colors(
@@ -805,14 +822,19 @@ def _resolve_color_artifact_ids(
     project_root: Path,
 ) -> tuple[str, ...]:
     """
-    Resolve the Artifact scope for a bulk color operation.
+    Resolve materialized Artifacts applicable to a bulk color mutation.
 
-    Artifact discovery is delegated to the authoritative Artifact lifecycle
-    service rather than inferred from workspace layout.
+    Bulk recolor operates only on materialized Artifacts. Read-only broad
+    COLORS preserves lifecycle state independently so it can report registered
+    Artifacts that require BUILD.
     """
 
-    return list_artifacts(
-        project_root=project_root,
+    return tuple(
+        artifact.artifact_id
+        for artifact in discover_artifacts(
+            project_root=project_root,
+        )
+        if artifact.materialized
     )
 
 
@@ -928,6 +950,7 @@ def run_colors(
 ) -> (
     ArtworkColorAnalysis
     | ShapeColorAnalysis
+    | ColorOperationResult
     | tuple[
         ArtworkColorAnalysis | ShapeColorAnalysis,
         ...,
@@ -965,16 +988,22 @@ def run_colors(
 
         project_root = Path.cwd()
 
-        artifact_ids = _resolve_color_artifact_ids(
+        artifacts = discover_artifacts(
             project_root=project_root,
         )
 
-        return tuple(
-            analyze_artifact_colors(
-                selected_artifact_id,
-                realization=realization,
-            )
-            for selected_artifact_id in artifact_ids
+        return ColorOperationResult(
+            analyses=tuple(
+                analyze_artifact_colors(
+                    artifact.artifact_id,
+                    realization=realization,
+                )
+                for artifact in artifacts
+                if artifact.materialized
+            ),
+            build_required=tuple(
+                artifact.artifact_id for artifact in artifacts if not artifact.materialized
+            ),
         )
 
     if artifact_id is None:
@@ -1138,6 +1167,7 @@ def run_colors(
                         ),
                     )
                 )
+
                 continue
 
             if not prepared_plans:
@@ -1617,6 +1647,25 @@ def cli(
         raise click.ClickException(f"{exc}\nTry: artifact build {exc.artifact_id}") from exc
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
+
+    if isinstance(
+        analysis,
+        ColorOperationResult,
+    ):
+        if not analysis.analyses and not analysis.build_required:
+            click.echo("No artifacts found.")
+            return
+
+        for artifact_analysis in analysis.analyses:
+            display_color_analysis(
+                artifact_analysis,
+            )
+
+        for build_required_artifact_id in analysis.build_required:
+            click.echo(f"Artifact {build_required_artifact_id!r} is not materialized.")
+            click.echo(f"Try: artifact build {build_required_artifact_id}")
+
+        return
 
     if isinstance(
         analysis,
