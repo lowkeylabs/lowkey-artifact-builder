@@ -2114,19 +2114,20 @@ def test_bulk_realization_reset_requires_all_recolor_sources_before_any_mutation
     ]
 
 
-def test_artwork_color_analysis_builds_only_registered_manifest_dependency(
+def test_artwork_color_analysis_reads_existing_registered_manifest_dependency(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     """
-    Read-only Artwork color analysis targets only the registered vector
-    manifest required for analysis, not a complete Artwork manufacturing
-    build.
+    Read-only Artwork color analysis targets and consumes the existing
+    registered vector manifest required for analysis without executing
+    manufacturing work.
     """
 
     monkeypatch.chdir(tmp_path)
 
     manifest = tmp_path / "manifest.json"
+    manifest.touch()
 
     manifest_product = Mock()
     manifest_product.name = "manifest"
@@ -2141,7 +2142,6 @@ def test_artwork_color_analysis_builds_only_registered_manifest_dependency(
     plan.resolver = Mock()
 
     captured_targets: list[tuple[ProductRef, ...] | None] = []
-    executed: list[BuildPlan] = []
 
     def fake_create_build_plan(
         artifact_id: str,
@@ -2162,11 +2162,6 @@ def test_artwork_color_analysis_builds_only_registered_manifest_dependency(
         "create_build_plan",
         fake_create_build_plan,
     )
-    monkeypatch.setattr(
-        cmd_color,
-        "execute_dependency_build",
-        lambda build_plan: executed.append(build_plan),
-    )
 
     expected = Mock(spec=ArtworkColorAnalysis)
 
@@ -2181,7 +2176,6 @@ def test_artwork_color_analysis_builds_only_registered_manifest_dependency(
     )
 
     assert result is expected
-    assert executed == [plan]
 
     assert len(captured_targets) == 1
     assert captured_targets[0] is not None
@@ -2198,14 +2192,14 @@ def test_artwork_color_analysis_builds_only_registered_manifest_dependency(
     )
 
 
-def test_shape_color_analysis_builds_only_bound_artwork_manifest_dependency(
+def test_shape_color_analysis_reads_existing_bound_artwork_manifest_dependency(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     """
-    Read-only Shape color analysis realizes only its exact planned Artwork
-    manifest dependency and does not execute the Shape plan or a standalone
-    Artwork manufacturing build.
+    Read-only Shape color analysis follows and consumes its exact planned
+    Artwork manifest dependency without executing either the Shape plan or
+    Artwork manufacturing work.
     """
 
     monkeypatch.chdir(tmp_path)
@@ -2220,6 +2214,7 @@ def test_shape_color_analysis_builds_only_bound_artwork_manifest_dependency(
     )
 
     shape_plan = Mock(spec=BuildPlan)
+    shape_plan.artifact_id = "dog"
     shape_plan.model_name = "shape"
     shape_plan.realization_name = "shape_ornament"
     shape_plan.project_root = tmp_path
@@ -2227,6 +2222,7 @@ def test_shape_color_analysis_builds_only_bound_artwork_manifest_dependency(
     shape_plan.resolver = Mock()
 
     manifest = tmp_path / "manifest.json"
+    manifest.touch()
 
     manifest_product = Mock()
     manifest_product.name = "manifest"
@@ -2241,7 +2237,6 @@ def test_shape_color_analysis_builds_only_bound_artwork_manifest_dependency(
     artwork_plan.resolver = Mock()
 
     dependency_plans: list[object] = []
-    executed: list[BuildPlan] = []
 
     monkeypatch.setattr(
         cmd_color,
@@ -2266,11 +2261,6 @@ def test_shape_color_analysis_builds_only_bound_artwork_manifest_dependency(
         "create_product_dependency_build_plan",
         fake_create_product_dependency_build_plan,
     )
-    monkeypatch.setattr(
-        cmd_color,
-        "execute_dependency_build",
-        lambda build_plan: executed.append(build_plan),
-    )
 
     artwork_analysis = Mock(spec=ArtworkColorAnalysis)
     shape_analysis = Mock(spec=ShapeColorAnalysis)
@@ -2293,4 +2283,3 @@ def test_shape_color_analysis_builds_only_bound_artwork_manifest_dependency(
 
     assert result is shape_analysis
     assert dependency_plans == [dependency]
-    assert executed == [artwork_plan]

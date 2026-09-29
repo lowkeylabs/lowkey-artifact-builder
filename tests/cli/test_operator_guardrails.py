@@ -226,6 +226,7 @@ def test_explicit_missing_artifact_is_concise_operator_error(
 
 def test_colors_translates_expected_configuration_failure(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """
     COLORS translates expected configuration failures at the CLI boundary.
@@ -235,6 +236,8 @@ def test_colors_translates_expected_configuration_failure(
     failures are operator problems, not Python tracebacks.
     """
 
+    from lowkey_artifact_builder.config.artifact import ArtifactState
+
     def fail_colors(
         artifact_id: str | None,
         *,
@@ -243,11 +246,22 @@ def test_colors_translates_expected_configuration_failure(
     ) -> object:
         raise ConfigError("Artifact 'broken' has no configured source.")
 
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
     monkeypatch.setattr(
         cmd_color,
-        "list_artifacts",
-        lambda *, project_root: ("broken",),
+        "discover_artifacts",
+        lambda *, project_root: (
+            ArtifactState(
+                artifact_id="broken",
+                original_path=project_root / "originals" / "broken.png",
+                materialized=True,
+            ),
+        ),
     )
+
     monkeypatch.setattr(
         cmd_color,
         "run_colors",

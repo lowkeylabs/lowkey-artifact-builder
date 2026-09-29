@@ -34,13 +34,13 @@ from lowkey_artifact_builder.config import (
     update_realization_config,
 )
 from lowkey_artifact_builder.config.artifact import (
+    discover_artifacts,
     list_artifacts,
 )
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     create_build_plan,
     create_product_dependency_build_plan,
-    execute_dependency_build,
 )
 from lowkey_artifact_builder.formats.threemf import (
     update_component_colors,
@@ -65,6 +65,22 @@ from lowkey_artifact_builder.model.models.shape.color_analysis import (
 # =========================================================
 
 
+class ColorBuildRequired(RuntimeError):
+    """
+    Color analysis requires existing manufacturing products that BUILD owns.
+    """
+
+    def __init__(
+        self,
+        artifact_id: str,
+    ) -> None:
+        self.artifact_id = artifact_id
+
+        super().__init__(
+            f"Color analysis requires existing build products for Artifact {artifact_id!r}."
+        )
+
+
 def analyze_artifact_colors(
     artifact_id: str,
     *,
@@ -73,10 +89,11 @@ def analyze_artifact_colors(
     """
     Analyze physical colors for one configured Artifact.
 
+    Color analysis consumes existing manufacturing products. It does not execute
+    build stages to create or refresh missing prerequisites.
+
     Without an explicitly selected Realization, analysis targets the canonical
-    default Artwork Realization's registered manifest and realizes the required
-    products through normal dependency-aware build orchestration before
-    consuming the manifest.
+    default Artwork Realization's registered manifest.
 
     An explicitly requested Realization is resolved first, then dispatched
     according to the Model that owns that Realization.
@@ -317,10 +334,11 @@ def _analyze_artwork_colors(
     project_root: Path,
 ) -> ArtworkColorAnalysis:
     """
-    Analyze one Artwork Realization.
+    Analyze one Artwork Realization from its existing registered manifest.
 
-    Color analysis requires only the registered Artwork manifest, so execution
-    uses a product-targeted plan rather than a complete Artwork build plan.
+    Planning identifies the registered Artwork manifest and resolves effective
+    configuration. Color analysis does not execute manufacturing stages to
+    create missing products.
     """
 
     target = ProductRef(
@@ -338,13 +356,14 @@ def _analyze_artwork_colors(
         project_root=project_root,
     )
 
-    execute_dependency_build(
-        plan,
-    )
-
     manifest = _registered_artwork_manifest(
         plan,
     )
+
+    if not manifest.is_file():
+        raise ColorBuildRequired(
+            artifact_id,
+        )
 
     return analyze_registered_artwork_colors(
         manifest=manifest,
@@ -380,14 +399,11 @@ def _analyze_shape_artwork_colors(
     plan: BuildPlan,
 ) -> ArtworkColorAnalysis | None:
     """
-    Analyze registered Artwork participating in one Shape Realization.
+    Analyze existing registered Artwork participating in one Shape Realization.
 
     The Shape plan owns discovery of the bound Artwork producer. Color analysis
-    follows that planned dependency rather than reconstructing or assuming an
-    Artwork Artifact or Realization.
-
-    Only the targeted registered Artwork dependency is realized. Shape stages
-    and standalone Artwork manufacturing stages are not executed.
+    follows that planned dependency but does not execute build stages to create
+    or refresh missing products.
     """
 
     artwork_dependencies = tuple(
@@ -413,13 +429,14 @@ def _analyze_shape_artwork_colors(
         project_root=plan.project_root,
     )
 
-    execute_dependency_build(
-        artwork_plan,
-    )
-
     manifest = _registered_artwork_manifest(
         artwork_plan,
     )
+
+    if not manifest.is_file():
+        raise ColorBuildRequired(
+            plan.artifact_id,
+        )
 
     return analyze_registered_artwork_colors(
         manifest=manifest,
@@ -1563,8 +1580,8 @@ def cli(
     """
     Report color diagnostics for an Artifact or Realization.
 
-    Expected configuration failures are translated into concise operator
-    errors at the CLI boundary.
+    Expected configuration and missing-build-product failures are translated
+    into concise operator errors at the CLI boundary.
     """
 
     if realization is not None and recolor == "reset-all-realizations":
@@ -1573,12 +1590,22 @@ def cli(
         )
 
     if artifact_id is not None:
-        artifact_ids = list_artifacts(
+        artifacts = discover_artifacts(
             project_root=Path.cwd(),
         )
 
-        if artifact_id not in artifact_ids:
+        artifact = next(
+            (artifact for artifact in artifacts if artifact.artifact_id == artifact_id),
+            None,
+        )
+
+        if artifact is None:
             raise click.ClickException(f"Artifact {artifact_id!r} is not defined.")
+
+        if not artifact.materialized:
+            raise click.ClickException(
+                f"Artifact {artifact_id!r} is not materialized.\nTry: artifact build {artifact_id}"
+            )
 
     try:
         analysis = run_colors(
@@ -1586,6 +1613,8 @@ def cli(
             realization=realization,
             recolor=recolor,
         )
+    except ColorBuildRequired as exc:
+        raise click.ClickException(f"{exc}\nTry: artifact build {exc.artifact_id}") from exc
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
 

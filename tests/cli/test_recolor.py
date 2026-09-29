@@ -1491,12 +1491,6 @@ def test_recolor_existing_artwork_final_uses_effective_printer_assignments(
         ),
     )
 
-    monkeypatch.setattr(
-        cmd_color,
-        "execute_dependency_build",
-        lambda *args, **kwargs: pytest.fail("recoloring must not execute build stages"),
-    )
-
     cmd_color._recolor_existing_final(
         "dog",
         realization="artwork_default",
@@ -1619,12 +1613,6 @@ def test_recolor_existing_shape_final_updates_only_artwork_assignments(
         ),
     )
 
-    monkeypatch.setattr(
-        cmd_color,
-        "execute_dependency_build",
-        lambda *args, **kwargs: pytest.fail("recoloring must not execute build stages"),
-    )
-
     cmd_color._recolor_existing_final(
         "dog",
         realization="shape_ornament",
@@ -1698,12 +1686,6 @@ def test_recolor_existing_shape_final_without_artwork_does_not_update_colors(
         lambda *args, **kwargs: pytest.fail("Shape-owned semantic colors must not be recolored"),
     )
 
-    monkeypatch.setattr(
-        cmd_color,
-        "execute_dependency_build",
-        lambda *args, **kwargs: pytest.fail("recoloring must not execute build stages"),
-    )
-
     cmd_color._recolor_existing_final(
         "dog",
         realization="shape_ornament",
@@ -1754,14 +1736,6 @@ def test_resolve_existing_final_realization_plans_without_execution(
         cmd_color,
         "create_build_plan",
         fake_create_build_plan,
-    )
-
-    monkeypatch.setattr(
-        cmd_color,
-        "execute_dependency_build",
-        lambda *args, **kwargs: pytest.fail(
-            "resolving an existing final must not execute build stages"
-        ),
     )
 
     result = cmd_color._resolve_existing_final_realization(
@@ -1830,12 +1804,6 @@ def test_recolor_existing_final_rejects_missing_final_without_building(
         lambda *args, **kwargs: pytest.fail("missing final must not be updated"),
     )
 
-    monkeypatch.setattr(
-        cmd_color,
-        "execute_dependency_build",
-        lambda *args, **kwargs: pytest.fail("missing final must not trigger build execution"),
-    )
-
     with pytest.raises(
         RuntimeError,
         match="existing final 3MF",
@@ -1868,14 +1836,6 @@ def test_analyze_existing_shape_artwork_colors_returns_none_without_artwork_depe
         cmd_color,
         "create_product_dependency_build_plan",
         lambda *args, **kwargs: pytest.fail("no Artwork producer plan should be created"),
-    )
-
-    monkeypatch.setattr(
-        cmd_color,
-        "execute_dependency_build",
-        lambda *args, **kwargs: pytest.fail(
-            "existing Shape recoloring must not execute build stages"
-        ),
     )
 
     assert (
@@ -1926,14 +1886,6 @@ def test_analyze_existing_shape_artwork_colors_rejects_multiple_artwork_dependen
         cmd_color,
         "create_product_dependency_build_plan",
         lambda *args, **kwargs: pytest.fail("ambiguous Artwork dependencies must not be followed"),
-    )
-
-    monkeypatch.setattr(
-        cmd_color,
-        "execute_dependency_build",
-        lambda *args, **kwargs: pytest.fail(
-            "existing Shape recoloring must not execute build stages"
-        ),
     )
 
     with pytest.raises(
@@ -4425,14 +4377,6 @@ def test_analyze_existing_artwork_colors_uses_existing_manifest_without_executio
         fake_analyze_registered_artwork_colors,
     )
 
-    monkeypatch.setattr(
-        cmd_color,
-        "execute_dependency_build",
-        lambda *args, **kwargs: pytest.fail(
-            "existing Artwork color analysis must not execute build stages"
-        ),
-    )
-
     result = cmd_color._analyze_existing_artwork_colors(
         resolved_plan,
     )
@@ -4526,12 +4470,6 @@ def test_analyze_existing_artwork_colors_rejects_missing_manifest_without_execut
         cmd_color,
         "analyze_registered_artwork_colors",
         lambda *args, **kwargs: pytest.fail("missing manifest must not be analyzed"),
-    )
-
-    monkeypatch.setattr(
-        cmd_color,
-        "execute_dependency_build",
-        lambda *args, **kwargs: pytest.fail("missing manifest must not trigger build execution"),
     )
 
     with pytest.raises(
@@ -4693,14 +4631,6 @@ def test_analyze_existing_shape_artwork_colors_uses_bound_existing_manifest(
         cmd_color,
         "analyze_registered_artwork_colors",
         fake_analyze_registered_artwork_colors,
-    )
-
-    monkeypatch.setattr(
-        cmd_color,
-        "execute_dependency_build",
-        lambda *args, **kwargs: pytest.fail(
-            "existing Shape recoloring must not execute build stages"
-        ),
     )
 
     result = cmd_color._analyze_existing_shape_artwork_colors(
