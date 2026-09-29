@@ -81,6 +81,13 @@ class ColorBuildRequired(RuntimeError):
         )
 
 
+class RecolorPrerequisiteError(RuntimeError):
+    """
+    Recoloring cannot proceed because required existing manufacturing
+    state is unavailable.
+    """
+
+
 @dataclass(frozen=True)
 class ColorOperationResult:
     """
@@ -284,19 +291,19 @@ def _prepare_artifact_recolor(
     if missing_finals:
         missing = ", ".join(str(path) for path in missing_finals)
 
-        raise RuntimeError(
+        raise RecolorPrerequisiteError(
             f"Recoloring requires an existing final 3MF for every "
             f"applicable Realization; missing: {missing}"
         )
 
-    source_errors: list[RuntimeError] = []
+    source_errors: list[RecolorPrerequisiteError] = []
 
     for plan in plans:
         try:
             _validate_existing_recolor_source(
                 plan,
             )
-        except RuntimeError as exc:
+        except RecolorPrerequisiteError as exc:
             source_errors.append(
                 exc,
             )
@@ -307,7 +314,7 @@ def _prepare_artifact_recolor(
 
         details = "; ".join(str(error) for error in source_errors)
 
-        raise RuntimeError(
+        raise RecolorPrerequisiteError(
             f"Recoloring requires usable existing recolor sources for every "
             f"applicable Realization: {details}"
         )
@@ -756,7 +763,7 @@ def _analyze_existing_artwork_colors(
     )
 
     if not manifest.is_file():
-        raise RuntimeError(
+        raise RecolorPrerequisiteError(
             f"Recoloring requires an existing registered Artwork manifest: {manifest}"
         )
 
@@ -928,7 +935,9 @@ def _prepare_bulk_recolor(
         )
 
         if not final_path.is_file():
-            raise RuntimeError(f"Recoloring requires an existing final 3MF: {final_path}")
+            raise RecolorPrerequisiteError(
+                f"Recoloring requires an existing final 3MF: {final_path}"
+            )
 
     # Pass 3: every selected Realization must have a usable existing
     # recolor source.
@@ -1668,6 +1677,8 @@ def cli(
         )
     except ColorBuildRequired as exc:
         raise click.ClickException(f"{exc}\nTry: artifact build {exc.artifact_id}") from exc
+    except RecolorPrerequisiteError as exc:
+        raise click.ClickException(str(exc)) from exc
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
 

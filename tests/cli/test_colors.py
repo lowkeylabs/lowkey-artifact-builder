@@ -1660,3 +1660,241 @@ def test_shape_artwork_color_analysis_requires_build_when_vector_requires_produc
         cmd_color._analyze_shape_artwork_colors(
             shape_plan,
         )
+
+
+def test_colors_translates_expected_recolor_failure(
+    monkeypatch,
+) -> None:
+    """
+    Expected recolor prerequisite failures are translated at the CLI
+    boundary rather than escaping as application exceptions.
+    """
+
+    runner = CliRunner()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "discover_artifacts",
+        lambda **kwargs: (
+            SimpleNamespace(
+                artifact_id="nydeli",
+                materialized=True,
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "run_colors",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            cmd_color.RecolorPrerequisiteError("expected recolor prerequisite failure")
+        ),
+    )
+
+    result = runner.invoke(
+        cmd_color.cli,
+        [
+            "nydeli",
+            "--recolor=library",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert isinstance(
+        result.exception,
+        SystemExit,
+    )
+    assert "expected recolor prerequisite failure" in result.output
+
+
+def test_existing_artwork_recolor_requires_registered_manifest(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Existing-final recoloring reports a missing registered Artwork
+    manifest as an expected recolor prerequisite failure.
+    """
+
+    resolved_plan = Mock(spec=BuildPlan)
+    resolved_plan.artifact_id = "nydeli"
+    resolved_plan.project_root = tmp_path
+    resolved_plan.resolver = object()
+
+    artwork_plan = Mock(spec=BuildPlan)
+
+    manifest = tmp_path / "registered" / "products.json"
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_build_plan",
+        lambda *args, **kwargs: artwork_plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_registered_artwork_manifest",
+        lambda selected_plan: manifest,
+    )
+
+    with pytest.raises(
+        cmd_color.RecolorPrerequisiteError,
+    ):
+        cmd_color._analyze_existing_artwork_colors(
+            resolved_plan,
+        )
+
+
+def test_prepare_artifact_recolor_aggregates_expected_source_failures(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact recolor preparation validates every Realization source before
+    mutation and aggregates expected recolor prerequisite failures.
+    """
+
+    plans = (
+        SimpleNamespace(
+            realization_name="artwork_default",
+            stages=(
+                SimpleNamespace(
+                    name="package",
+                    products=(
+                        SimpleNamespace(
+                            name="artifact",
+                            path=tmp_path / "artwork_default.3mf",
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        SimpleNamespace(
+            realization_name="shape_ornament",
+            stages=(
+                SimpleNamespace(
+                    name="package",
+                    products=(
+                        SimpleNamespace(
+                            name="artifact",
+                            path=tmp_path / "shape_ornament.3mf",
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    for plan in plans:
+        final_path = next(
+            product.path
+            for stage in plan.stages
+            for product in stage.products
+            if product.name == "artifact"
+        )
+        final_path.write_bytes(b"3mf")
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_artifact_recolor_realizations",
+        lambda artifact_id, *, project_root: (
+            "artwork_default",
+            "shape_ornament",
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_existing_final_realization",
+        lambda artifact_id, realization, project_root: next(
+            plan for plan in plans if plan.realization_name == realization
+        ),
+    )
+
+    validated: list[str] = []
+
+    def fail_expected_source_validation(plan) -> None:
+        validated.append(plan.realization_name)
+        raise cmd_color.RecolorPrerequisiteError(f"missing source for {plan.realization_name}")
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_validate_existing_recolor_source",
+        fail_expected_source_validation,
+    )
+
+    with pytest.raises(
+        cmd_color.RecolorPrerequisiteError,
+    ):
+        cmd_color._prepare_artifact_recolor(
+            "nydeli",
+            project_root=tmp_path,
+        )
+
+    assert validated == [
+        "artwork_default",
+        "shape_ornament",
+    ]
+
+
+def test_prepare_artifact_recolor_does_not_classify_unexpected_runtime_failure(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Unexpected runtime failures during recolor-source validation remain
+    programming failures rather than being classified as operator
+    prerequisite failures.
+    """
+
+    final_path = tmp_path / "artwork_default.3mf"
+    final_path.write_bytes(b"3mf")
+
+    plan = SimpleNamespace(
+        realization_name="artwork_default",
+        stages=(
+            SimpleNamespace(
+                name="package",
+                products=(
+                    SimpleNamespace(
+                        name="artifact",
+                        path=final_path,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_artifact_recolor_realizations",
+        lambda artifact_id, *, project_root: ("artwork_default",),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_resolve_existing_final_realization",
+        lambda artifact_id, realization, project_root: plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_validate_existing_recolor_source",
+        lambda selected_plan: (_ for _ in ()).throw(
+            RuntimeError("unexpected source validation failure")
+        ),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="unexpected source validation failure",
+    ) as exc_info:
+        cmd_color._prepare_artifact_recolor(
+            "nydeli",
+            project_root=tmp_path,
+        )
+
+    assert not isinstance(
+        exc_info.value,
+        cmd_color.RecolorPrerequisiteError,
+    )

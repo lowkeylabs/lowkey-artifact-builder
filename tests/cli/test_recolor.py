@@ -2548,7 +2548,9 @@ def test_prepare_artifact_recolor_rejects_missing_recolor_source_before_mutation
         )
 
         if plan.realization_name == "shape_default":
-            raise RuntimeError("Recoloring requires an existing registered Artwork manifest")
+            raise cmd_color.RecolorPrerequisiteError(
+                "Recoloring requires an existing registered Artwork manifest"
+            )
 
     monkeypatch.setattr(
         cmd_color,
@@ -2574,7 +2576,7 @@ def test_prepare_artifact_recolor_rejects_missing_recolor_source_before_mutation
     )
 
     with pytest.raises(
-        RuntimeError,
+        cmd_color.RecolorPrerequisiteError,
         match="registered Artwork manifest",
     ):
         cmd_color._prepare_artifact_recolor(
@@ -4492,7 +4494,7 @@ def test_analyze_existing_artwork_colors_rejects_missing_manifest_without_execut
     )
 
     with pytest.raises(
-        RuntimeError,
+        cmd_color.RecolorPrerequisiteError,
         match="registered Artwork manifest",
     ):
         cmd_color._analyze_existing_artwork_colors(
