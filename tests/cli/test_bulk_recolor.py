@@ -2272,6 +2272,16 @@ def test_shape_color_analysis_reads_existing_bound_artwork_manifest_dependency(
         fake_create_product_dependency_build_plan,
     )
 
+    execution_plan = Mock()
+    execution_plan.required_stages = ()
+    execution_plan.required_product_dependencies = ()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "plan_incremental_execution",
+        lambda selected_plan: execution_plan,
+    )
+
     artwork_analysis = Mock(spec=ArtworkColorAnalysis)
     shape_analysis = Mock(spec=ShapeColorAnalysis)
 

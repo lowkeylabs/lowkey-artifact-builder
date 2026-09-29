@@ -957,23 +957,39 @@ def test_shape_artwork_analysis_uses_bound_artwork_dependency(
             product="manifest",
         ),
     )
+
     shape_plan = Mock(spec=BuildPlan)
     shape_plan.artifact_id = "nydeli"
     shape_plan.project_root = tmp_path
     shape_plan.planned_product_dependencies = (dependency,)
+
     manifest = tmp_path / "registered" / "products.json"
-    manifest.parent.mkdir(parents=True, exist_ok=True)
-    manifest.write_text("{}", encoding="utf-8")
+    manifest.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    manifest.write_text(
+        "{}",
+        encoding="utf-8",
+    )
+
     artwork_resolver = object()
+
     artwork_plan = SimpleNamespace(
         resolver=artwork_resolver,
         stages=(
             SimpleNamespace(
                 name="vector",
-                products=(SimpleNamespace(name="manifest", path=manifest),),
+                products=(
+                    SimpleNamespace(
+                        name="manifest",
+                        path=manifest,
+                    ),
+                ),
             ),
         ),
     )
+
     planned: list[tuple[object, Path]] = []
     expected_analysis = object()
 
@@ -982,11 +998,13 @@ def test_shape_artwork_analysis_uses_bound_artwork_dependency(
         *,
         project_root: Path,
     ) -> object:
-        planned.append((selected_dependency, project_root))
+        planned.append(
+            (
+                selected_dependency,
+                project_root,
+            )
+        )
         return artwork_plan
-
-    def fail_execute(*args, **kwargs) -> None:
-        raise AssertionError("COLORS must not execute manufacturing.")
 
     def fake_analyze_registered_artwork_colors(
         *,
@@ -1001,22 +1019,34 @@ def test_shape_artwork_analysis_uses_bound_artwork_dependency(
         cmd_color,
         "create_product_dependency_build_plan",
         fake_create_product_dependency_build_plan,
-        raising=False,
     )
+
     monkeypatch.setattr(
         cmd_color,
-        "execute_dependency_build",
-        fail_execute,
-        raising=False,
+        "plan_incremental_execution",
+        lambda selected_plan: SimpleNamespace(
+            required_stages=(),
+            required_product_dependencies=(),
+        ),
     )
+
     monkeypatch.setattr(
         cmd_color,
         "analyze_registered_artwork_colors",
         fake_analyze_registered_artwork_colors,
     )
-    analysis = cmd_color._analyze_shape_artwork_colors(shape_plan)
+
+    analysis = cmd_color._analyze_shape_artwork_colors(
+        shape_plan,
+    )
+
     assert analysis is expected_analysis
-    assert planned == [(dependency, tmp_path)]
+    assert planned == [
+        (
+            dependency,
+            tmp_path,
+        ),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -1549,4 +1579,84 @@ def test_artwork_color_analysis_requires_build_when_vector_requires_production(
             "nydeli",
             realization="artwork_default",
             project_root=tmp_path,
+        )
+
+
+def test_shape_artwork_color_analysis_requires_build_when_vector_requires_production(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Shape color analysis does not consume its bound Artwork Vector Product
+    when that Product requires manufacturing work.
+
+    BUILD owns bringing the participating Artwork Product current. COLORS
+    remains read-only even when the registered manifest still exists.
+    """
+
+    manifest = tmp_path / "vector.json"
+    manifest.write_text(
+        "{}",
+        encoding="utf-8",
+    )
+
+    dependency = SimpleNamespace(
+        product_ref=ProductRef(
+            artifact="nydeli",
+            model="artwork",
+            realization="artwork_default",
+            stage="vector",
+            product="manifest",
+        ),
+    )
+
+    shape_plan = Mock(spec=BuildPlan)
+    shape_plan.artifact_id = "nydeli"
+    shape_plan.project_root = tmp_path
+    shape_plan.planned_product_dependencies = (dependency,)
+
+    artwork_plan = SimpleNamespace(
+        resolver=object(),
+        stages=(
+            SimpleNamespace(
+                name="vector",
+                products=(
+                    SimpleNamespace(
+                        name="manifest",
+                        path=manifest,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_product_dependency_build_plan",
+        lambda selected_dependency, *, project_root: artwork_plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "plan_incremental_execution",
+        lambda selected_plan: SimpleNamespace(
+            required_stages=(object(),),
+            required_product_dependencies=(),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        lambda *args, **kwargs: pytest.fail(
+            "COLORS must not analyze a bound Artwork Vector Product that requires production"
+        ),
+    )
+
+    with pytest.raises(
+        cmd_color.ColorBuildRequired,
+        match="nydeli",
+    ):
+        cmd_color._analyze_shape_artwork_colors(
+            shape_plan,
         )

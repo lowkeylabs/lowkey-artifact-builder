@@ -460,6 +460,15 @@ def _analyze_shape_artwork_colors(
         project_root=plan.project_root,
     )
 
+    execution_plan = plan_incremental_execution(
+        artwork_plan,
+    )
+
+    if execution_plan.required_stages or execution_plan.required_product_dependencies:
+        raise ColorBuildRequired(
+            plan.artifact_id,
+        )
+
     manifest = _registered_artwork_manifest(
         artwork_plan,
     )
