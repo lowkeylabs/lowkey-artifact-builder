@@ -62,10 +62,10 @@ def reconcile_printer_colors(
 
     Raises:
         PrinterColorReconciliationError:
-            If the required colors exceed the available physical printer slots.
+            If the required colors exceed the available physical printer slots
+            or cannot be reconciled with the installed physical printer slots.
         ValueError:
-            If required_colors contains duplicate physical colors or cannot
-            otherwise be reconciled with the available physical printer slots.
+            If required_colors contains duplicate physical colors.
     """
 
     if len(set(required_colors)) != len(required_colors):
@@ -94,7 +94,7 @@ def reconcile_printer_colors(
     ]
 
     if len(replaceable_slots) < len(missing):
-        raise ValueError(
+        raise PrinterColorReconciliationError(
             "Required printer colors cannot be reconciled with the available "
             "physical printer slots."
         )
