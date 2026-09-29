@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from lowkey_artifact_builder.application.recolor import (
+    PrinterColorReconciliationError,
     reconcile_printer_colors,
 )
 
@@ -129,7 +130,7 @@ def test_reconcile_printer_colors_rejects_more_required_colors_than_slots() -> N
     """
 
     with pytest.raises(
-        ValueError,
+        PrinterColorReconciliationError,
         match="exceed the available physical printer slots",
     ):
         reconcile_printer_colors(

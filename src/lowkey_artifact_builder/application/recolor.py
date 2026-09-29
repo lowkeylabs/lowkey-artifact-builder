@@ -32,6 +32,12 @@ parameters.toml.
 from __future__ import annotations
 
 
+class PrinterColorReconciliationError(ValueError):
+    """
+    Required physical colors cannot be reconciled with printer color slots.
+    """
+
+
 def reconcile_printer_colors(
     current_printer_colors: tuple[str, ...],
     required_colors: tuple[str, ...],
@@ -55,16 +61,20 @@ def reconcile_printer_colors(
     to make every required color available.
 
     Raises:
+        PrinterColorReconciliationError:
+            If the required colors exceed the available physical printer slots.
         ValueError:
-            If the required colors cannot fit in the available physical printer
-            slots, or if required_colors contains duplicate physical colors.
+            If required_colors contains duplicate physical colors or cannot
+            otherwise be reconciled with the available physical printer slots.
     """
 
     if len(set(required_colors)) != len(required_colors):
         raise ValueError("Required printer colors must be distinct.")
 
     if len(required_colors) > len(current_printer_colors):
-        raise ValueError("Required printer colors exceed the available physical printer slots.")
+        raise PrinterColorReconciliationError(
+            "Required printer colors exceed the available physical printer slots."
+        )
 
     required = set(
         required_colors,
@@ -106,5 +116,6 @@ def reconcile_printer_colors(
 
 
 __all__ = [
+    "PrinterColorReconciliationError",
     "reconcile_printer_colors",
 ]

@@ -14,6 +14,9 @@ import pytest
 from click.testing import CliRunner
 
 import lowkey_artifact_builder.cli.cmd_color as cmd_color
+from lowkey_artifact_builder.application.recolor import (
+    PrinterColorReconciliationError,
+)
 from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.config.artifact import ArtifactState
 from lowkey_artifact_builder.engine import BuildPlan
@@ -1898,3 +1901,48 @@ def test_prepare_artifact_recolor_does_not_classify_unexpected_runtime_failure(
         exc_info.value,
         cmd_color.RecolorPrerequisiteError,
     )
+
+
+def test_colors_translates_printer_color_reconciliation_failure(
+    monkeypatch,
+) -> None:
+    """
+    Expected printer-color reconciliation failures are translated at the
+    CLI boundary rather than escaping as application exceptions.
+    """
+
+    runner = CliRunner()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "discover_artifacts",
+        lambda **kwargs: (
+            SimpleNamespace(
+                artifact_id="nydeli",
+                materialized=True,
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "run_colors",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            PrinterColorReconciliationError("expected printer-color reconciliation failure")
+        ),
+    )
+
+    result = runner.invoke(
+        cmd_color.cli,
+        [
+            "nydeli",
+            "--recolor=library",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert isinstance(
+        result.exception,
+        SystemExit,
+    )
+    assert "expected printer-color reconciliation failure" in result.output

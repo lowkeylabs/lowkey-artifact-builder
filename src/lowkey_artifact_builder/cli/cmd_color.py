@@ -15,6 +15,7 @@ from pathlib import Path
 import click
 
 from lowkey_artifact_builder.application.recolor import (
+    PrinterColorReconciliationError,
     reconcile_printer_colors,
 )
 from lowkey_artifact_builder.cli.display import (
@@ -1678,6 +1679,8 @@ def cli(
     except ColorBuildRequired as exc:
         raise click.ClickException(f"{exc}\nTry: artifact build {exc.artifact_id}") from exc
     except RecolorPrerequisiteError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except PrinterColorReconciliationError as exc:
         raise click.ClickException(str(exc)) from exc
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
