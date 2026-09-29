@@ -1785,12 +1785,13 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
     monkeypatch,
 ) -> None:
     """
-    A normal Shape build does not produce Artwork fill by default.
+    A normal Shape build does not manufacture Artwork fill by default.
 
-    The Shape consumes registered Artwork through the normal dependency path.
-    The default shape_artwork_fill_color of "none" must survive configuration,
-    composition, dimensionalization, and packaging without manufacturing an
-    Artwork-fill component.
+    Shape Compose may preserve the potential registered Artwork-fill region,
+    but the default shape_artwork_fill_raise of zero means that region does
+    not participate in physical extrusion or final packaging.
+
+    Artwork-fill participation is independent of physical fill color.
     """
 
     project_root = tmp_path
@@ -1869,7 +1870,12 @@ def test_shape_registered_artwork_defaults_to_no_artwork_fill(
     )
 
     assert composition_data["artwork"] is not None
-    assert composition_data["artwork_fill"] is None
+
+    #
+    # Compose preserves the potential registered fill region independently
+    # of whether that region later participates in physical manufacturing.
+    #
+    assert composition_data["artwork_fill"] is not None
 
     extrusion_data = json.loads(
         extrude_manifest.read_text(
@@ -1946,9 +1952,9 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
     A normal Shape build carries enabled Artwork fill into artifact.3mf.
 
     Shape consumes reusable registered Artwork, constructs the registered fill
-    region, dimensionalizes that region using Shape physical policy, preserves
-    its semantic color identity, and packages it as an independently
-    identifiable final component.
+    region, dimensionalizes that region when shape_artwork_fill_raise is
+    positive, preserves its Shape-owned component identity through Extrude,
+    and resolves its physical color during Package.
     """
 
     project_root = tmp_path
@@ -1982,6 +1988,7 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
                     "shape_geometry": "circle",
                     "shape_size": 100.0,
                     "shape_base_color": "test-white",
+                    "shape_artwork_fill_raise": 0.6,
                     "shape_artwork_fill_color": "test-blue",
                 },
             },
@@ -2053,9 +2060,13 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
 
     fill_component = components_by_name["artwork-fill"]
 
-    assert fill_component["color"] == {
-        "name": "test-blue",
-        "rgb": [0, 0, 255],
+    #
+    # Extrude owns physical geometry and component participation, not
+    # physical Shape-owned color assignment.
+    #
+    assert fill_component == {
+        "name": "artwork-fill",
+        "path": "artwork-fill.stl",
     }
 
     fill_path = extrude_manifest.parent / str(fill_component["path"])
@@ -2104,7 +2115,13 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
 
     assert artwork_object_names
 
-    fill_object = objects_by_name[component_name("shape-with-fill", "artwork-fill", "test-blue")]
+    fill_object = objects_by_name[
+        component_name(
+            "shape-with-fill",
+            "artwork-fill",
+            "test-blue",
+        )
+    ]
 
     fill_material_id = fill_object.get(
         "pid",
@@ -2123,7 +2140,13 @@ def test_shape_registered_artwork_builds_artwork_fill_into_final_3mf(
     assert fill_color.get("displaycolor") == "#0000FF"
     assert fill_object.get("pindex") == "0"
 
-    base_object = objects_by_name[component_name("shape-with-fill", "base", "test-white")]
+    base_object = objects_by_name[
+        component_name(
+            "shape-with-fill",
+            "base",
+            "test-white",
+        )
+    ]
 
     assert fill_object.get("id") != base_object.get("id")
 
@@ -2143,11 +2166,12 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
     monkeypatch,
 ) -> None:
     """
-    Shape base and Artwork fill may share one semantic color while remaining
+    Shape base and Artwork fill may share one physical color while remaining
     independently identifiable physical components in the final 3MF.
 
-    Semantic color identity does not merge the structural base with the
-    Shape-owned Artwork fill.
+    Extrude preserves their distinct Shape-owned component identities without
+    assigning physical colors. Package may then resolve both components to the
+    same physical color without merging them.
     """
 
     project_root = tmp_path
@@ -2181,6 +2205,7 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
                     "shape_geometry": "circle",
                     "shape_size": 100.0,
                     "shape_base_color": "test-blue",
+                    "shape_artwork_fill_raise": 0.6,
                     "shape_artwork_fill_color": "test-blue",
                 },
             },
@@ -2231,14 +2256,18 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
     assert "base" in components_by_name
     assert "artwork-fill" in components_by_name
 
-    assert components_by_name["base"]["color"] == {
-        "name": "test-blue",
-        "rgb": [0, 0, 255],
+    #
+    # Shape-owned physical colors are Package policy. Extrude preserves
+    # component identity and geometry only.
+    #
+    assert components_by_name["base"] == {
+        "name": "base",
+        "path": "base.stl",
     }
 
-    assert components_by_name["artwork-fill"]["color"] == {
-        "name": "test-blue",
-        "rgb": [0, 0, 255],
+    assert components_by_name["artwork-fill"] == {
+        "name": "artwork-fill",
+        "path": "artwork-fill.stl",
     }
 
     assert components_by_name["base"]["path"] != components_by_name["artwork-fill"]["path"]
@@ -2269,10 +2298,20 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
     materials_by_id = {material.get("id"): material for material in materials}
 
-    base_object = objects_by_name[component_name("shared-color-fill-shape", "base", "test-blue")]
+    base_object = objects_by_name[
+        component_name(
+            "shared-color-fill-shape",
+            "base",
+            "test-blue",
+        )
+    ]
 
     fill_object = objects_by_name[
-        component_name("shared-color-fill-shape", "artwork-fill", "test-blue")
+        component_name(
+            "shared-color-fill-shape",
+            "artwork-fill",
+            "test-blue",
+        )
     ]
 
     assert base_object.get("id") != fill_object.get("id")
@@ -2305,7 +2344,12 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
         and name.startswith(
             "artwork-",
         )
-        and name != component_name("shared-color-fill-shape", "artwork-fill", "test-blue")
+        and name
+        != component_name(
+            "shared-color-fill-shape",
+            "artwork-fill",
+            "test-blue",
+        )
     }
 
     assert artwork_object_names
@@ -2331,11 +2375,13 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
     ridge_style: str,
 ) -> None:
     """
-    A physical outer ridge does not alter Artwork fill Z semantics.
+    A physical outer ridge does not alter Artwork-fill Z semantics.
 
     Integrated and separate outer ridges both preserve the Shape-owned
     Artwork-fill interval from shape_base_raise through
-    shape_base_raise + shape_artwork_raise.
+    shape_base_raise + shape_artwork_fill_raise.
+
+    Artwork fill has an independent physical raise from incorporated Artwork.
     """
 
     project_root = tmp_path
@@ -2365,6 +2411,7 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
 
     shape_base_raise = 2.0
     shape_artwork_raise = 1.25
+    shape_artwork_fill_raise = 0.6
 
     write_artifact_config(
         artifact_id,
@@ -2375,6 +2422,7 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
                     "shape_size": 100.0,
                     "shape_base_raise": shape_base_raise,
                     "shape_artwork_raise": shape_artwork_raise,
+                    "shape_artwork_fill_raise": shape_artwork_fill_raise,
                     "shape_base_color": "test-white",
                     "shape_artwork_fill_color": "test-blue",
                     "shape_outer_ridge_width": 2.0,
@@ -2444,9 +2492,13 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
 
     fill_component = components_by_name["artwork-fill"]
 
-    assert fill_component["color"] == {
-        "name": "test-blue",
-        "rgb": [0, 0, 255],
+    #
+    # Extrude preserves Shape-owned fill component identity without resolving
+    # its physical Package color.
+    #
+    assert fill_component == {
+        "name": "artwork-fill",
+        "path": "artwork-fill.stl",
     }
 
     fill_path = extrude_root / str(fill_component["path"])
@@ -2483,8 +2535,14 @@ def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
     )
 
     assert max(z_values) == pytest.approx(
-        shape_base_raise + shape_artwork_raise,
+        shape_base_raise + shape_artwork_fill_raise,
     )
+
+    #
+    # The deliberately different Artwork raise proves that fill height is
+    # controlled independently.
+    #
+    assert shape_artwork_fill_raise != shape_artwork_raise
 
     with zipfile.ZipFile(
         artifact,
