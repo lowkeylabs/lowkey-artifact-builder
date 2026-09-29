@@ -59,12 +59,12 @@ def _materialize_external_inputs(
             if planned_input.path in product_paths:
                 continue
 
-            planned_input.path.parent.mkdir(
+            planned_input.source_path.parent.mkdir(
                 parents=True,
                 exist_ok=True,
             )
 
-            planned_input.path.write_text(
+            planned_input.source_path.write_text(
                 f"external:{planned_input.name}",
                 encoding="utf-8",
             )

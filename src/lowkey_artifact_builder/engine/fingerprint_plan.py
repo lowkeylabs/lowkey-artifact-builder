@@ -213,6 +213,7 @@ def _create_stage_fingerprint(
         _resolve_product_dependency_fingerprints(
             build_plan=build_plan,
             stage=stage,
+            fingerprints=fingerprints,
         )
     )
 
@@ -306,19 +307,21 @@ def _resolve_product_dependency_fingerprints(
     *,
     build_plan: BuildPlan,
     stage: PlannedStage,
+    fingerprints: dict[str, ProductFingerprint],
 ) -> dict[str, str]:
     """
-    Resolve content fingerprints of bound cross-artifact product dependencies.
+    Resolve fingerprints of bound Product dependencies.
 
-    Only product dependencies declared by the realized stage and bound in
-    the realized BuildPlan participate in its fingerprint.
+    A Product dependency produced by the current BuildPlan derives provenance
+    from the required fingerprint of its producing stage. Required fingerprint
+    construction occurs before execution, so that Product need not already
+    exist on disk.
 
-    Planned dependency paths identify persistent producer products, but
-    the paths themselves do not participate in provenance. Product
-    contents are hashed directly so equivalent producer products have
-    equivalent provenance across workspaces.
+    A Product dependency produced outside the current BuildPlan derives
+    provenance from the persistent Product contents. Filesystem paths
+    themselves do not participate in provenance.
 
-    An unbound declared product dependency does not participate in the
+    An unbound declared Product dependency does not participate in the
     realized stage's provenance.
     """
 
@@ -339,10 +342,35 @@ def _resolve_product_dependency_fingerprints(
 
         identity = f"{dependency.model}.{dependency.stage}.{dependency.product}"
 
-        inputs[f"product:{identity}"] = _format_fingerprint(
-            _fingerprint_file(
+        binding = planned_dependency.binding
+
+        produced_by_current_plan = (
+            binding.artifact == build_plan.artifact_id
+            and dependency.model == build_plan.model_name
+            and binding.realization == build_plan.realization_name
+            and any(
+                planned_stage.name == dependency.stage
+                and any(product.name == dependency.product for product in planned_stage.products)
+                for planned_stage in build_plan.stages
+            )
+        )
+
+        if produced_by_current_plan:
+            try:
+                fingerprint = fingerprints[dependency.stage]
+            except KeyError as exc:
+                raise ValueError(
+                    f"Required fingerprint for Product dependency producer "
+                    f"{dependency.stage!r} of stage {stage.name!r} "
+                    f"is unavailable"
+                ) from exc
+        else:
+            fingerprint = _fingerprint_file(
                 planned_dependency.path,
             )
+
+        inputs[f"product:{identity}"] = _format_fingerprint(
+            fingerprint,
         )
 
     return inputs
@@ -361,17 +389,23 @@ def _resolve_external_input_fingerprints(
     Resolve content fingerprints of one stage's external inputs.
 
     External inputs are identified by their logical input names rather
-    than filesystem paths. Their contents are hashed directly so moving
-    equivalent input data between workspaces does not change provenance.
+    than filesystem paths. Their configured source contents are hashed
+    directly so moving equivalent input data between workspaces does not
+    change provenance.
 
-    Missing or unreadable input files fail rather than producing synthetic
+    Fingerprint construction may occur before the build engine has
+    materialized an external input at its artifact-owned execution path.
+    The configured source_path is therefore the authoritative content
+    source for required provenance.
+
+    Missing or unreadable source files fail rather than producing synthetic
     provenance.
     """
 
     return {
         f"external:{planned_input.name}": _format_fingerprint(
             _fingerprint_file(
-                planned_input.path,
+                planned_input.source_path,
             )
         )
         for planned_input in stage.inputs

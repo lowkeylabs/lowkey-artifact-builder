@@ -279,7 +279,7 @@ def test_base_and_loop_participate_independently(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,

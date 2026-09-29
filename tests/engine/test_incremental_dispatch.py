@@ -66,18 +66,34 @@ def _materialize_external_inputs(
     content: bytes = b"incremental-dispatch-input",
 ) -> None:
     """
-    Materialize deterministic content for all external inputs.
+    Create deterministic configured content for all external inputs.
+
+    Required provenance is derived from PlannedInput.source_path.
+
+    Artifact-owned PlannedInput.path resources are materialized by the
+    production execution boundary when local stage execution is required.
     """
+
+    materialized: set[Path] = set()
 
     for stage in build_plan.stages:
         for planned_input in stage.inputs:
-            planned_input.path.parent.mkdir(
+            source_path = planned_input.source_path
+
+            if source_path in materialized:
+                continue
+
+            source_path.parent.mkdir(
                 parents=True,
                 exist_ok=True,
             )
 
-            planned_input.path.write_bytes(
+            source_path.write_bytes(
                 content,
+            )
+
+            materialized.add(
+                source_path,
             )
 
 
@@ -623,7 +639,7 @@ def test_incremental_artifact_build_downstream_stage_sees_rebuilt_upstream_produ
     upstream_product = upstream_stage.products[0]
 
     for planned_input in upstream_stage.inputs:
-        planned_input.path.write_bytes(
+        planned_input.source_path.write_bytes(
             b"changed-input",
         )
 
@@ -703,7 +719,7 @@ def test_incremental_artifact_build_dispatches_only_invalidated_chain(
     consuming_stage = next(stage for stage in build_plan.stages if stage.inputs)
 
     for planned_input in consuming_stage.inputs:
-        planned_input.path.write_bytes(
+        planned_input.source_path.write_bytes(
             b"changed-input",
         )
 
@@ -1097,3 +1113,81 @@ def test_dispatch_failure_stops_later_context_creation(
     assert requested == [
         failing_stage.name,
     ]
+
+
+def test_incremental_artifact_build_materializes_external_inputs_before_dispatch(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Incremental execution materializes external inputs before stage dispatch.
+
+    Planning preserves the configured external source separately from the
+    artifact-owned execution path. Required provenance reads source_path, while
+    dispatched model stages consume the artifact-owned path.
+
+    Incremental artifact execution therefore owns the same execution guarantee
+    as ordinary build execution: every external input required by a dispatched
+    stage is materialized at its planned artifact-owned path before that stage
+    executes.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    consuming_stage = next(stage for stage in build_plan.stages if stage.inputs)
+
+    expected_content = b"incremental-external-source"
+
+    for planned_input in consuming_stage.inputs:
+        planned_input.source_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        planned_input.source_path.write_bytes(
+            expected_content,
+        )
+
+        assert planned_input.source_path.is_file()
+        assert not planned_input.path.exists()
+
+    observed_inputs: dict[str, bytes] = {}
+
+    def dispatch(
+        context: StageContext,
+    ) -> None:
+        stage = _stage_by_name(
+            build_plan,
+            context.stage_name,
+        )
+
+        if stage is consuming_stage:
+            for planned_input in stage.inputs:
+                execution_path = context.inputs[planned_input.name]
+
+                assert execution_path == planned_input.path
+                assert execution_path.is_file()
+
+                observed_inputs[planned_input.name] = execution_path.read_bytes()
+
+        _materialize_stage_products(
+            stage,
+        )
+
+    monkeypatch.setattr(
+        incremental_module,
+        "execute_stage",
+        dispatch,
+    )
+
+    execute_incremental_artifact_build(
+        build_plan,
+    )
+
+    assert observed_inputs == {
+        planned_input.name: expected_content for planned_input in consuming_stage.inputs
+    }

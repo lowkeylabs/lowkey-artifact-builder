@@ -1693,9 +1693,547 @@ def test_dependency_build_propagates_transitive_producer_failure(
     ]
 
 
+def _same_realization_product_cycle_plans(
+    tmp_path: Path,
+    *,
+    resolver,
+) -> tuple[
+    BuildPlan,
+    BuildPlan,
+]:
+    """
+    Construct a genuine Product dependency cycle within one realization.
+
+    vector/geometry depends on extrude/solid, while extrude/solid depends on
+    vector/geometry.
+    """
+
+    vector_dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="geometry",
+    )
+
+    extrude_dependency = ProductDependencySpec(
+        model="artwork",
+        stage="extrude",
+        product="solid",
+    )
+
+    vector_binding = ProductDependencyBinding(
+        dependency=vector_dependency,
+        artifact="example",
+        realization="artwork_default",
+    )
+
+    extrude_binding = ProductDependencyBinding(
+        dependency=extrude_dependency,
+        artifact="example",
+        realization="artwork_default",
+    )
+
+    vector_path = (
+        tmp_path
+        / "artifacts"
+        / "example"
+        / "artwork"
+        / "artwork_default"
+        / "30-vector"
+        / "geometry.dat"
+    )
+
+    extrude_path = (
+        tmp_path
+        / "artifacts"
+        / "example"
+        / "artwork"
+        / "artwork_default"
+        / "40-extrude"
+        / "solid.dat"
+    )
+
+    vector_spec = StageSpec(
+        id=30,
+        name="vector",
+        product_dependencies=(extrude_dependency,),
+        products=(
+            ProductSpec(
+                name="geometry",
+                path="geometry.dat",
+            ),
+        ),
+    )
+
+    extrude_spec = StageSpec(
+        id=40,
+        name="extrude",
+        product_dependencies=(vector_dependency,),
+        products=(
+            ProductSpec(
+                name="solid",
+                path="solid.dat",
+            ),
+        ),
+    )
+
+    model = ModelSpec(
+        name="artwork",
+        title="Artwork",
+        stages=(
+            vector_spec,
+            extrude_spec,
+        ),
+    )
+
+    vector_stage = PlannedStage(
+        spec=vector_spec,
+        products=(
+            PlannedProduct(
+                spec=vector_spec.products[0],
+                path=vector_path,
+            ),
+        ),
+    )
+
+    extrude_stage = PlannedStage(
+        spec=extrude_spec,
+        products=(
+            PlannedProduct(
+                spec=extrude_spec.products[0],
+                path=extrude_path,
+            ),
+        ),
+    )
+
+    vector_plan = BuildPlan(
+        artifact_id="example",
+        model=model,
+        realization_name="artwork_default",
+        resolver=resolver,
+        project_root=tmp_path,
+        artifact_dir=(tmp_path / "artifacts" / "example"),
+        stages=(vector_stage,),
+        targets=(
+            ProductRef(
+                artifact="example",
+                model="artwork",
+                realization="artwork_default",
+                stage="vector",
+                product="geometry",
+            ),
+        ),
+        product_dependencies=(extrude_dependency,),
+        product_dependency_bindings=(extrude_binding,),
+        planned_product_dependencies=(
+            PlannedProductDependency(
+                binding=extrude_binding,
+                path=extrude_path,
+            ),
+        ),
+    )
+
+    extrude_plan = BuildPlan(
+        artifact_id="example",
+        model=model,
+        realization_name="artwork_default",
+        resolver=resolver,
+        project_root=tmp_path,
+        artifact_dir=(tmp_path / "artifacts" / "example"),
+        stages=(extrude_stage,),
+        targets=(
+            ProductRef(
+                artifact="example",
+                model="artwork",
+                realization="artwork_default",
+                stage="extrude",
+                product="solid",
+            ),
+        ),
+        product_dependencies=(vector_dependency,),
+        product_dependency_bindings=(vector_binding,),
+        planned_product_dependencies=(
+            PlannedProductDependency(
+                binding=vector_binding,
+                path=vector_path,
+            ),
+        ),
+    )
+
+    return (
+        extrude_plan,
+        vector_plan,
+    )
+
+
+def _same_realization_product_dependency_plans(
+    tmp_path: Path,
+    *,
+    resolver,
+) -> tuple[
+    BuildPlan,
+    BuildPlan,
+]:
+    """
+    Construct one realization whose downstream stage consumes an earlier
+    Product from that same realization.
+
+    The producer plan is a targeted plan ending at vector. The consumer plan
+    begins at extrude and consumes vector/geometry as a Product dependency.
+    """
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="geometry",
+    )
+
+    binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="example",
+        realization="artwork_default",
+    )
+
+    prepare_spec = StageSpec(
+        id=10,
+        name="prepare",
+        products=(
+            ProductSpec(
+                name="prepared",
+                path="prepared.dat",
+            ),
+        ),
+    )
+
+    vector_spec = StageSpec(
+        id=30,
+        name="vector",
+        dependencies=("prepare",),
+        products=(
+            ProductSpec(
+                name="geometry",
+                path="geometry.dat",
+            ),
+        ),
+    )
+
+    extrude_spec = StageSpec(
+        id=40,
+        name="extrude",
+        product_dependencies=(dependency,),
+        products=(
+            ProductSpec(
+                name="solid",
+                path="solid.dat",
+            ),
+        ),
+    )
+
+    model = ModelSpec(
+        name="artwork",
+        title="Artwork",
+        stages=(
+            prepare_spec,
+            vector_spec,
+            extrude_spec,
+        ),
+    )
+
+    prepare = PlannedStage(
+        spec=prepare_spec,
+        products=(
+            PlannedProduct(
+                spec=prepare_spec.products[0],
+                path=(
+                    tmp_path
+                    / "artifacts"
+                    / "example"
+                    / "artwork"
+                    / "artwork_default"
+                    / "10-prepare"
+                    / "prepared.dat"
+                ),
+            ),
+        ),
+    )
+
+    vector = PlannedStage(
+        spec=vector_spec,
+        products=(
+            PlannedProduct(
+                spec=vector_spec.products[0],
+                path=(
+                    tmp_path
+                    / "artifacts"
+                    / "example"
+                    / "artwork"
+                    / "artwork_default"
+                    / "30-vector"
+                    / "geometry.dat"
+                ),
+            ),
+        ),
+    )
+
+    extrude = PlannedStage(
+        spec=extrude_spec,
+        products=(
+            PlannedProduct(
+                spec=extrude_spec.products[0],
+                path=(
+                    tmp_path
+                    / "artifacts"
+                    / "example"
+                    / "artwork"
+                    / "artwork_default"
+                    / "40-extrude"
+                    / "solid.dat"
+                ),
+            ),
+        ),
+    )
+
+    planned_dependency = PlannedProductDependency(
+        binding=binding,
+        path=vector.products[0].path,
+    )
+
+    producer_plan = BuildPlan(
+        artifact_id="example",
+        model=model,
+        realization_name="artwork_default",
+        resolver=resolver,
+        project_root=tmp_path,
+        artifact_dir=(tmp_path / "artifacts" / "example"),
+        stages=(
+            prepare,
+            vector,
+        ),
+        targets=(
+            ProductRef(
+                artifact="example",
+                model="artwork",
+                realization="artwork_default",
+                stage="vector",
+                product="geometry",
+            ),
+        ),
+    )
+
+    consumer_plan = BuildPlan(
+        artifact_id="example",
+        model=model,
+        realization_name="artwork_default",
+        resolver=resolver,
+        project_root=tmp_path,
+        artifact_dir=(tmp_path / "artifacts" / "example"),
+        stages=(extrude,),
+        product_dependencies=(dependency,),
+        product_dependency_bindings=(binding,),
+        planned_product_dependencies=(planned_dependency,),
+    )
+
+    return (
+        consumer_plan,
+        producer_plan,
+    )
+
+
 # =========================================================
 # Dependency-cycle detection
 # =========================================================
+
+
+def test_dependency_build_rejects_same_realization_product_cycle(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Distinct Product targets in one realization may recurse, but revisiting
+    an active Product-production target is a genuine dependency cycle.
+    """
+
+    (
+        extrude_plan,
+        vector_plan,
+    ) = _same_realization_product_cycle_plans(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    visited_targets: list[
+        tuple[
+            str,
+            str,
+        ]
+    ] = []
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        assert execution_plan.required_product_dependencies
+        assert build_plan.targets is not None
+        assert len(build_plan.targets) == 1
+
+        target = build_plan.targets[0]
+
+        visited_targets.append(
+            (
+                target.stage,
+                target.product,
+            )
+        )
+
+        if build_plan is extrude_plan:
+            return (vector_plan,)
+
+        if build_plan is vector_plan:
+            return (extrude_plan,)
+
+        raise AssertionError(f"Unexpected BuildPlan target {target!r}")
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    with pytest.raises(
+        DependencyCycleError,
+    ) as exc_info:
+        execute_dependency_build(
+            extrude_plan,
+        )
+
+    assert visited_targets == [
+        (
+            "extrude",
+            "solid",
+        ),
+        (
+            "vector",
+            "geometry",
+        ),
+    ]
+
+    message = str(
+        exc_info.value,
+    )
+
+    assert "extrude/solid" in message
+    assert "vector/geometry" in message
+
+
+def test_dependency_build_allows_earlier_product_from_same_realization(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    An earlier Product from the active realization is an upstream Product
+    dependency, not a recursive realization dependency cycle.
+    """
+
+    (
+        consumer_plan,
+        producer_plan,
+    ) = _same_realization_product_dependency_plans(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    execution_order: list[
+        tuple[
+            str,
+            str,
+        ]
+    ] = []
+
+    producer_fingerprints = create_required_fingerprints(
+        producer_plan,
+    )
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        if build_plan is consumer_plan:
+            assert execution_plan.required_product_dependencies
+            return (producer_plan,)
+
+        if build_plan is producer_plan:
+            return ()
+
+        raise AssertionError(f"Unexpected BuildPlan {build_plan.artifact_id!r}")
+
+    def execute_artifact(
+        build_plan: BuildPlan,
+        **kwargs,
+    ) -> ExecutionPlan:
+        if build_plan is producer_plan:
+            for stage in producer_plan.stages:
+                execution_order.append(
+                    (
+                        build_plan.realization_name,
+                        stage.name,
+                    )
+                )
+
+                _record_stage_current(
+                    producer_plan,
+                    stage,
+                    producer_fingerprints[stage.name],
+                )
+
+        elif build_plan is consumer_plan:
+            execution_order.append(
+                (
+                    build_plan.realization_name,
+                    "extrude",
+                )
+            )
+
+        else:
+            raise AssertionError(f"Unexpected BuildPlan {build_plan.artifact_id!r}")
+
+        return ExecutionPlan(
+            artifact_id=build_plan.artifact_id,
+            model_name=build_plan.model_name,
+            realization=build_plan.realization_name,
+            stages=(),
+        )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "execute_incremental_artifact_build",
+        execute_artifact,
+    )
+
+    execute_dependency_build(
+        consumer_plan,
+    )
+
+    assert execution_order == [
+        (
+            "artwork_default",
+            "prepare",
+        ),
+        (
+            "artwork_default",
+            "vector",
+        ),
+        (
+            "artwork_default",
+            "extrude",
+        ),
+    ]
 
 
 def test_dependency_build_rejects_direct_dependency_cycle(

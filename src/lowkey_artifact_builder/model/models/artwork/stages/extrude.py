@@ -91,7 +91,7 @@ def execute(
     """
 
     vector_manifest = context.input(
-        "vector.manifest",
+        "artwork.vector.manifest",
     )
 
     extrude_manifest = context.output(

@@ -835,3 +835,56 @@ def test_plan_execution_resolves_required_fingerprint_per_product_dependency(
     assert calls == [
         dependency,
     ]
+
+
+def test_same_plan_product_dependency_does_not_require_external_fingerprint_resolver(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A Product dependency produced by the current BuildPlan is local workflow.
+
+    The producer stage already participates in this ExecutionPlan, so execution
+    planning must not treat its Product as separately persisted producer work or
+    require an external Product-dependency fingerprint resolver.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    same_plan_dependencies = tuple(
+        dependency
+        for dependency in build_plan.planned_product_dependencies
+        if (
+            dependency.product_ref.artifact == build_plan.artifact_id
+            and dependency.product_ref.model == build_plan.model_name
+            and dependency.product_ref.realization == build_plan.realization_name
+            and any(
+                stage.name == dependency.product_ref.stage
+                and any(
+                    product.name == dependency.product_ref.product for product in stage.products
+                )
+                for stage in build_plan.stages
+            )
+        )
+    )
+
+    assert len(same_plan_dependencies) == 1
+
+    dependency = same_plan_dependencies[0]
+
+    execution_plan = plan_execution(
+        build_plan,
+        required_fingerprint=_fingerprint,
+    )
+
+    assert dependency.product_ref not in tuple(
+        planned.product_ref for planned in execution_plan.product_dependencies
+    )
+
+    assert dependency.product_ref not in tuple(
+        planned.product_ref for planned in execution_plan.required_product_dependencies
+    )

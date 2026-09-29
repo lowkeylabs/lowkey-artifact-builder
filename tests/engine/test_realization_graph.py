@@ -127,9 +127,13 @@ def test_realization_graph_selects_target_producer() -> None:
 # =========================================================
 
 
-def test_realization_graph_includes_transitive_dependencies() -> None:
+def test_realization_graph_keeps_product_dependencies_outside_local_closure() -> None:
     """
-    A target includes every transitive dependency required by its producer.
+    Product dependencies do not become realization-local stage dependencies.
+
+    Targeting Artwork Extrude requires only Extrude in the local realization.
+    Its registered Vector input remains a Product dependency to be resolved
+    independently by planning.
     """
 
     graph = _artwork_graph(
@@ -139,11 +143,14 @@ def test_realization_graph_includes_transitive_dependencies() -> None:
         )
     )
 
-    assert tuple(stage.name for stage in graph.stages) == (
-        "prepare",
-        "raster",
-        "vector",
-        "extrude",
+    assert tuple(stage.name for stage in graph.stages) == ("extrude",)
+
+    assert graph.product_dependencies == (
+        ProductDependencySpec(
+            model="artwork",
+            stage="vector",
+            product="manifest",
+        ),
     )
 
 
@@ -165,9 +172,11 @@ def test_realization_graph_excludes_downstream_stages() -> None:
     assert "package" not in stage_names
 
 
-def test_realization_graph_preserves_dependency_order() -> None:
+def test_realization_graph_preserves_local_dependency_order() -> None:
     """
-    Required stages are ordered with dependencies before dependents.
+    Required local stages are ordered with dependencies before dependents.
+
+    Product dependencies remain outside the realization-local stage closure.
     """
 
     graph = _artwork_graph(
@@ -178,9 +187,6 @@ def test_realization_graph_preserves_dependency_order() -> None:
     )
 
     assert tuple(stage.name for stage in graph.stages) == (
-        "prepare",
-        "raster",
-        "vector",
         "extrude",
         "package",
     )

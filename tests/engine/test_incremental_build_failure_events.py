@@ -60,12 +60,12 @@ def _materialize_external_inputs(
 
     for stage in build_plan.stages:
         for planned_input in stage.inputs:
-            planned_input.path.parent.mkdir(
+            planned_input.source_path.parent.mkdir(
                 parents=True,
                 exist_ok=True,
             )
 
-            planned_input.path.write_bytes(
+            planned_input.source_path.write_bytes(
                 b"incremental-build-failure-input",
             )
 

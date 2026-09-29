@@ -115,7 +115,7 @@ def execute_build(
 
     _prepare_workspace(plan)
 
-    _materialize_inputs(plan)
+    materialize_inputs(plan)
 
     for stage in plan.stages:
         context = _create_stage_context(
@@ -274,15 +274,25 @@ def _realize_product_dependency(
     planned_dependency: PlannedProductDependency,
 ) -> None:
     """
-    Ensure one planned product dependency exists.
+    Ensure one planned product dependency is available to the build.
 
-    A dependency already present at its planned path requires no producer
-    planning or execution.
+    A dependency produced by the current BuildPlan is satisfied by that
+    plan's own stage execution and must not trigger a separate recursive
+    producer build.
 
-    Otherwise, create and execute the targeted producer plan, then verify
-    that execution materialized the exact product required by the
-    consumer.
+    Otherwise, a dependency already present at its planned path requires
+    no producer planning or execution.
+
+    A remaining missing dependency is realized through a product-targeted
+    producer plan, after which the exact product required by the consumer
+    must exist.
     """
+
+    if _plan_produces_product_dependency(
+        plan,
+        planned_dependency,
+    ):
+        return
 
     if planned_dependency.path.is_file():
         return
@@ -305,6 +315,43 @@ def _realize_product_dependency(
             f"producer execution did not create "
             f"{planned_dependency.path}."
         )
+
+
+def _plan_produces_product_dependency(
+    plan: BuildPlan,
+    planned_dependency: PlannedProductDependency,
+) -> bool:
+    """
+    Return whether the current BuildPlan produces a dependency itself.
+
+    Product ownership is established by the complete logical producer
+    identity: Artifact, Model, Realization, Stage, and Product.
+
+    Filesystem existence is intentionally not used to determine ownership.
+    """
+
+    binding = planned_dependency.binding
+    dependency = binding.dependency
+
+    if binding.artifact != plan.artifact_id:
+        return False
+
+    if dependency.model != plan.model_name:
+        return False
+
+    if binding.realization != plan.realization_name:
+        return False
+
+    for stage in plan.stages:
+        if stage.name != dependency.stage:
+            continue
+
+        return any(
+            product.name == dependency.product and product.path == planned_dependency.path
+            for product in stage.products
+        )
+
+    return False
 
 
 # =========================================================
@@ -374,7 +421,7 @@ def _directory_sort_key(
 # =========================================================
 
 
-def _materialize_inputs(
+def materialize_inputs(
     plan: BuildPlan,
 ) -> None:
     """
@@ -388,6 +435,11 @@ def _materialize_inputs(
     StageContext refers only to artifact-owned resources.
 
     The external source must exist and must be a regular file.
+
+    This operation is shared by complete and incremental artifact
+    execution. Planning and fingerprinting use the configured external
+    source_path, while model-stage execution consumes only the
+    artifact-owned materialized path.
     """
 
     materialized: set[
@@ -764,4 +816,5 @@ __all__ = [
     "execute_build",
     "execute_builds",
     "execute_artifact_stage",
+    "materialize_inputs",
 ]

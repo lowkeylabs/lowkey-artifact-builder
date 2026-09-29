@@ -75,22 +75,22 @@ def _descendant_stage_names(
     )
 
 
-def _materialize_inputs(
+def _write_input_sources(
     stage: PlannedStage,
     *,
     content: bytes,
 ) -> None:
     """
-    Materialize every external input consumed by one stage.
+    Write deterministic content to every configured external input source.
     """
 
     for planned_input in stage.inputs:
-        planned_input.path.parent.mkdir(
+        planned_input.source_path.parent.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        planned_input.path.write_bytes(
+        planned_input.source_path.write_bytes(
             content,
         )
 
@@ -100,13 +100,13 @@ def _materialize_inputs(
 # =========================================================
 
 
-def test_required_fingerprint_accepts_materialized_external_input(
+def test_required_fingerprint_accepts_external_input_source(
     artwork_plan: ArtworkPlanFactory,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Required provenance can be derived from a materialized external input.
+    Required provenance can be derived from a configured external input source.
     """
 
     build_plan = artwork_plan(
@@ -118,10 +118,59 @@ def test_required_fingerprint_accepts_materialized_external_input(
         build_plan,
     )
 
-    _materialize_inputs(
+    _write_input_sources(
         stage,
         content=b"input-content",
     )
+
+    fingerprints = create_required_fingerprints(
+        build_plan,
+    )
+
+    assert stage.name in fingerprints
+
+
+def test_required_fingerprint_uses_external_source_before_materialization(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Required provenance comes from the configured external source.
+
+    Planning preserves both the configured external source path and the
+    artifact-owned path at which that input will later be materialized.
+
+    Required fingerprint construction occurs before stage execution may have
+    materialized the artifact-owned input. It therefore derives external-input
+    provenance from source_path rather than requiring path to exist.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    stage = _input_stage(
+        build_plan,
+    )
+
+    assert stage.inputs
+
+    for index, planned_input in enumerate(
+        stage.inputs,
+    ):
+        planned_input.source_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        planned_input.source_path.write_bytes(
+            f"source-{index}".encode(),
+        )
+
+        assert planned_input.source_path.is_file()
+        assert not planned_input.path.exists()
 
     fingerprints = create_required_fingerprints(
         build_plan,
@@ -148,7 +197,7 @@ def test_changing_external_input_content_changes_stage_fingerprint(
         build_plan,
     )
 
-    _materialize_inputs(
+    _write_input_sources(
         stage,
         content=b"first-content",
     )
@@ -157,7 +206,7 @@ def test_changing_external_input_content_changes_stage_fingerprint(
         build_plan,
     )
 
-    _materialize_inputs(
+    _write_input_sources(
         stage,
         content=b"second-content",
     )
@@ -187,7 +236,7 @@ def test_identical_external_input_content_is_deterministic(
         build_plan,
     )
 
-    _materialize_inputs(
+    _write_input_sources(
         stage,
         content=b"same-content",
     )
@@ -221,7 +270,7 @@ def test_external_input_mtime_does_not_change_fingerprint(
         build_plan,
     )
 
-    _materialize_inputs(
+    _write_input_sources(
         stage,
         content=b"same-content",
     )
@@ -231,11 +280,11 @@ def test_external_input_mtime_does_not_change_fingerprint(
     )
 
     for planned_input in stage.inputs:
-        stat = planned_input.path.stat()
+        stat = planned_input.source_path.stat()
 
-        planned_input.path.touch()
+        planned_input.source_path.touch()
 
-        assert planned_input.path.stat().st_mtime_ns >= stat.st_mtime_ns
+        assert planned_input.source_path.stat().st_mtime_ns >= stat.st_mtime_ns
 
     second = create_required_fingerprints(
         build_plan,
@@ -274,7 +323,7 @@ def test_external_input_change_propagates_to_descendants(
 
     assert descendants
 
-    _materialize_inputs(
+    _write_input_sources(
         stage,
         content=b"first-content",
     )
@@ -283,7 +332,7 @@ def test_external_input_change_propagates_to_descendants(
         build_plan,
     )
 
-    _materialize_inputs(
+    _write_input_sources(
         stage,
         content=b"changed-content",
     )
@@ -321,7 +370,7 @@ def test_identical_input_content_at_different_paths_has_same_provenance(
         first_plan,
     )
 
-    _materialize_inputs(
+    _write_input_sources(
         first_stage,
         content=b"identical-content",
     )
@@ -339,7 +388,7 @@ def test_identical_input_content_at_different_paths_has_same_provenance(
         second_plan,
     )
 
-    _materialize_inputs(
+    _write_input_sources(
         second_stage,
         content=b"identical-content",
     )
@@ -379,12 +428,12 @@ def test_each_external_input_contributes_to_stage_fingerprint(
     for index, planned_input in enumerate(
         stage.inputs,
     ):
-        planned_input.path.parent.mkdir(
+        planned_input.source_path.parent.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        planned_input.path.write_bytes(
+        planned_input.source_path.write_bytes(
             f"input-{index}".encode(),
         )
 
@@ -393,9 +442,9 @@ def test_each_external_input_contributes_to_stage_fingerprint(
     )
 
     for planned_input in stage.inputs:
-        original = planned_input.path.read_bytes()
+        original = planned_input.source_path.read_bytes()
 
-        planned_input.path.write_bytes(
+        planned_input.source_path.write_bytes(
             original + b"-changed",
         )
 
@@ -405,6 +454,6 @@ def test_each_external_input_contributes_to_stage_fingerprint(
 
         assert baseline[stage.name] != changed[stage.name]
 
-        planned_input.path.write_bytes(
+        planned_input.source_path.write_bytes(
             original,
         )

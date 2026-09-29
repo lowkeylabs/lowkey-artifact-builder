@@ -276,6 +276,7 @@ def create_build_plan(
 
     product_dependency_bindings = _resolve_product_dependency_bindings(
         artifact_id=artifact_id,
+        realization_name=realization_name,
         product_dependencies=product_dependencies,
         project_root=root,
     )
@@ -533,21 +534,32 @@ def _select_stages(
 def _resolve_product_dependency_bindings(
     *,
     artifact_id: str,
+    realization_name: str,
     product_dependencies: tuple[ProductDependencySpec, ...],
     project_root: Path,
 ) -> tuple[ProductDependencyBinding, ...]:
     """
-    Resolve active declarative product dependencies to concrete producers.
+    Resolve active declarative Product dependencies to concrete producers.
 
-    An explicit Artifact product-dependency binding is authoritative.
+    An explicit Artifact Product-dependency binding is authoritative.
 
-    Otherwise, an Artifact having its own source may satisfy a declarative
-    dependency from the same Artifact's canonical default Realization for
-    the dependency's producer Model.
+    Otherwise, when the consuming Realization is itself the canonical default
+    Realization for the dependency's producer Model, the dependency binds to
+    that same Artifact and Realization. Its canonical producer identity is
+    already known and does not require Artifact-level source inference.
 
-    A dependency having neither an explicit binding nor an Artifact-owned
-    source remains unbound. This permits Models to declare optional Product
-    dependencies without making those Products mandatory.
+    For other Realizations, an Artifact that owns a source may satisfy a
+    declarative dependency from the same Artifact's canonical default
+    Realization for the dependency's producer Model.
+
+    Artifact-level source ownership is the boundary for this implicit
+    cross-Realization canonical binding. A source configured only on a named
+    Realization does not establish a canonical producer for other Realizations.
+
+    A dependency having neither an explicit binding, a canonical consuming
+    Realization, nor an Artifact-owned source remains unbound. This permits
+    Models to declare optional Product dependencies without making those
+    Products mandatory.
 
     Configuration failures encountered while inspecting or resolving
     bindings are translated to BuildPlanError so callers of the planning
@@ -581,6 +593,18 @@ def _resolve_product_dependency_bindings(
                 )
                 continue
 
+            canonical_realization = f"{dependency.model}_default"
+
+            if realization_name == canonical_realization:
+                bindings.append(
+                    ProductDependencyBinding(
+                        dependency=dependency,
+                        artifact=artifact_id,
+                        realization=realization_name,
+                    )
+                )
+                continue
+
             if not has_artifact_source:
                 continue
 
@@ -588,7 +612,7 @@ def _resolve_product_dependency_bindings(
                 ProductDependencyBinding(
                     dependency=dependency,
                     artifact=artifact_id,
-                    realization=f"{dependency.model}_default",
+                    realization=canonical_realization,
                 )
             )
 

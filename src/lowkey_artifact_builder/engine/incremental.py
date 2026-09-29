@@ -38,6 +38,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from .build import (
+    materialize_inputs,
+)
 from .completion import (
     StageCompletion,
     write_stage_completion,
@@ -437,6 +440,10 @@ def execute_incremental_artifact_build(
     Recursive producer planning and execution remain outside this
     boundary.
 
+    External inputs are materialized into their artifact-owned execution
+    paths only when local stage execution is actually required. Planning
+    and fingerprinting continue to use their configured source paths.
+
     Each required PlannedStage is adapted directly to the established
     engine execution boundary using the same BuildPlan and PlannedStage
     already participating in incremental planning.
@@ -453,9 +460,20 @@ def execute_incremental_artifact_build(
     incremental execution.
     """
 
+    inputs_materialized = False
+
     def execute_planned_stage(
         stage: PlannedStage,
     ) -> None:
+        nonlocal inputs_materialized
+
+        if not inputs_materialized:
+            materialize_inputs(
+                build_plan,
+            )
+
+            inputs_materialized = True
+
         context = create_planned_stage_context(
             build_plan,
             stage,
@@ -499,6 +517,38 @@ def execute_stage(
 # =========================================================
 
 
+def _plan_produces_product_dependency(
+    build_plan: BuildPlan,
+    dependency: PlannedProductDependency,
+) -> bool:
+    """
+    Return whether a Product dependency is produced by this BuildPlan.
+
+    Product dependencies produced by the current plan are local workflow
+    dependencies. Their producer stages participate in the same incremental
+    execution and therefore must not be evaluated as external producer work.
+    """
+
+    product_ref = dependency.product_ref
+
+    if product_ref.artifact != build_plan.artifact_id:
+        return False
+
+    if product_ref.model != build_plan.model_name:
+        return False
+
+    if product_ref.realization != build_plan.realization_name:
+        return False
+
+    for stage in build_plan.stages:
+        if stage.name != product_ref.stage:
+            continue
+
+        return any(product.name == product_ref.product for product in stage.products)
+
+    return False
+
+
 def _plan_product_dependencies(
     build_plan: BuildPlan,
     *,
@@ -508,17 +558,21 @@ def _plan_product_dependencies(
     ...,
 ]:
     """
-    Evaluate persistent state for bound cross-artifact products.
+    Evaluate persistent state for Product dependencies produced outside
+    the current BuildPlan.
 
-    Producer-product state is resolved before consumer-stage fingerprints
-    are generated.
+    Product dependencies produced by the current BuildPlan are local
+    workflow dependencies. Their producer stages participate in the same
+    incremental execution and are governed by local stage Product state.
 
-    The required producer build-context fingerprint is supplied by the
-    caller. This module therefore evaluates producer freshness without
-    constructing or recursively planning the producer artifact itself.
+    Dependencies produced outside the current BuildPlan are evaluated
+    before consumer-stage fingerprints are generated. The required
+    producer build-context fingerprint is supplied by the caller, allowing
+    this module to evaluate producer freshness without constructing or
+    recursively planning the producer BuildPlan itself.
 
-    No producer BuildPlan is constructed here. A producer product that is
-    not reusable is represented only as required producer work.
+    No producer BuildPlan is constructed here. An external producer Product
+    that is not reusable is represented only as required producer work.
     """
 
     if not build_plan.planned_product_dependencies:
@@ -528,8 +582,8 @@ def _plan_product_dependencies(
         stage: PlannedStage,
     ) -> ProductFingerprint | None:
         """
-        Local stage fingerprints are not required while resolving producer
-        product state.
+        Local stage fingerprints are not required while resolving external
+        producer Product state.
         """
 
         return None
@@ -542,6 +596,12 @@ def _plan_product_dependencies(
     dependencies: list[PlannedProductDependencyExecution] = []
 
     for dependency in build_plan.planned_product_dependencies:
+        if _plan_produces_product_dependency(
+            build_plan,
+            dependency,
+        ):
+            continue
+
         state = product_state.product_dependency(
             dependency,
             required_fingerprint=required_fingerprint(

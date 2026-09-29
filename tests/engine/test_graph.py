@@ -73,7 +73,11 @@ def test_defined_graph_contains_artwork_stages() -> None:
 
 def test_defined_graph_preserves_artwork_dependencies() -> None:
     """
-    Defined graph stages preserve declarative stage dependencies.
+    Defined graph stages preserve Artwork's declarative dependencies.
+
+    Registered Artwork geometry is a reusable Product boundary. Extrude
+    therefore consumes the Vector manifest through a Product dependency
+    rather than a realization-local stage dependency.
     """
 
     registry = build_model_registry()
@@ -92,8 +96,16 @@ def test_defined_graph_preserves_artwork_dependencies() -> None:
         "prepare",
         "raster",
     )
-    assert artwork.stage("extrude").dependencies == ("vector",)
+    assert artwork.stage("extrude").dependencies == ()
     assert artwork.stage("package").dependencies == ("extrude",)
+
+    assert artwork.stage("extrude").product_dependencies == (
+        ProductDependencySpec(
+            model="artwork",
+            stage="vector",
+            product="manifest",
+        ),
+    )
 
 
 # =========================================================

@@ -313,28 +313,67 @@ def create_execution_plan(
 # =========================================================
 
 
-def _plan_product_dependencies(
+def _plan_produces_product_dependency(
     build_plan: BuildPlan,
+    dependency: PlannedProductDependency,
+) -> bool:
+    """
+    Return whether a Product dependency is produced by this BuildPlan.
+
+    A Product dependency is local workflow when its bound producer belongs to
+    the same artifact, model, and realization and the current BuildPlan
+    contains the producer stage declaring the requested Product.
+
+    Local Product dependencies are represented by their producer stages in the
+    ExecutionPlan. They therefore do not participate in the cross-artifact
+    producer-product planning boundary.
+    """
+
+    product_ref = dependency.product_ref
+
+    if product_ref.artifact != build_plan.artifact_id:
+        return False
+
+    if product_ref.model != build_plan.model_name:
+        return False
+
+    if product_ref.realization != build_plan.realization_name:
+        return False
+
+    for stage in build_plan.stages:
+        if stage.name != product_ref.stage:
+            continue
+
+        return any(product.name == product_ref.product for product in stage.products)
+
+    return False
+
+
+def _plan_product_dependencies(
+    dependencies: tuple[PlannedProductDependency, ...],
     *,
     product_state,
     required_fingerprint: RequiredProductDependencyFingerprintResolver,
 ) -> tuple[PlannedProductDependencyExecution, ...]:
     """
-    Resolve execution decisions for bound cross-artifact products.
+    Resolve execution decisions for bound external producer Products.
 
     Each planned dependency already contains its concrete producer identity
-    and persistent product path. Required provenance is resolved for that
-    product and persistent state is delegated to the execution-state
-    resolver.
+    and persistent Product path. Required provenance is resolved for that
+    Product and persistent state is delegated to the execution-state resolver.
 
-    No producer BuildPlan is constructed here. A non-CURRENT product is
+    Dependencies produced by the current BuildPlan are excluded before this
+    boundary because their producer stages already participate in local
+    execution planning.
+
+    No producer BuildPlan is constructed here. A non-CURRENT Product is
     represented only as requiring production; recursive producer planning
     belongs to a later orchestration boundary.
     """
 
-    dependencies: list[PlannedProductDependencyExecution] = []
+    planned: list[PlannedProductDependencyExecution] = []
 
-    for dependency in build_plan.planned_product_dependencies:
+    for dependency in dependencies:
         fingerprint = required_fingerprint(
             dependency,
         )
@@ -344,7 +383,7 @@ def _plan_product_dependencies(
             required_fingerprint=fingerprint,
         )
 
-        dependencies.append(
+        planned.append(
             PlannedProductDependencyExecution(
                 product_ref=dependency.product_ref,
                 state=state,
@@ -352,7 +391,7 @@ def _plan_product_dependencies(
         )
 
     return tuple(
-        dependencies,
+        planned,
     )
 
 
@@ -377,15 +416,20 @@ def plan_execution(
     and evaluates persistent state using the established evidence and
     freshness boundaries.
 
-    When the BuildPlan contains bound cross-artifact product dependencies,
+    Product dependencies produced by the current BuildPlan are local workflow
+    relationships. Their producer stages already participate in this execution
+    plan, so they do not require separate producer-product state resolution.
+
+    Bound Product dependencies produced outside the current BuildPlan
+    participate in the producer-product planning boundary.
     required_product_dependency_fingerprint supplies the provenance required
-    for each producer product. Persistent state for each dependency is
-    resolved independently through the same execution-state boundary.
+    for each such producer Product, whose persistent state is resolved
+    independently through the same execution-state boundary.
 
     Execution-plan construction remains delegated to create_execution_plan
     so local stage execution policy has a single implementation.
 
-    This operation determines whether bound producer products require
+    This operation determines whether external bound producer Products require
     production but does not construct producer build plans or recursively
     schedule producer execution.
 
@@ -398,20 +442,29 @@ def plan_execution(
         required_fingerprint=required_fingerprint,
     )
 
+    external_product_dependencies = tuple(
+        dependency
+        for dependency in build_plan.planned_product_dependencies
+        if not _plan_produces_product_dependency(
+            build_plan,
+            dependency,
+        )
+    )
+
     product_dependencies: tuple[
         PlannedProductDependencyExecution,
         ...,
     ] = ()
 
-    if build_plan.planned_product_dependencies:
+    if external_product_dependencies:
         if required_product_dependency_fingerprint is None:
             raise ValueError(
                 "Product dependency fingerprint resolution is required "
-                "when the build plan contains product dependencies"
+                "when the build plan contains external product dependencies"
             )
 
         product_dependencies = _plan_product_dependencies(
-            build_plan,
+            external_product_dependencies,
             product_state=product_state,
             required_fingerprint=(required_product_dependency_fingerprint),
         )

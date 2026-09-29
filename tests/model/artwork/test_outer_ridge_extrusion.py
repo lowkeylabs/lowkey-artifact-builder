@@ -54,7 +54,7 @@ class _StubContext:
         self,
         name: str,
     ) -> Path:
-        assert name == "vector.manifest"
+        assert name == "artwork.vector.manifest"
         return self._vector_manifest
 
     def output(

@@ -153,9 +153,9 @@ def _materialize_external_inputs(
     """
     Materialize deterministic content for all declared external inputs.
 
-    Build-plan fingerprint construction includes external input contents,
-    so tests exercising parameter and dependency provenance must provide
-    those required inputs.
+    Build-plan fingerprint construction includes configured external source
+    contents, represented by PlannedInput.source_path, so tests exercising
+    parameter and dependency provenance must provide those required resources.
 
     Identical content is used for every plan so workspace location cannot
     affect provenance.
@@ -163,12 +163,12 @@ def _materialize_external_inputs(
 
     for stage in build_plan.stages:
         for planned_input in stage.inputs:
-            planned_input.path.parent.mkdir(
+            planned_input.source_path.parent.mkdir(
                 parents=True,
                 exist_ok=True,
             )
 
-            planned_input.path.write_bytes(
+            planned_input.source_path.write_bytes(
                 b"fingerprint-planning-test-input",
             )
 
@@ -810,3 +810,45 @@ def test_stage_fingerprint_ignores_unbound_product_dependency(
     assert tuple(
         fingerprints,
     ) == ("consume",)
+
+
+def test_in_plan_product_dependency_uses_producer_required_fingerprint(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A Product dependency produced by the current BuildPlan derives provenance
+    from its producer stage's required fingerprint.
+
+    Required fingerprint construction occurs before execution, so an in-plan
+    producer Product need not already exist on disk.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    vector_product = (
+        tmp_path
+        / "artifacts"
+        / "example"
+        / "artwork"
+        / "artwork_default"
+        / "30-vector"
+        / "products.json"
+    )
+
+    assert not vector_product.exists()
+
+    fingerprints = create_required_fingerprints(
+        build_plan,
+    )
+
+    assert "vector" in fingerprints
+    assert "extrude" in fingerprints

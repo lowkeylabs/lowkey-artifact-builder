@@ -1143,7 +1143,7 @@ def test_execute_build_context_contains_dependency_products(
     }
 
     assert observed["extrude"] == {
-        "vector.manifest": (
+        "artwork.vector.manifest": (
             plan.artifact_dir / "artwork" / "artwork_default" / "30-vector" / "products.json"
         ),
     }
@@ -1990,3 +1990,44 @@ def test_execute_build_publishes_package_using_realization_name(
     assert published.is_file()
 
     assert published.read_bytes() == b"ornament 3mf"
+
+
+def test_execute_build_does_not_rebuild_product_dependency_produced_by_same_plan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artwork_plan,
+) -> None:
+    """
+    A Product dependency already produced by the consuming BuildPlan is
+    satisfied by that plan and does not trigger a separate producer build.
+    """
+
+    _create_source(tmp_path)
+
+    plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    executed: list[str] = []
+
+    def implementation(
+        context: StageContext,
+    ) -> None:
+        executed.append(context.stage_name)
+        _create_declared_outputs(context)
+
+    _install_stage_implementation(
+        monkeypatch,
+        implementation,
+    )
+
+    execute_build(plan)
+
+    assert executed == [
+        "prepare",
+        "raster",
+        "vector",
+        "extrude",
+        "package",
+    ]

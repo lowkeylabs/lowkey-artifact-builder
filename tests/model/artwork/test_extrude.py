@@ -1,17 +1,11 @@
 """
-
 Tests for the artwork extrusion stage.
 
-
 These tests characterize the storage boundary between the build engine
-
 and the extrusion-stage implementation.
 
-
 The extrusion stage must consume only the paths supplied through
-
 StageContext. Dynamic STL products are stage-local products whose
-
 locations are determined by the declared extrusion manifest.
 
 """
@@ -334,29 +328,24 @@ def test_extrude_uses_declared_vector_manifest(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
+    Extrusion consumes the registered Artwork Vector Product supplied through
+    its declared Product dependency.
 
-    The extrusion stage consumes the vector manifest supplied by
-
-    StageContext without reconstructing its filesystem location.
-
+    The consumer must use the path supplied by StageContext rather than
+    reconstructing the canonical producer filesystem location.
     """
-
     vector_directory = tmp_path / "deliberately" / "unrelated" / "vector-input"
-
     svg = vector_directory / "layer.svg"
-
     vector_directory.mkdir(
         parents=True,
         exist_ok=True,
     )
-
     svg.write_text(
         "<svg/>",
         encoding="utf-8",
     )
 
     vector_manifest = vector_directory / "anything.json"
-
     _write_vector_manifest(
         vector_manifest,
         [
@@ -377,7 +366,7 @@ def test_extrude_uses_declared_vector_manifest(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,
@@ -394,7 +383,6 @@ def test_extrude_uses_declared_vector_manifest(
         output: Path,
     ) -> None:
         rendered_sources.append(source)
-
         _fake_render_stl_source(
             source,
             output,
@@ -409,9 +397,7 @@ def test_extrude_uses_declared_vector_manifest(
     extrude.execute(context)  # type: ignore[arg-type]
 
     assert len(rendered_sources) == 1
-
     assert str(svg.resolve()) in rendered_sources[0]
-
     assert extrude_manifest.is_file()
 
 
@@ -483,7 +469,7 @@ def test_extrude_places_dynamic_stls_beside_declared_manifest(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,
@@ -569,7 +555,7 @@ def test_extrude_manifest_describes_stage_local_products(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,
@@ -666,7 +652,7 @@ def test_extrude_manifest_excludes_physical_printer_assignment(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,
@@ -771,7 +757,7 @@ def test_participating_loop_produces_stage_local_stl_component(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,
@@ -854,7 +840,7 @@ def test_extrude_preserves_artifact_color_identity(
 
     extrude_manifest = tmp_path / "extrude" / "manifest.json"
     context = StubContext(
-        inputs={"vector.manifest": vector_manifest},
+        inputs={"artwork.vector.manifest": vector_manifest},
         outputs={"manifest": extrude_manifest},
         resolver=_resolver(tmp_path),
     )
@@ -1045,7 +1031,7 @@ def test_extrude_sizes_and_centers_occupied_envelope_in_physical_space(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,
@@ -1253,7 +1239,7 @@ def test_participating_loop_records_attachment_artifact_color_index(
 
     extrude_manifest = tmp_path / "extrude" / "products.json"
     context = StubContext(
-        inputs={"vector.manifest": vector_manifest},
+        inputs={"artwork.vector.manifest": vector_manifest},
         outputs={"manifest": extrude_manifest},
         resolver=_resolver(
             tmp_path,
@@ -1335,7 +1321,7 @@ def test_disabled_base_does_not_produce_stage_local_stl_component(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,
@@ -1435,7 +1421,7 @@ def test_participating_base_produces_stage_local_stl_component(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,
@@ -1535,7 +1521,7 @@ def test_participating_base_is_built_from_registered_envelope(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,
@@ -1666,7 +1652,7 @@ def test_participating_base_translates_all_artwork_layers_upward(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,
@@ -1777,7 +1763,7 @@ def test_base_and_loop_share_artwork_supporting_plane(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,
@@ -1897,7 +1883,7 @@ def test_base_and_loop_preserve_independent_raises_above_common_support(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,
@@ -2050,7 +2036,7 @@ def test_participating_base_records_attachment_artifact_color_index(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,
@@ -2156,7 +2142,7 @@ def test_participating_base_inherits_loop_attachment_artifact_color_index(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,
@@ -2250,7 +2236,7 @@ def test_participating_outer_ridge_records_attachment_artifact_color_index(
 
     context = StubContext(
         inputs={
-            "vector.manifest": vector_manifest,
+            "artwork.vector.manifest": vector_manifest,
         },
         outputs={
             "manifest": extrude_manifest,

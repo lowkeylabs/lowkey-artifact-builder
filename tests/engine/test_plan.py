@@ -15,7 +15,10 @@ from pathlib import Path
 import pytest
 
 import lowkey_artifact_builder.engine.plan as plan_module
-from lowkey_artifact_builder.config import write_artifact_config
+from lowkey_artifact_builder.config import Resolver as ConfigResolver
+from lowkey_artifact_builder.config import (
+    write_artifact_config,
+)
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     BuildPlanError,
@@ -306,7 +309,11 @@ def test_create_build_plan_preserves_dependencies(
     artwork_plan,
 ) -> None:
     """
-    Planned stages preserve their declared workflow dependencies.
+    Planned stages preserve their declared same-Realization dependencies.
+
+    Artwork Extrude consumes registered Vector geometry through a Product
+    dependency, so Vector is not a local Stage dependency of Extrude.
+    Package remains locally dependent on Extrude.
     """
 
     plan = artwork_plan(
@@ -323,7 +330,7 @@ def test_create_build_plan_preserves_dependencies(
             "prepare",
             "raster",
         ),
-        "extrude": ("vector",),
+        "extrude": (),
         "package": ("extrude",),
     }
 
@@ -1274,7 +1281,13 @@ def test_create_build_plan_targets_final_product(
     artwork_plan,
 ) -> None:
     """
-    Targeting the final artifact preserves the complete dependency chain.
+    Targeting the packaged Artifact plans its local dependency closure.
+
+    Extrude consumes the canonical registered Artwork Vector Product through
+    a Product dependency rather than through the current Realization's local
+    Vector stage. The local closure therefore contains only Extrude and
+    Package; the registered Vector producer is planned independently through
+    the Product dependency.
     """
 
     target = ProductRef(
@@ -1294,11 +1307,16 @@ def test_create_build_plan_targets_final_product(
     assert plan.targets == (target,)
 
     assert tuple(stage.name for stage in plan.stages) == (
-        "prepare",
-        "raster",
-        "vector",
         "extrude",
         "package",
+    )
+
+    assert plan.product_dependencies == (
+        ProductDependencySpec(
+            model="artwork",
+            stage="vector",
+            product="manifest",
+        ),
     )
 
 
@@ -1557,7 +1575,12 @@ def test_create_build_plans_routes_independent_target_closures(
     tmp_path: Path,
 ) -> None:
     """
-    Each realization receives only its own requested dependency closure.
+    Each Realization receives only its own requested local dependency closure.
+
+    A directly targeted Vector Product requires Prepare, Raster, and Vector
+    locally. A packaged Artwork target requires only Extrude and Package
+    locally because Extrude consumes canonical registered Vector geometry
+    through a Product dependency.
     """
 
     (tmp_path / "workspace.toml").write_text(
@@ -1635,11 +1658,16 @@ artwork_raise = 1.0
     assert coaster.targets == (coaster_target,)
 
     assert tuple(stage.name for stage in coaster.stages) == (
-        "prepare",
-        "raster",
-        "vector",
         "extrude",
         "package",
+    )
+
+    assert coaster.product_dependencies == (
+        ProductDependencySpec(
+            model="artwork",
+            stage="vector",
+            product="manifest",
+        ),
     )
 
 
@@ -1707,19 +1735,23 @@ def test_build_plan_preserves_product_dependencies() -> None:
     assert plan.product_dependencies == (dependency,)
 
 
-def test_build_plan_defaults_to_no_product_dependencies(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    artwork_plan,
-) -> None:
+def test_build_plan_defaults_to_no_product_dependencies() -> None:
     """
-    Existing builds without cross-product requirements retain an empty
-    product dependency set.
+    A BuildPlan with no declared Product dependencies defaults to an empty
+    Product dependency set.
     """
 
-    plan = artwork_plan(
-        tmp_path,
-        monkeypatch,
+    plan = BuildPlan(
+        artifact_id="example",
+        model=ModelSpec(
+            name="example-model",
+            title="Example Model",
+        ),
+        realization_name="default",
+        resolver=None,  # type: ignore[arg-type]
+        project_root=Path("/project"),
+        artifact_dir=Path("/project/artifacts/example"),
+        stages=(),
     )
 
     assert plan.product_dependencies == ()
@@ -1894,19 +1926,23 @@ def test_build_plan_preserves_product_dependency_bindings() -> None:
     assert plan.product_dependency_bindings == (binding,)
 
 
-def test_build_plan_defaults_to_no_product_dependency_bindings(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    artwork_plan,
-) -> None:
+def test_build_plan_defaults_to_no_product_dependency_bindings() -> None:
     """
-    Existing builds without cross-artifact dependencies retain no
-    concrete producer bindings.
+    A BuildPlan with no concrete producer bindings defaults to an empty
+    Product dependency binding set.
     """
 
-    plan = artwork_plan(
-        tmp_path,
-        monkeypatch,
+    plan = BuildPlan(
+        artifact_id="example",
+        model=ModelSpec(
+            name="example-model",
+            title="Example Model",
+        ),
+        realization_name="default",
+        resolver=None,  # type: ignore[arg-type]
+        project_root=Path("/project"),
+        artifact_dir=Path("/project/artifacts/example"),
+        stages=(),
     )
 
     assert plan.product_dependency_bindings == ()
@@ -2070,19 +2106,23 @@ def test_create_build_plan_resolves_product_dependency_bindings(
     )
 
 
-def test_build_plan_defaults_to_no_planned_product_dependencies(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    artwork_plan,
-) -> None:
+def test_build_plan_defaults_to_no_planned_product_dependencies() -> None:
     """
-    Existing builds without cross-artifact dependencies retain no
-    materialized product dependencies.
+    A BuildPlan with no resolved producer Products defaults to an empty
+    planned Product dependency set.
     """
 
-    plan = artwork_plan(
-        tmp_path,
-        monkeypatch,
+    plan = BuildPlan(
+        artifact_id="example",
+        model=ModelSpec(
+            name="example-model",
+            title="Example Model",
+        ),
+        realization_name="default",
+        resolver=None,  # type: ignore[arg-type]
+        project_root=Path("/project"),
+        artifact_dir=Path("/project/artifacts/example"),
+        stages=(),
     )
 
     assert plan.planned_product_dependencies == ()
@@ -2348,8 +2388,6 @@ def test_product_dependency_build_plan_includes_producer_prerequisites(
         realization="source",
     )
 
-    from lowkey_artifact_builder.engine import PlannedProductDependency
-
     planned_dependency = PlannedProductDependency(
         binding=binding,
         path=(
@@ -2482,8 +2520,6 @@ def test_product_dependency_build_plan_excludes_downstream_producer_stages(
         artifact="producer-artifact",
         realization="source",
     )
-
-    from lowkey_artifact_builder.engine import PlannedProductDependency
 
     planned_dependency = PlannedProductDependency(
         binding=binding,
@@ -2921,3 +2957,168 @@ def test_local_variant_name_owns_persistent_product_namespace(
     for stage in plan.stages:
         for product in stage.products:
             assert product.path.is_relative_to(realization_directory)
+
+
+def test_named_artwork_realization_binds_canonical_vector_product(
+    tmp_path: Path,
+) -> None:
+    """
+    A named Artwork Realization consumes the Artifact's canonical registered
+    Vector Product when the Artifact owns the source.
+
+    Artifact-level source ownership establishes one canonical registered
+    Artwork representation. Named Realizations may customize downstream
+    dimensional parameters while consuming that shared Vector Product from
+    artwork_default.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "ornament": {
+                    "model": "artwork",
+                    "variant": "default",
+                    "parameters": {
+                        "artwork_size": 20.0,
+                        "artwork_raise": 1.0,
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        "example",
+        realization="ornament",
+        project_root=tmp_path,
+    )
+
+    dependency = ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="manifest",
+    )
+
+    expected_binding = ProductDependencyBinding(
+        dependency=dependency,
+        artifact="example",
+        realization="artwork_default",
+    )
+
+    expected_product = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="artwork_default",
+        stage="vector",
+        product="manifest",
+    )
+
+    assert plan.product_dependencies == (dependency,)
+
+    assert plan.product_dependency_bindings == (expected_binding,)
+
+    assert expected_binding.product_ref == expected_product
+
+    assert len(plan.planned_product_dependencies) == 1
+
+    planned = plan.planned_product_dependencies[0]
+
+    assert planned.binding == expected_binding
+    assert planned.binding.product_ref == expected_product
+
+    assert planned.path == (
+        tmp_path
+        / "artifacts"
+        / "example"
+        / "artwork"
+        / "artwork_default"
+        / "30-vector"
+        / "products.json"
+    )
+
+
+def test_same_realization_product_dependency_binds_local_product(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    test_resolver: ConfigResolver,
+) -> None:
+    """
+    A Product dependency produced by the same Artifact, Model, and
+    Realization binds directly to that local Product.
+
+    Same-Realization Product identity is already known and therefore does
+    not require Artifact-root source configuration to infer a canonical
+    producer Realization.
+    """
+
+    def fake_get_resolver(
+        artifact_id: str,
+        *,
+        model: str | None = None,
+        realization: str | None = None,
+        project_root: Path,
+    ) -> ConfigResolver:
+        assert artifact_id == "example"
+        assert project_root == tmp_path
+        assert model is None or model == "artwork"
+        assert realization == "artwork_default"
+
+        return test_resolver
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_resolver",
+        fake_get_resolver,
+    )
+
+    plan = create_build_plan(
+        "example",
+        realization="artwork_default",
+        project_root=tmp_path,
+    )
+
+    extrude = next(stage for stage in plan.stages if stage.name == "extrude")
+
+    assert len(extrude.spec.product_dependencies) == 1
+
+    dependency = extrude.spec.product_dependencies[0]
+
+    assert dependency == ProductDependencySpec(
+        model="artwork",
+        stage="vector",
+        product="manifest",
+    )
+
+    assert len(plan.product_dependency_bindings) == 1
+
+    binding = plan.product_dependency_bindings[0]
+
+    assert binding.dependency == dependency
+    assert binding.artifact == "example"
+    assert binding.realization == "artwork_default"
+
+    assert binding.product_ref == ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="artwork_default",
+        stage="vector",
+        product="manifest",
+    )
+
+    assert len(plan.planned_product_dependencies) == 1
+
+    planned = plan.planned_product_dependencies[0]
+
+    assert planned.binding == binding
+
+    assert planned.path == (
+        tmp_path
+        / "artifacts"
+        / "example"
+        / "artwork"
+        / "artwork_default"
+        / "30-vector"
+        / "products.json"
+    )

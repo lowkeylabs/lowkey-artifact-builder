@@ -48,16 +48,20 @@ def _materialize_external_inputs(
 ) -> None:
     """
     Materialize deterministic content for all external inputs.
+
+    External-input provenance is represented by PlannedInput.source_path.
+    PlannedInput.path is the artifact-owned execution copy and is not the
+    source resource fingerprinted during incremental planning.
     """
 
     for stage in build_plan.stages:
         for planned_input in stage.inputs:
-            planned_input.path.parent.mkdir(
+            planned_input.source_path.parent.mkdir(
                 parents=True,
                 exist_ok=True,
             )
 
-            planned_input.path.write_bytes(
+            planned_input.source_path.write_bytes(
                 content,
             )
 
@@ -479,7 +483,8 @@ def test_changed_external_input_reexecutes_invalidated_chain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Changed external input executes its consumer and dependent descendants.
+    Changed external input executes its consumer and every stage whose
+    required fingerprint transitively depends on that input.
     """
 
     build_plan = artwork_plan(
@@ -498,16 +503,8 @@ def test_changed_external_input_reexecutes_invalidated_chain(
 
     consuming_stage = next(stage for stage in build_plan.stages if stage.inputs)
 
-    expected = (
-        consuming_stage.name,
-        *_descendant_stage_names(
-            build_plan,
-            consuming_stage.name,
-        ),
-    )
-
     for planned_input in consuming_stage.inputs:
-        planned_input.path.write_bytes(
+        planned_input.source_path.write_bytes(
             b"changed-input",
         )
 
@@ -529,12 +526,9 @@ def test_changed_external_input_reexecutes_invalidated_chain(
         execute_stage=execute,
     )
 
-    assert (
-        tuple(
-            executed,
-        )
-        == expected
-    )
+    assert tuple(
+        executed,
+    ) == tuple(stage.name for stage in build_plan.stages)
 
 
 # =========================================================
@@ -651,3 +645,51 @@ def test_failed_stage_stops_later_execution(
     assert tuple(
         executed,
     ) == tuple(stage.name for stage in build_plan.stages[: failing_index + 1])
+
+
+def test_same_plan_product_dependency_does_not_block_incremental_execution(
+    artwork_plan: ArtworkPlanFactory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A Product dependency produced by the current BuildPlan does not block
+    local incremental execution.
+
+    Its producer stage participates in the same local workflow, so producer
+    freshness and execution are governed by that BuildPlan rather than by
+    cross-plan Product-dependency orchestration.
+    """
+
+    build_plan = artwork_plan(
+        tmp_path,
+        monkeypatch,
+    )
+
+    _materialize_external_inputs(
+        build_plan,
+    )
+
+    executed: list[str] = []
+
+    def execute(
+        stage: PlannedStage,
+    ) -> None:
+        executed.append(
+            stage.name,
+        )
+
+        _materialize_stage_products(
+            stage,
+        )
+
+    execution_plan = execute_incremental_build(
+        build_plan,
+        execute_stage=execute,
+    )
+
+    assert not execution_plan.required_product_dependencies
+
+    assert tuple(
+        executed,
+    ) == tuple(stage.name for stage in build_plan.stages)

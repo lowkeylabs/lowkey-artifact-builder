@@ -49,12 +49,12 @@ def _materialize_external_inputs(
 
     for stage in build_plan.stages:
         for planned_input in stage.inputs:
-            planned_input.path.parent.mkdir(
+            planned_input.source_path.parent.mkdir(
                 parents=True,
                 exist_ok=True,
             )
 
-            planned_input.path.write_bytes(
+            planned_input.source_path.write_bytes(
                 content,
             )
 
@@ -288,7 +288,7 @@ def test_changed_external_input_breaks_convergence(
     consuming_stage = next(stage for stage in build_plan.stages if stage.inputs)
 
     for planned_input in consuming_stage.inputs:
-        planned_input.path.write_bytes(
+        planned_input.source_path.write_bytes(
             b"changed-input",
         )
 
@@ -335,7 +335,7 @@ def test_changed_external_input_invalidates_descendants(
     consuming_stage = next(stage for stage in build_plan.stages if stage.inputs)
 
     for planned_input in consuming_stage.inputs:
-        planned_input.path.write_bytes(
+        planned_input.source_path.write_bytes(
             b"changed-input",
         )
 
@@ -414,7 +414,7 @@ def test_invalidated_build_reconverges_after_successful_execution(
     consuming_stage = next(stage for stage in build_plan.stages if stage.inputs)
 
     for planned_input in consuming_stage.inputs:
-        planned_input.path.write_bytes(
+        planned_input.source_path.write_bytes(
             b"changed-input",
         )
 

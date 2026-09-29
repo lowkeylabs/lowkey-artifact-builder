@@ -774,7 +774,11 @@ def test_create_planned_stage_context_matches_plan_for_every_stage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Every realized stage can be adapted to the execution-facing context.
+    Every realized stage is adapted completely from its BuildPlan.
+
+    Planned execution exposes explicit stage inputs, products from direct
+    local stage dependencies, and concrete Product dependencies resolved by
+    planning.
     """
 
     build_plan = artwork_plan(
@@ -804,6 +808,16 @@ def test_create_planned_stage_context_matches_plan_for_every_stage(
 
             for product in dependency.products:
                 expected_inputs[f"{dependency.name}.{product.name}"] = product.path
+
+        for planned_dependency in build_plan.planned_product_dependencies:
+            dependency = planned_dependency.binding.dependency
+
+            if dependency not in stage.spec.product_dependencies:
+                continue
+
+            expected_inputs[f"{dependency.model}.{dependency.stage}.{dependency.product}"] = (
+                planned_dependency.path
+            )
 
         assert context.inputs == expected_inputs
 

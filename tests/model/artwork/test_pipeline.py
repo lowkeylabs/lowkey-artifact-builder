@@ -27,6 +27,7 @@ from PIL import Image
 from lowkey_artifact_builder.config import write_artifact_config
 from lowkey_artifact_builder.engine import (
     create_build_plan,
+    execute_artifact_build,
     execute_build,
 )
 from lowkey_artifact_builder.formats.threemf import (
@@ -895,18 +896,22 @@ def test_artwork_pipeline_products_are_functionally_equivalent(
     assert [item.get("objectid") for item in build_items] == object_ids
 
 
-def test_artwork_pipeline_executes_named_realizations_independently(
+def test_artwork_pipeline_reuses_canonical_vector_across_named_realizations(
     tmp_path: Path,
 ) -> None:
     """
-    Two named realizations of one artifact execute independently.
+    Named Artwork manufacturing reuses one canonical registered Vector Product.
 
-    Both realizations may consume the same source artwork while using
-    different resolved parameters and distinct persistent product
-    namespaces.
+    The Artifact owns the source artwork. artwork_default therefore owns the
+    canonical Prepare, Raster, and Vector Products.
 
-    Their upstream products preserve the same logical Artifact-color
-    identities without introducing physical printer-color assignment.
+    Named Realizations consume artwork_default's Vector manifest and begin
+    their own persistent Product namespaces at Extrude. Their dimensional
+    parameters and final packaged Artifacts remain independent.
+
+    Manufacturing a second named Realization reuses the already-current
+    canonical registered Artwork rather than reproducing Prepare, Raster, or
+    Vector beneath that Realization.
     """
 
     _write_workspace(tmp_path)
@@ -918,11 +923,11 @@ def test_artwork_pipeline_executes_named_realizations_independently(
     write_artifact_config(
         "example",
         {
+            "source": "source.png",
             "realizations": {
                 "ornament": {
                     "model": "artwork",
                     "variant": "default",
-                    "source": "source.png",
                     "parameters": {
                         "artwork_size": 20.0,
                         "artwork_raise": 1.0,
@@ -931,7 +936,6 @@ def test_artwork_pipeline_executes_named_realizations_independently(
                 "coaster": {
                     "model": "artwork",
                     "variant": "default",
-                    "source": "source.png",
                     "parameters": {
                         "artwork_size": 24.0,
                         "artwork_raise": 1.5,
@@ -942,146 +946,124 @@ def test_artwork_pipeline_executes_named_realizations_independently(
         project_root=tmp_path,
     )
 
-    ornament = create_build_plan(
+    # -----------------------------------------------------
+    # Manufacture both named Realizations
+    # -----------------------------------------------------
+
+    execute_artifact_build(
         "example",
         realization="ornament",
         project_root=tmp_path,
     )
 
-    coaster = create_build_plan(
+    execute_artifact_build(
         "example",
         realization="coaster",
         project_root=tmp_path,
     )
 
-    assert ornament.realization_name == "ornament"
-    assert coaster.realization_name == "coaster"
+    artwork_directory = tmp_path / "artifacts" / "example" / "artwork"
 
-    assert ornament.resolver("source") == "source.png"
-    assert coaster.resolver("source") == "source.png"
-
-    assert ornament.resolver("artwork_size") == 20.0
-    assert coaster.resolver("artwork_size") == 24.0
-
-    assert ornament.resolver("artwork_raise") == 1.0
-    assert coaster.resolver("artwork_raise") == 1.5
-
-    execute_build(ornament)
-    execute_build(coaster)
-
-    ornament_directory = tmp_path / "artifacts" / "example" / "artwork" / "ornament"
-
-    coaster_directory = tmp_path / "artifacts" / "example" / "artwork" / "coaster"
+    canonical_directory = artwork_directory / "artwork_default"
+    ornament_directory = artwork_directory / "ornament"
+    coaster_directory = artwork_directory / "coaster"
 
     # -----------------------------------------------------
-    # Declared products
+    # Canonical registered Artwork
     # -----------------------------------------------------
 
-    ornament_trace = ornament_directory / "10-prepare" / "trace.svg"
+    canonical_prepare_directory = canonical_directory / "10-prepare"
+    canonical_raster_directory = canonical_directory / "20-raster"
+    canonical_vector_directory = canonical_directory / "30-vector"
 
-    coaster_trace = coaster_directory / "10-prepare" / "trace.svg"
+    assert (canonical_prepare_directory / "trace.svg").is_file()
+    assert (canonical_prepare_directory / "envelope.svg").is_file()
 
-    assert ornament_trace.is_file()
-    assert coaster_trace.is_file()
-
-    assert ornament_trace != coaster_trace
-
-    # -----------------------------------------------------
-    # Dynamic raster products
-    # -----------------------------------------------------
-
-    ornament_raster_directory = ornament_directory / "20-raster"
-
-    coaster_raster_directory = coaster_directory / "20-raster"
-
-    ornament_raster_manifest = _read_manifest(
-        ornament_raster_directory / "products.json",
+    canonical_raster_manifest = _read_manifest(
+        canonical_raster_directory / "products.json",
     )
 
-    coaster_raster_manifest = _read_manifest(
-        coaster_raster_directory / "products.json",
+    canonical_vector_manifest = _read_manifest(
+        canonical_vector_directory / "products.json",
     )
 
-    ornament_raster_products = ornament_raster_manifest["products"]
-    coaster_raster_products = coaster_raster_manifest["products"]
+    canonical_raster_products = _manifest_products(
+        canonical_raster_manifest,
+    )
 
-    assert ornament_raster_products
-    assert coaster_raster_products
+    canonical_vector_products = _manifest_products(
+        canonical_vector_manifest,
+    )
 
-    assert [product["artifact_color"] for product in ornament_raster_products] == [
-        product["artifact_color"] for product in coaster_raster_products
+    assert canonical_raster_products
+    assert canonical_vector_products
+
+    assert [product["artifact_color"] for product in canonical_raster_products] == [
+        product["artifact_color"] for product in canonical_vector_products
     ]
 
-    assert all("printer_color" not in product for product in ornament_raster_products)
+    assert all("printer_color" not in product for product in canonical_raster_products)
 
-    assert all("printer_color" not in product for product in coaster_raster_products)
+    assert all("printer_color" not in product for product in canonical_vector_products)
 
-    ornament_raster_paths = {
-        ornament_raster_directory / product["path"] for product in ornament_raster_products
-    }
-
-    coaster_raster_paths = {
-        coaster_raster_directory / product["path"] for product in coaster_raster_products
-    }
-
-    assert all(path.is_file() for path in ornament_raster_paths)
-
-    assert all(path.is_file() for path in coaster_raster_paths)
-
-    assert ornament_raster_paths.isdisjoint(
-        coaster_raster_paths,
-    )
+    canonical_vector_colors = [product["artifact_color"] for product in canonical_vector_products]
 
     # -----------------------------------------------------
-    # Dynamic extrusion products
+    # Named Realizations do not reproduce registered Artwork
     # -----------------------------------------------------
 
-    ornament_extrude_directory = ornament_directory / "40-extrude"
+    for realization_directory in (
+        ornament_directory,
+        coaster_directory,
+    ):
+        assert not (realization_directory / "10-prepare").exists()
+        assert not (realization_directory / "20-raster").exists()
+        assert not (realization_directory / "30-vector").exists()
 
-    coaster_extrude_directory = coaster_directory / "40-extrude"
+        assert (realization_directory / "40-extrude" / "products.json").is_file()
+
+        assert (realization_directory / "50-package" / "artifact.3mf").is_file()
+
+    # -----------------------------------------------------
+    # Both named Realizations preserve canonical color identity
+    # -----------------------------------------------------
 
     ornament_extrude_manifest = _read_manifest(
-        ornament_extrude_directory / "products.json",
+        ornament_directory / "40-extrude" / "products.json",
     )
 
     coaster_extrude_manifest = _read_manifest(
-        coaster_extrude_directory / "products.json",
+        coaster_directory / "40-extrude" / "products.json",
     )
 
-    ornament_extrude_products = ornament_extrude_manifest["products"]
-    coaster_extrude_products = coaster_extrude_manifest["products"]
-
-    ornament_stls = {
-        ornament_extrude_directory / product["path"] for product in ornament_extrude_products
-    }
-
-    coaster_stls = {
-        coaster_extrude_directory / product["path"] for product in coaster_extrude_products
-    }
-
-    assert all(path.is_file() for path in ornament_stls)
-
-    assert all(path.is_file() for path in coaster_stls)
-
-    assert ornament_stls.isdisjoint(
-        coaster_stls,
+    ornament_products = _manifest_products(
+        ornament_extrude_manifest,
     )
 
+    coaster_products = _manifest_products(
+        coaster_extrude_manifest,
+    )
+
+    assert [product["artifact_color"] for product in ornament_products] == canonical_vector_colors
+
+    assert [product["artifact_color"] for product in coaster_products] == canonical_vector_colors
+
+    assert all("printer_color" not in product for product in ornament_products)
+
+    assert all("printer_color" not in product for product in coaster_products)
+
     # -----------------------------------------------------
-    # Final artifacts
+    # Dimensional manufacturing remains realization-specific
     # -----------------------------------------------------
 
-    ornament_artifact = ornament_directory / "50-package" / "artifact.3mf"
+    assert ornament_extrude_manifest != coaster_extrude_manifest
 
-    coaster_artifact = coaster_directory / "50-package" / "artifact.3mf"
+    ornament_package = ornament_directory / "50-package" / "artifact.3mf"
 
-    assert ornament_artifact.is_file()
-    assert coaster_artifact.is_file()
+    coaster_package = coaster_directory / "50-package" / "artifact.3mf"
 
-    assert ornament_artifact.stat().st_size > 0
-    assert coaster_artifact.stat().st_size > 0
-
-    assert ornament_artifact != coaster_artifact
+    assert zipfile.is_zipfile(ornament_package)
+    assert zipfile.is_zipfile(coaster_package)
 
 
 def test_clean_bg_house_registered_envelope_matches_registered_component_extent(

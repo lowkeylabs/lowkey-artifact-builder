@@ -126,6 +126,14 @@ def _execute_dependency_build(
             str,
             str,
             str,
+            tuple[
+                tuple[
+                    str,
+                    str,
+                ],
+                ...,
+            ]
+            | None,
         ],
         ...,
     ],
@@ -136,16 +144,33 @@ def _execute_dependency_build(
 
     produced is shared by every recursive invocation.
 
-    active contains only artifact realizations on the current recursive
-    traversal path. A repeated identity therefore represents a dependency
-    cycle rather than merely a producer encountered previously elsewhere
-    in the dependency graph.
+    active contains build targets on the current recursive traversal path.
+    Re-entering the same artifact/model/realization with the same target set
+    therefore represents a dependency cycle. Distinct targeted Products from
+    the same realization remain distinct dependency nodes.
+
+    An untargeted BuildPlan is represented by a None target identity so that
+    full-realization execution remains distinct from targeted Product
+    execution.
     """
+
+    target_identity = (
+        None
+        if build_plan.targets is None
+        else tuple(
+            (
+                target.stage,
+                target.product,
+            )
+            for target in build_plan.targets
+        )
+    )
 
     identity = (
         build_plan.artifact_id,
         build_plan.model_name,
         build_plan.realization_name,
+        target_identity,
     )
 
     if identity in active:
@@ -158,9 +183,33 @@ def _execute_dependency_build(
             identity,
         )
 
-        path = " -> ".join(
-            f"{artifact}/{model}/{realization}" for artifact, model, realization in cycle
-        )
+        def format_identity(
+            node: tuple[
+                str,
+                str,
+                str,
+                tuple[
+                    tuple[
+                        str,
+                        str,
+                    ],
+                    ...,
+                ]
+                | None,
+            ],
+        ) -> str:
+            artifact, model, realization, targets = node
+
+            base = f"{artifact}/{model}/{realization}"
+
+            if targets is None:
+                return base
+
+            target_text = ",".join(f"{stage}/{product}" for stage, product in targets)
+
+            return f"{base}/{target_text}"
+
+        path = " -> ".join(format_identity(node) for node in cycle)
 
         raise DependencyCycleError(f"Cross-artifact dependency cycle detected: {path}")
 

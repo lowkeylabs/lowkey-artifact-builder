@@ -10,10 +10,11 @@ preparation. Raster and vector processing preserve Artifact-color
 identity while producing registered geometry without assigning physical
 printer colors.
 
-Standalone extrusion converts registered Artwork into physical geometry
-while preserving Artifact-color identity and logical Artifact-color
-attachments for participating Artwork Features. Physical printer-color
-assignment is deferred until packaging.
+Standalone extrusion consumes the canonical registered Artwork vector
+representation and converts it into physical geometry while preserving
+Artifact-color identity and logical Artifact-color attachments for
+participating Artwork Features. Physical printer-color assignment is
+deferred until packaging.
 
 Standalone packaging resolves Artifact colors against the configured
 printer colors, applies inherited or explicit physical colors to
@@ -37,6 +38,7 @@ from lowkey_artifact_builder.model.registry import (
 from lowkey_artifact_builder.model.specs import (
     InputSpec,
     ModelSpec,
+    ProductDependencySpec,
     ProductSpec,
     StageSpec,
     VariantSpec,
@@ -155,8 +157,16 @@ STAGES = (
     StageSpec(
         id=40,
         name="extrude",
-        description=("Extrude registered vector color layers into printable STL components."),
-        dependencies=("vector",),
+        description=(
+            "Extrude canonical registered vector color layers into printable STL components."
+        ),
+        product_dependencies=(
+            ProductDependencySpec(
+                model="artwork",
+                stage="vector",
+                product="manifest",
+            ),
+        ),
         parameters=(
             "artwork_size",
             "artwork_raise",

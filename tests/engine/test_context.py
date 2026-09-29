@@ -257,16 +257,20 @@ def test_create_stage_context_resolves_direct_dependency_products(
     }
 
 
-def test_create_stage_context_includes_only_direct_dependencies(
+def test_create_stage_context_does_not_infer_product_dependency_binding(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     test_resolver: Resolver,
 ) -> None:
     """
-    StageContext contains direct dependency products, not transitive ones.
+    Independent context construction does not infer producer bindings.
 
-    Dependency traversal remains a planning concern rather than a
-    StageContext construction concern.
+    Product dependency declarations identify the required semantic Product,
+    but concrete producer Artifact and Realization identity is resolved by
+    planning.
+
+    Without an explicit input binding, independent context construction
+    therefore exposes no Product dependency input.
     """
 
     _install_resolver(
@@ -281,11 +285,7 @@ def test_create_stage_context_includes_only_direct_dependencies(
         project_root=tmp_path,
     )
 
-    assert "vector.manifest" in context.inputs
-
-    assert all(not name.startswith("prepare.") for name in context.inputs)
-
-    assert all(not name.startswith("raster.") for name in context.inputs)
+    assert "artwork.vector.manifest" not in context.inputs
 
 
 # =========================================================
@@ -521,18 +521,21 @@ def test_independent_context_matches_planned_context(
     assert independent_context.outputs == planned_context.outputs
 
 
-def test_independent_context_matches_planned_context_for_every_stage(
+def test_independent_context_matches_planned_context_for_model_owned_context(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     test_resolver: Resolver,
     artwork_plan,
 ) -> None:
     """
-    Every graph-driven artwork stage has an equivalent independent context.
+    Independent and planned contexts agree on Model-owned context.
 
-    Contexts are observed at the common stage execution boundary,
-    ensuring normal builds and independent execution share the same
-    execution-facing contract.
+    Planning may additionally bind semantic Product dependencies to concrete
+    producer Products. Independent context construction does not infer those
+    bindings, so Product-dependency inputs are excluded from this comparison.
+
+    All context derived directly from the Model declaration remains
+    equivalent between independent and planned construction.
     """
 
     _install_resolver(
@@ -600,8 +603,10 @@ def test_independent_context_matches_planned_context_for_every_stage(
         assert independent_context.artifact_dir == planned_context.artifact_dir
         assert independent_context.working_dir == planned_context.working_dir
         assert independent_context.resolver is planned_context.resolver
-        assert independent_context.inputs == planned_context.inputs
         assert independent_context.outputs == planned_context.outputs
+
+        for name, path in independent_context.inputs.items():
+            assert planned_context.inputs[name] == path
 
 
 def test_create_stage_context_translates_configuration_error(

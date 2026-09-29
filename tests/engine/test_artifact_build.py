@@ -1035,3 +1035,75 @@ def test_artifact_build_publication_recovery_does_not_reexecute_package(
 
     assert canonical.is_file()
     assert published.is_file()
+
+
+def test_artifact_build_plans_named_artwork_realization_from_canonical_vector(
+    tmp_path: Path,
+) -> None:
+    """
+    Manufacturing a named Artwork Realization reuses canonical registered Artwork.
+
+    The selected named Realization owns only the downstream manufacturing
+    closure required for its packaged artifact. Registered Artwork preparation,
+    rasterization, and vectorization belong to the canonical artwork_default
+    Realization and are consumed through the Extrude Product dependency.
+
+    Artifact-build planning therefore does not plan redundant local registered
+    Artwork stages merely because they belong to the same Model.
+    """
+
+    write_artifact_config(
+        "example",
+        {
+            "source": "source.png",
+            "realizations": {
+                "ornament": {
+                    "model": "artwork",
+                    "variant": "default",
+                    "parameters": {
+                        "artwork_size": 20.0,
+                        "artwork_raise": 1.0,
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plans = artifact_build.create_artifact_build_plans(
+        "example",
+        realization="ornament",
+        project_root=tmp_path,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    assert plan.model_name == "artwork"
+    assert plan.realization_name == "ornament"
+
+    assert tuple(stage.name for stage in plan.stages) == (
+        "extrude",
+        "package",
+    )
+
+    assert len(plan.planned_product_dependencies) == 1
+
+    dependency = plan.planned_product_dependencies[0]
+
+    assert dependency.binding.artifact == "example"
+    assert dependency.binding.realization == "artwork_default"
+    assert dependency.binding.dependency.model == "artwork"
+    assert dependency.binding.dependency.stage == "vector"
+    assert dependency.binding.dependency.product == "manifest"
+
+    assert dependency.path == (
+        tmp_path
+        / "artifacts"
+        / "example"
+        / "artwork"
+        / "artwork_default"
+        / "30-vector"
+        / "products.json"
+    )

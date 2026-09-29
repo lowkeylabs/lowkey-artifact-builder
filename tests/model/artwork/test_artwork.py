@@ -36,11 +36,16 @@ def test_artwork_stages() -> None:
 
 def test_artwork_stage_dependencies() -> None:
     """
-    Artwork stages declare every upstream stage whose products they consume.
+    Artwork preserves registered geometry through Vector and consumes that
+    canonical representation through a Product dependency at Extrude.
 
-    Vector consumes both the registered raster manifest and the prepared
-    envelope, so it depends directly on both raster and prepare.
+    Prepare, Raster, and Vector form the registered-Artwork production
+    pipeline. Extrude does not depend on the current Realization's local
+    Vector stage; it consumes the canonical Artwork Vector manifest as a
+    Product dependency. Package depends locally on Extrude.
     """
+
+    from lowkey_artifact_builder.model import ProductDependencySpec
 
     stages = {stage.name: stage for stage in MODEL.stages}
 
@@ -50,7 +55,16 @@ def test_artwork_stage_dependencies() -> None:
         "prepare",
         "raster",
     )
-    assert stages["extrude"].dependencies == ("vector",)
+
+    assert stages["extrude"].dependencies == ()
+    assert stages["extrude"].product_dependencies == (
+        ProductDependencySpec(
+            model="artwork",
+            stage="vector",
+            product="manifest",
+        ),
+    )
+
     assert stages["package"].dependencies == ("extrude",)
 
 
