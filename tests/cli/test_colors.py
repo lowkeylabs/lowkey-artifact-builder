@@ -142,17 +142,18 @@ def test_analyze_artifact_colors_targets_registered_artwork_manifest(
         planned.append((artifact_id, realization, targets, project_root))
         return plan
 
-    def fail_execute(*args, **kwargs) -> None:
-        raise AssertionError("COLORS must not execute manufacturing.")
+    monkeypatch.setattr(
+        cmd_color,
+        "plan_incremental_execution",
+        lambda plan: SimpleNamespace(
+            required_stages=(),
+            required_product_dependencies=(),
+        ),
+    )
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
         fake_create_build_plan,
-    )
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.cli.cmd_color.execute_dependency_build",
-        fail_execute,
-        raising=False,
     )
     monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.analyze_registered_artwork_colors",
@@ -202,18 +203,19 @@ def test_analyze_artifact_colors_reads_existing_target_without_execution(
         ),
     )
     monkeypatch.setattr(
+        cmd_color,
+        "plan_incremental_execution",
+        lambda plan: SimpleNamespace(
+            required_stages=(),
+            required_product_dependencies=(),
+        ),
+    )
+
+    monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
         lambda artifact_id, *, realization, targets, project_root: plan,
     )
 
-    def fail_execute(*args, **kwargs) -> None:
-        raise AssertionError("COLORS must not execute manufacturing.")
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.cli.cmd_color.execute_dependency_build",
-        fail_execute,
-        raising=False,
-    )
     analyzed: list[tuple[Path, object]] = []
 
     def fake_analyze_registered_artwork_colors(
@@ -260,17 +262,17 @@ def test_analyze_artifact_colors_reuses_current_registered_artwork(
     )
     analyzed: list[tuple[Path, object]] = []
     monkeypatch.setattr(
-        "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
-        lambda artifact_id, *, realization, targets, project_root: plan,
+        cmd_color,
+        "plan_incremental_execution",
+        lambda plan: SimpleNamespace(
+            required_stages=(),
+            required_product_dependencies=(),
+        ),
     )
 
-    def fail_execute(*args, **kwargs) -> None:
-        raise AssertionError("COLORS must not execute manufacturing.")
-
     monkeypatch.setattr(
-        "lowkey_artifact_builder.cli.cmd_color.execute_dependency_build",
-        fail_execute,
-        raising=False,
+        "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
+        lambda artifact_id, *, realization, targets, project_root: plan,
     )
 
     def fake_analyze_registered_artwork_colors(
@@ -322,18 +324,19 @@ def test_analyze_artifact_colors_does_not_modify_configuration(
         ),
     )
     monkeypatch.setattr(
+        cmd_color,
+        "plan_incremental_execution",
+        lambda plan: SimpleNamespace(
+            required_stages=(),
+            required_product_dependencies=(),
+        ),
+    )
+
+    monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
         lambda artifact_id, *, realization, targets, project_root: plan,
     )
 
-    def fail_execute(*args, **kwargs) -> None:
-        raise AssertionError("COLORS must not execute manufacturing.")
-
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.cli.cmd_color.execute_dependency_build",
-        fail_execute,
-        raising=False,
-    )
     monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.analyze_registered_artwork_colors",
         lambda *, manifest, resolver: object(),
@@ -390,17 +393,18 @@ def test_analyze_artifact_colors_does_not_require_standalone_artwork_stages(
             raise AssertionError("color analysis must not request a complete Artwork plan")
         return plan
 
-    def fail_execute(*args, **kwargs) -> None:
-        raise AssertionError("COLORS must not execute manufacturing.")
+    monkeypatch.setattr(
+        cmd_color,
+        "plan_incremental_execution",
+        lambda plan: SimpleNamespace(
+            required_stages=(),
+            required_product_dependencies=(),
+        ),
+    )
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.create_build_plan",
         fake_create_build_plan,
-    )
-    monkeypatch.setattr(
-        "lowkey_artifact_builder.cli.cmd_color.execute_dependency_build",
-        fail_execute,
-        raising=False,
     )
     monkeypatch.setattr(
         "lowkey_artifact_builder.cli.cmd_color.analyze_registered_artwork_colors",
@@ -445,6 +449,15 @@ def test_analyze_artifact_colors_requires_existing_registered_manifest(
 
     create_plan = Mock(
         return_value=plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "plan_incremental_execution",
+        lambda plan: SimpleNamespace(
+            required_stages=(object(),),
+            required_product_dependencies=(),
+        ),
     )
 
     monkeypatch.setattr(
@@ -725,18 +738,36 @@ def test_requested_artwork_realization_targets_registered_manifest(
         resolver=object(),
         stages=(),
     )
+
     manifest = tmp_path / "products.json"
-    manifest.write_text("{}", encoding="utf-8")
+    manifest.write_text(
+        "{}",
+        encoding="utf-8",
+    )
+
     targeted_plan = SimpleNamespace(
         resolver=object(),
         stages=(
             SimpleNamespace(
                 name="vector",
-                products=(SimpleNamespace(name="manifest", path=manifest),),
+                products=(
+                    SimpleNamespace(
+                        name="manifest",
+                        path=manifest,
+                    ),
+                ),
             ),
         ),
     )
-    planned: list[tuple[str, str, tuple[ProductRef, ...] | None, Path]] = []
+
+    planned: list[
+        tuple[
+            str,
+            str,
+            tuple[ProductRef, ...] | None,
+            Path,
+        ]
+    ] = []
 
     def fake_create_build_plan(
         artifact_id: str,
@@ -745,36 +776,61 @@ def test_requested_artwork_realization_targets_registered_manifest(
         targets: tuple[ProductRef, ...] | None = None,
         project_root: Path,
     ) -> object:
-        planned.append((artifact_id, realization, targets, project_root))
+        planned.append(
+            (
+                artifact_id,
+                realization,
+                targets,
+                project_root,
+            )
+        )
+
         if targets is None:
             return discovery_plan
+
         return targeted_plan
 
     expected_analysis = object()
-    monkeypatch.setattr(cmd_color, "create_build_plan", fake_create_build_plan)
-
-    def fail_execute(*args, **kwargs) -> None:
-        raise AssertionError("COLORS must not execute manufacturing.")
 
     monkeypatch.setattr(
         cmd_color,
-        "execute_dependency_build",
-        fail_execute,
-        raising=False,
+        "create_build_plan",
+        fake_create_build_plan,
     )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "plan_incremental_execution",
+        lambda plan: SimpleNamespace(
+            required_stages=(),
+            required_product_dependencies=(),
+        ),
+    )
+
     monkeypatch.setattr(
         cmd_color,
         "analyze_registered_artwork_colors",
         lambda *, manifest, resolver: expected_analysis,
     )
-    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
     analysis = cmd_color.analyze_artifact_colors(
         "nydeli",
         realization="artwork_default",
     )
+
     assert analysis is expected_analysis
+
     assert planned == [
-        ("nydeli", "artwork_default", None, tmp_path),
+        (
+            "nydeli",
+            "artwork_default",
+            None,
+            tmp_path,
+        ),
         (
             "nydeli",
             "artwork_default",
@@ -1432,3 +1488,65 @@ def test_colors_without_artifact_id_displays_build_required_recovery(
     assert displayed == [ready_analysis]
     assert "Artifact 'waiting' is not materialized." in result.output
     assert "Try: artifact build waiting" in result.output
+
+
+def test_artwork_color_analysis_requires_build_when_vector_requires_production(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Artwork color analysis does not consume a Vector Product that requires
+    manufacturing work.
+
+    BUILD owns bringing persistent manufacturing Products current. COLORS
+    remains read-only even when a registered Vector manifest already exists.
+    """
+
+    manifest = tmp_path / "vector.json"
+    manifest.write_text(
+        "{}",
+        encoding="utf-8",
+    )
+
+    plan = SimpleNamespace(
+        artifact_id="nydeli",
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "create_build_plan",
+        lambda *args, **kwargs: plan,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_registered_artwork_manifest",
+        lambda selected_plan: manifest,
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "plan_incremental_execution",
+        lambda selected_plan: SimpleNamespace(
+            required_stages=(object(),),
+            required_product_dependencies=(),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "analyze_registered_artwork_colors",
+        lambda *args, **kwargs: pytest.fail(
+            "COLORS must not analyze a Vector Product that requires production"
+        ),
+    )
+
+    with pytest.raises(
+        cmd_color.ColorBuildRequired,
+        match="nydeli",
+    ):
+        cmd_color._analyze_artwork_colors(
+            "nydeli",
+            realization="artwork_default",
+            project_root=tmp_path,
+        )

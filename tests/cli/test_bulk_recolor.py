@@ -2163,6 +2163,16 @@ def test_artwork_color_analysis_reads_existing_registered_manifest_dependency(
         fake_create_build_plan,
     )
 
+    execution_plan = Mock()
+    execution_plan.required_stages = ()
+    execution_plan.required_product_dependencies = ()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "plan_incremental_execution",
+        lambda selected_plan: execution_plan,
+    )
+
     expected = Mock(spec=ArtworkColorAnalysis)
 
     monkeypatch.setattr(

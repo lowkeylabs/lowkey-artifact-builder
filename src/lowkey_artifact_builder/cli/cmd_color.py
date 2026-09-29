@@ -40,6 +40,7 @@ from lowkey_artifact_builder.engine import (
     BuildPlan,
     create_build_plan,
     create_product_dependency_build_plan,
+    plan_incremental_execution,
 )
 from lowkey_artifact_builder.formats.threemf import (
     update_component_colors,
@@ -351,11 +352,15 @@ def _analyze_artwork_colors(
     project_root: Path,
 ) -> ArtworkColorAnalysis:
     """
-    Analyze one Artwork Realization from its existing registered manifest.
+    Analyze one Artwork Realization from its current registered manifest.
 
-    Planning identifies the registered Artwork manifest and resolves effective
-    configuration. Color analysis does not execute manufacturing stages to
-    create missing products.
+    Planning identifies the registered Artwork manifest, resolves effective
+    configuration, and determines whether the targeted Vector Product is
+    reusable from persistent manufacturing state.
+
+    Color analysis does not execute manufacturing stages to create or refresh
+    missing or stale products. BUILD owns bringing manufacturing Products
+    current.
     """
 
     target = ProductRef(
@@ -372,6 +377,15 @@ def _analyze_artwork_colors(
         targets=(target,),
         project_root=project_root,
     )
+
+    execution_plan = plan_incremental_execution(
+        plan,
+    )
+
+    if execution_plan.required_stages or execution_plan.required_product_dependencies:
+        raise ColorBuildRequired(
+            artifact_id,
+        )
 
     manifest = _registered_artwork_manifest(
         plan,
