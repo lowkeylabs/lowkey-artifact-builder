@@ -20,7 +20,10 @@ from .manufacturing import (
     ManufacturingState,
     RealizationManufacturingStatus,
     RealizationType,
+    WorkspaceArtifactManufacturingStatus,
+    WorkspaceManufacturingStatus,
     inspect_artifact_manufacturing,
+    inspect_workspace_manufacturing,
 )
 
 __all__ = [
@@ -28,5 +31,8 @@ __all__ = [
     "ManufacturingState",
     "RealizationManufacturingStatus",
     "RealizationType",
+    "WorkspaceArtifactManufacturingStatus",
+    "WorkspaceManufacturingStatus",
     "inspect_artifact_manufacturing",
+    "inspect_workspace_manufacturing",
 ]

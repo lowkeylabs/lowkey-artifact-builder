@@ -14,12 +14,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import click
+from rich import box
 from rich.console import Console
 from rich.table import Table
 
 from lowkey_artifact_builder.application import (
     ArtifactManufacturingStatus,
+    ManufacturingState,
+    WorkspaceManufacturingStatus,
     inspect_artifact_manufacturing,
+    inspect_workspace_manufacturing,
 )
 from lowkey_artifact_builder.config import (
     ConfigError,
@@ -46,21 +50,33 @@ def cli(
     realization: str | None,
 ) -> None:
     """
-    Show manufacturing status for one Artifact.
+    Show manufacturing status.
 
-    Without --realization, every effective Realization is shown.
+    Without an Artifact ID, show manufacturing status for the discovered
+    workspace.
 
-    --realization narrows inspection to one effective Realization.
+    With an Artifact ID, show every effective Realization for that Artifact.
+
+    --realization narrows Artifact inspection to one effective Realization.
     """
 
+    project_root = Path.cwd()
+
     if not artifact_ids:
-        raise click.UsageError("Artifact inspection requires an artifact ID.")
+        status = inspect_workspace_manufacturing(
+            project_root=project_root,
+        )
+
+        _display_workspace_manufacturing_status(
+            status,
+        )
+
+        return
 
     if len(artifact_ids) != 1:
         raise click.UsageError("Artifact inspection requires exactly one artifact ID.")
 
     artifact_id = artifact_ids[0]
-    project_root = Path.cwd()
 
     try:
         status = inspect_artifact_manufacturing(
@@ -80,6 +96,98 @@ def cli(
 # =========================================================
 # Manufacturing display
 # =========================================================
+
+
+def _display_workspace_manufacturing_status(
+    status: WorkspaceManufacturingStatus,
+) -> None:
+    """
+    Display a compact operator-oriented workspace manufacturing summary.
+
+    Each Artifact occupies one row. Materialization is reported independently
+    from the effective Realizations and their manufacturing states.
+    """
+
+    console = Console()
+
+    if not status.artifacts:
+        console.print(
+            "No Artifacts found in ./originals or ./artifacts.",
+        )
+        return
+
+    table = Table(
+        box=box.SIMPLE_HEAD,
+    )
+
+    table.add_column(
+        "Artifact",
+    )
+    table.add_column(
+        "Materialized",
+    )
+    table.add_column(
+        "Realizations",
+        justify="right",
+    )
+    table.add_column(
+        "Current",
+        justify="right",
+    )
+    table.add_column(
+        "Stale",
+        justify="right",
+    )
+    table.add_column(
+        "Not Built",
+        justify="right",
+    )
+
+    for artifact in status.artifacts:
+        manufacturing = artifact.manufacturing
+
+        if manufacturing is None:
+            continue
+
+        realizations = manufacturing.realizations
+
+        table.add_row(
+            artifact.artifact_id,
+            "yes" if artifact.materialized else "no",
+            str(
+                len(realizations),
+            ),
+            str(
+                sum(realization.state is ManufacturingState.CURRENT for realization in realizations)
+            ),
+            str(sum(realization.state is ManufacturingState.STALE for realization in realizations)),
+            str(
+                sum(
+                    realization.state is ManufacturingState.NOT_BUILT
+                    for realization in realizations
+                )
+            ),
+        )
+
+    console.print(
+        table,
+    )
+
+
+def _display_path(
+    path: Path,
+) -> str:
+    """
+    Return an operator-facing path relative to the current directory when
+    possible.
+    """
+
+    try:
+        return str(
+            path.relative_to(Path.cwd()),
+        )
+    except ValueError:
+        return str(path)
 
 
 def _display_manufacturing_status(
@@ -104,6 +212,7 @@ def _display_manufacturing_status(
 
     table = Table(
         title=status.artifact_id,
+        box=box.SIMPLE_HEAD,
     )
 
     table.add_column(
@@ -124,7 +233,7 @@ def _display_manufacturing_status(
             realization.realization,
             realization.realization_type.value,
             realization.state.value,
-            (str(realization.product) if realization.product is not None else "-"),
+            (_display_path(realization.product) if realization.product is not None else "-"),
         )
 
     console.print(

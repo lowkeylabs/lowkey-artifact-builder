@@ -32,6 +32,7 @@ from lowkey_artifact_builder.config import (
     ConfigError,
     discover_artifacts,
     get_realization_names,
+    get_resolver,
     load_artifact_config,
     realization_3mf_filename,
 )
@@ -219,32 +220,39 @@ def _canonical_realization_names(
     Return effective Realizations that are canonical Variant applications.
 
     A canonical Realization uses the established ``model_variant`` identity.
-    Planning remains authoritative for resolving each effective Realization
-    to its Model and Variant.
 
-    An Artifact-authored customization of a canonical Realization therefore
-    remains built-in, while an additional named application of a Variant is
-    custom.
+    Effective Realization identity is a configuration concern. Classification
+    therefore resolves Model and Variant directly without constructing a
+    manufacturing BuildPlan. This keeps Realization discovery independent of
+    whether all manufacturing inputs are currently available.
+
+    An Artifact-authored customization of a canonical Realization remains
+    built-in, while an additional named application of a Variant is custom.
     """
 
     canonical: set[str] = set()
 
     for realization_name in realization_names:
-        plans = create_build_plans(
+        resolver = get_resolver(
             artifact_id,
             realization=realization_name,
             project_root=project_root,
         )
 
-        if len(plans) != 1:
+        model = resolver(
+            "model",
+        )
+
+        if not isinstance(
+            model,
+            str,
+        ):
             raise ConfigError(
-                f"Realization {realization_name!r} for Artifact "
-                f"{artifact_id!r} resolved to {len(plans)} build plans."
+                f"Model for Realization {realization_name!r} "
+                f"of Artifact {artifact_id!r} must resolve to a string."
             )
 
-        plan = plans[0]
-
-        variant = plan.resolver(
+        variant = resolver(
             "variant",
         )
 
@@ -257,7 +265,7 @@ def _canonical_realization_names(
                 f"of Artifact {artifact_id!r} must resolve to a string."
             )
 
-        canonical_name = f"{plan.model_name}_{variant}"
+        canonical_name = f"{model}_{variant}"
 
         if realization_name == canonical_name:
             canonical.add(
@@ -406,28 +414,40 @@ def inspect_artifact_manufacturing(
     project_root: Path | None = None,
 ) -> ArtifactManufacturingStatus:
     """
-    Inspect manufacturing state for one Artifact.
+    Inspect manufacturing state for one discovered Artifact.
 
-    Without an explicit Realization, every effective canonical and custom
-    Realization is inspected.
+    Artifact existence and materialization are established through the
+    reusable Artifact discovery boundary.
 
-    With an explicit Realization, exactly that Realization is inspected.
-    Explicit selection asserts that the Realization exists.
+    Effective Realization identity is independent of materialization. An
+    unmaterialized Artifact therefore still exposes its canonical and authored
+    Realizations, but those Realizations are necessarily not built.
 
-    Discovery is delegated to Artifact configuration. Persistent Product
-    currency is delegated to incremental planning. This operation does not
-    execute manufacturing work or repair publication state.
+    Materialized Artifacts are inspected through normal manufacturing planning
+    and persistent Product-state inspection.
+
+    This operation is read-only and does not materialize the Artifact, execute
+    manufacturing work, publish Products, or repair workspace state.
     """
 
     root = project_root if project_root is not None else Path.cwd()
+
+    artifacts = discover_artifacts(
+        project_root=root,
+    )
+
+    artifact_state = next(
+        (artifact for artifact in artifacts if artifact.artifact_id == artifact_id),
+        None,
+    )
+
+    if artifact_state is None:
+        raise ConfigError(f"Artifact {artifact_id!r} is not defined.")
 
     configuration = load_artifact_config(
         artifact_id,
         project_root=root,
     )
-
-    if not configuration:
-        raise ConfigError(f"Artifact {artifact_id!r} is not defined.")
 
     realization_names = tuple(
         get_realization_names(
@@ -479,6 +499,17 @@ def inspect_artifact_manufacturing(
                 f"{artifact_id!r} is neither canonical nor explicitly authored."
             )
 
+        if not artifact_state.materialized:
+            statuses.append(
+                RealizationManufacturingStatus(
+                    realization=realization_name,
+                    realization_type=realization_type,
+                    state=ManufacturingState.NOT_BUILT,
+                    product=None,
+                )
+            )
+            continue
+
         statuses.append(
             _inspect_realization(
                 artifact_id,
@@ -503,13 +534,11 @@ def inspect_workspace_manufacturing(
     """
     Inspect manufacturing state for the discovered Artifact workspace.
 
-    Artifact identity and materialization are delegated to Artifact
-    discovery.
+    Artifact identity and materialization are delegated to Artifact discovery.
 
-    Every discovered Artifact is represented. Materialized Artifacts are
-    inspected through the existing Artifact manufacturing operation.
-    Unmaterialized Artifacts remain visible without attempting manufacturing
-    inspection.
+    Every discovered Artifact is inspected through the existing Artifact
+    manufacturing operation. Materialization remains an independent property
+    of Artifact workspace state.
 
     This operation is read-only and does not materialize Artifacts, execute
     manufacturing work, publish Products, or repair workspace state.
@@ -524,13 +553,10 @@ def inspect_workspace_manufacturing(
     statuses: list[WorkspaceArtifactManufacturingStatus] = []
 
     for artifact in artifacts:
-        manufacturing = None
-
-        if artifact.materialized:
-            manufacturing = inspect_artifact_manufacturing(
-                artifact.artifact_id,
-                project_root=root,
-            )
+        manufacturing = inspect_artifact_manufacturing(
+            artifact.artifact_id,
+            project_root=root,
+        )
 
         statuses.append(
             WorkspaceArtifactManufacturingStatus(

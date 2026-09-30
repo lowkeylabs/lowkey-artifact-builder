@@ -288,7 +288,6 @@ def test_colors_translates_expected_configuration_failure(
 @pytest.mark.parametrize(
     "arguments",
     (
-        ("show",),
         ("config",),
         (
             "list",

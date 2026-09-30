@@ -46,17 +46,6 @@ def _invoke(
 # =========================================================
 
 
-def test_show_requires_artifact_id() -> None:
-    """
-    Artifact inspection requires exactly one Artifact ID.
-    """
-
-    result = _invoke()
-
-    assert result.exit_code != 0
-    assert "artifact" in result.output.lower()
-
-
 def test_show_rejects_multiple_artifact_ids() -> None:
     """
     Artifact inspection operates on one Artifact at a time.

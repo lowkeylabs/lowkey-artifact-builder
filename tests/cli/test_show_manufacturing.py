@@ -23,6 +23,8 @@ from lowkey_artifact_builder.application.manufacturing import (
     ManufacturingState,
     RealizationManufacturingStatus,
     RealizationType,
+    WorkspaceArtifactManufacturingStatus,
+    WorkspaceManufacturingStatus,
 )
 from lowkey_artifact_builder.cli._main import cli
 
@@ -208,6 +210,160 @@ def test_show_realization_requests_selected_manufacturing_status(
             tmp_path,
         )
     ]
+
+
+# =========================================================
+# Workspace overview
+# =========================================================
+
+
+def test_show_without_artifact_requests_workspace_manufacturing_status(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bare SHOW delegates workspace inspection to the reusable application
+    operation using the current project root.
+    """
+
+    calls: list[Path] = []
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    def inspect(
+        *,
+        project_root: Path,
+    ) -> WorkspaceManufacturingStatus:
+        calls.append(
+            project_root,
+        )
+
+        return WorkspaceManufacturingStatus(
+            artifacts=(),
+        )
+
+    monkeypatch.setattr(
+        cmd_show,
+        "inspect_workspace_manufacturing",
+        inspect,
+        raising=False,
+    )
+
+    result = _invoke()
+
+    assert result.exit_code == 0, result.output
+
+    assert calls == [
+        tmp_path,
+    ]
+
+
+def test_show_without_artifact_displays_workspace_overview(
+    monkeypatch,
+) -> None:
+    """
+    Bare SHOW presents one compact manufacturing summary row for every
+    discovered Artifact, including unmaterialized Artifacts.
+    """
+
+    monkeypatch.setattr(
+        cmd_show,
+        "inspect_workspace_manufacturing",
+        lambda *args, **kwargs: WorkspaceManufacturingStatus(
+            artifacts=(
+                WorkspaceArtifactManufacturingStatus(
+                    artifact_id="registered",
+                    materialized=False,
+                    manufacturing=ArtifactManufacturingStatus(
+                        artifact_id="registered",
+                        realizations=(
+                            _realization(
+                                "artwork_default",
+                                realization_type=RealizationType.BUILT_IN,
+                                state=ManufacturingState.NOT_BUILT,
+                            ),
+                            _realization(
+                                "shape_default",
+                                realization_type=RealizationType.BUILT_IN,
+                                state=ManufacturingState.NOT_BUILT,
+                            ),
+                            _realization(
+                                "shape_ornament",
+                                realization_type=RealizationType.BUILT_IN,
+                                state=ManufacturingState.NOT_BUILT,
+                            ),
+                        ),
+                    ),
+                ),
+                WorkspaceArtifactManufacturingStatus(
+                    artifact_id="skippy",
+                    materialized=True,
+                    manufacturing=ArtifactManufacturingStatus(
+                        artifact_id="skippy",
+                        realizations=(
+                            _realization(
+                                "artwork_default",
+                                realization_type=RealizationType.BUILT_IN,
+                                state=ManufacturingState.CURRENT,
+                                product=Path("artwork_default.3mf"),
+                            ),
+                            _realization(
+                                "shape_default",
+                                realization_type=RealizationType.BUILT_IN,
+                                state=ManufacturingState.STALE,
+                                product=Path("shape_default.3mf"),
+                            ),
+                            _realization(
+                                "shape_ornament",
+                                realization_type=RealizationType.BUILT_IN,
+                                state=ManufacturingState.NOT_BUILT,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        raising=False,
+    )
+
+    result = _invoke()
+
+    assert result.exit_code == 0, result.output
+
+    assert "Artifact" in result.output
+    assert "Materialized" in result.output
+    assert "Realizations" in result.output
+    assert "Current" in result.output
+    assert "Stale" in result.output
+    assert "Not Built" in result.output
+
+    assert "registered" in result.output
+    assert "skippy" in result.output
+
+    registered_line = next(line for line in result.output.splitlines() if "registered" in line)
+    skippy_line = next(line for line in result.output.splitlines() if "skippy" in line)
+
+    assert "no" in registered_line
+    assert registered_line.split()[-4:] == [
+        "3",
+        "0",
+        "0",
+        "3",
+    ]
+
+    assert "yes" in skippy_line
+    assert skippy_line.split()[-4:] == [
+        "3",
+        "1",
+        "1",
+        "1",
+    ]
+
+    # Bare SHOW is a workspace summary, not the detailed Realization view.
+    assert "artwork_default.3mf" not in result.output
+    assert "shape_default.3mf" not in result.output
 
 
 # =========================================================
@@ -398,3 +554,32 @@ def test_show_translates_expected_inspection_error(
     assert "does-not-exist" in result.output
     assert "skippy" in result.output
     assert "traceback" not in result.output.lower()
+
+
+def test_show_without_artifacts_explains_empty_workspace(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Bare SHOW explains an empty workspace rather than producing no output.
+    """
+
+    monkeypatch.chdir(
+        tmp_path,
+    )
+
+    monkeypatch.setattr(
+        cmd_show,
+        "inspect_workspace_manufacturing",
+        lambda *args, **kwargs: WorkspaceManufacturingStatus(
+            artifacts=(),
+        ),
+    )
+
+    result = _invoke()
+
+    assert result.exit_code == 0, result.output
+
+    assert "No Artifacts found" in result.output
+    assert "originals" in result.output
+    assert "artifacts" in result.output

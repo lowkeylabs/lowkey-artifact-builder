@@ -33,7 +33,9 @@ from lowkey_artifact_builder.application.manufacturing import (
     inspect_workspace_manufacturing,
 )
 from lowkey_artifact_builder.config import (
+    ConfigError,
     configure_artifact,
+    get_realization_names,
 )
 from lowkey_artifact_builder.engine import (
     execute_artifact_build,
@@ -466,6 +468,15 @@ def test_workspace_inspection_discovers_artifacts(
         discover,
     )
 
+    monkeypatch.setattr(
+        manufacturing,
+        "inspect_artifact_manufacturing",
+        lambda artifact_id, *, project_root: ArtifactManufacturingStatus(
+            artifact_id=artifact_id,
+            realizations=(),
+        ),
+    )
+
     result = inspect_workspace_manufacturing(
         project_root=tmp_path,
     )
@@ -480,13 +491,122 @@ def test_workspace_inspection_discovers_artifacts(
     )
 
 
-def test_workspace_inspection_inspects_only_materialized_artifacts(
+def test_workspace_inspection_reports_unmaterialized_png_artifact_not_built(
+    tmp_path: Path,
+) -> None:
+    """
+    A preserved PNG establishes an Artifact whose canonical Realizations
+    remain visible to manufacturing inspection before materialization.
+
+    Inspection is read-only. Missing materialized build inputs mean the
+    Realizations have not been built; they do not make the Artifact
+    undiscoverable or cause inspection to fail.
+    """
+
+    originals = tmp_path / "originals"
+    originals.mkdir(
+        parents=True,
+    )
+
+    source_fixture = Path(__file__).resolve().parents[1] / "assets" / "nydeli-clean.png"
+
+    shutil.copyfile(
+        source_fixture,
+        originals / "skippy.png",
+    )
+
+    config_path = tmp_path / "artifacts" / "skippy" / "artifact.toml"
+
+    assert not config_path.exists()
+
+    result = inspect_workspace_manufacturing(
+        project_root=tmp_path,
+    )
+
+    assert len(result.artifacts) == 1
+
+    artifact = result.artifacts[0]
+
+    assert artifact.artifact_id == "skippy"
+    assert artifact.materialized is False
+    assert artifact.manufacturing is not None
+
+    realizations = _by_name(
+        artifact.manufacturing,
+    )
+
+    assert "artwork_default" in realizations
+    assert "shape_default" in realizations
+    assert "shape_ornament" in realizations
+
+    assert all(
+        realization.state is ManufacturingState.NOT_BUILT for realization in realizations.values()
+    )
+
+    assert all(realization.product is None for realization in realizations.values())
+
+    assert not config_path.exists()
+
+
+def test_manufacturing_status_rejects_unknown_artifact(
+    tmp_path: Path,
+) -> None:
+    """
+    Manufacturing inspection requires a discovered Artifact identity.
+
+    Canonical Model Realizations do not independently establish an Artifact.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="Artifact 'missing' is not defined",
+    ):
+        inspect_artifact_manufacturing(
+            "missing",
+            project_root=tmp_path,
+        )
+
+
+def test_unmaterialized_artifact_has_canonical_realizations(
+    tmp_path: Path,
+) -> None:
+    """
+    Canonical Realization existence does not depend on Artifact
+    materialization or complete manufacturing inputs.
+    """
+
+    originals = tmp_path / "originals"
+    originals.mkdir(
+        parents=True,
+    )
+
+    (originals / "skippy.artifact").touch()
+
+    config_path = tmp_path / "artifacts" / "skippy" / "artifact.toml"
+
+    assert not config_path.exists()
+
+    realization_names = get_realization_names(
+        "skippy",
+        project_root=tmp_path,
+    )
+
+    assert "artwork_default" in realization_names
+    assert "shape_default" in realization_names
+    assert "shape_ornament" in realization_names
+
+    assert not config_path.exists()
+
+
+def test_workspace_inspection_inspects_artifacts_independent_of_materialization(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """
-    Every discovered Artifact appears in workspace inspection, while
-    manufacturing inspection is performed only for materialized Artifacts.
+    Every discovered Artifact receives manufacturing inspection regardless
+    of whether persistent Artifact configuration has been materialized.
+
+    Materialization remains an independent property of workspace state.
     """
 
     from lowkey_artifact_builder.config import ArtifactState
@@ -498,11 +618,6 @@ def test_workspace_inspection_inspects_only_materialized_artifacts(
             ArtifactState(
                 artifact_id="registered",
                 original_path=tmp_path / "originals" / "registered.png",
-                materialized=False,
-            ),
-            ArtifactState(
-                artifact_id="incomplete",
-                original_path=None,
                 materialized=False,
             ),
             ArtifactState(
@@ -549,6 +664,10 @@ def test_workspace_inspection_inspects_only_materialized_artifacts(
 
     assert inspected == [
         (
+            "registered",
+            tmp_path,
+        ),
+        (
             "materialized",
             tmp_path,
         ),
@@ -558,12 +677,10 @@ def test_workspace_inspection_inspects_only_materialized_artifacts(
         WorkspaceArtifactManufacturingStatus(
             artifact_id="registered",
             materialized=False,
-            manufacturing=None,
-        ),
-        WorkspaceArtifactManufacturingStatus(
-            artifact_id="incomplete",
-            materialized=False,
-            manufacturing=None,
+            manufacturing=ArtifactManufacturingStatus(
+                artifact_id="registered",
+                realizations=(),
+            ),
         ),
         WorkspaceArtifactManufacturingStatus(
             artifact_id="materialized",
