@@ -131,14 +131,17 @@ def _write_materialized_artifact(
 # =========================================================
 
 
-def test_artifact_discovery_uses_preserved_originals_as_inventory(
+# =========================================================
+# Artifact discovery
+# =========================================================
+
+
+def test_artifact_discovery_includes_preserved_original(
     tmp_path: Path,
 ) -> None:
     """
-    Preserved originals establish the Artifact identities known to a project.
-
-    Artifact discovery does not require the Artifact workspace to have been
-    materialized.
+    A preserved Artwork original establishes an Artifact identity even
+    before its Artifact workspace has been materialized.
     """
 
     _preserve_original(
@@ -152,35 +155,116 @@ def test_artifact_discovery_uses_preserved_originals_as_inventory(
     ) == ("dog",)
 
 
-def test_artifact_discovery_ignores_workspace_without_preserved_original(
+def test_artifact_discovery_includes_source_less_registration(
     tmp_path: Path,
 ) -> None:
     """
-    Materialized workspace state does not independently establish an
-    ingested Artifact identity.
-
-    The authoritative Artifact inventory is originals/.
+    A source-less registration establishes an Artifact identity without
+    requiring preserved Artwork or a materialized Artifact workspace.
     """
 
-    _write_materialized_artifact(
+    originals = tmp_path / "originals"
+    originals.mkdir(parents=True)
+
+    (originals / "shape-example.artifact").touch()
+
+    assert list_artifacts(
+        project_root=tmp_path,
+    ) == ("shape-example",)
+
+
+def test_artifact_discovery_includes_artifact_workspace_without_registration(
+    tmp_path: Path,
+) -> None:
+    """
+    An Artifact workspace independently establishes a stable Artifact
+    identity even when no preserved registration exists.
+    """
+
+    artifact_dir = tmp_path / "artifacts" / "shape-example"
+    artifact_dir.mkdir(parents=True)
+
+    (artifact_dir / "artifact.toml").write_text(
+        "[product_dependencies]\n",
+        encoding="utf-8",
+    )
+
+    assert list_artifacts(
+        project_root=tmp_path,
+    ) == ("shape-example",)
+
+
+def test_artifact_discovery_includes_incomplete_artifact_directory(
+    tmp_path: Path,
+) -> None:
+    """
+    An Artifact directory establishes workspace identity even when the
+    Artifact is not yet materialized.
+
+    Discovery reports existing workspace state rather than hiding an
+    incomplete Artifact directory.
+    """
+
+    artifact_dir = tmp_path / "artifacts" / "incomplete"
+    artifact_dir.mkdir(parents=True)
+
+    assert list_artifacts(
+        project_root=tmp_path,
+    ) == ("incomplete",)
+
+
+def test_artifact_discovery_unions_and_deduplicates_identity_sources(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact inventory is the union of registered and workspace identities.
+
+    An Artifact represented by more than one source of identity appears
+    exactly once.
+    """
+
+    _preserve_original(
         tmp_path,
-        "orphan",
-        artwork=b"orphan artwork",
+        "both",
     )
 
-    assert (
-        list_artifacts(
-            project_root=tmp_path,
-        )
-        == ()
+    _preserve_original(
+        tmp_path,
+        "original-only",
+    )
+
+    originals = tmp_path / "originals"
+    (originals / "registered-only.artifact").touch()
+
+    both_dir = tmp_path / "artifacts" / "both"
+    both_dir.mkdir(parents=True)
+    (both_dir / "artifact.toml").write_text(
+        'source = "artifacts/both/artifact.png"\n',
+        encoding="utf-8",
+    )
+
+    workspace_dir = tmp_path / "artifacts" / "workspace-only"
+    workspace_dir.mkdir(parents=True)
+    (workspace_dir / "artifact.toml").write_text(
+        "[product_dependencies]\n",
+        encoding="utf-8",
+    )
+
+    assert list_artifacts(
+        project_root=tmp_path,
+    ) == (
+        "both",
+        "original-only",
+        "registered-only",
+        "workspace-only",
     )
 
 
-def test_discover_artifacts_reports_unmaterialized_artifact(
+def test_discover_artifacts_reports_unmaterialized_registered_artifact(
     tmp_path: Path,
 ) -> None:
     """
-    An ingested Artifact without baseline workspace state is not materialized.
+    A registered Artifact without artifact.toml is not materialized.
     """
 
     original = _preserve_original(
@@ -202,12 +286,14 @@ def test_discover_artifacts_reports_unmaterialized_artifact(
     assert artifact.materialized is False
 
 
-def test_discover_artifacts_reports_complete_baseline_as_materialized(
+def test_discover_artifacts_reports_artifact_with_config_as_materialized(
     tmp_path: Path,
 ) -> None:
     """
-    An ingested Artifact is materialized when its Artifact directory,
-    artifact.toml, and artifact.png all exist.
+    Artifact materialization requires an Artifact directory containing
+    artifact.toml.
+
+    Artifact-owned Artwork is optional.
     """
 
     original = _preserve_original(
@@ -216,10 +302,12 @@ def test_discover_artifacts_reports_complete_baseline_as_materialized(
         content=b"dog artwork",
     )
 
-    _write_materialized_artifact(
-        tmp_path,
-        "dog",
-        artwork=b"dog artwork",
+    artifact_dir = tmp_path / "artifacts" / "dog"
+    artifact_dir.mkdir(parents=True)
+
+    (artifact_dir / "artifact.toml").write_text(
+        'source = "artifacts/dog/artifact.png"\n',
+        encoding="utf-8",
     )
 
     artifacts = discover_artifacts(
@@ -235,60 +323,57 @@ def test_discover_artifacts_reports_complete_baseline_as_materialized(
     assert artifact.materialized is True
 
 
-def test_discover_artifacts_requires_complete_materialization_baseline(
+def test_discover_artifacts_reports_workspace_without_artwork_as_materialized(
     tmp_path: Path,
 ) -> None:
     """
-    Partial Artifact workspace state is not materialized.
+    A configured Artifact workspace is materialized without artifact.png.
 
-    Materialization requires the Artifact directory, artifact.toml, and
-    artifact.png. Generated Product state is outside this predicate.
+    Artwork is an optional Artifact input rather than part of the
+    materialization predicate.
     """
 
-    _preserve_original(
-        tmp_path,
-        "missing_workspace",
-    )
+    artifact_dir = tmp_path / "artifacts" / "shape-example"
+    artifact_dir.mkdir(parents=True)
 
-    _preserve_original(
-        tmp_path,
-        "missing_config",
-    )
-
-    missing_config_dir = tmp_path / "artifacts" / "missing_config"
-    missing_config_dir.mkdir(
-        parents=True,
-    )
-    (missing_config_dir / "artifact.png").write_bytes(
-        b"artwork",
-    )
-
-    _preserve_original(
-        tmp_path,
-        "missing_artwork",
-    )
-
-    missing_artwork_dir = tmp_path / "artifacts" / "missing_artwork"
-    missing_artwork_dir.mkdir(
-        parents=True,
-    )
-    (missing_artwork_dir / "artifact.toml").write_text(
-        'source = "artifacts/missing_artwork/artifact.png"\n',
+    (artifact_dir / "artifact.toml").write_text(
+        "[product_dependencies]\n",
         encoding="utf-8",
     )
 
-    states = {
-        artifact.artifact_id: artifact.materialized
-        for artifact in discover_artifacts(
-            project_root=tmp_path,
-        )
-    }
+    artifacts = discover_artifacts(
+        project_root=tmp_path,
+    )
 
-    assert states == {
-        "missing_artwork": False,
-        "missing_config": False,
-        "missing_workspace": False,
-    }
+    assert len(artifacts) == 1
+
+    artifact = artifacts[0]
+
+    assert artifact.artifact_id == "shape-example"
+    assert artifact.materialized is True
+
+
+def test_discover_artifacts_reports_directory_without_config_as_unmaterialized(
+    tmp_path: Path,
+) -> None:
+    """
+    An Artifact directory without artifact.toml establishes Artifact
+    identity but is not materialized.
+    """
+
+    artifact_dir = tmp_path / "artifacts" / "incomplete"
+    artifact_dir.mkdir(parents=True)
+
+    artifacts = discover_artifacts(
+        project_root=tmp_path,
+    )
+
+    assert len(artifacts) == 1
+
+    artifact = artifacts[0]
+
+    assert artifact.artifact_id == "incomplete"
+    assert artifact.materialized is False
 
 
 def test_artifact_materialization_does_not_depend_on_generated_products(
@@ -297,26 +382,19 @@ def test_artifact_materialization_does_not_depend_on_generated_products(
     """
     Product realization is independent of Artifact materialization.
 
-    A complete baseline Artifact is materialized even when no generated
-    Model, Realization, Stage, or Product directories exist.
+    An Artifact with persistent configuration is materialized even when
+    no generated Model, Realization, Stage, or Product state exists.
     """
 
-    _preserve_original(
-        tmp_path,
-        "dog",
-        content=b"dog artwork",
-    )
-
-    _write_materialized_artifact(
-        tmp_path,
-        "dog",
-        artwork=b"dog artwork",
-    )
-
     artifact_dir = tmp_path / "artifacts" / "dog"
+    artifact_dir.mkdir(parents=True)
+
+    (artifact_dir / "artifact.toml").write_text(
+        'source = "artifacts/dog/artifact.png"\n',
+        encoding="utf-8",
+    )
 
     assert {path.name for path in artifact_dir.iterdir()} == {
-        "artifact.png",
         "artifact.toml",
     }
 
@@ -839,7 +917,6 @@ def test_materialize_artifact_requires_preserved_original(
     "existing",
     [
         "directory-only",
-        "config-only",
         "artwork-only",
     ],
 )

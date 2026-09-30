@@ -542,4 +542,3 @@ When designing or changing the CLI, prefer workflows that let the operator:
 5. build only missing or stale work; and
 
 6. retrieve the resulting 3MF for slicing, sharing, uploading, or printing.
-

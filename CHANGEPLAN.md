@@ -544,4 +544,3 @@ The completed CLI should continue to support the central objective:
 
 > Move customer artwork to a **correct, printable 3MF** with the fewest
 > necessary decisions, actions, and computations.
-
