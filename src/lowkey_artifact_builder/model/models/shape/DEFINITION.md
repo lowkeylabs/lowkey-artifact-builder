@@ -1713,6 +1713,15 @@ An Inner Ridge exists when:
 shape_inner_ridge_width > 0
 ```
 
+The default is:
+
+```text
+0mm
+```
+
+ The nner ridge does not participate by default.
+
+
 An Inner Ridge does not exist when:
 
 ```text
@@ -1763,6 +1772,12 @@ It must be greater than or equal to:
 
 ```text
 0
+```
+
+The default value is:
+
+```text
+10
 ```
 
 A negative `shape_inner_to_outer_ridge_dist` is invalid.
@@ -1855,6 +1870,13 @@ It must be greater than or equal to:
 ```text
 0
 ```
+
+The default value is:
+
+```text
+1
+```
+
 
 A negative Inner-Ridge raise is invalid.
 
