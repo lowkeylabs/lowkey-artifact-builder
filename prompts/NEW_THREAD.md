@@ -32,6 +32,8 @@ Treat:
 * `ARCHITECTURE.md` as the permanent normative specification for the system;
 * each model `DEFINITION.md` as the permanent normative specification for that
   model;
+* ./src/lowkey_artifact_builder/cli/README.md as the permanent normative
+  specification for the command line interface.
 * the repository implementation and tests as the current implementation of
   those specifications.
 
