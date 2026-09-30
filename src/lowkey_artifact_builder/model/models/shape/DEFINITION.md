@@ -165,8 +165,8 @@ smaller depending on the polygon side count and rotation.
 
 `shape_size` defines the complete assembled Shape envelope.
 
-Optional structural features, including an outer ridge, do not increase
-this envelope.
+Optional Features do not increase this envelope unless their Feature contracts
+explicitly define otherwise.
 
 `shape_size` does not determine the coordinate extent of the registered
 structural representation.
@@ -378,7 +378,7 @@ Artwork preserves the logical color identity supplied by Artwork until
 Package resolves its physical printer assignment.
 
 Color assignment does not determine structural geometry, component
-partitioning, outer-ridge existence, or Artwork-fill participation.
+partitioning, Feature participation, or Artwork-fill participation.
 
 Likewise, structural partitioning and component participation do not
 determine color assignment.
@@ -487,10 +487,8 @@ a circle, square, or regular polygon.
 Registered Artwork is:
 
 - centered within the Artwork placement region;
-- uniformly scaled to the largest size at which its authoritative
-
-    Artwork envelope remains contained within the Artwork placement
-    region;
+- uniformly scaled to the largest size at which its authoritative Artwork
+  envelope remains contained within the Artwork placement region;
 
 - aspect-ratio preserving;
 - not stretched;
@@ -541,9 +539,8 @@ Composition does not assign the final physical X/Y dimensions of the
 Shape.
 
 Physical Shape policy may nevertheless be used to derive relative
-registered-space relationships required for composition. For example,
-`shape_outer_ridge_width` and `shape_size` determine the relative
-registered inset of the ridge inner boundary.
+registered-space relationships required for composition. Participating Features
+may define such relationships within their Feature contracts.
 
 Composition retains sufficient semantic component identity to support
 downstream physical dimensionalization and packaging. Incorporated
@@ -619,6 +616,8 @@ These dimensions include:
 
 ```text
 shape_base_raise
+shape_outer_ridge_width
+shape_outer_ridge_raise
 shape_artwork_raise
 ```
 
@@ -798,9 +797,6 @@ region remains at the base top.
 Artwork fill is a distinct semantic component from the structural base
 even when its resolved color is equal to the base color.
 
-Outer-ridge style does not change the Z origin or physical raise of
-incorporated Artwork or Artwork fill.
-
 ## Coordinate-Space Boundaries
 
 Shape distinguishes registered geometry from physical manufacturing
@@ -832,8 +828,8 @@ used to establish spatial relationships between structural Shape
 geometry and incorporated Artwork.
 
 Physical parameters may inform relative relationships within registered
-Shape space when necessary, such as determining the registered inner
-boundary corresponding to a physical ridge width.
+Shape space when necessary, including registered-space relationships required by
+participating Features.
 
 Such calculations do not make the registered coordinate system physical.
 
@@ -851,7 +847,10 @@ shape_rotation
 shape_size
 shape_base_raise
 shape_base_color
+shape_outer_ridge_width
+shape_outer_ridge_raise
 shape_outer_ridge_style
+shape_outer_ridge_color
 shape_artwork_raise
 shape_artwork_fill_raise
 shape_artwork_fill_color
@@ -899,6 +898,10 @@ axis.
 
 `shape_sides` and `shape_rotation` do not alter circle or square
 geometry.
+
+The `shape_outer_ridge_*` parameters are Feature parameters. Their participation,
+defaults, validation, dimensional semantics, structural style, and color policy are
+defined only by the Outer Ridge Feature contract.
 
 `shape_base_color` selects the base printing color.
 
@@ -965,6 +968,8 @@ The dimensional parameters are:
 ```text
 shape_size
 shape_base_raise
+shape_outer_ridge_width
+shape_outer_ridge_raise
 shape_artwork_raise
 shape_artwork_fill_raise
 ```
@@ -991,6 +996,7 @@ The packaging parameters are:
 ```text
 printer_colors
 shape_base_color
+shape_outer_ridge_color
 shape_artwork_fill_color
 ```
 
@@ -998,9 +1004,9 @@ shape_artwork_fill_color
 Shape Package to resolve the logical Artifact-color layers of
 incorporated Artwork.
 
-`shape_base_color`, `shape_outer_ridge_color`, and
-`shape_artwork_fill_color` provide the physical color policy for
-Shape-owned components.
+`shape_base_color` and `shape_artwork_fill_color` provide model-wide physical
+color policy for Shape-owned components. `shape_outer_ridge_color` is a Feature
+packaging parameter whose semantics are defined by the Outer Ridge Feature contract.
 
 These parameters are packaging policy, not structural, composition, or
 extrusion geometry policy. Changing only physical color policy does not
@@ -1016,13 +1022,9 @@ Physical Shape components are packaged after dimensionalization.
 
 Package is the physical color-assignment boundary for Shape.
 
-Shape-owned base, outer-ridge, and Artwork-fill components retain
-semantic component identity through dimensionalization. Package applies
-their physical printing colors according to `shape_base_color`,
-`shape_outer_ridge_color`, and `shape_artwork_fill_color`.
-
-The resolved outer-ridge color defaults to the resolved base color when
-no explicit outer-ridge color is configured.
+Shape-owned Base and Artwork-fill components retain semantic component identity
+through dimensionalization. Package applies their physical printing colors according
+to `shape_base_color` and `shape_artwork_fill_color`.
 
 The resolved Artwork-fill color defaults to the resolved base color when
 no explicit Artwork-fill color is configured.
@@ -1036,7 +1038,8 @@ components.
 Packaging preserves independently printable and independently assignable
 components where required by structural or color semantics.
 
-Participating Features preserve any independently printable or independently colored component identity required by their Feature contracts.
+Participating Features preserve any independently printable or independently
+colored component identity required by their Feature contracts.
 
 Incorporated Artwork color components likewise remain suitable for
 multicolor printing after their logical Artifact-color identities have
@@ -1048,7 +1051,7 @@ physical component and its resolved printing-color identity.
 Component names use the form:
 
 ```text
-\<component-role> - \<color>
+<component-role> - <color>
 ```
 
 For example:
@@ -1067,8 +1070,8 @@ Component naming does not determine color assignment. The component's
 resolved color and RGB representation remain explicit packaging
 metadata.
 
-Packaging does not determine Shape geometry, ridge geometry, ridge
-partitioning, ridge height, Artwork-fill participation or height,
+Packaging does not determine Shape geometry, Feature geometry or partitioning,
+Artwork-fill participation or height,
 Artwork fitting, or physical dimensionalization. Those semantics must
 already be established before packaging.
 
@@ -1081,19 +1084,26 @@ printer colors using `printer_colors`.
 
 Features are optional capabilities of the Shape model.
 
-A Shape realization may participate in zero or more Features according to the effective parameter values defined by each Feature.
+A Shape realization may participate in zero or more Features according to the
+effective parameter values defined by each Feature.
 
-Features are distinct from intrinsic Shape properties. In particular, every Shape has structural geometry and a Base; those required model properties are not optional Features.
+Features are distinct from intrinsic Shape properties. In particular, every Shape
+has structural geometry and a Base; those required model properties are not optional
+Features.
 
-Each Feature subsection is the authoritative semantic definition of that Feature. Feature-specific parameters, participation conditions, validation, geometry, physical dimensions, color and material behavior, interactions with other model behavior, and product participation are defined within that Feature subsection.
+Each Feature subsection is the authoritative semantic definition of that Feature.
+Feature-specific parameters, participation conditions, validation, geometry, physical
+dimensions, color and material behavior, interactions with other model behavior, and
+product participation are defined within that Feature subsection.
 
-Feature-specific semantics are not duplicated in unrelated model sections. A stage may operate on participating Features without owning their semantics.
+Feature-specific semantics are not duplicated in unrelated model sections. A stage
+may operate on participating Features without owning their semantics.
 
 ### Outer Ridge
 
 The Outer Ridge Feature provides an optional perimeter ridge within the complete assembled Shape envelope.
 
-#### Outer Ridge
+#### Parameters and Participation
 
 A Shape may contain an outer ridge.
 
@@ -1697,9 +1707,65 @@ artifact.
 
 ## Model Invariants
 
-The following are model-wide invariants. Feature-specific invariants are defined only within the applicable Feature subsection and are not repeated here.
+The following are model-wide invariants. Feature-specific invariants are defined only
+within the applicable Feature subsection and are not repeated here.
 
 A conforming initial Shape implementation satisfies the following:
+
+1. Shape can produce circle, square, and regular polygon geometry.
+2. Regular polygon geometry is determined by `shape_sides` and `shape_rotation`.
+3. `shape_sides` is an integer greater than or equal to 3.
+4. The default polygon side count is 8.
+5. Polygon rotation is measured counterclockwise in degrees.
+6. At zero rotation, a regular polygon has one vertex centered on the positive Y axis.
+7. For a regular polygon having `n` sides, rotation by `180 / n` degrees places the center of one side on the positive Y axis.
+8. Polygon rotation preserves polygon proportions and configured Shape size.
+9. Registered structural Shape geometry uses a canonical maximum extent of 1.0 centered at the origin.
+10. Registered polygon geometry is uniformly normalized after rotation so that its greatest X/Y extent is 1.0.
+11. Registered structural Shape geometry remains nonphysical until the Shape dimensionalization boundary.
+12. `shape_size` has consistent physical overall-envelope semantics for every supported geometry.
+13. `shape_size` does not determine the coordinate extent of registered structural Shape geometry.
+14. Every Shape contains a base with physical thickness determined by `shape_base_raise`.
+15. Shape can produce a complete artifact without Artwork.
+16. Physical Shape policy may be converted into relative registered-space relationships when required for composition without assigning final physical dimensions to the registered coordinate system.
+17. Every Shape has a base color determined by `shape_base_color` and applied during Shape Package.
+18. The default base color is `white`.
+19. Shape can consume registered vector Artwork produced by another artifact.
+20. Consuming registered Artwork does not require standalone Artwork extrusion or packaging.
+21. Dynamic Artwork component membership is obtained from its declared manifest rather than filesystem scanning.
+22. Registered Artwork and registered structural Shape geometry are composed before final physical X/Y dimensionalization.
+23. Shape determines the physical size and placement of incorporated Artwork.
+24. Shape uses one geometry-independent Artwork placement computation for circle, square, and regular polygon geometry. The Artwork placement region is the largest circle centered at the registered Shape origin that is wholly contained within the available registered Shape interior region, and incorporated Artwork is centered and uniformly scaled to the largest size at which its authoritative envelope remains contained within that placement region.
+25. Artwork aspect ratio and registration between color components are preserved.
+26. All components of one registered Artwork collection receive the same transformation from Artwork registered space into Shape registered space.
+27. Physical X/Y dimensionalization of the composed Shape is determined by `shape_size`.
+28. Physical Z dimensions are introduced according to component semantics during downstream dimensionalization.
+29. Separately printable structural components retain their identity through dimensionalization and packaging.
+30. Required color distinctions remain representable through dimensionalization and packaging.
+31. Packaged 3MF component names preserve semantic component role and resolved printing-color identity without relying on intermediate component ordinals.
+32. Packaging occurs after physical dimensionalization.
+33. Shape produces a valid printable 3MF containing its structural geometry and any incorporated Artwork components.
+34. Incorporated Artwork begins at the top surface of the Shape base at `Z = shape_base_raise`.
+35. Incorporated Artwork has physical height determined by `shape_artwork_raise`.
+36. The default `shape_artwork_raise` is 1 mm.
+37. `shape_artwork_raise` must be greater than zero when Artwork is incorporated.
+38. All incorporated Artwork components receive the same physical Z dimensionalization.
+39. Standalone `artwork_raise` does not determine incorporated Artwork Z dimensionalization.
+40. Artwork-fill participation is determined solely by `shape_artwork_fill_raise`.
+41. Artwork fill participates when `shape_artwork_fill_raise > 0` and does not participate when `shape_artwork_fill_raise <= 0`.
+42. The default `shape_artwork_fill_raise` is 0 mm.
+43. When Artwork fill exists, its registered geometry is the registered Shape interior region minus the transformed registered Artwork envelope.
+44. Artwork fill begins at the top surface of the Shape base at `Z = shape_base_raise` and has physical height determined by `shape_artwork_fill_raise`.
+45. Artwork fill remains semantically distinct from the structural base even when both resolve to the same printing color.
+46. The default Artwork-fill color is the resolved base color; an explicitly configured `shape_artwork_fill_color` overrides that derived default.
+47. `shape_artwork_fill_color` does not determine Artwork-fill participation or geometry.
+48. Incorporated Artwork preserves logical Artifact-color identity through Shape Compose and Shape Extrude.
+49. Shape Compose and Shape Extrude do not assign physical printer colors to incorporated Artwork.
+50. Shape Extrude owns physical geometry and component participation and does not assign physical colors to Shape-owned components.
+51. Shape Package applies physical color policy for Shape-owned components.
+52. Shape Package resolves incorporated Artwork Artifact-color identity to physical printer colors using `printer_colors`.
+53. Changing only `printer_colors`, `shape_base_color`, `shape_artwork_fill_color`, or Feature-specific packaging color parameters does not by itself change Shape Structure, Compose, or Extrude geometry.
+54. Changing `shape_artwork_fill_raise` changes Artwork-fill participation or physical geometry and therefore affects Shape Extrude and downstream Package.
 
 ## Scope
 
@@ -1722,16 +1788,12 @@ The initial Shape model includes:
 - centered, aspect-preserving Artwork fitting;
 - registered Shape/Artwork composition;
 - Shape-owned physical raise for incorporated Artwork;
-- optional Shape-owned Artwork fill geometry with independent physical
-
-    raise;
+- optional Shape-owned Artwork fill geometry with independent physical raise;
 
 - Artwork-fill color assignment with base-color inheritance;
 - downstream physical dimensionalization;
-- final multicomponent 3MF packaging, including physical color
-
-    assignment for Shape-owned components and physical printer
-    assignment for incorporated Artwork.
+- final multicomponent 3MF packaging, including physical color assignment for
+  Shape-owned components and physical printer assignment for incorporated Artwork.
 
 The initial Shape model does not include:
 
@@ -1748,3 +1810,4 @@ The initial Shape model does not include:
 
 These capabilities may be added later by deliberately extending the
 Shape definition.
+
