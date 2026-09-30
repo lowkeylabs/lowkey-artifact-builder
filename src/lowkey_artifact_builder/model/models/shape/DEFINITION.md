@@ -1603,16 +1603,16 @@ its color has no effect on produced ridge geometry.
 
 #### Interior Region
 
-Shape defines a registered interior region available for Artwork.
+When the Outer Ridge participates, its inside boundary is available as a
+registered Shape interior boundary.
 
-The interior region is bounded by the innermost existing ridge boundary.
+Outer-Ridge raise and structural style do not change this registered boundary.
 
-When no ridge exists, the interior region is bounded by the registered
-Shape boundary.
+Other participating Features may define a more interior boundary according to
+their own Feature contracts.
 
-In the initial Shape model, which supports only the outer ridge, an
-existing outer ridge's inner boundary therefore defines the interior
-region.
+The resulting registered interior region provides the Shape coordinate space
+into which registered Artwork is fitted.
 
 Ridge existence for purposes of determining the interior region depends
 only on:
@@ -2096,6 +2096,416 @@ A conforming Inner Ridge Feature satisfies the following:
 31. Outer-Ridge style does not change the Inner-Ridge positioning reference when an Outer Ridge participates.
 32. Inner-Ridge participation does not otherwise change the existing Artwork fitting algorithm, Artwork registration, Artwork physical raise, or Artwork-fill dimensionalization.
 
+### Border Labels
+
+Border Labels are optional Shape-owned Features that place text along the perimeter of the Shape.
+
+The Feature provides two independently participating components:
+
+- `top_border_label`
+- `bottom_border_label`
+
+The two labels occupy the same physical lettering band and share the geometry and font-fitting rules defined below.
+
+Each participating label remains a distinct semantic component through Shape composition, extrusion, and packaging. The two labels may therefore have independent extrusion dimensions and independent packaged colors.
+
+Border Labels do not cause any other Shape Feature to participate.
+
+In particular, Border Labels do not cause the Inner Ridge to participate. Inner Ridge participation remains determined solely by `shape_inner_ridge_width`.
+
+#### Parameters
+
+Border Labels use shared parameters for the geometry and typography that define their common lettering band.
+
+The shared parameters are:
+
+```text
+shape_border_label_width
+shape_border_label_max_glyph_height
+shape_border_label_arc_degrees
+shape_border_label_end_margin
+shape_border_label_font_family
+```
+
+The Top Border Label additionally uses:
+
+```text
+shape_top_border_label_text
+shape_top_border_label_raise
+shape_top_border_label_color
+```
+
+The Bottom Border Label additionally uses:
+
+```text
+shape_bottom_border_label_text
+shape_bottom_border_label_raise
+shape_bottom_border_label_color
+```
+
+The resolved common glyph height is derived from the configured maximum glyph height and the text-fitting rules below. It is not independently configured.
+
+#### Participation
+
+The Top Border Label participates when `shape_top_border_label_text` contains non-whitespace text.
+
+The Bottom Border Label participates when `shape_bottom_border_label_text` contains non-whitespace text.
+
+The labels participate independently.
+
+An absent Top Border Label does not prevent the Bottom Border Label from participating.
+
+An absent Bottom Border Label does not prevent the Top Border Label from participating.
+
+When neither label participates, Border Labels have no effect on Shape geometry or products.
+
+#### Reference Boundary
+
+Both Border Labels are positioned relative to the same outer reference boundary.
+
+The reference boundary is:
+
+```text
+if Outer Ridge participates:
+    inside boundary of Outer Ridge
+else:
+    outside boundary of Base
+```
+
+This rule is independent of `shape_outer_ridge_style`.
+
+For otherwise identical Shape parameters, integrated and separate Outer Ridge styles preserve the same relevant ridge boundaries and therefore produce the same Border Label reference boundary.
+
+#### Border Width
+
+`shape_border_label_width` is a physical distance in millimeters.
+
+It defines the clear border on both sides of the common lettering band.
+
+It must be greater than or equal to zero.
+
+The outer border extends inward from the reference boundary to the Bottom Border Label baseline.
+
+The inner border extends inward from the Top Border Label baseline toward the Shape interior.
+
+#### Common Glyph Height
+
+The Top Border Label and Bottom Border Label share one resolved glyph height and one common font setting.
+
+`shape_border_label_max_glyph_height` defines the maximum physical glyph-height allocation permitted for the common lettering band.
+
+It must be greater than zero when either Border Label participates.
+
+The resolved glyph height must not exceed `shape_border_label_max_glyph_height`.
+
+Both labels are measured before fitting.
+
+The common font setting is chosen so that both participating labels fit within their permitted paths.
+
+If both labels fit at the configured maximum glyph height, the configured maximum is used.
+
+If either label does not fit, the common glyph height is reduced until both participating labels fit.
+
+The more constrained participating label therefore determines the common fitted height.
+
+A shorter label is not stretched to consume its complete available path.
+
+When only one Border Label participates, the common glyph height is fitted using that participating label.
+
+Rendered glyph bounds may differ between the Top and Bottom Border Labels because different character strings can have different font metrics. Both labels nevertheless use the same resolved common font setting and fit within the same physical glyph-height allocation.
+
+#### Baseline Paths
+
+The Top and Bottom Border Labels occupy the same physical lettering band but use different baseline paths.
+
+Moving inward from the reference boundary:
+
+```text
+reference boundary
+    ↓ shape_border_label_width
+bottom_border_label baseline
+    ↓ resolved common glyph height
+top_border_label baseline
+    ↓ shape_border_label_width
+inner boundary of Border Labels
+```
+
+Therefore:
+
+```text
+bottom_border_label baseline
+    =
+    reference boundary
+    - shape_border_label_width
+```
+
+and:
+
+```text
+top_border_label baseline
+    =
+    reference boundary
+    - shape_border_label_width
+    - resolved common glyph height
+```
+
+These expressions describe inward geometric offsets from the applicable Shape boundary rather than arithmetic on a particular coordinate representation.
+
+The two baseline paths follow the literal Shape perimeter at their respective inward offsets.
+
+For a circular Shape, the paths are concentric circular arcs.
+
+For a square Shape, the paths follow the corresponding inset square perimeter.
+
+For a polygon Shape, the paths follow the corresponding inset polygon perimeter after the configured polygon sides, rotation, and Shape normalization have been applied.
+
+The initial implementation may focus on circular Shapes, but the normative geometry is defined in terms of literal Shape-perimeter offsets rather than an inherently circular representation.
+
+#### Top Border Label Path
+
+The Top Border Label is centered on the top axis of the Shape.
+
+For a circular Shape, top-dead-center is zero degrees.
+
+The Top Border Label path traverses from the upper-left toward the upper-right so that the text reads normally from left to right.
+
+The rendered glyphs extend inward from the Top Border Label baseline into the common lettering band.
+
+#### Bottom Border Label Path
+
+The Bottom Border Label is centered on the bottom axis of the Shape.
+
+For a circular Shape, bottom-dead-center is 180 degrees.
+
+The Bottom Border Label path traverses in the opposite direction from the Top Border Label path so that the text remains upright and reads normally from left to right.
+
+The rendered glyphs extend outward from the Bottom Border Label baseline into the same common lettering band occupied by the Top Border Label.
+
+#### Font Measurement
+
+Border Label fitting uses rendered font measurements rather than assuming that an SVG or CSS font size is equal to physical glyph height.
+
+Text measurement produces scale-independent font metrics sufficient to determine:
+
+- rendered text width;
+- rendered glyph height;
+- the relationship between font size and rendered glyph height;
+- glyph extent above the text baseline;
+- glyph extent below the text baseline.
+
+These metrics may be measured once for each participating label and subsequently scaled arithmetically while fitting.
+
+Baseline-relative glyph measurements are used to place rendered glyph bounds correctly within the common lettering band.
+
+Font-size values used by an SVG or other intermediate representation are implementation details and are not Shape physical parameters.
+
+#### Maximum Label Span
+
+`shape_border_label_arc_degrees` defines the maximum permitted span for each Border Label.
+
+Its initial/default behavior follows the existing Border Label fitting model:
+
+```text
+shape_border_label_arc_degrees = 140 degrees
+```
+
+It must be greater than zero and less than 180 degrees.
+
+For a circular Shape, this represents:
+
+```text
+Top Border Label:
+    -70 degrees through +70 degrees
+    around top-dead-center
+
+Bottom Border Label:
+    corresponding centered span
+    around bottom-dead-center
+```
+
+The same conceptual maximum-span constraint applies to non-circular Shape perimeters. The exact mapping of that span onto square and polygon perimeter paths may be implemented by the geometry-specific path representation while preserving the literal Shape-perimeter requirement.
+
+#### End Margin
+
+`shape_border_label_end_margin` reserves unused physical path length at both ends of the maximum permitted label path.
+
+Its default is:
+
+```text
+shape_border_label_end_margin = 1 mm
+```
+
+It must be greater than or equal to zero.
+
+For a circular Shape, the usable path length is:
+
+```text
+baseline radius
+× radians(shape_border_label_arc_degrees)
+- 2 × shape_border_label_end_margin
+```
+
+The equivalent physical end-margin constraint applies to non-circular Shape paths.
+
+End margins constrain fitting but are not included in the angular or path extent occupied by the rendered text itself.
+
+#### Text Fitting
+
+Each participating label must fit within the usable length of its corresponding baseline path.
+
+The fitting process:
+
+1. measures each participating label using the configured font family;
+2. determines the common font setting corresponding to the candidate glyph-height allocation;
+3. derives the Top and Bottom baseline paths for that candidate height;
+4. determines the usable path length after the maximum-span and end-margin constraints;
+5. determines the rendered path length required by each participating label;
+6. accepts the candidate only when every participating label fits.
+
+The configured maximum glyph height is preferred whenever it fits.
+
+Otherwise, the fitting process reduces the common glyph height until all participating labels fit.
+
+Fitting changes glyph height uniformly. It does not horizontally stretch, compress, or otherwise distort either label to fill its available path.
+
+A configuration that cannot produce a positive usable glyph height is invalid.
+
+#### Relationship to Inner Ridge
+
+Border Labels and Inner Ridge are independent Features.
+
+Border Labels do not determine whether Inner Ridge participates.
+
+Inner Ridge participation remains:
+
+```text
+shape_inner_ridge_width == 0:
+    Inner Ridge does not participate
+
+shape_inner_ridge_width > 0:
+    Inner Ridge participates
+```
+
+When the Inner Ridge participates, its outside boundary follows the inner border of the Border Label region.
+
+For a participating Border Label region, the distance from the Border Label reference boundary to the outside boundary of the Inner Ridge is therefore:
+
+```text
+2 × shape_border_label_width
++ resolved common glyph height
+```
+
+When the Inner Ridge does not participate, the Border Label geometry remains valid and the inner boundary of the Border Label region remains available as a Shape interior boundary.
+
+Border Labels do not implicitly create an Inner Ridge.
+
+#### Interior Region
+
+When Border Labels participate, their inner boundary contributes to determining the Shape region available for incorporated Artwork.
+
+Moving inward from the Border Label reference boundary:
+
+```text
+outer border
+lettering band
+inner border
+optional Inner Ridge
+Artwork region
+```
+
+If the Inner Ridge participates, its inside boundary remains the boundary of the region available to incorporated Artwork.
+
+If Border Labels participate and the Inner Ridge does not participate, the inner boundary of the Border Label region defines the region available to incorporated Artwork.
+
+If neither Border Labels nor Inner Ridge participate, the existing Outer Ridge/Base interior-boundary rules apply.
+
+#### Extrusion
+
+The Top Border Label and Bottom Border Label are distinct Shape-owned extrusion components.
+
+`shape_top_border_label_raise` controls the physical extrusion of the Top Border Label.
+
+`shape_bottom_border_label_raise` controls the physical extrusion of the Bottom Border Label.
+
+The two raises are independent.
+
+Border Label extrusion layers on the Base and does not remove or partition the Base in X/Y.
+
+The Base remains underneath the complete Border Label region.
+
+Extrusion owns Border Label physical Z geometry but does not assign physical color.
+
+#### Packaging and Color
+
+The Top Border Label and Bottom Border Label remain distinct components through Package.
+
+`shape_top_border_label_color` determines the packaged color of the Top Border Label.
+
+`shape_bottom_border_label_color` determines the packaged color of the Bottom Border Label.
+
+The colors are resolved independently.
+
+Physical color is a Package-stage concern.
+
+Structure, Compose, and Extrude preserve the semantic identity of each Border Label component without assigning its packaged physical color.
+
+Changing only a Border Label color must not invalidate or recompute earlier Border Label geometry or extrusion products.
+
+#### Feature Interactions
+
+Border Labels may participate:
+
+- with or without an Outer Ridge;
+- with either Outer Ridge style;
+- with or without an Inner Ridge;
+- with or without incorporated Artwork;
+- with only the Top Border Label;
+- with only the Bottom Border Label;
+- with both Border Labels.
+
+Outer Ridge participation determines the Border Label reference boundary but does not otherwise alter Border Label typography or fitting rules.
+
+Inner Ridge participation does not determine Border Label participation.
+
+Border Label participation does not determine Inner Ridge participation.
+
+Border Labels must preserve distinct component identity through Extrude and Package.
+
+#### Border Label Invariants
+
+1. The Top Border Label and Bottom Border Label are distinct Shape-owned components.
+2. Each Border Label participates independently according to whether its text is present.
+3. Border Labels do not cause Outer Ridge or Inner Ridge to participate.
+4. Both labels use the same outer reference boundary.
+5. The reference boundary is the inside boundary of a participating Outer Ridge, otherwise the outside boundary of Base.
+6. Both labels share one border width.
+7. Both labels share one fitted glyph-height allocation.
+8. Both labels use one common font setting.
+9. The common glyph height never exceeds the configured maximum.
+10. The common glyph height is reduced when necessary until every participating label fits.
+11. A shorter label is not stretched to fill its available path.
+12. The Bottom Border Label baseline is one border width inward from the reference boundary.
+13. The Top Border Label baseline is one border width plus the resolved common glyph height inward from the reference boundary.
+14. The two baseline paths bound the same physical lettering band.
+15. The Top Border Label and Bottom Border Label traverse their paths in opposite directions so both read normally from left to right.
+16. Border Label paths follow the literal Shape perimeter.
+17. Circular Border Label paths are concentric circular arcs.
+18. Square and polygon Border Label paths follow their corresponding inset Shape perimeters.
+19. Font fitting uses rendered font metrics rather than treating font size as physical glyph height.
+20. Baseline-relative glyph measurements are preserved when positioning rendered text.
+21. Maximum span constrains the available path.
+22. Physical end margins are reserved at both ends of the maximum permitted path.
+23. Border Label fitting does not horizontally stretch or compress text.
+24. Border Labels remain distinct semantic components through Extrude and Package.
+25. Top and Bottom Border Label raises are independently controlled by Extrude-stage parameters.
+26. Top and Bottom Border Label colors are independently controlled by Package-stage parameters.
+27. Changing only a Border Label color does not require recomputing earlier geometry.
+28. Border Labels do not determine Inner Ridge participation.
+29. When Inner Ridge participates, its inside boundary determines the incorporated Artwork region.
+30. When Border Labels participate without Inner Ridge, the inner Border Label boundary determines the incorporated Artwork region.
+31. Border Labels layer on Base without reducing the Base X/Y footprint.
+32. When neither Border Label participates, Border Labels do not alter existing Shape geometry or products.
+
 
 ## Final Product
 
@@ -2211,11 +2621,9 @@ The initial Shape model includes:
 The initial Shape model does not include:
 
 - irregular polygons;
-- internal ridges;
 - dashed ridges;
 - hangers;
 - handles;
-- text or labels;
 - arbitrary Artwork positioning;
 - multiple independent Artwork placements;
 - recessed or embedded Artwork;
