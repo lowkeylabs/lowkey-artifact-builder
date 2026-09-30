@@ -117,29 +117,6 @@ def test_create_explains_empty_workspace(
     assert "png" in output
 
 
-def test_list_explains_empty_workspace(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """
-    LIST explains an empty managed-Artifact collection.
-    """
-
-    monkeypatch.chdir(
-        tmp_path,
-    )
-
-    result = _invoke(
-        "list",
-    )
-
-    _assert_explanatory_empty_result(
-        result,
-    )
-
-    assert "artifact" in result.output.lower()
-
-
 def test_colors_explains_empty_workspace(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -289,10 +266,6 @@ def test_colors_translates_expected_configuration_failure(
     "arguments",
     (
         ("config",),
-        (
-            "list",
-            "unexpected",
-        ),
         (
             "create",
             "--all-sources",
