@@ -4785,3 +4785,29 @@ def test_analyze_existing_artwork_colors_uses_target_resolver_with_canonical_man
         manifest=canonical_manifest,
         resolver=target_resolver,
     )
+
+
+def test_library_recolor_requires_participating_artwork(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Library recoloring of a Shape without participating Artwork is an
+    expected recolor prerequisite failure.
+    """
+
+    plan = Mock(spec=BuildPlan)
+    plan.model_name = "shape"
+
+    monkeypatch.setattr(
+        cmd_color,
+        "_analyze_existing_shape_artwork_colors",
+        lambda resolved_plan: None,
+    )
+
+    with pytest.raises(
+        cmd_color.RecolorPrerequisiteError,
+        match="Library recoloring requires registered Artwork",
+    ):
+        cmd_color._analyze_existing_recolor_artwork(
+            plan,
+        )

@@ -842,7 +842,7 @@ def _analyze_existing_recolor_artwork(
         )
 
         if artwork is None:
-            raise RuntimeError("Library recoloring requires registered Artwork.")
+            raise RecolorPrerequisiteError("Library recoloring requires registered Artwork.")
 
         return artwork
 
