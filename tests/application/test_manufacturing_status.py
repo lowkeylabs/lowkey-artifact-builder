@@ -21,10 +21,16 @@ from pathlib import Path
 
 import pytest
 
+import lowkey_artifact_builder.application.manufacturing as manufacturing
 from lowkey_artifact_builder.application.manufacturing import (
+    ArtifactManufacturingStatus,
     ManufacturingState,
+    RealizationManufacturingStatus,
     RealizationType,
+    WorkspaceArtifactManufacturingStatus,
+    WorkspaceManufacturingStatus,
     inspect_artifact_manufacturing,
+    inspect_workspace_manufacturing,
 )
 from lowkey_artifact_builder.config import (
     configure_artifact,
@@ -413,3 +419,214 @@ def test_manufacturing_status_does_not_build_unbuilt_realization(
     assert not (artifact_dir / "shape" / "shape_ornament").exists()
 
     assert not (artifact_dir / "shape_ornament.3mf").exists()
+
+
+# =========================================================
+# Workspace manufacturing inspection
+# =========================================================
+
+
+def test_workspace_inspection_discovers_artifacts(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Workspace manufacturing inspection discovers Artifact identity through
+    the reusable Artifact discovery boundary.
+    """
+
+    from lowkey_artifact_builder.config import ArtifactState
+
+    discovery_roots: list[Path] = []
+
+    def discover(
+        *,
+        project_root: Path,
+    ) -> tuple[ArtifactState, ...]:
+        discovery_roots.append(
+            project_root,
+        )
+
+        return (
+            ArtifactState(
+                artifact_id="alpha",
+                original_path=tmp_path / "originals" / "alpha.png",
+                materialized=False,
+            ),
+            ArtifactState(
+                artifact_id="beta",
+                original_path=None,
+                materialized=False,
+            ),
+        )
+
+    monkeypatch.setattr(
+        manufacturing,
+        "discover_artifacts",
+        discover,
+    )
+
+    result = inspect_workspace_manufacturing(
+        project_root=tmp_path,
+    )
+
+    assert discovery_roots == [
+        tmp_path,
+    ]
+
+    assert tuple(artifact.artifact_id for artifact in result.artifacts) == (
+        "alpha",
+        "beta",
+    )
+
+
+def test_workspace_inspection_inspects_only_materialized_artifacts(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Every discovered Artifact appears in workspace inspection, while
+    manufacturing inspection is performed only for materialized Artifacts.
+    """
+
+    from lowkey_artifact_builder.config import ArtifactState
+
+    monkeypatch.setattr(
+        manufacturing,
+        "discover_artifacts",
+        lambda *, project_root: (
+            ArtifactState(
+                artifact_id="registered",
+                original_path=tmp_path / "originals" / "registered.png",
+                materialized=False,
+            ),
+            ArtifactState(
+                artifact_id="incomplete",
+                original_path=None,
+                materialized=False,
+            ),
+            ArtifactState(
+                artifact_id="materialized",
+                original_path=None,
+                materialized=True,
+            ),
+        ),
+    )
+
+    inspected: list[
+        tuple[
+            str,
+            Path,
+        ]
+    ] = []
+
+    def inspect(
+        artifact_id: str,
+        *,
+        project_root: Path,
+    ) -> ArtifactManufacturingStatus:
+        inspected.append(
+            (
+                artifact_id,
+                project_root,
+            )
+        )
+
+        return ArtifactManufacturingStatus(
+            artifact_id=artifact_id,
+            realizations=(),
+        )
+
+    monkeypatch.setattr(
+        manufacturing,
+        "inspect_artifact_manufacturing",
+        inspect,
+    )
+
+    result = inspect_workspace_manufacturing(
+        project_root=tmp_path,
+    )
+
+    assert inspected == [
+        (
+            "materialized",
+            tmp_path,
+        ),
+    ]
+
+    assert result.artifacts == (
+        WorkspaceArtifactManufacturingStatus(
+            artifact_id="registered",
+            materialized=False,
+            manufacturing=None,
+        ),
+        WorkspaceArtifactManufacturingStatus(
+            artifact_id="incomplete",
+            materialized=False,
+            manufacturing=None,
+        ),
+        WorkspaceArtifactManufacturingStatus(
+            artifact_id="materialized",
+            materialized=True,
+            manufacturing=ArtifactManufacturingStatus(
+                artifact_id="materialized",
+                realizations=(),
+            ),
+        ),
+    )
+
+
+def test_workspace_inspection_preserves_artifact_manufacturing_status(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Workspace inspection composes existing Artifact manufacturing
+    inspection rather than reconstructing Realization state.
+    """
+
+    from lowkey_artifact_builder.config import ArtifactState
+
+    artifact_status = ArtifactManufacturingStatus(
+        artifact_id="dog",
+        realizations=(
+            RealizationManufacturingStatus(
+                realization="shape_ornament",
+                realization_type=RealizationType.BUILT_IN,
+                state=ManufacturingState.STALE,
+                product=tmp_path / "artifacts" / "dog" / "shape_ornament.3mf",
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        manufacturing,
+        "discover_artifacts",
+        lambda *, project_root: (
+            ArtifactState(
+                artifact_id="dog",
+                original_path=None,
+                materialized=True,
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        manufacturing,
+        "inspect_artifact_manufacturing",
+        lambda artifact_id, *, project_root: artifact_status,
+    )
+
+    result = inspect_workspace_manufacturing(
+        project_root=tmp_path,
+    )
+
+    assert result == WorkspaceManufacturingStatus(
+        artifacts=(
+            WorkspaceArtifactManufacturingStatus(
+                artifact_id="dog",
+                materialized=True,
+                manufacturing=artifact_status,
+            ),
+        ),
+    )

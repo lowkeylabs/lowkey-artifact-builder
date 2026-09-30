@@ -30,6 +30,7 @@ from typing import Any
 
 from lowkey_artifact_builder.config import (
     ConfigError,
+    discover_artifacts,
     get_realization_names,
     load_artifact_config,
     realization_3mf_filename,
@@ -132,6 +133,43 @@ class ArtifactManufacturingStatus:
     artifact_id: str
     realizations: tuple[
         RealizationManufacturingStatus,
+        ...,
+    ]
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class WorkspaceArtifactManufacturingStatus:
+    """
+    Workspace manufacturing status for one discovered Artifact.
+
+    materialized reports whether persistent Artifact configuration exists.
+
+    manufacturing contains reusable Artifact manufacturing inspection when
+    the Artifact is materialized. An unmaterialized Artifact remains visible
+    in workspace inspection but has no manufacturing status to inspect.
+    """
+
+    artifact_id: str
+    materialized: bool
+    manufacturing: ArtifactManufacturingStatus | None
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class WorkspaceManufacturingStatus:
+    """
+    Manufacturing status for the discovered Artifact workspace.
+
+    Artifacts are returned in authoritative Artifact discovery order.
+    """
+
+    artifacts: tuple[
+        WorkspaceArtifactManufacturingStatus,
         ...,
     ]
 
@@ -458,6 +496,57 @@ def inspect_artifact_manufacturing(
     )
 
 
+def inspect_workspace_manufacturing(
+    *,
+    project_root: Path | None = None,
+) -> WorkspaceManufacturingStatus:
+    """
+    Inspect manufacturing state for the discovered Artifact workspace.
+
+    Artifact identity and materialization are delegated to Artifact
+    discovery.
+
+    Every discovered Artifact is represented. Materialized Artifacts are
+    inspected through the existing Artifact manufacturing operation.
+    Unmaterialized Artifacts remain visible without attempting manufacturing
+    inspection.
+
+    This operation is read-only and does not materialize Artifacts, execute
+    manufacturing work, publish Products, or repair workspace state.
+    """
+
+    root = project_root if project_root is not None else Path.cwd()
+
+    artifacts = discover_artifacts(
+        project_root=root,
+    )
+
+    statuses: list[WorkspaceArtifactManufacturingStatus] = []
+
+    for artifact in artifacts:
+        manufacturing = None
+
+        if artifact.materialized:
+            manufacturing = inspect_artifact_manufacturing(
+                artifact.artifact_id,
+                project_root=root,
+            )
+
+        statuses.append(
+            WorkspaceArtifactManufacturingStatus(
+                artifact_id=artifact.artifact_id,
+                materialized=artifact.materialized,
+                manufacturing=manufacturing,
+            )
+        )
+
+    return WorkspaceManufacturingStatus(
+        artifacts=tuple(
+            statuses,
+        ),
+    )
+
+
 # =========================================================
 # Exports
 # =========================================================
@@ -468,5 +557,8 @@ __all__ = [
     "ManufacturingState",
     "RealizationManufacturingStatus",
     "RealizationType",
+    "WorkspaceArtifactManufacturingStatus",
+    "WorkspaceManufacturingStatus",
     "inspect_artifact_manufacturing",
+    "inspect_workspace_manufacturing",
 ]
