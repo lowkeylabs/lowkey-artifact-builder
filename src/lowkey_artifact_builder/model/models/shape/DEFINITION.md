@@ -1716,10 +1716,10 @@ shape_inner_ridge_width > 0
 The default is:
 
 ```text
-0mm
+0
 ```
 
- The nner ridge does not participate by default.
+ The Inner Ridge does not participate by default.
 
 
 An Inner Ridge does not exist when:
