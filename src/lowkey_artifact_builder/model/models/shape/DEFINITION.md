@@ -1684,6 +1684,397 @@ A conforming Outer Ridge Feature satisfies the following:
 30. Shape Package applies the Outer Ridge's physical color policy.
 31. Changing only `shape_outer_ridge_color` does not by itself change Shape Structure, Compose, or Extrude geometry.
 
+### Inner Ridge
+
+The Inner Ridge Feature provides an optional ridge inset from the perimeter of the Shape.
+
+The Inner Ridge is a Shape-owned component that layers on top of the Base. Unlike a separate Outer Ridge, the Inner Ridge does not partition or reduce the X/Y extent of the Base.
+
+#### Parameters and Participation
+
+The Inner Ridge is controlled by:
+
+```text
+shape_inner_ridge_width
+shape_inner_ridge_raise
+shape_inner_to_outer_ridge_dist
+shape_inner_ridge_color
+```
+
+Inner-Ridge existence is determined solely by:
+
+```text
+shape_inner_ridge_width
+```
+
+An Inner Ridge exists when:
+
+```text
+shape_inner_ridge_width > 0
+```
+
+An Inner Ridge does not exist when:
+
+```text
+shape_inner_ridge_width = 0
+```
+
+A negative Inner-Ridge width is invalid.
+
+When the Inner Ridge does not exist, its raise, position, and color do not cause Inner-Ridge geometry to be produced.
+
+`shape_inner_ridge_raise` does not determine whether an Inner Ridge exists.
+
+The Inner Ridge may participate whether or not an Outer Ridge exists.
+
+#### Geometry
+
+The Inner Ridge follows the boundary of the selected Shape geometry.
+
+For circle geometry, the Inner Ridge is a concentric circular band.
+
+For square geometry, the Inner Ridge follows the corresponding inset square boundary.
+
+For polygon geometry, the Inner Ridge follows the configured regular polygon after its side count, rotation, and registered normalization have been applied.
+
+Inner-Ridge width is measured inward from the outer boundary of the Inner Ridge.
+
+For polygon geometry, Inner-Ridge width is the perpendicular distance from each outer Inner-Ridge edge to its corresponding inner Inner-Ridge edge.
+
+The inner and outer boundaries of the Inner Ridge therefore follow the same Shape geometry and remain registered with the Shape.
+
+`shape_inner_ridge_width` is a physical dimension measured in millimeters.
+
+When Inner-Ridge geometry must participate in registered composition before physical dimensionalization, its physical dimensions are converted to relative registered-space relationships using `shape_size`.
+
+This conversion does not assign physical dimensions to the registered coordinate system. It expresses physical Shape policy as relative relationships within registered Shape space.
+
+#### Position
+
+The position of the Inner Ridge is controlled by:
+
+```text
+shape_inner_to_outer_ridge_dist
+```
+
+`shape_inner_to_outer_ridge_dist` is a physical dimension measured in millimeters.
+
+It must be greater than or equal to:
+
+```text
+0
+```
+
+A negative `shape_inner_to_outer_ridge_dist` is invalid.
+
+The reference boundary used to position the Inner Ridge depends on whether an Outer Ridge participates.
+
+When an Outer Ridge exists, `shape_inner_to_outer_ridge_dist` is measured inward from:
+
+```text
+the inside boundary of the Outer Ridge
+```
+
+to:
+
+```text
+the outside boundary of the Inner Ridge
+```
+
+Conceptually:
+
+```text
+Shape boundary
+│
+│<-- Outer Ridge -->│
+                    │<-- distance -->│
+                                      │<-- Inner Ridge -->│
+                    ↑                 ↑
+             inside boundary    outside boundary
+              of Outer Ridge     of Inner Ridge
+```
+
+When no Outer Ridge exists, `shape_inner_to_outer_ridge_dist` is measured inward from:
+
+```text
+the outside boundary of the Base
+```
+
+to:
+
+```text
+the outside boundary of the Inner Ridge
+```
+
+Conceptually:
+
+```text
+Shape/Base boundary
+│
+│<------ distance ------>│
+                          │<-- Inner Ridge -->│
+↑                         ↑
+outside boundary     outside boundary
+    of Base           of Inner Ridge
+```
+
+The Inner Ridge may therefore participate independently of Outer-Ridge participation.
+
+A distance of zero is valid.
+
+When an Outer Ridge exists and:
+
+```text
+shape_inner_to_outer_ridge_dist = 0
+```
+
+the outside boundary of the Inner Ridge is adjacent to the inside boundary of the Outer Ridge.
+
+When no Outer Ridge exists and:
+
+```text
+shape_inner_to_outer_ridge_dist = 0
+```
+
+the outside boundary of the Inner Ridge coincides with the outside boundary of the Base.
+
+A zero distance permits boundary adjacency but does not permit geometric overlap.
+
+#### Raise
+
+The physical raise of the Inner Ridge is controlled by:
+
+```text
+shape_inner_ridge_raise
+```
+
+`shape_inner_ridge_raise` is a physical dimension measured in millimeters relative to the top surface of the Base.
+
+It must be greater than or equal to:
+
+```text
+0
+```
+
+A negative Inner-Ridge raise is invalid.
+
+A positive Inner-Ridge raise places the Inner-Ridge top above the Base top.
+
+A zero Inner-Ridge raise places the Inner-Ridge top flush with the Base top.
+
+When the Inner Ridge participates, its complete assembled height is:
+
+```text
+shape_base_raise + shape_inner_ridge_raise
+```
+
+The Inner Ridge layers on top of the Base.
+
+The Base remains present beneath the Inner Ridge and retains its complete X/Y extent.
+
+The Inner Ridge therefore behaves structurally like an integrated ridge rather than partitioning a separate X/Y region from the Base.
+
+For:
+
+```text
+shape_inner_ridge_raise > 0
+```
+
+the Base occupies:
+
+```text
+Z = 0
+```
+
+through:
+
+```text
+Z = shape_base_raise
+```
+
+and the Inner-Ridge component occupies its registered X/Y region above the Base from:
+
+```text
+Z = shape_base_raise
+```
+
+through:
+
+```text
+Z = shape_base_raise + shape_inner_ridge_raise
+```
+
+For:
+
+```text
+shape_inner_ridge_raise = 0
+```
+
+the Inner Ridge remains semantically defined by its positive width even though it contributes no physical volume above the Base.
+
+#### Interior Region
+
+The Inner Ridge participates in determining the registered interior region available for incorporated Artwork.
+
+The innermost participating ridge boundary defines the available registered Shape interior region.
+
+When an Inner Ridge exists, the interior region is bounded by:
+
+```text
+the inside boundary of the Inner Ridge
+```
+
+When no Inner Ridge exists but an Outer Ridge exists, the interior region is bounded by:
+
+```text
+the inside boundary of the Outer Ridge
+```
+
+When neither an Inner Ridge nor an Outer Ridge exists, the interior region is bounded by:
+
+```text
+the outside boundary of the Base
+```
+
+Conceptually:
+
+```text
+if Inner Ridge exists:
+    interior boundary = inside boundary of Inner Ridge
+elif Outer Ridge exists:
+    interior boundary = inside boundary of Outer Ridge
+else:
+    interior boundary = outside boundary of Base
+```
+
+Inner-Ridge raise does not change the registered Inner-Ridge boundaries or the registered interior region.
+
+The resulting registered interior region provides the Shape coordinate space into which registered Artwork is fitted.
+
+#### Ridge Color
+
+The Inner Ridge has a physical printing-color assignment independent from its geometry.
+
+The Inner-Ridge color is controlled by:
+
+```text
+shape_inner_ridge_color
+```
+
+The default Inner-Ridge color is the resolved Base color:
+
+```text
+shape_inner_ridge_color = shape_base_color
+```
+
+The default is derived from the resolved value of `shape_base_color` rather than being an independent literal color default.
+
+An explicitly configured `shape_inner_ridge_color` overrides this derived default.
+
+When the Inner Ridge does not participate because:
+
+```text
+shape_inner_ridge_width = 0
+```
+
+its color has no effect on the produced artifact.
+
+Inner-Ridge color is packaging policy.
+
+Shape Structure, Compose, and Extrude preserve the semantic component identity required for downstream Inner-Ridge color assignment but do not assign its physical printing color.
+
+Shape Package applies the resolved Inner-Ridge physical color.
+
+Changing only `shape_inner_ridge_color` does not by itself change Shape Structure, Compose, or Extrude geometry.
+
+#### Interaction With Outer Ridge
+
+Inner-Ridge participation is independent of Outer-Ridge participation.
+
+An Inner Ridge may therefore exist:
+
+- with an integrated Outer Ridge;
+- with a separate Outer Ridge;
+- without an Outer Ridge.
+
+When an Outer Ridge participates, its inside boundary is the reference boundary from which `shape_inner_to_outer_ridge_dist` positions the outside boundary of the Inner Ridge.
+
+The Outer-Ridge structural style does not change this positioning rule because integrated and separate Outer Ridges preserve the same Outer-Ridge boundaries for otherwise identical Shape parameters.
+
+The Inner Ridge does not alter the Outer Ridge's outer boundary, inner boundary, width, raise, structural style, or color policy.
+
+The Inner Ridge and Outer Ridge remain distinct semantic components.
+
+#### Interaction With Base
+
+The Inner Ridge layers on top of the Base.
+
+It does not remove, partition, or reduce the Base X/Y geometry.
+
+The Base remains present beneath the Inner Ridge.
+
+The Inner Ridge may have a physical printing color different from the Base even though it is structurally layered on top of the Base.
+
+#### Interaction With Artwork
+
+When the Inner Ridge participates, its inside boundary becomes the available registered interior boundary used for Artwork placement.
+
+The existing Shape Artwork-placement policy then operates within that reduced registered interior region.
+
+The Inner Ridge does not otherwise alter the Artwork fitting algorithm, Artwork registration, Artwork physical raise, or Artwork-fill dimensionalization.
+
+Inner-Ridge raise does not alter Artwork placement because Artwork placement is determined from the registered Inner-Ridge boundary rather than its physical Z height.
+
+#### Product Participation
+
+A participating Inner Ridge contributes Shape-owned geometry to the dimensionalized Shape.
+
+The Inner Ridge remains a separate semantic component from the Base through Shape Extrude and Package.
+
+Shape Extrude establishes its physical geometry and preserves its component identity but does not assign its physical printing color.
+
+Shape Package applies the resolved `shape_inner_ridge_color`.
+
+The Inner Ridge participates in the final packaged 3MF when its dimensionalized geometry has physical volume.
+
+#### Inner Ridge Invariants
+
+A conforming Inner Ridge Feature satisfies the following:
+
+1. An Inner Ridge follows the selected Shape geometry.
+2. Inner-Ridge participation is determined solely by `shape_inner_ridge_width`.
+3. Zero Inner-Ridge width disables the Inner Ridge.
+4. Positive Inner-Ridge width defines an Inner Ridge regardless of `shape_inner_ridge_raise`.
+5. Negative Inner-Ridge width is invalid.
+6. Inner-Ridge width is measured inward from the outside boundary of the Inner Ridge.
+7. For polygon geometry, Inner-Ridge width is the perpendicular distance between corresponding outer and inner Inner-Ridge edges.
+8. An Inner Ridge may participate whether or not an Outer Ridge participates.
+9. `shape_inner_to_outer_ridge_dist` positions the outside boundary of the Inner Ridge.
+10. When an Outer Ridge participates, `shape_inner_to_outer_ridge_dist` is measured from the inside boundary of the Outer Ridge to the outside boundary of the Inner Ridge.
+11. When no Outer Ridge participates, `shape_inner_to_outer_ridge_dist` is measured from the outside boundary of the Base to the outside boundary of the Inner Ridge.
+12. `shape_inner_to_outer_ridge_dist` must be greater than or equal to zero.
+13. A zero `shape_inner_to_outer_ridge_dist` permits boundary adjacency but not geometric overlap.
+14. `shape_inner_ridge_raise` is measured relative to the top of the Base.
+15. `shape_inner_ridge_raise` must be greater than or equal to zero.
+16. A zero Inner-Ridge raise is valid.
+17. A negative Inner-Ridge raise is invalid.
+18. The complete assembled Inner-Ridge height is `shape_base_raise + shape_inner_ridge_raise`.
+19. The Inner Ridge layers on top of the Base and does not partition or reduce the Base X/Y geometry.
+20. When an Inner Ridge participates, its inside boundary defines the available registered interior region.
+21. When no Inner Ridge participates but an Outer Ridge participates, the Outer Ridge's inside boundary defines the available registered interior region.
+22. When neither ridge participates, the outside boundary of the Base defines the available registered interior region.
+23. Inner-Ridge raise does not change the registered Inner-Ridge boundaries or registered interior region.
+24. The default Inner-Ridge color is the resolved Base color.
+25. An explicitly configured `shape_inner_ridge_color` overrides its derived Base-color default.
+26. Inner-Ridge color does not determine Inner-Ridge participation or geometry.
+27. Shape Extrude does not assign physical color to Inner-Ridge geometry.
+28. Shape Package applies the Inner Ridge's physical color policy.
+29. Changing only `shape_inner_ridge_color` does not by itself change Shape Structure, Compose, or Extrude geometry.
+30. The Inner Ridge and Outer Ridge remain distinct semantic components when both participate.
+31. Outer-Ridge style does not change the Inner-Ridge positioning reference when an Outer Ridge participates.
+32. Inner-Ridge participation does not otherwise change the existing Artwork fitting algorithm, Artwork registration, Artwork physical raise, or Artwork-fill dimensionalization.
+
+
 ## Final Product
 
 Shape produces:
