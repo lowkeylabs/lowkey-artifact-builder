@@ -221,7 +221,7 @@ build manufacturing Products.
 
 Answers progressively:
 
-> What Artifacts are registered, and what is their manufacturing state?
+> What Artifacts exist in this workspace, and what is their manufacturing state?
 
 > What can I manufacture from this Artifact, and what already exists?
 
@@ -235,26 +235,28 @@ With no Artifact ID:
 artifact show
 ```
 
-`show` discovers registered Artifact IDs from `./originals/` and presents a
-workspace manufacturing summary.
+`show` discovers Artifact identities from the workspace and presents a
+manufacturing summary.
 
-For each registered Artifact, the summary should make it possible to determine:
+Artifact identity may be established by preserved registration under
+`./originals/` or by a stable `./artifacts/<artifact_id>/` workspace
+directory.
 
-- whether the corresponding `./artifacts/<artifact_id>/` tree exists;
+For each discovered Artifact, the summary should make it possible to determine:
+
+- whether the Artifact is materialized;
 - how many effective Realizations are defined for the Artifact; and
 - how those Realizations are distributed across the established manufacturing
   states, such as current, stale, and not built.
 
-The workspace inventory is registration-oriented. An
-`./artifacts/<artifact_id>/` directory without a corresponding registered
-Artifact does not independently create an Artifact inventory entry.
+An Artifact is materialized when
+`./artifacts/<artifact_id>/artifact.toml` exists. The existence of the Artifact
+directory alone does not imply materialization, and materialization does not
+imply that any Realization or Product is current.
 
-The existence of an Artifact tree reports only whether that materialized
-workspace exists. It does not imply that any Realization or Product is current.
-
-A registered but not yet materialized Artifact remains visible. Its effective
-Realizations are still part of the inventory even when
-`./artifacts/<artifact_id>/` does not yet exist.
+An unmaterialized Artifact remains visible. Its effective Realizations are
+still part of the inventory and have manufacturing status independently of
+Artifact materialization.
 
 Workspace `show` uses the same manufacturing-state semantics as focused
 Artifact inspection. Every effective Realization should be accounted for by

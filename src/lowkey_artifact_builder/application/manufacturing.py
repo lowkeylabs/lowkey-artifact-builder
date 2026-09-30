@@ -149,8 +149,8 @@ class WorkspaceArtifactManufacturingStatus:
     materialized reports whether persistent Artifact configuration exists.
 
     manufacturing contains reusable Artifact manufacturing inspection when
-    the Artifact is materialized. An unmaterialized Artifact remains visible
-    in workspace inspection but has no manufacturing status to inspect.
+    the Artifact is materialized. An unmaterialized Artifact are visible
+    in workspace inspection and return an unbuilt/not built status.
     """
 
     artifact_id: str
