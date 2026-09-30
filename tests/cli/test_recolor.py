@@ -1806,7 +1806,7 @@ def test_recolor_existing_final_rejects_missing_final_without_building(
     )
 
     with pytest.raises(
-        RuntimeError,
+        cmd_color.RecolorPrerequisiteError,
         match="existing final 3MF",
     ):
         cmd_color._recolor_existing_final(

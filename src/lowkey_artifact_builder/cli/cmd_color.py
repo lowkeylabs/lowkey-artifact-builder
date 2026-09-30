@@ -595,7 +595,9 @@ def _recolor_existing_final(
     )
 
     if not final_product.path.is_file():
-        raise RuntimeError(f"Recoloring requires an existing final 3MF: {final_product.path}")
+        raise RecolorPrerequisiteError(
+            f"Recoloring requires an existing final 3MF: {final_product.path}"
+        )
 
     if plan.model_name == "artwork":
         artwork = _analyze_existing_artwork_colors(
