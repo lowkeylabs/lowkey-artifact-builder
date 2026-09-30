@@ -180,22 +180,24 @@ def test_reconcile_printer_colors_rejects_duplicate_required_colors() -> None:
         )
 
 
-def test_reconcile_printer_colors_rejects_unreconcilable_installed_slots() -> None:
+def test_reconcile_printer_colors_reuses_duplicate_required_slot() -> None:
     """
-    Required colors that fit printer capacity but cannot be reconciled with
-    the installed slot state are an expected recolor-domain failure.
+    An installed duplicate of a required color is replaceable after one
+    physical slot preserving that required color has been retained.
     """
 
-    with pytest.raises(
-        PrinterColorReconciliationError,
-    ):
-        reconcile_printer_colors(
-            (
-                "Black",
-                "Black",
-            ),
-            (
-                "Black",
-                "White",
-            ),
-        )
+    result = reconcile_printer_colors(
+        (
+            "Black",
+            "Black",
+        ),
+        (
+            "Black",
+            "White",
+        ),
+    )
+
+    assert result == (
+        "Black",
+        "White",
+    )

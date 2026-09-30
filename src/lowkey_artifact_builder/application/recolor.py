@@ -89,9 +89,16 @@ def reconcile_printer_colors(
     if not missing:
         return current_printer_colors
 
-    replaceable_slots = [
-        index for index, color in enumerate(current_printer_colors) if color not in required
-    ]
+    preserved_required: set[str] = set()
+
+    replaceable_slots: list[int] = []
+
+    for index, color in enumerate(current_printer_colors):
+        if color in required and color not in preserved_required:
+            preserved_required.add(color)
+            continue
+
+        replaceable_slots.append(index)
 
     if len(replaceable_slots) < len(missing):
         raise PrinterColorReconciliationError(
