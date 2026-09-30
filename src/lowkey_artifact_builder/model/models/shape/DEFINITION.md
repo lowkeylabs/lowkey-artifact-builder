@@ -15,19 +15,13 @@ ornaments, plaques, and similar primarily two-dimensional objects.
 
 The initial Shape model supports:
 
--   circle, square, and regular polygon geometry;
-
--   configurable regular-polygon side count and rotation;
-
--   a physical base;
-
--   an optional integrated or separately printable outer ridge;
-
--   independently assignable base and outer-ridge colors;
-
--   optional registered Artwork;
-
--   a printable multicomponent 3MF.
+- circle, square, and regular polygon geometry;
+- configurable regular-polygon side count and rotation;
+- a physical base;
+- an optional integrated or separately printable outer ridge;
+- independently assignable base and outer-ridge colors;
+- optional registered Artwork;
+- a printable multicomponent 3MF.
 
 Shape owns the physical dimensions and placement of geometry
 incorporated into the Shape.
@@ -49,28 +43,22 @@ printable components.
 
 Shape supports:
 
-``` text
-
+```text
 circle
-
 square
-
 polygon
 ```
 
 Geometry is selected by:
 
-``` text
-
+```text
 shape_geometry
 ```
 
 Regular polygon geometry is additionally controlled by:
 
-``` text
-
+```text
 shape_sides
-
 shape_rotation
 ```
 
@@ -78,22 +66,19 @@ shape_rotation
 
 It must be an integer greater than or equal to:
 
-``` text
-
+```text
 3
 ```
 
 The default polygon side count is:
 
-``` text
-
+```text
 8
 ```
 
 and therefore describes a regular octagon when:
 
-``` text
-
+```text
 shape_geometry = "polygon"
 ```
 
@@ -104,8 +89,7 @@ geometry in degrees.
 
 The default polygon rotation is:
 
-``` text
-
+```text
 0 degrees
 ```
 
@@ -114,15 +98,13 @@ positive Y axis.
 
 For a regular polygon having:
 
-``` text
-
+```text
 n = shape_sides
 ```
 
 a rotation of:
 
-``` text
-
+```text
 180 / n
 ```
 
@@ -130,15 +112,13 @@ degrees places the center of one side on the positive Y axis.
 
 For example, an eight-sided polygon uses:
 
-``` text
-
+```text
 shape_rotation = 0
 ```
 
 for a vertex-centered top and:
 
-``` text
-
+```text
 shape_rotation = 22.5
 ```
 
@@ -154,8 +134,7 @@ configured physical size.
 
 The parameter:
 
-``` text
-
+```text
 shape_size
 ```
 
@@ -163,19 +142,15 @@ defines the overall physical X/Y extent of the dimensionalized Shape.
 
 Its meaning is:
 
-``` text
-
+```text
 circle   -> diameter
-
 square   -> side length
-
 polygon  -> maximum width or height of the bounding envelope
 ```
 
 A dimensionalized Shape with:
 
-``` text
-
+```text
 shape_size = 100
 ```
 
@@ -204,19 +179,15 @@ two-dimensional coordinate space.
 The complete Shape envelope uses the canonical registered coordinate
 extent:
 
-``` text
-
+```text
 X = -0.5 through +0.5
-
 Y = -0.5 through +0.5
 ```
 
 The Shape origin is therefore:
 
-``` text
-
+```text
 X = 0
-
 Y = 0
 ```
 
@@ -224,20 +195,16 @@ and represents the center of the Shape.
 
 For the supported geometries:
 
-``` text
-
+```text
 circle   -> diameter 1.0, centered at the origin
-
 square   -> 1.0 × 1.0, centered at the origin
-
 polygon  -> maximum X/Y extent 1.0, centered at the origin
 ```
 
 Regular polygon geometry is centered at the origin and uniformly
 normalized after rotation so that its greatest X/Y extent is:
 
-``` text
-
+```text
 1.0
 ```
 
@@ -254,8 +221,7 @@ It does not assign physical millimeter dimensions.
 
 In particular:
 
-``` text
-
+```text
 shape_size
 ```
 
@@ -271,20 +237,16 @@ The `structure` stage produces registered structural Shape geometry.
 
 Structural geometry is determined by Shape geometry policy such as:
 
-``` text
-
+```text
 shape_geometry
-
 shape_sides
-
 shape_rotation
 ```
 
 `shape_sides` and `shape_rotation` participate in structural geometry
 only when:
 
-``` text
-
+```text
 shape_geometry = "polygon"
 ```
 
@@ -305,8 +267,7 @@ Every Shape contains a structural base.
 
 The base follows the selected:
 
-``` text
-
+```text
 shape_geometry
 ```
 
@@ -318,41 +279,24 @@ geometry.
 
 The physical thickness of the base is determined by:
 
-``` text
-
+```text
 shape_base_raise
 ```
 
 The dimensionalized base extends from:
 
-``` text
-
+```text
 Z = 0
 ```
 
 through:
 
-``` text
-
+```text
 Z = shape_base_raise
 ```
 
 Base thickness therefore belongs to physical dimensionalization rather
 than to the registered two-dimensional structural representation.
-
-Without a separately printable outer ridge, the base occupies the
-complete Shape X/Y envelope.
-
-With a separately printable outer ridge, the base occupies the region
-inside the ridge's inner boundary.
-
-The separately printable ridge therefore reduces the X/Y extent of the
-base component without reducing the complete assembled Shape envelope.
-
-The base may be assigned a printing color.
-
-The outer ridge defaults to the base color but may be assigned a
-different color independently.
 
 ## Color
 
@@ -361,78 +305,33 @@ assignments applied during Shape Package.
 
 The base color is controlled by:
 
-``` text
+```text
 shape_base_color
 ```
 
 The default base color is:
 
-``` text
+```text
 white
 ```
 
-The outer-ridge color is controlled by:
-
-``` text
-shape_outer_ridge_color
-```
-
-The default outer-ridge color is the resolved base color:
-
-``` text
-shape_outer_ridge_color = shape_base_color
-```
-
-The ridge-color default is therefore derived from the resolved value of
-`shape_base_color` rather than being an independent literal color
-default.
-
-For example, with no explicit color configuration:
-
-``` text
-shape_base_color = "white"
-shape_outer_ridge_color = "white"
-```
-
-If the base color is configured as:
-
-``` text
-shape_base_color = "black"
-```
-
-and no ridge color is explicitly configured, the resolved colors are:
-
-``` text
-shape_base_color = "black"
-shape_outer_ridge_color = "black"
-```
-
-An explicitly configured outer-ridge color overrides this derived
-default. For example:
-
-``` text
-shape_base_color = "white"
-shape_outer_ridge_color = "red"
-```
-
-assigns white to the base and red to the outer ridge.
-
 Incorporated Artwork may optionally have Shape-owned fill geometry.
+
 Artwork-fill participation and physical height are controlled by:
 
-``` text
+```text
 shape_artwork_fill_raise
 ```
 
 Artwork-fill color is controlled independently by:
 
-``` text
+```text
 shape_artwork_fill_color
 ```
 
 The default Artwork-fill color is the resolved base color:
 
-``` text
+```text
 shape_artwork_fill_color = shape_base_color
 ```
 
@@ -447,7 +346,7 @@ default.
 geometry exists. Fill participation is determined solely by
 `shape_artwork_fill_raise`.
 
-Shape-owned base, outer-ridge, and Artwork-fill physical colors are
+Shape-owned component physical colors are
 packaging policy. Shape Structure, Compose, and Extrude preserve the
 component identity needed for downstream color assignment but do not
 assign these physical colors.
@@ -455,6 +354,7 @@ assign these physical colors.
 Incorporated registered Artwork follows a different color contract. Its
 color layers retain logical Artifact-color identity from the consumed
 Artwork Vector product through Shape composition and physical extrusion.
+
 Shape Compose and Shape Extrude do not assign physical printer colors to
 those incorporated Artwork layers.
 
@@ -471,635 +371,20 @@ Shape-owned fill geometry.
 
 Shape-owned physical color policy and incorporated Artwork
 Artifact-color identity are therefore intentionally different concepts.
-Shape-owned base, ridge, and fill components receive their physical
+
+Shape-owned components receive their physical
 colors during Package according to Shape color policy; incorporated
 Artwork preserves the logical color identity supplied by Artwork until
 Package resolves its physical printer assignment.
 
 Color assignment does not determine structural geometry, component
 partitioning, outer-ridge existence, or Artwork-fill participation.
+
 Likewise, structural partitioning and component participation do not
 determine color assignment.
 
 A color assigned to geometry that does not produce a corresponding
 physical component has no effect on the produced artifact.
-
-## Outer Ridge
-
-A Shape may contain an outer ridge.
-
-The ridge is controlled by:
-
-``` text
-
-shape_outer_ridge_width
-
-shape_outer_ridge_raise
-
-shape_outer_ridge_style
-
-shape_outer_ridge_color
-```
-
-The supported ridge styles are:
-
-``` text
-
-integrated
-
-separate
-```
-
-The ridge follows the boundary of the selected Shape geometry.
-
-For polygon geometry, the ridge follows the configured regular polygon
-after its side count, rotation, and registered normalization have been
-applied.
-
-Ridge width is measured inward from the outer Shape boundary.
-
-For polygon geometry, ridge width is the perpendicular distance from
-each outer polygon edge to its corresponding inner ridge edge.
-
-The inner ridge boundary therefore consists of edges parallel to the
-corresponding outer polygon edges.
-
-The ridge does not increase:
-
-``` text
-
-shape_size
-```
-
-Ridge existence is determined solely by:
-
-``` text
-
-shape_outer_ridge_width
-```
-
-An outer ridge exists when:
-
-``` text
-
-shape_outer_ridge_width > 0
-```
-
-An outer ridge does not exist when:
-
-``` text
-
-shape_outer_ridge_width = 0
-```
-
-A negative outer-ridge width is invalid.
-
-When the ridge does not exist, ridge raise, style, and color do not
-alter the produced ridge geometry.
-
-`shape_outer_ridge_raise` does not determine whether a ridge exists.
-
-The default outer-ridge raise is:
-
-``` text
-
-1 mm
-```
-
-for both integrated and separate ridge styles.
-
-Ridge raise is measured relative to the top surface of the base.
-
-The complete assembled ridge height is therefore:
-
-``` text
-
-shape_base_raise + shape_outer_ridge_raise
-```
-
-for both ridge styles.
-
-Ridge raise may be positive, zero, or negative.
-
-A positive ridge raise places the ridge top above the base top.
-
-A zero ridge raise places the ridge top flush with the base top.
-
-A negative ridge raise places the ridge top below the base top.
-
-The minimum valid ridge raise is:
-
-``` text
-
--shape_base_raise
-```
-
-so that:
-
-``` text
-
-shape_base_raise + shape_outer_ridge_raise >= 0
-```
-
-A ridge raise less than:
-
-``` text
-
--shape_base_raise
-```
-
-is invalid because it would imply a negative physical ridge height.
-
-`shape_outer_ridge_width` is a physical dimension measured in
-millimeters.
-
-When ridge geometry must participate in registered composition before
-physical dimensionalization, its physical width is converted to a
-relative registered-space width using the relationship between:
-
-``` text
-
-shape_outer_ridge_width
-
-shape_size
-```
-
-For example, a 5 mm ridge on a 100 mm Shape occupies 0.05 registered
-Shape units inward from the corresponding outer boundary.
-
-For polygon geometry, this registered inset is measured perpendicular to
-each polygon edge rather than by subtracting the same value from each
-vertex coordinate or circumradius.
-
-This conversion does not assign physical dimensions to the registered
-coordinate system. It expresses physical Shape policy as a relative
-relationship within registered Shape space.
-
-## Integrated Outer Ridge
-
-With:
-
-``` text
-
-shape_outer_ridge_style = integrated
-```
-
-the ridge is structurally integrated with the base.
-
-The base retains the complete Shape X/Y envelope.
-
-The ridge occupies the perimeter region between:
-
-``` text
-
-the complete Shape outer boundary
-```
-
-and:
-
-``` text
-
-the ridge inner boundary
-```
-
-The dimensionalized integrated ridge is partitioned according to its
-relationship to the top of the base.
-
-The base material occupies the integrated ridge region from:
-
-``` text
-
-Z = 0
-```
-
-through the lesser of:
-
-``` text
-
-shape_base_raise
-```
-
-and:
-
-``` text
-
-shape_base_raise + shape_outer_ridge_raise
-```
-
-When:
-
-``` text
-
-shape_outer_ridge_raise > 0
-```
-
-the base retains the complete Shape X/Y envelope through:
-
-``` text
-
-Z = shape_base_raise
-```
-
-and the portion of the ridge above the base occupies:
-
-``` text
-
-Z = shape_base_raise
-```
-
-through:
-
-``` text
-
-Z = shape_base_raise + shape_outer_ridge_raise
-```
-
-Only this portion above the base is represented using the independently
-assigned outer-ridge color.
-
-Conceptually, for:
-
-``` text
-
-shape_base_raise = 2
-
-shape_outer_ridge_raise = 1
-```
-
-the integrated structure has:
-
-``` text
-
-base -> Z = 0 through 2
-
-ridge color -> perimeter from Z = 2 through 3
-```
-
-When:
-
-``` text
-
-shape_outer_ridge_raise = 0
-```
-
-the ridge top is flush with the top of the base.
-
-The ridge's registered X/Y region continues to exist, but there is no
-physical ridge-color volume above the base. The complete dimensionalized
-structure is therefore base material through:
-
-``` text
-
-Z = shape_base_raise
-```
-
-When:
-
-``` text
-
-shape_outer_ridge_raise < 0
-```
-
-the ridge top lies below the top surface of the base while the ridge's
-registered X/Y region continues to exist.
-
-The integrated perimeter then occupies base material from:
-
-``` text
-
-Z = 0
-```
-
-through:
-
-``` text
-
-Z = shape_base_raise + shape_outer_ridge_raise
-```
-
-while the interior base continues through:
-
-``` text
-
-Z = shape_base_raise
-```
-
-No independently colored ridge volume is produced because no portion of
-the integrated ridge extends above the base top.
-
-Conceptually, for:
-
-``` text
-
-shape_base_raise = 2
-
-shape_outer_ridge_raise = -0.5
-```
-
-the integrated structure has:
-
-``` text
-
-interior base -> Z = 0 through 2
-
-perimeter base -> Z = 0 through 1.5
-
-ridge-color volume -> none
-```
-
-The base and integrated ridge belong to the same assembled structural
-geometry.
-
-Their color assignments remain independent semantic properties. An
-integrated ridge may therefore be assigned a color different from the
-base, but that ridge color applies only to physical ridge geometry above
-the base top.
-
-## Separate Outer Ridge
-
-With:
-
-``` text
-
-shape_outer_ridge_style = separate
-```
-
-the ridge is an independently printable structural component.
-
-The ridge retains the complete Shape outer boundary.
-
-Its inner boundary is inset from that outer boundary by:
-
-``` text
-
-shape_outer_ridge_width
-```
-
-The base outer boundary becomes the ridge inner boundary.
-
-The base and ridge therefore occupy adjacent, nonoverlapping X/Y
-regions.
-
-The separately printable base occupies:
-
-``` text
-
-Z = 0
-```
-
-through:
-
-``` text
-
-Z = shape_base_raise
-```
-
-The separately printable ridge occupies:
-
-``` text
-
-Z = 0
-```
-
-through:
-
-``` text
-
-Z = shape_base_raise + shape_outer_ridge_raise
-```
-
-The separate ridge therefore uses the same complete assembled ridge
-height as the corresponding integrated ridge.
-
-Conceptually, for:
-
-``` text
-
-shape_base_raise = 2
-
-shape_outer_ridge_raise = 1
-```
-
-the separate structure has:
-
-``` text
-
-base   -> Z = 0 through 2
-
-ridge  -> Z = 0 through 3
-```
-
-For:
-
-``` text
-
-shape_base_raise = 2
-
-shape_outer_ridge_raise = 0
-```
-
-the separate structure has:
-
-``` text
-
-base   -> Z = 0 through 2
-
-ridge  -> Z = 0 through 2
-```
-
-For:
-
-``` text
-
-shape_base_raise = 2
-
-shape_outer_ridge_raise = -0.5
-```
-
-the separate structure has:
-
-``` text
-
-base   -> Z = 0 through 2
-
-ridge  -> Z = 0 through 1.5
-```
-
-At the minimum valid raise:
-
-``` text
-
-shape_outer_ridge_raise = -shape_base_raise
-```
-
-the separate ridge has zero physical height.
-
-The ridge remains semantically defined by its nonzero width even though
-its dimensionalized physical volume is zero.
-
-The separate ridge may be assigned a printing color independently from
-the base.
-
-Its default color is the base color.
-
-## Ridge Equivalence
-
-For otherwise identical Shape parameters, changing:
-
-``` text
-
-shape_outer_ridge_style
-```
-
-between:
-
-``` text
-
-integrated
-
-separate
-```
-
-does not change:
-
--   the complete Shape outer envelope;
-
--   the ridge outer boundary;
-
--   the ridge inner boundary;
-
--   the registered interior region;
-
--   the complete assembled ridge height;
-
--   the intended complete assembled physical geometry.
-
-It changes the partitioning of that geometry into structural regions and
-independently printable components.
-
-For example, for a 100 mm square with:
-
-``` text
-
-shape_outer_ridge_width = 5
-```
-
-both ridge styles have:
-
-``` text
-
-complete outer envelope = 100 mm × 100 mm
-
-ridge inner envelope    = 90 mm × 90 mm
-```
-
-With an integrated ridge:
-
-``` text
-
-base outer envelope = 100 mm × 100 mm
-```
-
-because the ridge region is integrated with the full-envelope base.
-
-With a separate ridge:
-
-``` text
-
-base outer envelope = 90 mm × 90 mm
-```
-
-because the independently printable ridge occupies the surrounding 5 mm
-perimeter region.
-
-The union of the separate base and separate ridge corresponds to the
-same intended assembled structural geometry as the integrated
-construction for the same dimensional parameters.
-
-## Ridge Color
-
-The outer ridge has a color assignment independent from its structural
-style.
-
-The ridge color is controlled by:
-
-``` text
-
-shape_outer_ridge_color
-```
-
-The default outer-ridge color is the base color.
-
-A ridge may be assigned a color different from the base regardless of
-whether its style is:
-
-``` text
-
-integrated
-```
-
-or:
-
-``` text
-
-separate
-```
-
-Ridge style therefore describes structural partitioning and does not
-determine color.
-
-Likewise, color does not determine whether a ridge is structurally
-integrated or separate.
-
-When the ridge does not exist because:
-
-``` text
-
-shape_outer_ridge_width = 0
-```
-
-its color has no effect on produced ridge geometry.
-
-## Interior Region
-
-Shape defines a registered interior region available for Artwork.
-
-The interior region is bounded by the innermost existing ridge boundary.
-
-When no ridge exists, the interior region is bounded by the registered
-Shape boundary.
-
-In the initial Shape model, which supports only the outer ridge, an
-existing outer ridge's inner boundary therefore defines the interior
-region.
-
-Ridge existence for purposes of determining the interior region depends
-only on:
-
-``` text
-
-shape_outer_ridge_width > 0
-```
-
-The same ridge inner boundary is used for integrated and separate ridge
-styles.
-
-Changing ridge style therefore does not change the registered area
-available for Artwork.
-
-Changing ridge raise likewise does not change the registered area
-available for Artwork.
-
-An outer ridge reduces the registered area available for Artwork without
-changing the registered outer Shape envelope or the physical value of:
-
-``` text
-
-shape_size
-```
-
-The registered interior region provides the common Shape coordinate
-space into which registered Artwork is fitted.
 
 ## Artwork
 
@@ -1134,20 +419,13 @@ Artwork artifact.
 For the current Artwork model, consuming registered vector Artwork
 requires the upstream dependency:
 
-``` text
-
+```text
 artwork/prepare
-
       ↓
-
 artwork/raster
-
       ↓
-
 artwork/vector
-
       ↓
-
     shape
 ```
 
@@ -1155,10 +433,8 @@ Artwork stages after the consumed vector product are not prerequisites.
 
 In particular, Shape does not require:
 
-``` text
-
+```text
 artwork/extrude
-
 artwork/package
 ```
 
@@ -1175,8 +451,7 @@ Shape geometry.
 For example, Artwork may have a registered extent derived from its
 vectorization coordinate system while Shape uses its canonical:
 
-``` text
-
+```text
 -0.5 through +0.5
 ```
 
@@ -1205,22 +480,21 @@ registered Shape origin that is wholly contained within the available
 registered Shape interior region.
 
 The placement circle is computed from the registered interior boundary.
+
 The same computation is used regardless of whether the Shape geometry is
 a circle, square, or regular polygon.
 
 Registered Artwork is:
 
--   centered within the Artwork placement region;
+- centered within the Artwork placement region;
+- uniformly scaled to the largest size at which its authoritative
 
--   uniformly scaled to the largest size at which its authoritative
     Artwork envelope remains contained within the Artwork placement
     region;
 
--   aspect-ratio preserving;
-
--   not stretched;
-
--   not cropped merely to increase its fitted size.
+- aspect-ratio preserving;
+- not stretched;
+- not cropped merely to increase its fitted size.
 
 The authoritative Artwork envelope determines Artwork occupancy for
 fitting.
@@ -1244,26 +518,16 @@ remain nonphysical through composition.
 
 Conceptually:
 
-``` text
-
+```text
 registered Shape structure ─────┐
-
                                 │
-
                                 ▼
-
                              compose
-
                                 ▲
-
                                 │
-
 registered Artwork ─────────────┘
-
                                 │
-
                                 ▼
-
                      registered composition
 ```
 
@@ -1286,37 +550,6 @@ downstream physical dimensionalization and packaging. Incorporated
 Artwork retains logical Artifact-color identity; composition does not
 resolve that identity to physical printer colors.
 
-When:
-
-``` text
-
-shape_outer_ridge_width > 0
-```
-
-the registered composition contains the outer-ridge partition regardless
-of ridge raise.
-
-When:
-
-``` text
-
-shape_outer_ridge_style = separate
-```
-
-the base region and outer-ridge region remain distinguishable so that
-downstream dimensionalization can produce independently printable
-structural components.
-
-When:
-
-``` text
-
-shape_outer_ridge_style = integrated
-```
-
-the base and ridge belong to one assembled structural geometry even
-though their physical Z and color semantics may differ.
-
 The composed result similarly retains sufficient Artwork component
 identity to allow different structural and Artwork components to receive
 their appropriate physical Z semantics and to remain independently
@@ -1332,27 +565,19 @@ physical manufacturing geometry.
 
 Conceptually:
 
-``` text
-
+```text
 registered composition
-
           │
-
           ▼
-
        extrude
-
           │
-
           ▼
-
  physical geometry
 ```
 
 At this boundary:
 
-``` text
-
+```text
 shape_size
 ```
 
@@ -1361,8 +586,7 @@ determines the overall physical X/Y extent of the Shape.
 The canonical registered maximum Shape extent of `1.0` therefore
 corresponds to:
 
-``` text
-
+```text
 shape_size
 ```
 
@@ -1370,15 +594,13 @@ millimeters in physical space.
 
 For example:
 
-``` text
-
+```text
 shape_size = 100
 ```
 
 establishes:
 
-``` text
-
+```text
 1.0 registered Shape unit = 100 mm
 ```
 
@@ -1395,39 +617,14 @@ according to the semantic role of each component.
 
 These dimensions include:
 
-``` text
-
+```text
 shape_base_raise
-
-shape_outer_ridge_raise
-
 shape_artwork_raise
 ```
 
 and the defined Z policy for optional Artwork fill.
 
-For either ridge style, the complete assembled ridge height is:
-
-``` text
-
-shape_base_raise + shape_outer_ridge_raise
-```
-
-Ridge raise may be negative, but it must satisfy:
-
-``` text
-
-shape_outer_ridge_raise >= -shape_base_raise
-```
-
-Ridge style determines structural component partitioning during
-dimensionalization.
-
-For an integrated ridge, dimensionalization preserves the full-envelope
-base and applies the ridge-region Z semantics to the outer perimeter.
-
-For a separate ridge, dimensionalization produces independent base and
-outer-ridge structural components.
+Optional Features apply their own dimensionalization and component-partitioning semantics at this boundary as defined by the applicable Feature contract.
 
 Physical dimensionalization does not resolve incorporated Artwork to
 physical printer colors. Extruded incorporated Artwork products preserve
@@ -1444,7 +641,7 @@ of that Shape.
 
 The standalone Artwork parameter:
 
-``` text
+```text
 artwork_size
 ```
 
@@ -1453,25 +650,25 @@ does not determine Artwork size within Shape.
 For example, if registered Artwork is fitted to occupy 0.8 of the Shape
 width and:
 
-``` text
+```text
 shape_size = 100
 ```
 
 the dimensionalized Artwork width is:
 
-``` text
+```text
 80 mm
 ```
 
 The same registered composition dimensionalized with:
 
-``` text
+```text
 shape_size = 75
 ```
 
 produces an Artwork width of:
 
-``` text
+```text
 60 mm
 ```
 
@@ -1485,7 +682,7 @@ Artwork.
 
 The physical raise of incorporated Artwork is controlled by:
 
-``` text
+```text
 shape_artwork_raise
 ```
 
@@ -1493,7 +690,7 @@ shape_artwork_raise
 
 Its default value is:
 
-``` text
+```text
 1 mm
 ```
 
@@ -1502,13 +699,13 @@ Incorporated Artwork is raised on top of the Shape base.
 The bottom surface of every incorporated Artwork component is located
 at:
 
-``` text
+```text
 Z = shape_base_raise
 ```
 
 and its top surface is located at:
 
-``` text
+```text
 Z = shape_base_raise + shape_artwork_raise
 ```
 
@@ -1520,7 +717,7 @@ dimensionalization.
 
 The standalone Artwork parameter:
 
-``` text
+```text
 artwork_raise
 ```
 
@@ -1532,13 +729,13 @@ outside the transformed Artwork envelope.
 
 Artwork-fill existence and physical height are determined solely by:
 
-``` text
+```text
 shape_artwork_fill_raise
 ```
 
 When:
 
-``` text
+```text
 shape_artwork_fill_raise > 0
 ```
 
@@ -1546,7 +743,7 @@ Artwork fill participates.
 
 When:
 
-``` text
+```text
 shape_artwork_fill_raise <= 0
 ```
 
@@ -1554,13 +751,13 @@ no Artwork fill geometry is produced.
 
 The default Artwork-fill raise is:
 
-``` text
+```text
 0 mm
 ```
 
 When Artwork fill participates, the registered fill region is:
 
-``` text
+```text
 registered Shape interior region
     minus
 transformed registered Artwork envelope
@@ -1576,13 +773,13 @@ Artwork fill begins on top of the Shape base.
 
 Its bottom surface is located at:
 
-``` text
+```text
 Z = shape_base_raise
 ```
 
 and its top surface is located at:
 
-``` text
+```text
 Z = shape_base_raise + shape_artwork_fill_raise
 ```
 
@@ -1611,38 +808,22 @@ geometry.
 
 Conceptually:
 
-``` text
-
+```text
 Artwork source / processing space
-
             │
-
             ▼
-
   registered Artwork space
-
             │
-
             │ fit / transform
-
             ▼
-
     registered Shape space
-
             │
-
             │ compose
-
             ▼
-
   registered composition
-
             │
-
             │ dimensionalize
-
             ▼
-
     physical millimeter space
 ```
 
@@ -1663,17 +844,14 @@ dimensionalization boundary.
 
 The initial Shape model defines:
 
-``` text
+```text
 shape_geometry
 shape_sides
 shape_rotation
 shape_size
 shape_base_raise
 shape_base_color
-shape_outer_ridge_width
-shape_outer_ridge_raise
 shape_outer_ridge_style
-shape_outer_ridge_color
 shape_artwork_raise
 shape_artwork_fill_raise
 shape_artwork_fill_color
@@ -1683,7 +861,7 @@ shape_artwork_fill_color
 
 Its supported values are:
 
-``` text
+```text
 circle
 square
 polygon
@@ -1691,19 +869,19 @@ polygon
 
 `shape_sides` selects the number of sides when:
 
-``` text
+```text
 shape_geometry = "polygon"
 ```
 
 Its default is:
 
-``` text
+```text
 8
 ```
 
 and its minimum valid value is:
 
-``` text
+```text
 3
 ```
 
@@ -1712,7 +890,7 @@ degrees.
 
 Its default is:
 
-``` text
+```text
 0 degrees
 ```
 
@@ -1722,78 +900,20 @@ axis.
 `shape_sides` and `shape_rotation` do not alter circle or square
 geometry.
 
-`shape_outer_ridge_width` determines whether an outer ridge exists and
-determines its inward physical width.
-
-The default ridge width is:
-
-``` text
-0 mm
-```
-
-so the default Shape contains no outer ridge.
-
-`shape_outer_ridge_raise` determines the position of the ridge top
-relative to the base top.
-
-The default ridge raise is:
-
-``` text
-1 mm
-```
-
-for both ridge styles.
-
-A ridge raise of zero is valid and places the ridge top flush with the
-base top.
-
-A negative ridge raise is valid down to:
-
-``` text
--shape_base_raise
-```
-
-`shape_outer_ridge_style` selects how an existing outer ridge is
-structurally partitioned.
-
-Its supported values are:
-
-``` text
-integrated
-separate
-```
-
-The default ridge style is:
-
-``` text
-integrated
-```
-
 `shape_base_color` selects the base printing color.
 
 Its default is:
 
-``` text
+```text
 white
 ```
-
-`shape_outer_ridge_color` selects the ridge printing color.
-
-Its default is the resolved value of:
-
-``` text
-shape_base_color
-```
-
-An explicitly configured `shape_outer_ridge_color` overrides this
-derived default.
 
 `shape_artwork_raise` determines the physical height of Artwork
 incorporated into Shape above the top surface of the Shape base.
 
 Its default is:
 
-``` text
+```text
 1 mm
 ```
 
@@ -1809,19 +929,19 @@ the Shape base.
 
 Its default is:
 
-``` text
+```text
 0 mm
 ```
 
 Artwork fill participates when:
 
-``` text
+```text
 shape_artwork_fill_raise > 0
 ```
 
 and does not participate when:
 
-``` text
+```text
 shape_artwork_fill_raise <= 0
 ```
 
@@ -1830,7 +950,7 @@ participating Shape-owned Artwork fill.
 
 Its default is the resolved value of:
 
-``` text
+```text
 shape_base_color
 ```
 
@@ -1842,11 +962,9 @@ participates.
 
 The dimensional parameters are:
 
-``` text
+```text
 shape_size
 shape_base_raise
-shape_outer_ridge_width
-shape_outer_ridge_raise
 shape_artwork_raise
 shape_artwork_fill_raise
 ```
@@ -1870,10 +988,9 @@ Shape dimensionalization boundary.
 
 The packaging parameters are:
 
-``` text
+```text
 printer_colors
 shape_base_color
-shape_outer_ridge_color
 shape_artwork_fill_color
 ```
 
@@ -1919,12 +1036,7 @@ components.
 Packaging preserves independently printable and independently assignable
 components where required by structural or color semantics.
 
-A separate outer ridge remains an independent structural component in
-the packaged artifact.
-
-An integrated outer ridge remains structurally integrated with the base,
-while its independently assigned color must remain representable when
-the ridge color differs from the base color.
+Participating Features preserve any independently printable or independently colored component identity required by their Feature contracts.
 
 Incorporated Artwork color components likewise remain suitable for
 multicolor printing after their logical Artifact-color identities have
@@ -1935,13 +1047,13 @@ physical component and its resolved printing-color identity.
 
 Component names use the form:
 
-``` text
-<component-role> - <color>
+```text
+\<component-role> - \<color>
 ```
 
 For example:
 
-``` text
+```text
 base - cold-white
 ridge - red
 artwork - black
@@ -1965,27 +1077,615 @@ components, Package applies Shape color policy. For incorporated
 Artwork, Package resolves logical Artifact-color identity to physical
 printer colors using `printer_colors`.
 
+## Features
+
+Features are optional capabilities of the Shape model.
+
+A Shape realization may participate in zero or more Features according to the effective parameter values defined by each Feature.
+
+Features are distinct from intrinsic Shape properties. In particular, every Shape has structural geometry and a Base; those required model properties are not optional Features.
+
+Each Feature subsection is the authoritative semantic definition of that Feature. Feature-specific parameters, participation conditions, validation, geometry, physical dimensions, color and material behavior, interactions with other model behavior, and product participation are defined within that Feature subsection.
+
+Feature-specific semantics are not duplicated in unrelated model sections. A stage may operate on participating Features without owning their semantics.
+
+### Outer Ridge
+
+The Outer Ridge Feature provides an optional perimeter ridge within the complete assembled Shape envelope.
+
+#### Outer Ridge
+
+A Shape may contain an outer ridge.
+
+The ridge is controlled by:
+
+```text
+shape_outer_ridge_width
+shape_outer_ridge_raise
+shape_outer_ridge_style
+shape_outer_ridge_color
+```
+
+The supported ridge styles are:
+
+```text
+integrated
+separate
+```
+
+The ridge follows the boundary of the selected Shape geometry.
+
+For polygon geometry, the ridge follows the configured regular polygon
+after its side count, rotation, and registered normalization have been
+applied.
+
+Ridge width is measured inward from the outer Shape boundary.
+
+For polygon geometry, ridge width is the perpendicular distance from
+each outer polygon edge to its corresponding inner ridge edge.
+
+The inner ridge boundary therefore consists of edges parallel to the
+corresponding outer polygon edges.
+
+The ridge does not increase:
+
+```text
+shape_size
+```
+
+Ridge existence is determined solely by:
+
+```text
+shape_outer_ridge_width
+```
+
+An outer ridge exists when:
+
+```text
+shape_outer_ridge_width > 0
+```
+
+An outer ridge does not exist when:
+
+```text
+shape_outer_ridge_width = 0
+```
+
+A negative outer-ridge width is invalid.
+
+When the ridge does not exist, ridge raise, style, and color do not
+alter the produced ridge geometry.
+
+`shape_outer_ridge_raise` does not determine whether a ridge exists.
+
+The default outer-ridge raise is:
+
+```text
+1 mm
+```
+
+for both integrated and separate ridge styles.
+
+Ridge raise is measured relative to the top surface of the base.
+
+The complete assembled ridge height is therefore:
+
+```text
+shape_base_raise + shape_outer_ridge_raise
+```
+
+for both ridge styles.
+
+Ridge raise may be positive, zero, or negative.
+
+A positive ridge raise places the ridge top above the base top.
+
+A zero ridge raise places the ridge top flush with the base top.
+
+A negative ridge raise places the ridge top below the base top.
+
+The minimum valid ridge raise is:
+
+```text
+-shape_base_raise
+```
+
+so that:
+
+```text
+shape_base_raise + shape_outer_ridge_raise >= 0
+```
+
+A ridge raise less than:
+
+```text
+-shape_base_raise
+```
+
+is invalid because it would imply a negative physical ridge height.
+
+`shape_outer_ridge_width` is a physical dimension measured in
+millimeters.
+
+When ridge geometry must participate in registered composition before
+physical dimensionalization, its physical width is converted to a
+relative registered-space width using the relationship between:
+
+```text
+shape_outer_ridge_width
+shape_size
+```
+
+For example, a 5 mm ridge on a 100 mm Shape occupies 0.05 registered
+Shape units inward from the corresponding outer boundary.
+
+For polygon geometry, this registered inset is measured perpendicular to
+each polygon edge rather than by subtracting the same value from each
+vertex coordinate or circumradius.
+
+This conversion does not assign physical dimensions to the registered
+coordinate system. It expresses physical Shape policy as a relative
+relationship within registered Shape space.
+
+#### Integrated Outer Ridge
+
+With:
+
+```text
+shape_outer_ridge_style = integrated
+```
+
+the ridge is structurally integrated with the base.
+
+The base retains the complete Shape X/Y envelope.
+
+The ridge occupies the perimeter region between:
+
+```text
+the complete Shape outer boundary
+```
+
+and:
+
+```text
+the ridge inner boundary
+```
+
+The dimensionalized integrated ridge is partitioned according to its
+relationship to the top of the base.
+
+The base material occupies the integrated ridge region from:
+
+```text
+Z = 0
+```
+
+through the lesser of:
+
+```text
+shape_base_raise
+```
+
+and:
+
+```text
+shape_base_raise + shape_outer_ridge_raise
+```
+
+When:
+
+```text
+shape_outer_ridge_raise > 0
+```
+
+the base retains the complete Shape X/Y envelope through:
+
+```text
+Z = shape_base_raise
+```
+
+and the portion of the ridge above the base occupies:
+
+```text
+Z = shape_base_raise
+```
+
+through:
+
+```text
+Z = shape_base_raise + shape_outer_ridge_raise
+```
+
+Only this portion above the base is represented using the independently
+assigned outer-ridge color.
+
+Conceptually, for:
+
+```text
+shape_base_raise = 2
+shape_outer_ridge_raise = 1
+```
+
+the integrated structure has:
+
+```text
+base -> Z = 0 through 2
+ridge color -> perimeter from Z = 2 through 3
+```
+
+When:
+
+```text
+shape_outer_ridge_raise = 0
+```
+
+the ridge top is flush with the top of the base.
+
+The ridge's registered X/Y region continues to exist, but there is no
+physical ridge-color volume above the base. The complete dimensionalized
+structure is therefore base material through:
+
+```text
+Z = shape_base_raise
+```
+
+When:
+
+```text
+shape_outer_ridge_raise < 0
+```
+
+the ridge top lies below the top surface of the base while the ridge's
+registered X/Y region continues to exist.
+
+The integrated perimeter then occupies base material from:
+
+```text
+Z = 0
+```
+
+through:
+
+```text
+Z = shape_base_raise + shape_outer_ridge_raise
+```
+
+while the interior base continues through:
+
+```text
+Z = shape_base_raise
+```
+
+No independently colored ridge volume is produced because no portion of
+the integrated ridge extends above the base top.
+
+Conceptually, for:
+
+```text
+shape_base_raise = 2
+shape_outer_ridge_raise = -0.5
+```
+
+the integrated structure has:
+
+```text
+interior base -> Z = 0 through 2
+perimeter base -> Z = 0 through 1.5
+ridge-color volume -> none
+```
+
+The base and integrated ridge belong to the same assembled structural
+geometry.
+
+Their color assignments remain independent semantic properties. An
+integrated ridge may therefore be assigned a color different from the
+base, but that ridge color applies only to physical ridge geometry above
+the base top.
+
+#### Separate Outer Ridge
+
+With:
+
+```text
+shape_outer_ridge_style = separate
+```
+
+the ridge is an independently printable structural component.
+
+The ridge retains the complete Shape outer boundary.
+
+Its inner boundary is inset from that outer boundary by:
+
+```text
+shape_outer_ridge_width
+```
+
+The base outer boundary becomes the ridge inner boundary.
+
+The base and ridge therefore occupy adjacent, nonoverlapping X/Y
+regions.
+
+The separately printable base occupies:
+
+```text
+Z = 0
+```
+
+through:
+
+```text
+Z = shape_base_raise
+```
+
+The separately printable ridge occupies:
+
+```text
+Z = 0
+```
+
+through:
+
+```text
+Z = shape_base_raise + shape_outer_ridge_raise
+```
+
+The separate ridge therefore uses the same complete assembled ridge
+height as the corresponding integrated ridge.
+
+Conceptually, for:
+
+```text
+shape_base_raise = 2
+shape_outer_ridge_raise = 1
+```
+
+the separate structure has:
+
+```text
+base   -> Z = 0 through 2
+ridge  -> Z = 0 through 3
+```
+
+For:
+
+```text
+shape_base_raise = 2
+shape_outer_ridge_raise = 0
+```
+
+the separate structure has:
+
+```text
+base   -> Z = 0 through 2
+ridge  -> Z = 0 through 2
+```
+
+For:
+
+```text
+shape_base_raise = 2
+shape_outer_ridge_raise = -0.5
+```
+
+the separate structure has:
+
+```text
+base   -> Z = 0 through 2
+ridge  -> Z = 0 through 1.5
+```
+
+At the minimum valid raise:
+
+```text
+shape_outer_ridge_raise = -shape_base_raise
+```
+
+the separate ridge has zero physical height.
+
+The ridge remains semantically defined by its nonzero width even though
+its dimensionalized physical volume is zero.
+
+The separate ridge may be assigned a printing color independently from
+the base.
+
+Its default color is the base color.
+
+#### Ridge Equivalence
+
+For otherwise identical Shape parameters, changing:
+
+```text
+shape_outer_ridge_style
+```
+
+between:
+
+```text
+integrated
+separate
+```
+
+does not change:
+
+- the complete Shape outer envelope;
+- the ridge outer boundary;
+- the ridge inner boundary;
+- the registered interior region;
+- the complete assembled ridge height;
+- the intended complete assembled physical geometry.
+
+It changes the partitioning of that geometry into structural regions and
+independently printable components.
+
+For example, for a 100 mm square with:
+
+```text
+shape_outer_ridge_width = 5
+```
+
+both ridge styles have:
+
+```text
+complete outer envelope = 100 mm × 100 mm
+ridge inner envelope    = 90 mm × 90 mm
+```
+
+With an integrated ridge:
+
+```text
+base outer envelope = 100 mm × 100 mm
+```
+
+because the ridge region is integrated with the full-envelope base.
+
+With a separate ridge:
+
+```text
+base outer envelope = 90 mm × 90 mm
+```
+
+because the independently printable ridge occupies the surrounding 5 mm
+perimeter region.
+
+The union of the separate base and separate ridge corresponds to the
+same intended assembled structural geometry as the integrated
+construction for the same dimensional parameters.
+
+#### Ridge Color
+
+The outer ridge has a color assignment independent from its structural
+style.
+
+The ridge color is controlled by:
+
+```text
+shape_outer_ridge_color
+```
+
+The default outer-ridge color is the base color.
+
+A ridge may be assigned a color different from the base regardless of
+whether its style is:
+
+```text
+integrated
+```
+
+or:
+
+```text
+separate
+```
+
+Ridge style therefore describes structural partitioning and does not
+determine color.
+
+Likewise, color does not determine whether a ridge is structurally
+integrated or separate.
+
+When the ridge does not exist because:
+
+```text
+shape_outer_ridge_width = 0
+```
+
+its color has no effect on produced ridge geometry.
+
+#### Interior Region
+
+Shape defines a registered interior region available for Artwork.
+
+The interior region is bounded by the innermost existing ridge boundary.
+
+When no ridge exists, the interior region is bounded by the registered
+Shape boundary.
+
+In the initial Shape model, which supports only the outer ridge, an
+existing outer ridge's inner boundary therefore defines the interior
+region.
+
+Ridge existence for purposes of determining the interior region depends
+only on:
+
+```text
+shape_outer_ridge_width > 0
+```
+
+The same ridge inner boundary is used for integrated and separate ridge
+styles.
+
+Changing ridge style therefore does not change the registered area
+available for Artwork.
+
+Changing ridge raise likewise does not change the registered area
+available for Artwork.
+
+An outer ridge reduces the registered area available for Artwork without
+changing the registered outer Shape envelope or the physical value of:
+
+```text
+shape_size
+```
+
+The registered interior region provides the common Shape coordinate
+space into which registered Artwork is fitted.
+
+#### Interaction With Base
+
+Without a separately printable Outer Ridge, the Base occupies the complete Shape X/Y envelope.
+
+With a separately printable Outer Ridge, the Base occupies the region inside the ridge's inner boundary. The separately printable ridge therefore reduces the X/Y extent of the Base component without reducing the complete assembled Shape envelope.
+
+The Base may be assigned a printing color. The Outer Ridge defaults to the Base color but may be assigned a different color independently.
+
+#### Outer Ridge Invariants
+
+A conforming Outer Ridge Feature satisfies the following:
+
+1. An Outer Ridge follows the selected Shape boundary.
+2. Outer-Ridge width is measured inward from the complete Shape boundary.
+3. For polygon geometry, Outer-Ridge width is the perpendicular distance between corresponding outer and inner polygon edges.
+4. The Outer Ridge lies within the Shape boundary and does not increase `shape_size`.
+5. Outer-Ridge existence is determined solely by `shape_outer_ridge_width`.
+6. Zero Outer-Ridge width disables the Outer Ridge.
+7. Positive Outer-Ridge width defines an Outer Ridge regardless of `shape_outer_ridge_raise`.
+8. Negative Outer-Ridge width is invalid.
+9. The default Outer-Ridge raise is 1 mm for both ridge styles.
+10. Outer-Ridge raise is measured relative to the top of the Base.
+11. The complete assembled ridge height is `shape_base_raise + shape_outer_ridge_raise` for both ridge styles.
+12. Outer-Ridge raise may be zero.
+13. Outer-Ridge raise may be negative down to `-shape_base_raise`.
+14. Outer-Ridge raise less than `-shape_base_raise` is invalid.
+15. An existing Outer Ridge may be integrated with the Base or partitioned as a separately printable structural component.
+16. With an integrated Outer Ridge, the Base retains the complete Shape X/Y envelope.
+17. With a separate Outer Ridge, the ridge retains the complete Shape outer boundary and the Base outer boundary becomes the ridge inner boundary.
+18. A separate Outer Ridge and its Base occupy adjacent, nonoverlapping X/Y regions.
+19. A separate Outer Ridge occupies Z from zero through `shape_base_raise + shape_outer_ridge_raise`.
+20. Integrated and separate ridge styles preserve the same complete Shape envelope, ridge boundaries, registered interior region, and intended assembled ridge height for otherwise identical Shape parameters.
+21. The innermost existing ridge boundary defines the available registered interior region; when no ridge exists, the registered Shape boundary defines the interior region.
+22. Ridge raise does not change the registered ridge inner boundary or registered interior region.
+23. The default Outer-Ridge color is the resolved Base color.
+24. An explicitly configured Outer-Ridge color overrides its derived Base-color default.
+25. Outer-Ridge color is independent from Outer-Ridge structural style.
+26. An integrated Outer Ridge may have a color different from the Base.
+27. A separate Outer Ridge may have a color different from the Base.
+28. Outer-Ridge style does not change the physical Z origin or raise of incorporated Artwork or Artwork fill.
+29. Shape Extrude does not assign physical color to Outer-Ridge components.
+30. Shape Package applies the Outer Ridge's physical color policy.
+31. Changing only `shape_outer_ridge_color` does not by itself change Shape Structure, Compose, or Extrude geometry.
+
 ## Final Product
 
 Shape produces:
 
-``` text
-
+```text
 artifact.3mf
 ```
 
 The final artifact contains the dimensionalized structural Shape
 geometry.
 
-Without an outer ridge, the final artifact contains the structural base
-and any incorporated Artwork components.
-
-With an integrated outer ridge, the ridge is structurally integrated
-with the full-envelope base while preserving the color semantics
-required for multicolor printing.
-
-With a separate outer ridge, the final artifact contains independently
-printable base and outer-ridge structural components.
+Participating Features contribute physical geometry and component partitioning according to their Feature contracts.
 
 When Artwork is configured, the final artifact also contains the
 incorporated Artwork components.
@@ -1995,296 +1695,56 @@ Artwork color components remain suitable for multicolor printing.
 A Shape without Artwork still produces a complete valid printable
 artifact.
 
-## Invariants
+## Model Invariants
+
+The following are model-wide invariants. Feature-specific invariants are defined only within the applicable Feature subsection and are not repeated here.
 
 A conforming initial Shape implementation satisfies the following:
 
-1.  Shape can produce circle, square, and regular polygon geometry.
-
-2.  Regular polygon geometry is determined by `shape_sides` and
-    `shape_rotation`.
-
-3.  `shape_sides` is an integer greater than or equal to 3.
-
-4.  The default polygon side count is 8.
-
-5.  Polygon rotation is measured counterclockwise in degrees.
-
-6.  At zero rotation, a regular polygon has one vertex centered on the
-    positive Y axis.
-
-7.  For a regular polygon having `n` sides, rotation by `180 / n`
-    degrees places the center of one side on the positive Y axis.
-
-8.  Polygon rotation preserves polygon proportions and configured Shape
-    size.
-
-9.  Registered structural Shape geometry uses a canonical maximum extent
-    of 1.0 centered at the origin.
-
-10. Registered polygon geometry is uniformly normalized after rotation
-    so that its greatest X/Y extent is 1.0.
-
-11. Registered structural Shape geometry remains nonphysical until the
-    Shape dimensionalization boundary.
-
-12. `shape_size` has consistent physical overall-envelope semantics for
-    every supported geometry.
-
-13. `shape_size` does not determine the coordinate extent of registered
-    structural Shape geometry.
-
-14. Every Shape contains a base with physical thickness determined by
-    `shape_base_raise`.
-
-15. Shape can produce a complete artifact without Artwork.
-
-16. An outer ridge follows the selected Shape boundary.
-
-17. Outer-ridge width is measured inward from the complete Shape
-    boundary.
-
-18. For polygon geometry, outer-ridge width is the perpendicular
-    distance between corresponding outer and inner polygon edges.
-
-19. The outer ridge lies within the Shape boundary and does not increase
-    `shape_size`.
-
-20. Outer-ridge existence is determined solely by
-    `shape_outer_ridge_width`.
-
-21. Zero outer-ridge width disables the outer ridge.
-
-22. Positive outer-ridge width defines an outer ridge regardless of
-    `shape_outer_ridge_raise`.
-
-23. Negative outer-ridge width is invalid.
-
-24. The default outer-ridge raise is 1 mm for both ridge styles.
-
-25. Outer-ridge raise is measured relative to the top of the base.
-
-26. The complete assembled ridge height is
-    `shape_base_raise + shape_outer_ridge_raise` for both ridge styles.
-
-27. Outer-ridge raise may be zero.
-
-28. Outer-ridge raise may be negative down to `-shape_base_raise`.
-
-29. Outer-ridge raise less than `-shape_base_raise` is invalid.
-
-30. An existing outer ridge may be integrated with the base or
-    partitioned as a separately printable structural component.
-
-31. With an integrated outer ridge, the base retains the complete Shape
-    X/Y envelope.
-
-32. With a separate outer ridge, the ridge retains the complete Shape
-    outer boundary and the base outer boundary becomes the ridge inner
-    boundary.
-
-33. A separate outer ridge and its base occupy adjacent, nonoverlapping
-    X/Y regions.
-
-34. A separate ridge occupies Z from zero through
-    `shape_base_raise + shape_outer_ridge_raise`.
-
-35. Integrated and separate ridge styles preserve the same complete
-    Shape envelope, ridge boundaries, registered interior region, and
-    intended assembled ridge height for otherwise identical Shape
-    parameters.
-
-36. The innermost existing ridge boundary defines the available
-    registered interior region; when no ridge exists, the registered
-    Shape boundary defines the interior region.
-
-37. Ridge raise does not change the registered ridge inner boundary or
-    registered interior region.
-
-38. Physical Shape policy may be converted into relative
-    registered-space relationships when required for composition without
-    assigning final physical dimensions to the registered coordinate
-    system.
-
-39. Every Shape has a base color determined by `shape_base_color` and
-    applied during Shape Package.
-
-40. The default base color is `white`.
-
-41. The default outer-ridge color is the resolved base color.
-
-42. An explicitly configured outer-ridge color overrides its derived
-    base-color default.
-
-43. Outer-ridge color is independent from outer-ridge structural style.
-
-44. An integrated ridge may have a color different from the base.
-
-45. A separate ridge may have a color different from the base.
-
-46. Shape can consume registered vector Artwork produced by another
-    artifact.
-
-47. Consuming registered Artwork does not require standalone Artwork
-    extrusion or packaging.
-
-48. Dynamic Artwork component membership is obtained from its declared
-    manifest rather than filesystem scanning.
-
-49. Registered Artwork and registered structural Shape geometry are
-    composed before final physical X/Y dimensionalization.
-
-50. Shape determines the physical size and placement of incorporated
-    Artwork.
-
-51. Shape uses one geometry-independent Artwork placement computation
-    for circle, square, and regular polygon geometry. The Artwork
-    placement region is the largest circle centered at the registered
-    Shape origin that is wholly contained within the available
-    registered Shape interior region, and incorporated Artwork is
-    centered and uniformly scaled to the largest size at which its
-    authoritative envelope remains contained within that placement
-    region.
-
-52. Artwork aspect ratio and registration between color components are
-    preserved.
-
-53. All components of one registered Artwork collection receive the same
-    transformation from Artwork registered space into Shape registered
-    space.
-
-54. Physical X/Y dimensionalization of the composed Shape is determined
-    by `shape_size`.
-
-55. Physical Z dimensions are introduced according to component
-    semantics during downstream dimensionalization.
-
-56. Separately printable structural components retain their identity
-    through dimensionalization and packaging.
-
-57. Required color distinctions remain representable through
-    dimensionalization and packaging.
-
-58. Packaged 3MF component names preserve semantic component role and
-    resolved printing-color identity without relying on intermediate
-    component ordinals.
-
-59. Packaging occurs after physical dimensionalization.
-
-60. Shape produces a valid printable 3MF containing its structural
-    geometry and any incorporated Artwork components.
-
-61. Incorporated Artwork begins at the top surface of the Shape base at
-    `Z = shape_base_raise`.
-
-62. Incorporated Artwork has physical height determined by
-    `shape_artwork_raise`.
-
-63. The default `shape_artwork_raise` is 1 mm.
-
-64. `shape_artwork_raise` must be greater than zero when Artwork is
-    incorporated.
-
-65. All incorporated Artwork components receive the same physical Z
-    dimensionalization.
-
-66. Standalone `artwork_raise` does not determine incorporated Artwork Z
-    dimensionalization.
-
-67. Artwork-fill participation is determined solely by
-    `shape_artwork_fill_raise`.
-
-68. Artwork fill participates when `shape_artwork_fill_raise > 0` and
-    does not participate when `shape_artwork_fill_raise <= 0`.
-
-69. The default `shape_artwork_fill_raise` is 0 mm.
-
-70. When Artwork fill exists, its registered geometry is the registered
-    Shape interior region minus the transformed registered Artwork
-    envelope.
-
-71. Artwork fill begins at the top surface of the Shape base at
-    `Z = shape_base_raise` and has physical height determined by
-    `shape_artwork_fill_raise`.
-
-72. Artwork fill remains semantically distinct from the structural base
-    even when both resolve to the same printing color.
-
-73. The default Artwork-fill color is the resolved base color; an
-    explicitly configured `shape_artwork_fill_color` overrides that
-    derived default.
-
-74. `shape_artwork_fill_color` does not determine Artwork-fill
-    participation or geometry.
-
-75. Outer-ridge style does not change the physical Z origin or raise of
-    incorporated Artwork or Artwork fill.
-
-76. Incorporated Artwork preserves logical Artifact-color identity
-    through Shape Compose and Shape Extrude.
-
-77. Shape Compose and Shape Extrude do not assign physical printer
-    colors to incorporated Artwork.
-
-78. Shape Extrude owns physical geometry and component participation and
-    does not assign physical colors to Shape-owned base, outer-ridge, or
-    Artwork-fill components.
-
-79. Shape Package applies physical color policy for Shape-owned base,
-    outer-ridge, and Artwork-fill components.
-
-80. Shape Package resolves incorporated Artwork Artifact-color identity
-    to physical printer colors using `printer_colors`.
-
-81. Changing only `printer_colors`, `shape_base_color`,
-    `shape_outer_ridge_color`, or `shape_artwork_fill_color` does not by
-    itself change Shape Structure, Compose, or Extrude geometry.
-
-82. Changing `shape_artwork_fill_raise` changes Artwork-fill
-    participation or physical geometry and therefore affects Shape
-    Extrude and downstream Package.
-
-## Initial Scope
+## Scope
 
 The initial Shape model includes:
 
--   circle geometry;
--   square geometry;
--   configurable regular polygon geometry;
--   polygon side count of three or greater;
--   polygon rotation;
--   canonical registered Shape geometry;
--   physical Shape size;
--   physical base thickness;
--   optional integrated outer ridge;
--   optional separately printable outer ridge;
--   positive, zero, and permitted negative outer-ridge raise;
--   base and outer-ridge color assignment;
--   structural component partitioning;
--   optional registered Artwork;
--   centered, aspect-preserving Artwork fitting;
--   registered Shape/Artwork composition;
--   Shape-owned physical raise for incorporated Artwork;
--   optional Shape-owned Artwork fill geometry with independent physical
+- circle geometry;
+- square geometry;
+- configurable regular polygon geometry;
+- polygon side count of three or greater;
+- polygon rotation;
+- canonical registered Shape geometry;
+- physical Shape size;
+- physical base thickness;
+- optional integrated outer ridge;
+- optional separately printable outer ridge;
+- positive, zero, and permitted negative outer-ridge raise;
+- base and outer-ridge color assignment;
+- structural component partitioning;
+- optional registered Artwork;
+- centered, aspect-preserving Artwork fitting;
+- registered Shape/Artwork composition;
+- Shape-owned physical raise for incorporated Artwork;
+- optional Shape-owned Artwork fill geometry with independent physical
+
     raise;
--   Artwork-fill color assignment with base-color inheritance;
--   downstream physical dimensionalization;
--   final multicomponent 3MF packaging, including physical color
+
+- Artwork-fill color assignment with base-color inheritance;
+- downstream physical dimensionalization;
+- final multicomponent 3MF packaging, including physical color
+
     assignment for Shape-owned components and physical printer
     assignment for incorporated Artwork.
 
 The initial Shape model does not include:
 
--   irregular polygons;
--   internal ridges;
--   dashed ridges;
--   hangers;
--   handles;
--   text or labels;
--   arbitrary Artwork positioning;
--   multiple independent Artwork placements;
--   recessed or embedded Artwork;
--   arbitrary custom Shape outlines.
+- irregular polygons;
+- internal ridges;
+- dashed ridges;
+- hangers;
+- handles;
+- text or labels;
+- arbitrary Artwork positioning;
+- multiple independent Artwork placements;
+- recessed or embedded Artwork;
+- arbitrary custom Shape outlines.
 
 These capabilities may be added later by deliberately extending the
 Shape definition.
