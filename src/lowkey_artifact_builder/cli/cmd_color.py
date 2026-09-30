@@ -43,6 +43,7 @@ from lowkey_artifact_builder.engine import (
     create_product_dependency_build_plan,
     plan_incremental_execution,
 )
+from lowkey_artifact_builder.engine.plan import BuildPlanError
 from lowkey_artifact_builder.formats.threemf import (
     update_component_colors,
 )
@@ -1682,7 +1683,7 @@ def cli(
         raise click.ClickException(str(exc)) from exc
     except PrinterColorReconciliationError as exc:
         raise click.ClickException(str(exc)) from exc
-    except ConfigError as exc:
+    except (ConfigError, BuildPlanError) as exc:
         raise click.ClickException(str(exc)) from exc
 
     if isinstance(

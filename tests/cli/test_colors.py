@@ -20,6 +20,7 @@ from lowkey_artifact_builder.application.recolor import (
 from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.config.artifact import ArtifactState
 from lowkey_artifact_builder.engine import BuildPlan
+from lowkey_artifact_builder.engine.plan import BuildPlanError
 from lowkey_artifact_builder.model import ProductRef
 
 
@@ -1946,3 +1947,47 @@ def test_colors_translates_printer_color_reconciliation_failure(
         SystemExit,
     )
     assert "expected printer-color reconciliation failure" in result.output
+
+
+def test_colors_translates_build_plan_failure(
+    monkeypatch,
+) -> None:
+    """
+    Expected planning failures are translated at the CLI boundary rather
+    than escaping as application exceptions.
+    """
+
+    runner = CliRunner()
+
+    monkeypatch.setattr(
+        cmd_color,
+        "discover_artifacts",
+        lambda **kwargs: (
+            SimpleNamespace(
+                artifact_id="nydeli",
+                materialized=True,
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cmd_color,
+        "run_colors",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            BuildPlanError("expected color planning failure")
+        ),
+    )
+
+    result = runner.invoke(
+        cmd_color.cli,
+        [
+            "nydeli",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert isinstance(
+        result.exception,
+        SystemExit,
+    )
+    assert "expected color planning failure" in result.output
