@@ -1748,9 +1748,21 @@ def _build_border_label_component_scad(
     Border Label SVG geometry is already expressed in registered Shape
     coordinates by Compose.
 
-    Extrude maps that registered geometry into physical X/Y space using
-    shape_size and begins the physical label extrusion at the top of the
-    complete Shape base.
+    Registered Shape geometry uses SVG coordinates: X increases rightward
+    and Y increases downward. OpenSCAD imports SVG geometry into its
+    upward-positive Cartesian coordinate system.
+
+    The imported registered viewport is offset from the Shape origin.
+    Extrude removes that viewport offset and applies the physical Shape size,
+    while preserving OpenSCAD's SVG-to-Cartesian Y-axis conversion.
+
+    The resulting physical component therefore preserves the visual Shape
+    placement authored by Compose:
+
+        registered SVG Top     -> positive physical Y
+        registered SVG Bottom  -> negative physical Y
+
+    Z begins at the top of the complete Shape base.
     """
 
     return (
@@ -1764,7 +1776,8 @@ def _build_border_label_component_scad(
         "        center = false\n"
         "    )\n"
         "        scale([shape_size, shape_size, 1])\n"
-        f'            import("{source}", dpi = 25.4);\n'
+        "            translate([-0.5, -1.5, 0])\n"
+        f'                import("{source}", dpi = 25.4);\n'
     )
 
 

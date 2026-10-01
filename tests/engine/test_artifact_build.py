@@ -29,6 +29,7 @@ from lowkey_artifact_builder.engine import (
     execute_artifact_build,
     rebuild_artifact,
 )
+from lowkey_artifact_builder.model.models.shape import MODEL as SHAPE_MODEL
 
 # =========================================================
 # Public artifact-build boundary
@@ -538,17 +539,11 @@ def test_artifact_build_all_variants_plans_each_model_variant(
         (
             "example",
             "shape",
-            "default",
+            variant.name,
             None,
             tmp_path,
-        ),
-        (
-            "example",
-            "shape",
-            "ornament",
-            None,
-            tmp_path,
-        ),
+        )
+        for variant in SHAPE_MODEL.variants
     ]
 
 

@@ -66,7 +66,6 @@ from pathlib import Path
 from lowkey_artifact_builder.tools.inkscape import (
     InkscapeError,
     export_text_to_path,
-    px_to_mm,
     query_all,
 )
 
@@ -188,17 +187,18 @@ class CircularBorderLabelFit:
     ``font_size`` is the common SVG/CSS font-size used by all
     participating labels.
 
-    ``bottom_baseline_radius`` and ``top_baseline_radius`` are physical
-    millimeter radii derived from the normative Shape Border Label
-    relationship:
+    ``bottom_baseline_radius`` and ``top_baseline_radius`` identify the
+    semantic baselines for the Bottom and Top Border Labels. For circular
+    Border Labels they resolve to one shared physical radius:
 
         reference boundary
             ↓ border width
-        Bottom baseline
+        shared Top/Bottom baseline
             ↓ resolved common glyph height
-        Top baseline
-            ↓ border width
         Border Label inner boundary
+
+    Top lettering extends inward from the shared baseline. Bottom lettering
+    extends outward from that same baseline.
 
     A label entry is present only when that label participates.
     """
@@ -585,6 +585,10 @@ def write_registered_circular_label_svg(
 
     Inkscape performs the final text-to-path conversion so downstream stages
     consume ordinary registered path geometry rather than font-dependent text.
+
+    The baseline exists only to support text-on-path conversion. It is removed
+    from the persistent manufacturing product after conversion so Extrude
+    receives glyph outlines only.
     """
 
     output = Path(
@@ -614,16 +618,16 @@ def write_registered_circular_label_svg(
         raise BorderLabelError("Rendered Border Label height must be greater than zero.")
 
     #
-    # The fitted SVG/CSS font size is expressed in CSS pixels because that is
-    # the unit Inkscape measured. Convert it to physical millimeters and then
-    # into the registered Shape coordinate system.
+    # Font measurement uses an SVG whose user-coordinate system is
+    # millimeter-equivalent: its physical dimensions and viewBox use the same
+    # numeric dimensions. The fitted font size is therefore already expressed
+    # in physical millimeter-equivalent user units.
     #
-    registered_font_size = (
-        px_to_mm(
-            font_size,
-        )
-        / shape_size
-    )
+    # Compose converts that physical font size directly into registered Shape
+    # coordinates. Extrude later restores the physical Shape dimensions.
+    #
+
+    registered_font_size = font_size / shape_size
 
     registered_rendered_height = rendered_height / shape_size
 
@@ -642,6 +646,7 @@ def write_registered_circular_label_svg(
     # baseline. Moving by the measured below-baseline extent keeps descenders
     # inside that same outward-facing band.
     #
+
     if position == "top":
         baseline_offset = registered_above_baseline
     else:
@@ -687,7 +692,7 @@ def write_registered_circular_label_svg(
         f"{{{SVG_NS}}}textPath",
         {
             "href": f"#{REGISTERED_LABEL_PATH_ID}",
-            f"{{{XLINK_NS}}}href": f"#{REGISTERED_LABEL_PATH_ID}",
+            f"{{{XLINK_NS}}}href": (f"#{REGISTERED_LABEL_PATH_ID}"),
             "startOffset": "50%",
             "dy": f"{baseline_offset:.12g}",
         },
@@ -720,6 +725,62 @@ def write_registered_circular_label_svg(
 
     if not output.is_file():
         raise BorderLabelError(f"Border Label path geometry was not created: {output}")
+
+    #
+    # The baseline is construction geometry. Inkscape preserves it while
+    # converting the text to path outlines, but it is not part of the
+    # manufacturing product consumed by Extrude.
+    #
+
+    try:
+        output_tree = ET.parse(
+            output,
+        )
+    except ET.ParseError as exc:
+        raise BorderLabelError(
+            f"Could not read materialized Border Label path geometry: {output}"
+        ) from exc
+
+    output_root = output_tree.getroot()
+
+    baseline_removed = False
+
+    for parent in output_root.iter():
+        for child in list(
+            parent,
+        ):
+            if child.get("id") == REGISTERED_LABEL_PATH_ID:
+                parent.remove(
+                    child,
+                )
+                baseline_removed = True
+
+    if not baseline_removed:
+        raise BorderLabelError(
+            "Materialized Border Label geometry does not contain its construction baseline."
+        )
+
+    #
+    # The persistent product must contain ordinary path geometry after the
+    # construction baseline has been removed.
+    #
+
+    manufacturing_paths = [
+        element
+        for element in output_root.iter()
+        if (element.tag == f"{{{SVG_NS}}}path" and element.get("d"))
+    ]
+
+    if not manufacturing_paths:
+        raise BorderLabelError(
+            "Materialized Border Label does not contain manufacturing path geometry."
+        )
+
+    output_tree.write(
+        output,
+        encoding="utf-8",
+        xml_declaration=True,
+    )
 
     return output
 
@@ -1007,22 +1068,27 @@ def _circular_baseline_radii(
 
         reference boundary
             ↓ border_width
-        Bottom baseline
+        shared Top/Bottom baseline
             ↓ glyph_height
-        Top baseline
+        lettering-band inner edge
             ↓ border_width
         Border Label inner boundary
+
+    Top and Bottom Border Labels share one circular baseline.
+
+    Top lettering extends inward from that baseline. Bottom lettering extends
+    outward from the same baseline. The common glyph-height allocation defines
+    the lettering band, while ``border_width`` preserves clearance on both
+    sides of that band.
     """
 
-    bottom_baseline_radius = reference_radius - border_width
+    baseline_radius = reference_radius - border_width
 
-    top_baseline_radius = bottom_baseline_radius - glyph_height
-
-    inner_boundary_radius = top_baseline_radius - border_width
+    inner_boundary_radius = baseline_radius - glyph_height - border_width
 
     return (
-        bottom_baseline_radius,
-        top_baseline_radius,
+        baseline_radius,
+        baseline_radius,
         inner_boundary_radius,
     )
 
@@ -1041,8 +1107,9 @@ def _circular_labels_fit(
 
     Expected semantic keys are ``top`` and/or ``bottom``.
 
-    Both labels use one common SVG/CSS font-size. A shorter label is not
-    stretched to consume additional path length.
+    Both labels use one common SVG/CSS font-size and one shared circular
+    baseline. A shorter label is not stretched to consume additional path
+    length.
     """
 
     if glyph_height <= 0:
@@ -1061,26 +1128,33 @@ def _circular_labels_fit(
     if bottom_radius <= 0 or top_radius <= 0 or inner_radius <= 0:
         return False
 
+    if not math.isclose(
+        bottom_radius,
+        top_radius,
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    ):
+        raise BorderLabelError("Circular Border Labels must share one baseline radius.")
+
+    baseline_radius = top_radius
+
     font_size = _common_font_size(
         metrics,
         glyph_height,
     )
 
+    available = available_arc_length(
+        baseline_radius,
+        arc_degrees,
+        end_margin=end_margin,
+    )
+
     for name, label_metrics in metrics.items():
-        if name == "top":
-            radius = top_radius
-
-        elif name == "bottom":
-            radius = bottom_radius
-
-        else:
+        if name not in {
+            "top",
+            "bottom",
+        }:
             raise BorderLabelError(f"Unknown circular Border Label position: {name!r}")
-
-        available = available_arc_length(
-            radius,
-            arc_degrees,
-            end_margin=end_margin,
-        )
 
         required = _rendered_width(
             label_metrics,

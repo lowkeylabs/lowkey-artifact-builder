@@ -242,7 +242,7 @@ shape_border_label_end_margin = 1.0
 # Font family used by both Border Labels.
 #
 
-shape_border_label_font_family = "DejaVu Sans"
+shape_border_label_font_family = "Arial"
 
 
 #

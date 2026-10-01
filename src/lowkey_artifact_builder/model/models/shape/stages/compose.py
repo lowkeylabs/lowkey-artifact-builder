@@ -27,6 +27,7 @@ from lowkey_artifact_builder.model.models.shape.border_labels import (
     bottom_label_path,
     fit_circular_border_labels,
     top_label_path,
+    write_registered_circular_label_svg,
 )
 
 SVG_NAMESPACE = "http://www.w3.org/2000/svg"
@@ -324,11 +325,19 @@ def execute(
         context.resolver("shape_bottom_border_label_text"),
     )
 
+    border_labels: dict[
+        str,
+        dict[str, object] | None,
+    ] = {
+        "top": None,
+        "bottom": None,
+    }
+
     if ridge_style in {
         "integrated",
         "separate",
     }:
-        _compose_ridge(
+        border_labels = _compose_ridge(
             structure_input,
             composition_output,
             shape_size=shape_size,
@@ -342,6 +351,7 @@ def execute(
             border_label_font_family=border_label_font_family,
             top_border_label_text=top_border_label_text,
             bottom_border_label_text=bottom_border_label_text,
+            border_label_output_directory=manifest_output.parent,
         )
 
     else:
@@ -381,6 +391,7 @@ def execute(
     _write_composition_manifest(
         manifest_output,
         composition=composition_output,
+        border_labels=border_labels,
         artwork=artwork,
         artwork_transform=artwork_transform,
         artwork_fill=artwork_fill,
@@ -391,6 +402,7 @@ def _write_composition_manifest(
     path: Path,
     *,
     composition: Path,
+    border_labels: dict[str, dict[str, object] | None] | None = None,
     artwork: RegisteredArtwork | None = None,
     artwork_transform: RegisteredArtworkTransform | None = None,
     artwork_fill: RegisteredArtworkFillRegion | None = None,
@@ -429,10 +441,11 @@ def _write_composition_manifest(
             transform=artwork_transform,
         )
 
-    border_labels = _materialize_border_label_components(
-        composition,
-        path.parent,
-    )
+    if border_labels is None:
+        border_labels = {
+            "top": None,
+            "bottom": None,
+        }
 
     manifest = {
         "composition": composition.name,
@@ -453,104 +466,6 @@ def _write_composition_manifest(
             indent=2,
         ),
         encoding="utf-8",
-    )
-
-
-def _materialize_border_label_components(
-    composition: Path,
-    output_directory: Path,
-) -> dict[str, dict[str, object] | None]:
-    """
-    Materialize participating registered Border Label geometry.
-
-    Compose owns Border Label participation and registered X/Y geometry.
-    Each participating label is persisted as an independent SVG component
-    beside the composition manifest so Extrude can consume that geometry
-    directly without rediscovering typography or fitting policy.
-    """
-
-    tree = ET.parse(
-        composition,
-    )
-
-    root = tree.getroot()
-
-    components: dict[
-        str,
-        dict[str, object] | None,
-    ] = {
-        "top": None,
-        "bottom": None,
-    }
-
-    for position in (
-        "top",
-        "bottom",
-    ):
-        element_id = f"{position}-border-label-path"
-
-        element = next(
-            (candidate for candidate in root.iter() if candidate.get("id") == element_id),
-            None,
-        )
-
-        if element is None:
-            continue
-
-        component_name = f"{position}-border-label.svg"
-        component_path = output_directory / component_name
-
-        _write_registered_border_label_component(
-            root,
-            element,
-            component_path,
-        )
-
-        components[position] = {
-            "path": component_name,
-        }
-
-    return components
-
-
-def _write_registered_border_label_component(
-    composition_root: ET.Element,
-    element: ET.Element,
-    output: Path,
-) -> None:
-    """
-    Persist one registered Border Label component as an independent SVG.
-
-    The component preserves the composition's registered coordinate system.
-    Only the participating Border Label geometry is included.
-    """
-
-    svg = ET.Element(
-        composition_root.tag,
-        dict(
-            composition_root.attrib,
-        ),
-    )
-
-    svg.append(
-        ET.fromstring(
-            ET.tostring(
-                element,
-                encoding="unicode",
-            )
-        )
-    )
-
-    ET.register_namespace(
-        "",
-        SVG_NAMESPACE,
-    )
-
-    ET.ElementTree(
-        svg,
-    ).write(
-        output,
-        encoding="unicode",
     )
 
 
@@ -741,7 +656,8 @@ def _compose_ridge(
     border_label_font_family: str = "DejaVu Sans",
     top_border_label_text: str = "",
     bottom_border_label_text: str = "",
-) -> None:
+    border_label_output_directory: Path | None = None,
+) -> dict[str, dict[str, object] | None]:
     """
     Compose structural partition boundaries in registered Shape space.
 
@@ -764,6 +680,11 @@ def _compose_ridge(
     participates, the Border Label reference boundary is the inside boundary
     of the Outer Ridge when it participates and the complete Shape boundary
     otherwise.
+
+    Participating Border Labels are also materialized as persistent registered
+    path geometry while the fitted typography and semantic baseline geometry
+    are available. Downstream stages therefore consume ordinary registered
+    geometry without rediscovering typography or fitting policy.
 
     Inner-ridge existence is determined solely by inner-ridge width. When
     Border Labels participate, their inside boundary establishes the Inner
@@ -849,13 +770,24 @@ def _compose_ridge(
 
     border_labels_participate = top_participates or bottom_participates
 
+    border_labels: dict[
+        str,
+        dict[str, object] | None,
+    ] = {
+        "top": None,
+        "bottom": None,
+    }
+
     inner_reference_boundary = next(
         (element for element in root if element.get("id") == "ridge-inner-boundary"),
         outer_boundary,
     )
 
     if border_labels_participate:
-        _compose_circle_border_labels(
+        if border_label_output_directory is None:
+            raise ValueError("Participating Border Labels require a persistent output directory.")
+
+        border_labels = _compose_circle_border_labels(
             root,
             inner_reference_boundary,
             shape_size=shape_size,
@@ -866,6 +798,7 @@ def _compose_ridge(
             font_family=border_label_font_family,
             top_text=(top_border_label_text if top_participates else None),
             bottom_text=(bottom_border_label_text if bottom_participates else None),
+            output_directory=border_label_output_directory,
         )
 
         border_label_boundary = next(
@@ -910,6 +843,8 @@ def _compose_ridge(
         encoding="unicode",
     )
 
+    return border_labels
+
 
 def _compose_circle_border_labels(
     root: ET.Element,
@@ -923,9 +858,10 @@ def _compose_circle_border_labels(
     font_family: str,
     top_text: str | None,
     bottom_text: str | None,
-) -> None:
+    output_directory: Path,
+) -> dict[str, dict[str, object] | None]:
     """
-    Compose circular Border Label registered geometry.
+    Compose and persist circular Border Label registered geometry.
 
     The reference boundary is the inside boundary of the Outer Ridge when
     that feature participates and the complete Shape boundary otherwise.
@@ -934,14 +870,18 @@ def _compose_circle_border_labels(
     millimeters. Resolved baseline and inner-boundary radii are converted
     back into registered Shape coordinates before persistence.
 
-    Top and Bottom labels publish distinct semantic paths only when they
-    participate. The Top path traverses the upper circular span from left
-    to right. The Bottom path traverses the lower circular span in the
+    Top and Bottom labels publish distinct semantic baseline paths only when
+    they participate. The Top path traverses the upper circular span from
+    left to right. The Bottom path traverses the lower circular span in the
     opposite direction so left-to-right text remains upright.
 
-    This operation establishes semantic registered geometry only. Physical
-    Z dimensionalization belongs to Extrude and physical color assignment
-    belongs to Package.
+    Each participating label is additionally materialized as independent
+    registered SVG glyph geometry using the fitted typography and semantic
+    baseline path. Downstream stages therefore consume persistent path
+    geometry rather than rediscovering font or fitting policy.
+
+    Physical Z dimensionalization belongs to Extrude and physical color
+    assignment belongs to Package.
     """
 
     if reference_boundary.tag != SVG_CIRCLE:
@@ -1022,35 +962,85 @@ def _compose_circle_border_labels(
         },
     )
 
+    components: dict[
+        str,
+        dict[str, object] | None,
+    ] = {
+        "top": None,
+        "bottom": None,
+    }
+
     if fit.top is not None:
+        top_baseline_path = top_label_path(
+            center_x=center_x,
+            center_y=center_y,
+            radius=registered_top_baseline_radius,
+            arc_degrees=arc_degrees,
+        )
+
         ET.SubElement(
             root,
             SVG_PATH,
             {
                 "id": "top-border-label-path",
-                "d": top_label_path(
-                    center_x=center_x,
-                    center_y=center_y,
-                    radius=registered_top_baseline_radius,
-                    arc_degrees=arc_degrees,
-                ),
+                "d": top_baseline_path,
             },
         )
 
+        component_name = "top-border-label.svg"
+
+        write_registered_circular_label_svg(
+            output_directory / component_name,
+            text=fit.top.text,
+            font_family=font_family,
+            font_size=fit.font_size,
+            metrics=fit.top.metrics,
+            rendered_height=fit.top.rendered_height,
+            baseline_path=top_baseline_path,
+            shape_size=shape_size,
+            position="top",
+        )
+
+        components["top"] = {
+            "path": component_name,
+        }
+
     if fit.bottom is not None:
+        bottom_baseline_path = bottom_label_path(
+            center_x=center_x,
+            center_y=center_y,
+            radius=registered_bottom_baseline_radius,
+            arc_degrees=arc_degrees,
+        )
+
         ET.SubElement(
             root,
             SVG_PATH,
             {
                 "id": "bottom-border-label-path",
-                "d": bottom_label_path(
-                    center_x=center_x,
-                    center_y=center_y,
-                    radius=registered_bottom_baseline_radius,
-                    arc_degrees=arc_degrees,
-                ),
+                "d": bottom_baseline_path,
             },
         )
+
+        component_name = "bottom-border-label.svg"
+
+        write_registered_circular_label_svg(
+            output_directory / component_name,
+            text=fit.bottom.text,
+            font_family=font_family,
+            font_size=fit.font_size,
+            metrics=fit.bottom.metrics,
+            rendered_height=fit.bottom.rendered_height,
+            baseline_path=bottom_baseline_path,
+            shape_size=shape_size,
+            position="bottom",
+        )
+
+        components["bottom"] = {
+            "path": component_name,
+        }
+
+    return components
 
 
 def _compose_inner_ridge(

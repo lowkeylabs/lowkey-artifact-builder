@@ -44,6 +44,13 @@ MODEL = ModelSpec(
                 "shape_outer_ridge_width": 2.0,
             },
         ),
+        VariantSpec(
+            name="coaster",
+            description=("Shape with an enabled outer ridge suitable for an ornament."),
+            parameters={
+                "shape_outer_ridge_width": 2.0,
+            },
+        ),
     ),
     stages=(
         StageSpec(
