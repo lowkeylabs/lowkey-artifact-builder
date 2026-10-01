@@ -147,18 +147,15 @@ shape_outer_ridge_style = "integrated"
 shape_inner_ridge_width = 0.0
 
 
-#
 # Physical Z displacement of the inner-ridge top relative to
 # the top of the base, in millimeters.
 #
 # Positive values place the ridge top above the base top.
 # Zero places the ridge top flush with the base top.
-# Negative values place the ridge top below the base top.
 #
-# The minimum valid value is -shape_base_raise.
+# Negative values are invalid.
 #
 # Ridge raise does not determine whether the ridge exists.
-#
 
 shape_inner_ridge_raise = 1.0
 

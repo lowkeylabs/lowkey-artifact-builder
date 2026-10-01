@@ -851,6 +851,10 @@ shape_outer_ridge_width
 shape_outer_ridge_raise
 shape_outer_ridge_style
 shape_outer_ridge_color
+shape_inner_ridge_width
+shape_inner_ridge_raise
+shape_inner_to_outer_ridge_dist
+shape_inner_ridge_color
 shape_artwork_raise
 shape_artwork_fill_raise
 shape_artwork_fill_color
@@ -902,6 +906,11 @@ geometry.
 The `shape_outer_ridge_*` parameters are Feature parameters. Their participation,
 defaults, validation, dimensional semantics, structural style, and color policy are
 defined only by the Outer Ridge Feature contract.
+
+The `shape_inner_ridge_*` parameters and
+`shape_inner_to_outer_ridge_dist` are Feature parameters. Their
+participation, defaults, validation, dimensional semantics, positioning,
+and color policy are defined by the Inner Ridge Feature contract.
 
 `shape_base_color` selects the base printing color.
 
@@ -997,6 +1006,7 @@ The packaging parameters are:
 printer_colors
 shape_base_color
 shape_outer_ridge_color
+shape_inner_ridge_color
 shape_artwork_fill_color
 ```
 
@@ -1004,9 +1014,11 @@ shape_artwork_fill_color
 Shape Package to resolve the logical Artifact-color layers of
 incorporated Artwork.
 
-`shape_base_color` and `shape_artwork_fill_color` provide model-wide physical
-color policy for Shape-owned components. `shape_outer_ridge_color` is a Feature
-packaging parameter whose semantics are defined by the Outer Ridge Feature contract.
+`shape_base_color` and `shape_artwork_fill_color` provide model-wide
+physical color policy for Shape-owned components.
+`shape_outer_ridge_color` and `shape_inner_ridge_color` are Feature
+packaging parameters whose semantics are defined by their respective
+Feature contracts.
 
 These parameters are packaging policy, not structural, composition, or
 extrusion geometry policy. Changing only physical color policy does not
@@ -2606,6 +2618,7 @@ The initial Shape model includes:
 - optional separately printable outer ridge;
 - positive, zero, and permitted negative outer-ridge raise;
 - base and outer-ridge color assignment;
+- optional inner ridge with independent width, raise, position, and color;
 - structural component partitioning;
 - optional registered Artwork;
 - centered, aspect-preserving Artwork fitting;

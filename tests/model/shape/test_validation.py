@@ -996,3 +996,19 @@ def test_invalid_historical_shape_ridge_color_does_not_block_current_package() -
         build_plan,
         execution_plan,
     )
+
+
+def test_shape_inner_ridge_raise_must_be_nonnegative() -> None:
+    """
+    Inner Ridge layers on top of the Base and cannot have negative raise.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_inner_ridge_raise must be greater than or equal to zero",
+    ):
+        _validate_shape(
+            {
+                "shape_inner_ridge_raise": -0.5,
+            },
+        )
