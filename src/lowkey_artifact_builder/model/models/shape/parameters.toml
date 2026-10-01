@@ -189,6 +189,123 @@ shape_inner_to_outer_ridge_dist = 10.0
 
 
 # =========================================================
+# Border labels
+# =========================================================
+
+#
+# Physical clear-border width surrounding the common Border Label
+# lettering band, in millimeters.
+#
+# This distance is applied on both sides of the lettering band.
+#
+# Must be greater than or equal to zero.
+#
+
+shape_border_label_width = 1.0
+
+
+#
+# Maximum physical glyph-height allocation for participating
+# Border Labels, in millimeters.
+#
+# Top and Bottom Border Labels share one resolved glyph height.
+# The resolved height may be reduced as necessary so that all
+# participating labels fit their available paths.
+#
+# Must be greater than zero when either Border Label participates.
+#
+
+shape_border_label_max_glyph_height = 5.0
+
+
+#
+# Maximum permitted perimeter span for each Border Label,
+# in degrees.
+#
+# Must be greater than zero and less than 180 degrees.
+#
+
+shape_border_label_arc_degrees = 140.0
+
+
+#
+# Physical unused path length reserved at each end of the maximum
+# permitted Border Label path, in millimeters.
+#
+# Must be greater than or equal to zero.
+#
+
+shape_border_label_end_margin = 1.0
+
+
+#
+# Font family used by both Border Labels.
+#
+
+shape_border_label_font_family = "DejaVu Sans"
+
+
+#
+# Optional Top Border Label text.
+#
+# Empty or whitespace-only text disables the Top Border Label.
+#
+
+shape_top_border_label_text = ""
+
+
+#
+# Physical height of the Top Border Label above the top surface
+# of the Shape base, in millimeters.
+#
+
+shape_top_border_label_raise = 1.0
+
+
+#
+# Optional physical printing-color override for the Top Border Label.
+#
+# When not explicitly configured, the Top Border Label inherits the
+# resolved physical printing color of the Shape base.
+#
+# This parameter affects physical color assignment during packaging
+# only. It does not determine Border Label participation or geometry.
+#
+
+## shape_top_border_label_color = "white"
+
+
+#
+# Optional Bottom Border Label text.
+#
+# Empty or whitespace-only text disables the Bottom Border Label.
+#
+
+shape_bottom_border_label_text = ""
+
+
+#
+# Physical height of the Bottom Border Label above the top surface
+# of the Shape base, in millimeters.
+#
+
+shape_bottom_border_label_raise = 1.0
+
+
+#
+# Optional physical printing-color override for the Bottom Border Label.
+#
+# When not explicitly configured, the Bottom Border Label inherits the
+# resolved physical printing color of the Shape base.
+#
+# This parameter affects physical color assignment during packaging
+# only. It does not determine Border Label participation or geometry.
+#
+
+## shape_bottom_border_label_color = "white"
+
+
+# =========================================================
 # Incorporated Artwork
 # =========================================================
 

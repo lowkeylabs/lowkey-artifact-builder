@@ -337,6 +337,40 @@ def export_object_actions(
     ]
 
 
+def export_text_to_path(
+    source: Path,
+    output: Path,
+) -> Path:
+    """
+    Export an SVG with text converted to ordinary path geometry.
+    """
+
+    source = Path(source).resolve()
+    output = Path(output).resolve()
+
+    if source == output:
+        raise InkscapeError("Source and output SVG files must be different.")
+
+    output.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    run(
+        source,
+        args=(
+            "--export-type=svg",
+            "--export-text-to-path",
+            f"--export-filename={output}",
+        ),
+    )
+
+    if not output.is_file():
+        raise InkscapeError(f"Inkscape did not create the expected SVG: {output}")
+
+    return output
+
+
 __all__ = [
     "INKSCAPE_ENVIRONMENT_VARIABLE",
     "InkscapeError",
@@ -344,6 +378,7 @@ __all__ = [
     "PX_PER_INCH",
     "difference_actions",
     "export_object_actions",
+    "export_text_to_path",
     "find_inkscape",
     "px_to_mm",
     "query_all",

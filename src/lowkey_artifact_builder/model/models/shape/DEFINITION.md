@@ -2160,6 +2160,37 @@ shape_bottom_border_label_color
 
 The resolved common glyph height is derived from the configured maximum glyph height and the text-fitting rules below. It is not independently configured.
 
+#### Defaults
+
+The Border Label parameters have the following defaults:
+
+```text
+shape_border_label_width = 1 mm
+shape_border_label_max_glyph_height = 5 mm
+shape_border_label_arc_degrees = 140 degrees
+shape_border_label_end_margin = 1 mm
+shape_border_label_font_family = "DejaVu Sans"
+
+shape_top_border_label_text = ""
+shape_top_border_label_raise = 1 mm
+shape_top_border_label_color = shape_base_color
+
+shape_bottom_border_label_text = ""
+shape_bottom_border_label_raise = 1 mm
+shape_bottom_border_label_color = shape_base_color
+```
+
+The default empty Top and Bottom Border Label text means that neither
+Border Label participates by default.
+
+The default Top and Bottom Border Label colors are derived from the
+resolved value of shape_base_color rather than being independent
+literal color defaults.
+
+An explicitly configured shape_top_border_label_color or
+shape_bottom_border_label_color overrides the corresponding derived
+Base-color default.
+
 #### Participation
 
 The Top Border Label participates when `shape_top_border_label_text` contains non-whitespace text.
@@ -2318,12 +2349,6 @@ Font-size values used by an SVG or other intermediate representation are impleme
 
 `shape_border_label_arc_degrees` defines the maximum permitted span for each Border Label.
 
-Its initial/default behavior follows the existing Border Label fitting model:
-
-```text
-shape_border_label_arc_degrees = 140 degrees
-```
-
 It must be greater than zero and less than 180 degrees.
 
 For a circular Shape, this represents:
@@ -2343,12 +2368,6 @@ The same conceptual maximum-span constraint applies to non-circular Shape perime
 #### End Margin
 
 `shape_border_label_end_margin` reserves unused physical path length at both ends of the maximum permitted label path.
-
-Its default is:
-
-```text
-shape_border_label_end_margin = 1 mm
-```
 
 It must be greater than or equal to zero.
 

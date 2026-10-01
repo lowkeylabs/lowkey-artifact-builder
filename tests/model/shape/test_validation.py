@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from lowkey_artifact_builder.config import ConfigError
+from lowkey_artifact_builder.config import ConfigError, Resolver, get_resolver
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     ExecutionPlan,
@@ -34,6 +34,7 @@ from lowkey_artifact_builder.model.validation import (
 
 # =========================================================
 # Test support
+
 # =========================================================
 
 
@@ -55,43 +56,44 @@ class StubResolver:
         return self._values[name]
 
 
+@pytest.fixture
+def shape_resolver(
+    tmp_path: Path,
+) -> Resolver:
+    """
+    Construct a production Shape resolver for direct configuration tests.
+
+    Broad configuration-validation tests inherit the Shape model's actual
+    defaults and derivations so unrelated new parameters do not require
+    maintenance of a duplicate test parameter inventory.
+
+    Execution-boundary tests intentionally continue to use StubResolver so
+    unexpected stage parameter resolution remains visible.
+    """
+
+    return get_resolver(
+        "validation-test",
+        model="shape",
+        project_root=tmp_path,
+    )
+
+
 def _validate_shape(
+    resolver: Resolver,
     values: dict[str, Any],
 ) -> None:
     """
-    Validate resolved Shape configuration using representative model defaults.
-
-    Individual tests override only the configuration material to the behavior
-    they exercise. The shared defaults keep unrelated validators from making
-    those tests responsible for the Shape model's complete parameter set.
+    Validate explicit Shape values over authoritative production defaults.
     """
 
     from lowkey_artifact_builder.model.models.shape.validation import (
         VALIDATORS,
     )
 
-    resolved_values: dict[str, Any] = {
-        "shape_geometry": "circle",
-        "shape_sides": 8,
-        "shape_base_raise": 2.0,
-        "shape_outer_ridge_width": 0.0,
-        "shape_outer_ridge_raise": 1.0,
-        "shape_outer_ridge_style": "integrated",
-        "shape_inner_ridge_width": 0.0,
-        "shape_inner_ridge_raise": 1.0,
-        "shape_inner_to_outer_ridge_dist": 10.0,
-        "shape_base_color": "white",
-        "shape_outer_ridge_color": "white",
-        "shape_inner_ridge_color": "white",
-    }
-
-    resolved_values.update(
-        values,
-    )
-
     validate_configuration(
-        StubResolver(
-            resolved_values,
+        resolver.with_values(
+            values,
+            provenance="test",
         ),
         validators=VALIDATORS,
     )
@@ -319,6 +321,7 @@ def _shape_structure_execution_plan(
 
 # =========================================================
 # Shape configuration validation
+
 # =========================================================
 
 
@@ -374,33 +377,41 @@ def test_invalid_historical_polygon_sides_do_not_block_current_structure() -> No
     )
 
 
-def test_shape_outer_ridge_raise_may_equal_negative_base_raise() -> None:
+def test_shape_outer_ridge_raise_may_equal_negative_base_raise(
+    shape_resolver: Resolver,
+) -> None:
     """
     A ridge top may be exactly flush with the physical bottom of the base.
     """
 
     _validate_shape(
+        shape_resolver,
         {
             "shape_base_raise": 2.0,
             "shape_outer_ridge_raise": -2.0,
-        }
+        },
     )
 
 
-def test_shape_outer_ridge_raise_may_be_above_negative_base_raise() -> None:
+def test_shape_outer_ridge_raise_may_be_above_negative_base_raise(
+    shape_resolver: Resolver,
+) -> None:
     """
     A ridge top above the physical bottom of the base is valid.
     """
 
     _validate_shape(
+        shape_resolver,
         {
             "shape_base_raise": 2.0,
             "shape_outer_ridge_raise": -1.5,
-        }
+        },
     )
 
 
-def test_shape_outer_ridge_raise_cannot_extend_below_base() -> None:
+def test_shape_outer_ridge_raise_cannot_extend_below_base(
+    shape_resolver: Resolver,
+) -> None:
     """
     A ridge top cannot lie below the physical bottom of the Shape base.
     """
@@ -410,15 +421,17 @@ def test_shape_outer_ridge_raise_cannot_extend_below_base() -> None:
         match="shape_outer_ridge_raise",
     ):
         _validate_shape(
+            shape_resolver,
             {
                 "shape_base_raise": 2.0,
                 "shape_outer_ridge_raise": -2.1,
-            }
+            },
         )
 
 
 # =========================================================
 # Execution-scoped Shape validation
+
 # =========================================================
 
 
@@ -474,37 +487,45 @@ def test_invalid_historical_shape_ridge_raise_does_not_block_current_extrude() -
     )
 
 
-def test_shape_polygon_accepts_three_sides() -> None:
+def test_shape_polygon_accepts_three_sides(
+    shape_resolver: Resolver,
+) -> None:
     """
     A regular polygon may use the minimum supported side count.
     """
 
     _validate_shape(
+        shape_resolver,
         {
             "shape_geometry": "polygon",
             "shape_sides": 3,
             "shape_base_raise": 2.0,
             "shape_outer_ridge_raise": 1.0,
-        }
+        },
     )
 
 
-def test_shape_polygon_accepts_more_than_three_sides() -> None:
+def test_shape_polygon_accepts_more_than_three_sides(
+    shape_resolver: Resolver,
+) -> None:
     """
     A regular polygon may use any integer side count above the minimum.
     """
 
     _validate_shape(
+        shape_resolver,
         {
             "shape_geometry": "polygon",
             "shape_sides": 8,
             "shape_base_raise": 2.0,
             "shape_outer_ridge_raise": 1.0,
-        }
+        },
     )
 
 
-def test_shape_polygon_rejects_fewer_than_three_sides() -> None:
+def test_shape_polygon_rejects_fewer_than_three_sides(
+    shape_resolver: Resolver,
+) -> None:
     """
     Polygon geometry requires at least three sides.
     """
@@ -514,16 +535,19 @@ def test_shape_polygon_rejects_fewer_than_three_sides() -> None:
         match="shape_sides",
     ):
         _validate_shape(
+            shape_resolver,
             {
                 "shape_geometry": "polygon",
                 "shape_sides": 2,
                 "shape_base_raise": 2.0,
                 "shape_outer_ridge_raise": 1.0,
-            }
+            },
         )
 
 
-def test_shape_polygon_rejects_non_integer_side_count() -> None:
+def test_shape_polygon_rejects_non_integer_side_count(
+    shape_resolver: Resolver,
+) -> None:
     """
     Polygon side count is an integer semantic property.
     """
@@ -533,55 +557,67 @@ def test_shape_polygon_rejects_non_integer_side_count() -> None:
         match="shape_sides",
     ):
         _validate_shape(
+            shape_resolver,
             {
                 "shape_geometry": "polygon",
                 "shape_sides": 3.5,
                 "shape_base_raise": 2.0,
                 "shape_outer_ridge_raise": 1.0,
-            }
+            },
         )
 
 
-def test_shape_non_polygon_does_not_require_valid_polygon_side_count() -> None:
+def test_shape_non_polygon_does_not_require_valid_polygon_side_count(
+    shape_resolver: Resolver,
+) -> None:
     """
     Polygon side-count policy does not constrain non-polygon geometry.
     """
 
     _validate_shape(
+        shape_resolver,
         {
             "shape_geometry": "circle",
             "shape_sides": 2,
             "shape_base_raise": 2.0,
             "shape_outer_ridge_raise": 1.0,
-        }
+        },
     )
 
 
-def test_shape_outer_ridge_width_may_be_zero() -> None:
+def test_shape_outer_ridge_width_may_be_zero(
+    shape_resolver: Resolver,
+) -> None:
     """
     Zero ridge width validly disables the outer ridge.
     """
 
     _validate_shape(
+        shape_resolver,
         {
             "shape_outer_ridge_width": 0.0,
-        }
+        },
     )
 
 
-def test_shape_outer_ridge_width_may_be_positive() -> None:
+def test_shape_outer_ridge_width_may_be_positive(
+    shape_resolver: Resolver,
+) -> None:
     """
     Positive ridge width validly enables the outer ridge.
     """
 
     _validate_shape(
+        shape_resolver,
         {
             "shape_outer_ridge_width": 2.0,
-        }
+        },
     )
 
 
-def test_shape_outer_ridge_width_cannot_be_negative() -> None:
+def test_shape_outer_ridge_width_cannot_be_negative(
+    shape_resolver: Resolver,
+) -> None:
     """
     Negative outer-ridge width is invalid Shape configuration.
     """
@@ -591,9 +627,10 @@ def test_shape_outer_ridge_width_cannot_be_negative() -> None:
         match="shape_outer_ridge_width",
     ):
         _validate_shape(
+            shape_resolver,
             {
                 "shape_outer_ridge_width": -0.1,
-            }
+            },
         )
 
 
@@ -655,6 +692,7 @@ def test_invalid_historical_shape_ridge_width_does_not_block_current_compose() -
     ),
 )
 def test_shape_accepts_supported_geometry(
+    shape_resolver: Resolver,
     geometry: str,
 ) -> None:
     """
@@ -662,13 +700,16 @@ def test_shape_accepts_supported_geometry(
     """
 
     _validate_shape(
+        shape_resolver,
         {
             "shape_geometry": geometry,
-        }
+        },
     )
 
 
-def test_shape_rejects_unsupported_geometry() -> None:
+def test_shape_rejects_unsupported_geometry(
+    shape_resolver: Resolver,
+) -> None:
     """
     Shape geometry must be one of the model-defined geometry types.
     """
@@ -678,9 +719,10 @@ def test_shape_rejects_unsupported_geometry() -> None:
         match="shape_geometry",
     ):
         _validate_shape(
+            shape_resolver,
             {
                 "shape_geometry": "triangle",
-            }
+            },
         )
 
 
@@ -744,6 +786,7 @@ def test_invalid_historical_shape_geometry_does_not_block_current_structure() ->
     ),
 )
 def test_shape_accepts_supported_outer_ridge_style(
+    shape_resolver: Resolver,
     ridge_style: str,
 ) -> None:
     """
@@ -751,13 +794,16 @@ def test_shape_accepts_supported_outer_ridge_style(
     """
 
     _validate_shape(
+        shape_resolver,
         {
             "shape_outer_ridge_style": ridge_style,
-        }
+        },
     )
 
 
-def test_shape_rejects_unsupported_outer_ridge_style() -> None:
+def test_shape_rejects_unsupported_outer_ridge_style(
+    shape_resolver: Resolver,
+) -> None:
     """
     Outer-ridge style must be one of the model-defined styles.
     """
@@ -767,9 +813,10 @@ def test_shape_rejects_unsupported_outer_ridge_style() -> None:
         match="shape_outer_ridge_style",
     ):
         _validate_shape(
+            shape_resolver,
             {
                 "shape_outer_ridge_style": "detached",
-            }
+            },
         )
 
 
@@ -825,15 +872,18 @@ def test_invalid_historical_shape_ridge_style_does_not_block_current_compose() -
     )
 
 
-def test_shape_accepts_nonempty_base_color() -> None:
+def test_shape_accepts_nonempty_base_color(
+    shape_resolver: Resolver,
+) -> None:
     """
     Shape base color may be any nonempty semantic color name.
     """
 
     _validate_shape(
+        shape_resolver,
         {
             "shape_base_color": "test-red",
-        }
+        },
     )
 
 
@@ -846,6 +896,7 @@ def test_shape_accepts_nonempty_base_color() -> None:
     ),
 )
 def test_shape_rejects_invalid_base_color(
+    shape_resolver: Resolver,
     base_color: object,
 ) -> None:
     """
@@ -857,9 +908,10 @@ def test_shape_rejects_invalid_base_color(
         match="shape_base_color",
     ):
         _validate_shape(
+            shape_resolver,
             {
                 "shape_base_color": base_color,
-            }
+            },
         )
 
 
@@ -911,15 +963,18 @@ def test_invalid_historical_shape_base_color_does_not_block_current_package() ->
     )
 
 
-def test_shape_accepts_nonempty_outer_ridge_color() -> None:
+def test_shape_accepts_nonempty_outer_ridge_color(
+    shape_resolver: Resolver,
+) -> None:
     """
     Shape outer-ridge color may be any nonempty semantic color name.
     """
 
     _validate_shape(
+        shape_resolver,
         {
             "shape_outer_ridge_color": "test-red",
-        }
+        },
     )
 
 
@@ -932,6 +987,7 @@ def test_shape_accepts_nonempty_outer_ridge_color() -> None:
     ),
 )
 def test_shape_rejects_invalid_outer_ridge_color(
+    shape_resolver: Resolver,
     ridge_color: object,
 ) -> None:
     """
@@ -943,9 +999,10 @@ def test_shape_rejects_invalid_outer_ridge_color(
         match="shape_outer_ridge_color",
     ):
         _validate_shape(
+            shape_resolver,
             {
                 "shape_outer_ridge_color": ridge_color,
-            }
+            },
         )
 
 
@@ -998,7 +1055,9 @@ def test_invalid_historical_shape_ridge_color_does_not_block_current_package() -
     )
 
 
-def test_shape_inner_ridge_raise_must_be_nonnegative() -> None:
+def test_shape_inner_ridge_raise_must_be_nonnegative(
+    shape_resolver: Resolver,
+) -> None:
     """
     Inner Ridge layers on top of the Base and cannot have negative raise.
     """
@@ -1008,7 +1067,98 @@ def test_shape_inner_ridge_raise_must_be_nonnegative() -> None:
         match="shape_inner_ridge_raise must be greater than or equal to zero",
     ):
         _validate_shape(
+            shape_resolver,
             {
                 "shape_inner_ridge_raise": -0.5,
             },
         )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "RICHMOND",
+        " RICHMOND ",
+    ],
+)
+def test_border_label_glyph_height_must_be_positive_when_label_participates(
+    shape_resolver: Resolver,
+    text: str,
+) -> None:
+    """
+    Non-whitespace Border Label text requires a positive maximum glyph height.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_border_label_max_glyph_height must be greater than zero",
+    ):
+        _validate_shape(
+            shape_resolver,
+            {
+                "shape_top_border_label_text": text,
+                "shape_border_label_max_glyph_height": 0.0,
+            },
+        )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "   ",
+    ],
+)
+def test_border_label_glyph_height_not_required_when_label_does_not_participate(
+    shape_resolver: Resolver,
+    text: str,
+) -> None:
+    """
+    Empty or whitespace-only Border Label text does not cause participation.
+    """
+
+    _validate_shape(
+        shape_resolver,
+        {
+            "shape_top_border_label_text": text,
+            "shape_bottom_border_label_text": "",
+            "shape_border_label_max_glyph_height": 0.0,
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    ("values", "message"),
+    [
+        (
+            {"shape_border_label_width": -0.1},
+            "shape_border_label_width must be greater than or equal to zero",
+        ),
+        (
+            {"shape_border_label_arc_degrees": 0.0},
+            "shape_border_label_arc_degrees must be greater than zero and less than 180",
+        ),
+        (
+            {"shape_border_label_arc_degrees": 180.0},
+            "shape_border_label_arc_degrees must be greater than zero and less than 180",
+        ),
+        (
+            {"shape_border_label_end_margin": -0.1},
+            "shape_border_label_end_margin must be greater than or equal to zero",
+        ),
+    ],
+)
+def test_border_label_shared_geometry_parameters_are_valid(
+    shape_resolver: Resolver,
+    values: dict[str, Any],
+    message: str,
+) -> None:
+    """
+    Shared Border Label geometry parameters obey their normative ranges.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match=message,
+    ):
+        _validate_shape(shape_resolver, values)

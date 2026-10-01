@@ -215,10 +215,11 @@ def _resolve_shape_component_colors(
     Resolve physical printer colors for Shape-owned components.
 
     The structural base establishes the inherited Shape color. Outer Ridge,
-    Inner Ridge, and Artwork Fill inherit that color unless an explicit
-    Package-time override is configured. Physical color policy does not
-    determine participation.
+    Inner Ridge, Border Labels, and Artwork Fill inherit that color unless an
+    explicit Package-time override is configured. Physical color policy does
+    not determine participation.
     """
+
     component_names = {component.name for component in components}
 
     if not component_names:
@@ -228,14 +229,22 @@ def _resolve_shape_component_colors(
         "base",
         "ridge",
         "inner-ridge",
+        "top-border-label",
+        "bottom-border-label",
         "artwork-fill",
     }
+
     unsupported_names = component_names - supported_names
 
     if unsupported_names:
-        unsupported = ", ".join(sorted(unsupported_names))
+        unsupported = ", ".join(
+            sorted(
+                unsupported_names,
+            )
+        )
+
         raise PackageError(
-            f"Shape extrusion manifest contains unsupported Shape-owned "
+            "Shape extrusion manifest contains unsupported Shape-owned "
             f"component(s): {unsupported}."
         )
 
@@ -244,47 +253,102 @@ def _resolve_shape_component_colors(
             "Shape extrusion manifest contains Shape-owned components without a structural base."
         )
 
-    base_color_name = context.resolver("shape_base_color")
+    base_color_name = context.resolver(
+        "shape_base_color",
+    )
+
     base_color = resolve_palette(
         (base_color_name,),
         context.resolver.colors,
     )[0]
 
-    colors: dict[str, PaletteColor] = {"base": base_color}
+    colors: dict[str, PaletteColor] = {
+        "base": base_color,
+    }
 
     if "ridge" in component_names:
-        if context.resolver.has("shape_outer_ridge_color"):
-            ridge_color_name = context.resolver("shape_outer_ridge_color")
+        if context.resolver.has(
+            "shape_outer_ridge_color",
+        ):
+            ridge_color_name = context.resolver(
+                "shape_outer_ridge_color",
+            )
+
             ridge_color = resolve_palette(
                 (ridge_color_name,),
                 context.resolver.colors,
             )[0]
         else:
             ridge_color = base_color
+
         colors["ridge"] = ridge_color
 
     if "inner-ridge" in component_names:
-        if context.resolver.has("shape_inner_ridge_color"):
+        if context.resolver.has(
+            "shape_inner_ridge_color",
+        ):
             inner_ridge_color_name = context.resolver(
                 "shape_inner_ridge_color",
             )
+
             inner_ridge_color = resolve_palette(
                 (inner_ridge_color_name,),
                 context.resolver.colors,
             )[0]
         else:
             inner_ridge_color = base_color
+
         colors["inner-ridge"] = inner_ridge_color
 
+    if "top-border-label" in component_names:
+        if context.resolver.has(
+            "shape_top_border_label_color",
+        ):
+            top_border_label_color_name = context.resolver(
+                "shape_top_border_label_color",
+            )
+
+            top_border_label_color = resolve_palette(
+                (top_border_label_color_name,),
+                context.resolver.colors,
+            )[0]
+        else:
+            top_border_label_color = base_color
+
+        colors["top-border-label"] = top_border_label_color
+
+    if "bottom-border-label" in component_names:
+        if context.resolver.has(
+            "shape_bottom_border_label_color",
+        ):
+            bottom_border_label_color_name = context.resolver(
+                "shape_bottom_border_label_color",
+            )
+
+            bottom_border_label_color = resolve_palette(
+                (bottom_border_label_color_name,),
+                context.resolver.colors,
+            )[0]
+        else:
+            bottom_border_label_color = base_color
+
+        colors["bottom-border-label"] = bottom_border_label_color
+
     if "artwork-fill" in component_names:
-        if context.resolver.has("shape_artwork_fill_color"):
-            artwork_fill_color_name = context.resolver("shape_artwork_fill_color")
+        if context.resolver.has(
+            "shape_artwork_fill_color",
+        ):
+            artwork_fill_color_name = context.resolver(
+                "shape_artwork_fill_color",
+            )
+
             artwork_fill_color = resolve_palette(
                 (artwork_fill_color_name,),
                 context.resolver.colors,
             )[0]
         else:
             artwork_fill_color = base_color
+
         colors["artwork-fill"] = artwork_fill_color
 
     return colors

@@ -49,6 +49,11 @@ INNER_RIDGE_COMPONENT_PATH = "inner-ridge.stl"
 ARTWORK_FILL_COMPONENT_NAME = "artwork-fill"
 ARTWORK_FILL_COMPONENT_PATH = "artwork-fill.stl"
 
+TOP_BORDER_LABEL_COMPONENT_NAME = "top-border-label"
+TOP_BORDER_LABEL_COMPONENT_PATH = "top-border-label.stl"
+
+BOTTOM_BORDER_LABEL_COMPONENT_NAME = "bottom-border-label"
+BOTTOM_BORDER_LABEL_COMPONENT_PATH = "bottom-border-label.stl"
 
 # =========================================================
 # Registered geometry
@@ -158,8 +163,9 @@ def execute(
     """
     Execute physical Shape extrusion.
 
-    Registered Shape structure and incorporated registered Artwork are
-    dimensionalized into independently printable physical components.
+    Registered Shape structure, Shape-owned semantic components, and
+    incorporated registered Artwork are dimensionalized into independently
+    printable physical components.
 
     Shape owns all physical X/Y and Z semantics of the resulting assembly.
     Physical printer-color assignment belongs to downstream packaging.
@@ -207,6 +213,10 @@ def execute(
         )
 
         artwork_fill = _load_artwork_fill(
+            composition_manifest,
+        )
+
+        border_labels = _load_border_labels(
             composition_manifest,
         )
 
@@ -321,6 +331,46 @@ def execute(
                 shape_inner_ridge_raise=shape_inner_ridge_raise,
             )
 
+        top_border_label = border_labels.get(
+            "top",
+        )
+
+        if top_border_label is not None:
+            shape_top_border_label_raise = context.resolver(
+                "shape_top_border_label_raise",
+            )
+
+            components += _render_border_label_component(
+                top_border_label,
+                composition_manifest.parent,
+                manifest.parent,
+                component_name=TOP_BORDER_LABEL_COMPONENT_NAME,
+                component_path=TOP_BORDER_LABEL_COMPONENT_PATH,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+                shape_border_label_raise=shape_top_border_label_raise,
+            )
+
+        bottom_border_label = border_labels.get(
+            "bottom",
+        )
+
+        if bottom_border_label is not None:
+            shape_bottom_border_label_raise = context.resolver(
+                "shape_bottom_border_label_raise",
+            )
+
+            components += _render_border_label_component(
+                bottom_border_label,
+                composition_manifest.parent,
+                manifest.parent,
+                component_name=BOTTOM_BORDER_LABEL_COMPONENT_NAME,
+                component_path=BOTTOM_BORDER_LABEL_COMPONENT_PATH,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+                shape_border_label_raise=shape_bottom_border_label_raise,
+            )
+
         artwork_components: tuple[
             tuple[str, str, dict[str, object]],
             ...,
@@ -380,6 +430,81 @@ def execute(
 # =========================================================
 # Physical component production
 # =========================================================
+
+
+def _render_border_label_component(
+    label: dict[str, object],
+    source_directory: Path,
+    output_directory: Path,
+    *,
+    component_name: str,
+    component_path: str,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_border_label_raise: float,
+) -> tuple[
+    tuple[str, str],
+    ...,
+]:
+    """
+    Dimensionalize one persistent registered Border Label component.
+
+    Compose has already established participation and registered X/Y glyph
+    geometry. Extrude introduces Shape's physical X/Y scale and the label's
+    independent physical Z raise.
+
+    A zero raise preserves the semantic registered component but produces no
+    independently printable physical component.
+    """
+
+    if shape_border_label_raise <= 0.0:
+        return ()
+
+    source_name = label.get(
+        "path",
+    )
+
+    if (
+        not isinstance(
+            source_name,
+            str,
+        )
+        or not source_name
+    ):
+        raise ValueError(f"Registered Shape composition {component_name} requires a path.")
+
+    source_path = source_directory / source_name
+
+    if not source_path.is_file():
+        raise ExtrudeError(f"Registered {component_name} geometry does not exist: {source_path}")
+
+    output_path = output_directory / component_path
+
+    source = _build_border_label_component_scad(
+        _scad_path(
+            source_path,
+        ),
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+        shape_border_label_raise=shape_border_label_raise,
+    )
+
+    render_stl_source(
+        source,
+        output_path,
+    )
+
+    _require_component(
+        output_path,
+        component_name=component_name,
+    )
+
+    return (
+        (
+            component_name,
+            component_path,
+        ),
+    )
 
 
 def _render_inner_ridge_component(
@@ -1433,6 +1558,86 @@ def _validate_inner_ridge_height(
         )
 
 
+def _load_border_labels(
+    composition_manifest: Path,
+) -> dict[str, dict[str, object] | None]:
+    """
+    Load persistent registered Border Label components.
+
+    Compose owns Border Label participation, typography, fitting, and
+    registered X/Y glyph geometry.
+
+    Extrude consumes that persistent contract directly and introduces only
+    physical Shape scaling and Z geometry.
+    """
+
+    data = json.loads(
+        composition_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    border_labels = data.get(
+        "border_labels",
+    )
+
+    if border_labels is None:
+        return {
+            "top": None,
+            "bottom": None,
+        }
+
+    if not isinstance(
+        border_labels,
+        dict,
+    ):
+        raise ValueError("Registered Shape composition Border Labels must be an object.")
+
+    loaded: dict[
+        str,
+        dict[str, object] | None,
+    ] = {}
+
+    for position in (
+        "top",
+        "bottom",
+    ):
+        label = border_labels.get(
+            position,
+        )
+
+        if label is None:
+            loaded[position] = None
+            continue
+
+        if not isinstance(
+            label,
+            dict,
+        ):
+            raise ValueError(
+                f"Registered Shape composition {position} Border Label must be an object."
+            )
+
+        path = label.get(
+            "path",
+        )
+
+        if (
+            not isinstance(
+                path,
+                str,
+            )
+            or not path
+        ):
+            raise ValueError(
+                f"Registered Shape composition {position} Border Label requires a path."
+            )
+
+        loaded[position] = label
+
+    return loaded
+
+
 # =========================================================
 # OpenSCAD construction
 # =========================================================
@@ -1527,6 +1732,39 @@ def _build_scad(
         ),
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+    )
+
+
+def _build_border_label_component_scad(
+    source: str,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_border_label_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for one Shape Border Label component.
+
+    Border Label SVG geometry is already expressed in registered Shape
+    coordinates by Compose.
+
+    Extrude maps that registered geometry into physical X/Y space using
+    shape_size and begins the physical label extrusion at the top of the
+    complete Shape base.
+    """
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_border_label_raise = {shape_border_label_raise:g};\n"
+        "\n"
+        "translate([0, 0, shape_base_raise])\n"
+        "    linear_extrude(\n"
+        "        height = shape_border_label_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        scale([shape_size, shape_size, 1])\n"
+        f'            import("{source}", dpi = 25.4);\n'
     )
 
 

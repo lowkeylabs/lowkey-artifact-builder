@@ -298,6 +298,13 @@ def _configure_shape_resolver(
         "shape_inner_ridge_width": inner_ridge_width,
         "shape_inner_to_outer_ridge_dist": inner_to_outer_ridge_dist,
         "shape_artwork_fill_color": fill_color,
+        "shape_border_label_width": 1.0,
+        "shape_border_label_max_glyph_height": 5.0,
+        "shape_border_label_arc_degrees": 140.0,
+        "shape_border_label_end_margin": 1.0,
+        "shape_border_label_font_family": "DejaVu Sans",
+        "shape_top_border_label_text": "",
+        "shape_bottom_border_label_text": "",
     }
 
     resolver = Mock(
@@ -1900,6 +1907,10 @@ def test_compose_stage_manifest_declares_structural_composition(
         "composition": "composition.svg",
         "artwork": None,
         "artwork_fill": None,
+        "border_labels": {
+            "top": None,
+            "bottom": None,
+        },
     }
 
 
@@ -2059,6 +2070,13 @@ def test_compose_stage_resolves_only_registered_partition_parameters(
         call("shape_outer_ridge_style"),
         call("shape_inner_ridge_width"),
         call("shape_inner_to_outer_ridge_dist"),
+        call("shape_border_label_width"),
+        call("shape_border_label_max_glyph_height"),
+        call("shape_border_label_arc_degrees"),
+        call("shape_border_label_end_margin"),
+        call("shape_border_label_font_family"),
+        call("shape_top_border_label_text"),
+        call("shape_bottom_border_label_text"),
     ]
 
 
@@ -2072,6 +2090,7 @@ def test_composition_manifest_preserves_artwork_registered_extent(
 
     component = tmp_path / "color-1.svg"
     envelope = tmp_path / "envelope.svg"
+    composition = tmp_path / "composition.svg"
     manifest = tmp_path / "composition.json"
 
     component.write_text(
@@ -2085,6 +2104,10 @@ def test_composition_manifest_preserves_artwork_registered_extent(
             "</svg>"
         ),
         encoding="utf-8",
+    )
+
+    _write_registered_structure(
+        composition,
     )
 
     artwork = compose.RegisteredArtwork(
@@ -2117,7 +2140,7 @@ def test_composition_manifest_preserves_artwork_registered_extent(
 
     compose._write_composition_manifest(
         manifest,
-        composition=tmp_path / "composition.svg",
+        composition=composition,
         artwork=artwork,
         artwork_transform=transform,
     )
@@ -2125,7 +2148,7 @@ def test_composition_manifest_preserves_artwork_registered_extent(
     document = json.loads(
         manifest.read_text(
             encoding="utf-8",
-        )
+        ),
     )
 
     assert document["artwork"]["registered_extent"] == {

@@ -138,6 +138,13 @@ def _compose_context(
         "shape_outer_ridge_style": "integrated",
         "shape_inner_ridge_width": 0.0,
         "shape_inner_to_outer_ridge_dist": 10.0,
+        "shape_border_label_width": 1.0,
+        "shape_border_label_max_glyph_height": 5.0,
+        "shape_border_label_arc_degrees": 140.0,
+        "shape_border_label_end_margin": 1.0,
+        "shape_border_label_font_family": "DejaVu Sans",
+        "shape_top_border_label_text": "",
+        "shape_bottom_border_label_text": "",
     }
 
     context.input.side_effect = inputs.__getitem__

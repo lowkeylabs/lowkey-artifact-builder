@@ -93,6 +93,56 @@ def derive_shape_inner_ridge_color(
     )
 
 
+def derive_shape_top_border_label_color(
+    resolver: Resolver,
+) -> str:
+    """
+    Derive the Top Border Label color from the resolved base color.
+
+    By default, the Top Border Label uses the same semantic printing
+    color as the Shape base.
+
+    Because the base color is resolved through the artifact Resolver,
+    workspace or artifact overrides of shape_base_color are reflected
+    in the derived Border Label color.
+
+    An explicitly configured shape_top_border_label_color value
+    overrides this derivation through normal configuration resolution.
+
+    Shape configuration validity is enforced separately by the model's
+    configuration validators.
+    """
+
+    return resolver(
+        "shape_base_color",
+    )
+
+
+def derive_shape_bottom_border_label_color(
+    resolver: Resolver,
+) -> str:
+    """
+    Derive the Bottom Border Label color from the resolved base color.
+
+    By default, the Bottom Border Label uses the same semantic printing
+    color as the Shape base.
+
+    Because the base color is resolved through the artifact Resolver,
+    workspace or artifact overrides of shape_base_color are reflected
+    in the derived Border Label color.
+
+    An explicitly configured shape_bottom_border_label_color value
+    overrides this derivation through normal configuration resolution.
+
+    Shape configuration validity is enforced separately by the model's
+    configuration validators.
+    """
+
+    return resolver(
+        "shape_base_color",
+    )
+
+
 # =========================================================
 # Registry
 # =========================================================
@@ -101,6 +151,8 @@ def derive_shape_inner_ridge_color(
 DERIVED = {
     "shape_outer_ridge_color": derive_shape_outer_ridge_color,
     "shape_inner_ridge_color": derive_shape_inner_ridge_color,
+    "shape_top_border_label_color": derive_shape_top_border_label_color,
+    "shape_bottom_border_label_color": derive_shape_bottom_border_label_color,
     "shape_artwork_fill_color": derive_shape_artwork_fill_color,
 }
 
@@ -113,6 +165,8 @@ DERIVED = {
 __all__ = [
     "DERIVED",
     "derive_shape_artwork_fill_color",
+    "derive_shape_bottom_border_label_color",
     "derive_shape_inner_ridge_color",
     "derive_shape_outer_ridge_color",
+    "derive_shape_top_border_label_color",
 ]

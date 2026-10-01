@@ -268,6 +268,112 @@ def _validate_inner_ridge_color(
         raise ConfigError("shape_inner_ridge_color must be a nonempty color name.")
 
 
+def _border_label_participates(
+    text: object,
+) -> bool:
+    """
+    Return whether Border Label text causes the label to participate.
+    """
+
+    return isinstance(text, str) and bool(text.strip())
+
+
+def _validate_border_label_width(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require Border Label clear-border width to be nonnegative.
+    """
+
+    width = resolver(
+        "shape_border_label_width",
+    )
+
+    if not isinstance(
+        width,
+        int | float,
+    ):
+        raise ConfigError("shape_border_label_width must be numeric.")
+
+    if width < 0:
+        raise ConfigError("shape_border_label_width must be greater than or equal to zero.")
+
+
+def _validate_border_label_max_glyph_height(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require positive maximum glyph height when a Border Label participates.
+    """
+
+    top_text = resolver(
+        "shape_top_border_label_text",
+    )
+    bottom_text = resolver(
+        "shape_bottom_border_label_text",
+    )
+
+    if not (_border_label_participates(top_text) or _border_label_participates(bottom_text)):
+        return
+
+    max_glyph_height = resolver(
+        "shape_border_label_max_glyph_height",
+    )
+
+    if not isinstance(
+        max_glyph_height,
+        int | float,
+    ):
+        raise ConfigError("shape_border_label_max_glyph_height must be numeric.")
+
+    if max_glyph_height <= 0:
+        raise ConfigError("shape_border_label_max_glyph_height must be greater than zero.")
+
+
+def _validate_border_label_arc_degrees(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require Border Label maximum span to be greater than zero and less than 180 degrees.
+    """
+
+    arc_degrees = resolver(
+        "shape_border_label_arc_degrees",
+    )
+
+    if not isinstance(
+        arc_degrees,
+        int | float,
+    ):
+        raise ConfigError("shape_border_label_arc_degrees must be numeric.")
+
+    if arc_degrees <= 0 or arc_degrees >= 180:
+        raise ConfigError(
+            "shape_border_label_arc_degrees must be greater than zero and less than 180."
+        )
+
+
+def _validate_border_label_end_margin(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require Border Label end margin to be nonnegative.
+    """
+
+    end_margin = resolver(
+        "shape_border_label_end_margin",
+    )
+
+    if not isinstance(
+        end_margin,
+        int | float,
+    ):
+        raise ConfigError("shape_border_label_end_margin must be numeric.")
+
+    if end_margin < 0:
+        raise ConfigError("shape_border_label_end_margin must be greater than or equal to zero.")
+
+
 VALIDATORS = (
     ConfigurationValidator(
         parameters=("shape_geometry",),
@@ -321,6 +427,26 @@ VALIDATORS = (
     ConfigurationValidator(
         parameters=("shape_inner_ridge_color",),
         validate=_validate_inner_ridge_color,
+    ),
+    ConfigurationValidator(
+        parameters=("shape_border_label_width",),
+        validate=_validate_border_label_width,
+    ),
+    ConfigurationValidator(
+        parameters=(
+            "shape_top_border_label_text",
+            "shape_bottom_border_label_text",
+            "shape_border_label_max_glyph_height",
+        ),
+        validate=_validate_border_label_max_glyph_height,
+    ),
+    ConfigurationValidator(
+        parameters=("shape_border_label_arc_degrees",),
+        validate=_validate_border_label_arc_degrees,
+    ),
+    ConfigurationValidator(
+        parameters=("shape_border_label_end_margin",),
+        validate=_validate_border_label_end_margin,
     ),
 )
 

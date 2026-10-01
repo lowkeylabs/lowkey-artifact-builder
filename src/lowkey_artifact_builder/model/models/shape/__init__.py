@@ -81,6 +81,13 @@ MODEL = ModelSpec(
                 "shape_outer_ridge_style",
                 "shape_inner_ridge_width",
                 "shape_inner_to_outer_ridge_dist",
+                "shape_border_label_width",
+                "shape_border_label_max_glyph_height",
+                "shape_border_label_arc_degrees",
+                "shape_border_label_end_margin",
+                "shape_border_label_font_family",
+                "shape_top_border_label_text",
+                "shape_bottom_border_label_text",
             ),
             products=(
                 ProductSpec(
@@ -109,6 +116,8 @@ MODEL = ModelSpec(
                 "shape_outer_ridge_raise",
                 "shape_outer_ridge_style",
                 "shape_inner_ridge_raise",
+                "shape_top_border_label_raise",
+                "shape_bottom_border_label_raise",
                 "shape_artwork_raise",
                 "shape_artwork_fill_raise",
             ),
@@ -135,6 +144,8 @@ MODEL = ModelSpec(
                 "shape_base_color",
                 "shape_outer_ridge_color",
                 "shape_inner_ridge_color",
+                "shape_top_border_label_color",
+                "shape_bottom_border_label_color",
                 "shape_artwork_fill_color",
             ),
             products=(
