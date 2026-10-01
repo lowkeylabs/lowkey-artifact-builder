@@ -2541,6 +2541,418 @@ Border Labels must preserve distinct component identity through Extrude and Pack
 32. When neither Border Label participates, Border Labels do not alter existing Shape geometry or products.
 
 
+### Loop
+
+The Loop Feature provides optional additive geometry extending outward from the complete assembled Shape envelope.
+
+A Loop may be used for hanging, attachment, handling, or other purposes. Its semantic definition is geometric and does not depend on a particular intended use.
+
+#### Parameters and Participation
+
+The Loop is controlled by:
+
+```text
+shape_loop_inner_diameter
+shape_loop_width
+shape_loop_position
+shape_loop_raise
+shape_loop_color
+```
+
+Loop participation is determined solely by:
+
+```text
+shape_loop_inner_diameter
+```
+
+A Loop participates when:
+
+```text
+shape_loop_inner_diameter > 0
+```
+
+The default is:
+
+```text
+0 mm
+```
+
+The Loop therefore does not participate by default.
+
+A Loop does not participate when:
+
+```text
+shape_loop_inner_diameter = 0
+```
+
+A negative `shape_loop_inner_diameter` is invalid.
+
+When the Loop does not participate, its width, position, raise, and color do not cause Loop geometry to be produced.
+
+`shape_loop_width`, `shape_loop_position`, `shape_loop_raise`, and `shape_loop_color` do not determine whether the Loop participates.
+
+#### Geometry
+
+The Loop is annular additive geometry having an inner opening and an outer boundary.
+
+Its inner radius is:
+
+```text
+shape_loop_inner_diameter / 2
+```
+
+Its outer radius is:
+
+```text
+shape_loop_inner_diameter / 2
++ shape_loop_width
+```
+
+The Loop outer diameter is therefore:
+
+```text
+shape_loop_inner_diameter
++ 2 × shape_loop_width
+```
+
+`shape_loop_width` is a physical dimension measured in millimeters.
+
+The default Loop width is:
+
+```text
+1 mm
+```
+
+When the Loop participates, `shape_loop_width` must be greater than zero.
+
+The Loop is constructed relative to the complete assembled Shape envelope defined by:
+
+```text
+shape_size
+```
+
+The Loop extends outside that envelope as explicitly defined by this Feature contract.
+
+Loop participation does not change the meaning or configured value of `shape_size`.
+
+#### Position
+
+The Loop position is controlled by:
+
+```text
+shape_loop_position
+```
+
+The supported positions are the four cardinal directions:
+
+```text
+0 degrees      -> top
+90 degrees     -> right
+180 degrees    -> bottom
+-90 degrees    -> left
+```
+
+The default position is:
+
+```text
+0 degrees
+```
+
+A participating Loop must use one of the supported cardinal positions.
+
+The Loop is centered on the corresponding cardinal axis of the dimensionalized Shape.
+
+Its inner opening is externally tangent to the complete assembled Shape envelope at the selected cardinal position.
+
+For a circular Shape, for example, a top Loop has:
+
+```text
+shape radius = shape_size / 2
+inner radius = shape_loop_inner_diameter / 2
+
+Loop center X = 0
+Loop center Y = shape radius + inner radius
+```
+
+The inward-facing point of the Loop inner opening therefore lies exactly on the Shape envelope.
+
+The equivalent geometric rule applies to square and polygon Shapes: the Loop inner opening is externally tangent to the dimensionalized Shape boundary at the selected cardinal position.
+
+Loop positioning is determined from the complete assembled Shape envelope, not from optional Outer Ridge, Inner Ridge, Border Label, Artwork, or other Feature geometry.
+
+#### Raise
+
+The physical height of the Loop is controlled by:
+
+```text
+shape_loop_raise
+```
+
+`shape_loop_raise` is a physical dimension measured in millimeters from:
+
+```text
+Z = 0
+```
+
+The default Loop raise is the resolved Base raise:
+
+```text
+shape_loop_raise = shape_base_raise
+```
+
+The default is therefore derived from the resolved value of `shape_base_raise` rather than being an independent literal dimensional default.
+
+An explicitly configured `shape_loop_raise` overrides this derived Base-raise default.
+
+When the Loop participates, `shape_loop_raise` must be greater than zero.
+
+The dimensionalized Loop occupies:
+
+```text
+Z = 0
+```
+
+through:
+
+```text
+Z = shape_loop_raise
+```
+
+The default behavior therefore produces a Loop having the same complete physical height as the Base.
+
+#### Component Identity
+
+A participating Loop is a distinct Shape-owned physical component.
+
+The Loop retains its semantic component identity through Shape Extrude and Package.
+
+The Loop may geometrically contact or overlap other assembled Shape material at its attachment region. Such contact does not remove the Loop's semantic component identity.
+
+Shape Extrude establishes the Loop's physical geometry and physical Z dimensions but does not assign its physical printing color.
+
+#### Loop Color
+
+The Loop physical printing color is controlled by:
+
+```text
+shape_loop_color
+```
+
+The default Loop color is the resolved Base color:
+
+```text
+shape_loop_color = shape_base_color
+```
+
+The default is derived from the resolved value of `shape_base_color` rather than being an independent literal color default.
+
+An explicitly configured `shape_loop_color` overrides this derived Base-color default.
+
+Loop color is packaging policy.
+
+Shape Structure, Compose, and Extrude preserve the semantic component identity required for downstream Loop color assignment but do not assign its physical printing color.
+
+Shape Package applies the resolved Loop physical color.
+
+Changing only `shape_loop_color` does not by itself change Shape Structure, Compose, or Extrude geometry.
+
+When the Loop does not participate, its color has no effect on the produced artifact.
+
+#### Interaction With Other Features
+
+Loop participation is independent of all other optional Shape Features.
+
+A Loop may therefore participate with or without:
+
+- an Outer Ridge;
+- an Inner Ridge;
+- Border Labels;
+- incorporated Artwork;
+- Artwork fill;
+- a Hole.
+
+Other optional Features do not change the Shape envelope used to position the Loop.
+
+The Loop does not change the registered interior region used for incorporated Artwork placement.
+
+The Loop does not cause any other Feature to participate.
+
+When a Hole intersects Loop material, the Hole's subtractive contract applies and the intersecting Loop material is removed.
+
+#### Product Participation
+
+A participating Loop contributes Shape-owned additive geometry to the dimensionalized Shape.
+
+The Loop remains a distinct semantic component through Shape Extrude and Package.
+
+Shape Extrude establishes its physical geometry and preserves its component identity but does not assign its physical printing color.
+
+Shape Package applies the resolved `shape_loop_color`.
+
+The Loop participates in the final packaged 3MF when its dimensionalized geometry has physical volume.
+
+#### Loop Invariants
+
+A conforming Loop Feature satisfies the following:
+
+1. Loop is additive Shape-owned geometry.
+2. Loop participation is determined solely by `shape_loop_inner_diameter`.
+3. Zero `shape_loop_inner_diameter` disables the Loop.
+4. Positive `shape_loop_inner_diameter` causes the Loop to participate.
+5. Negative `shape_loop_inner_diameter` is invalid.
+6. `shape_loop_width` defines the radial material width surrounding the Loop opening.
+7. A participating Loop must have positive `shape_loop_width`.
+8. The default Loop width is 1 mm.
+9. Loop position is one of the four supported cardinal positions.
+10. The default Loop position is zero degrees at the top of the Shape.
+11. The Loop inner opening is externally tangent to the complete assembled Shape envelope at the selected cardinal position.
+12. Loop positioning is derived from the Shape envelope defined by `shape_size`, not from optional Feature geometry.
+13. The Loop explicitly extends beyond the Shape envelope without changing the meaning or configured value of `shape_size`.
+14. `shape_loop_raise` determines the complete physical Loop height from `Z = 0`.
+15. The default Loop raise is the resolved `shape_base_raise`.
+16. An explicitly configured Loop raise overrides its derived Base-raise default.
+17. A participating Loop must have positive physical height.
+18. A participating Loop is a distinct Shape-owned physical component.
+19. The default Loop color is the resolved Base color.
+20. An explicitly configured Loop color overrides its derived Base-color default.
+21. Loop color does not determine Loop participation or geometry.
+22. Shape Extrude does not assign physical color to Loop geometry.
+23. Shape Package applies the Loop's physical color policy.
+24. Changing only `shape_loop_color` does not by itself change Shape Structure, Compose, or Extrude geometry.
+25. Loop participation does not change the registered interior region used for incorporated Artwork.
+26. Loop participation does not cause another optional Shape Feature to participate.
+27. A participating Hole removes any Loop material intersecting the Hole.
+
+
+### Hole
+
+The Hole Feature provides an optional subtractive opening through the complete manufactured Shape.
+
+A Hole is subtractive geometry rather than a physical component.
+
+#### Parameters and Participation
+
+The Hole is controlled by:
+
+```text
+shape_hole_diameter
+shape_hole_position
+shape_hole_edge_distance
+```
+
+Hole participation is determined solely by:
+
+```text
+shape_hole_diameter
+```
+
+A Hole participates when:
+
+```text
+shape_hole_diameter > 0
+```
+
+The default is:
+
+```text
+0 mm
+```
+
+The Hole therefore does not participate by default.
+
+A Hole does not participate when:
+
+```text
+shape_hole_diameter = 0
+```
+
+A negative `shape_hole_diameter` is invalid.
+
+When the Hole does not participate, its position and edge distance do not cause Hole geometry to be produced.
+
+`shape_hole_position` and `shape_hole_edge_distance` do not determine whether the Hole participates.
+
+#### Geometry
+
+The Hole is a circular subtractive opening having physical diameter:
+
+```text
+shape_hole_diameter
+```
+
+Its radius is:
+
+```text
+shape_hole_diameter / 2
+```
+
+`shape_hole_diameter` is a physical dimension measured in millimeters.
+
+The Hole is positioned inward from the complete assembled Shape envelope defined by:
+
+```text
+shape_size
+```
+
+The Hole does not alter that envelope or change the meaning or configured value of `shape_size`.
+
+#### Position
+
+The Hole position is controlled by:
+
+```text
+shape_hole_position
+```
+
+The supported positions are the four cardinal directions:
+
+```text
+0 degrees      -> top
+90 degrees     -> right
+180 degrees    -> bottom
+-90 degrees    -> left
+```
+
+The default position is:
+
+```text
+0 degrees
+```
+
+A participating Hole must use one of the supported cardinal positions.
+
+The Hole is centered on the corresponding cardinal axis of the dimensionalized Shape.
+
+Its nearest edge is inset from the complete assembled Shape boundary by:
+
+```text
+shape_hole_edge_distance
+```
+
+The default Hole edge distance is:
+
+```text
+0.4 mm
+```
+
+When the Hole participates, `shape_hole_edge_distance` must be greater than or equal to:
+
+```text
+0.4 mm
+```
+
+For a circular Shape, for example, a top Hole has:
+
+```text
+shape radius = shape_size / 2
+hole radius = shape_hole_diameter / 2
+inset = hole radius + shape_hole_edge_distance
+
+Hole center X = 0
+Hole center
+```
+
+
 ## Final Product
 
 Shape produces:
