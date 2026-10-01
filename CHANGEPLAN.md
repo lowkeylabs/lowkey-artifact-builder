@@ -142,13 +142,345 @@ Add narrower tests when they help discover an uncertain boundary, protect an
 independently meaningful contract, reproduce a defect, or address a specific
 algorithmic or regression risk.
 
-# Phase 1 - (placeholder)
 
-(empty placeholder)
+# Phase 1 — Add Shape Hole
 
-# Phase 2 — (placeholder)
+## Purpose
 
-(empty placeholder)
+Implement the Shape Hole Feature defined by the current Shape model specification.
+
+Shape Hole should closely reuse the behavior and lessons of the existing Artwork Hole while preserving Shape ownership and semantics.
+
+The central manufacturing contract is:
+
+> A participating Shape Hole is subtractive from the complete manufactured Shape. Every physical material volume intersecting the Hole is removed regardless of semantic component ownership.
+
+Hole is not a printable component. It is a physical subtraction applied at the Shape dimensionalization boundary.
+
+The Hole is positioned relative to the complete assembled Shape envelope defined by `shape_size`. Optional Shape Features do not redefine that positioning boundary.
+
+This phase should migrate proven Artwork Hole behavior rather than redesigning Hole geometry.
+
+## Required behavior to establish
+
+Shape defines:
+
+```text
+shape_hole_diameter
+shape_hole_position
+shape_hole_edge_distance
+```
+
+with participation determined solely by:
+
+```text
+shape_hole_diameter > 0
+```
+
+Zero diameter disables Hole participation.
+
+Hole uses the same cardinal-position convention as Artwork Hole:
+
+```text
+0      -> top
+90     -> right
+180    -> bottom
+-90    -> left
+```
+
+The nearest edge of the Hole is inset from the dimensionalized complete Shape boundary by:
+
+```text
+shape_hole_edge_distance
+```
+
+The default edge distance and validation semantics should conform to the Shape Feature contract and remain consistent with the proven Artwork Hole behavior.
+
+The physical Hole geometry is resolved from the dimensionalized Shape envelope. It must not depend on whether an Outer Ridge, Inner Ridge, Border Label, Artwork fill, incorporated Artwork, or other optional Feature participates.
+
+A participating Hole subtracts from every physical component it intersects, including as applicable:
+
+- Base;
+- integrated or separate Outer Ridge;
+- Inner Ridge;
+- Top and Bottom Border Labels;
+- Shape-owned Artwork fill;
+- incorporated Artwork color components; and
+- any other manufactured material participating in the Shape.
+
+Hole subtraction extends through the complete Z extent of intersecting material.
+
+Hole has no independent physical component, raise, Z position, or color.
+
+Subtraction must preserve the semantic identity and color metadata of the remaining portions of affected components.
+
+Hole participation does not alter the registered interior region or Artwork fitting. Hole is a downstream physical manufacturing operation, not a registered-composition boundary.
+
+## Implementation boundary
+
+Shape Extrude owns Hole physical geometry and subtraction.
+
+Structure and Compose should not manufacture Hole geometry or change registered Shape/Artwork composition merely because Hole participates.
+
+Package should receive already-subtracted physical components. It should require no Hole component or Hole-specific color behavior.
+
+Reuse the existing Artwork Hole geometry implementation or extract genuinely model-independent geometry only where doing so preserves clear model ownership.
+
+Do not create a parallel geometric algorithm merely because the Feature is now used by Shape. Conversely, do not force Shape policy into Artwork-owned code merely to avoid a small amount of duplication.
+
+Any shared abstraction should represent genuinely common mechanical geometry:
+
+```text
+physical envelope
+      +
+diameter / edge distance / cardinal position
+      ↓
+physical Hole geometry
+```
+
+while participation, parameter ownership, stage ownership, and manufacturing semantics remain model-specific.
+
+## TDD seam
+
+Establish Hole first at the major Shape Extrude manufacturing boundary.
+
+Prefer one high-value test or a small coherent test group demonstrating that a configured Hole is resolved from the Shape envelope and is subtracted from the physical components that intersect it.
+
+The seam should demonstrate the universal subtraction contract rather than separately inventorying every possible Shape component.
+
+At minimum, test evidence should establish that:
+
+- zero diameter leaves ordinary Shape manufacturing unchanged;
+- a participating Hole is positioned correctly relative to the Shape envelope; and
+- Hole subtraction crosses semantic component boundaries rather than applying only to Base.
+
+Use an incorporated or layered component where useful to prove the cross-component boundary. Add narrower geometry/validation tests only where they protect independently meaningful behavior or help establish the correct implementation seam.
+
+Existing Artwork Hole tests should be treated as proven behavioral evidence and implementation guidance, not mechanically duplicated into an equivalent Shape test suite.
+
+## High-level implementation steps
+
+1. Audit the existing Artwork Hole parameters, validation, geometry helper, Extrude integration, and focused tests against the new Shape Hole Feature contract.
+2. Audit current Shape parameter registration, validation, Stage parameter ownership, Extrude component construction, and tests to identify the smallest correct integration boundary.
+3. Add the Shape Hole configuration parameters and validation defined by the Shape specification.
+4. Establish the high-value failing test or small coherent test set at the Shape Extrude manufacturing seam.
+5. Reuse or appropriately generalize the proven Artwork Hole geometry calculation for the dimensionalized Shape envelope.
+6. Resolve one physical Hole geometry from `shape_size`, `shape_hole_diameter`, `shape_hole_position`, and `shape_hole_edge_distance`.
+7. Apply the same Hole subtraction to every physical Shape or incorporated Artwork component that intersects it.
+8. Preserve existing component identity, Artifact-color identity, and Package color semantics after subtraction.
+9. Verify that Hole participation does not alter registered composition, Artwork fitting, or Package responsibilities.
+10. Run focused Shape Hole/Extrude tests, relevant Artwork Hole regression tests if shared geometry changes, and then the appropriate complete quality suite.
+11. Recompare resulting HEAD with the Shape definition and remove this phase when the Feature contract is fully satisfied.
+
+## Completion criteria
+
+Phase 1 is complete when:
+
+- the Shape Hole parameters resolve and validate according to the Shape Feature contract;
+- zero `shape_hole_diameter` produces no Hole;
+- positive `shape_hole_diameter` produces the correctly positioned physical Hole;
+- Hole position is derived from the complete dimensionalized Shape envelope defined by `shape_size`;
+- `shape_hole_edge_distance` establishes the required physical distance between the nearest Hole edge and Shape boundary;
+- Hole subtraction applies to every intersecting manufactured component regardless of semantic ownership;
+- incorporated Artwork is cut when it intersects the Hole;
+- remaining portions of affected components preserve their semantic and color identities;
+- Hole produces no independently printable component;
+- Hole introduces no Package color responsibility;
+- registered composition and Artwork fitting remain unchanged by Hole participation;
+- important Hole behavior is protected at the major manufacturing seam without unnecessary inventory-style tests;
+- existing Artwork Hole behavior remains correct if common geometry is reused or refactored; and
+- the complete applicable test, type-check, and lint suite is green.
+
+
+# Phase 2 — Add Shape Loop
+
+## Purpose
+
+Implement the Shape Loop Feature defined by the current Shape model specification.
+
+Shape Loop should closely reuse the carefully designed and debugged geometry of the existing Artwork Loop while adopting Shape's established component, dimensionalization, and Package color semantics.
+
+The central manufacturing contract is:
+
+> A participating Shape Loop is additive Shape-owned geometry whose inner opening is externally tangent to the complete assembled Shape envelope at the selected cardinal position.
+
+Loop is a distinct physical component. Unlike Hole, it adds material and therefore participates in both Shape Extrude component production and Shape Package color assignment.
+
+The Loop is positioned relative to the complete assembled Shape envelope defined by `shape_size`. Optional Shape Features do not redefine that positioning boundary.
+
+This phase should migrate proven Artwork Loop behavior rather than redesigning Loop geometry.
+
+## Required behavior to establish
+
+Shape defines:
+
+```text
+shape_loop_inner_diameter
+shape_loop_width
+shape_loop_position
+shape_loop_raise
+shape_loop_color
+```
+
+with participation determined solely by:
+
+```text
+shape_loop_inner_diameter > 0
+```
+
+Zero inner diameter disables Loop participation.
+
+Loop uses the same cardinal-position convention as Artwork Loop:
+
+```text
+0      -> top
+90     -> right
+180    -> bottom
+-90    -> left
+```
+
+The Loop inner opening is externally tangent to the dimensionalized complete Shape boundary at the selected cardinal position.
+
+Its geometry is determined by:
+
+```text
+inner radius = shape_loop_inner_diameter / 2
+
+outer radius =
+    inner radius
+    + shape_loop_width
+```
+
+Loop explicitly extends beyond the normal `shape_size` envelope. This extension is part of the Loop Feature contract and does not change the meaning or configured value of `shape_size`.
+
+Loop positioning must not depend on whether an Outer Ridge, Inner Ridge, Border Label, Artwork fill, incorporated Artwork, or other optional Feature participates.
+
+A participating Loop is a distinct Shape-owned physical component.
+
+Its physical height is controlled by:
+
+```text
+shape_loop_raise
+```
+
+with the default derived from:
+
+```text
+shape_base_raise
+```
+
+The Loop occupies physical Z from zero through `shape_loop_raise`.
+
+Its physical printing color is controlled by:
+
+```text
+shape_loop_color
+```
+
+with the default derived from the resolved:
+
+```text
+shape_base_color
+```
+
+Loop physical color is Package policy. Changing only `shape_loop_color` must not invalidate or recompute Structure, Compose, or Extrude geometry.
+
+Loop participation does not alter the registered interior region or Artwork fitting.
+
+## Implementation boundary
+
+Shape Extrude owns Loop physical dimensionalization and component participation.
+
+Structure and Compose should not manufacture physical Loop geometry or change registered Shape/Artwork composition merely because Loop participates.
+
+Shape Extrude should produce a distinct semantic Loop component while leaving its physical printer color unresolved.
+
+Shape Package owns Loop physical color assignment. It should recognize the Loop as a supported Shape-owned component, apply an explicit `shape_loop_color` when configured, and otherwise inherit the resolved Base color.
+
+Reuse the existing Artwork Loop geometry implementation or extract genuinely model-independent geometry only where doing so preserves clear model ownership.
+
+Any shared abstraction should represent genuinely common mechanical geometry:
+
+```text
+physical envelope
+      +
+inner diameter / width / cardinal position
+      ↓
+physical Loop geometry
+```
+
+while participation, Shape-specific raise, Shape-specific color, component identity, and Stage ownership remain owned by the Shape model.
+
+Do not make Shape Loop inherit Artwork's attachment-color policy. Artwork requires attachment-layer color inheritance because standalone Artwork has dynamic Artifact-color layers. Shape has an established semantic Base color and therefore follows Shape-owned component color policy.
+
+## TDD seams
+
+Establish Loop through two major behavioral boundaries without decomposing the work into single-change cycles.
+
+### Extrude seam
+
+Use one high-value test or small coherent test group to establish that a participating Loop:
+
+- is positioned relative to the dimensionalized Shape envelope;
+- preserves the proven inner-opening tangency rule;
+- receives the configured/default physical raise; and
+- becomes a distinct Shape-owned physical component.
+
+The test should establish the manufacturing boundary rather than separately inventorying every internal helper or cardinal branch.
+
+### Package seam
+
+Use a focused Package-level test to establish that:
+
+- Loop is recognized as a Shape-owned component;
+- its default physical color is the resolved Base color;
+- an explicit `shape_loop_color` overrides that inherited color; and
+- color resolution remains Package-only behavior.
+
+These are separate meaningful seams because Extrude owns physical component production while Package owns physical printer color.
+
+Existing Artwork Loop tests should be used as behavioral evidence and regression protection rather than mechanically duplicated into a full parallel Shape test suite.
+
+## High-level implementation steps
+
+1. Audit the existing Artwork Loop parameters, validation, geometry helper, Extrude integration, Package behavior, and focused tests against the new Shape Loop Feature contract.
+2. Audit current Shape parameter registration, derivation, validation, Stage parameter ownership, Extrude component construction, Package component-color handling, and relevant tests.
+3. Add the Shape Loop configuration parameters and validation defined by the Shape specification.
+4. Add the derived `shape_loop_raise` behavior from the effective `shape_base_raise` while preserving explicit override precedence.
+5. Establish the high-value failing test or small coherent test set at the Shape Extrude manufacturing seam.
+6. Reuse or appropriately generalize the proven Artwork Loop geometry calculation for the dimensionalized Shape envelope.
+7. Produce a distinct Shape-owned Loop extrusion component with physical Z from zero through `shape_loop_raise`.
+8. Preserve Loop semantic component identity through the Shape extrusion manifest.
+9. Establish the focused Package seam for Loop physical color.
+10. Extend Shape Package to recognize Loop and resolve `shape_loop_color`, defaulting to the resolved Base color when no explicit override exists.
+11. Verify that changing only Loop color affects Package without changing earlier geometry products.
+12. Verify that Loop participation does not alter registered composition, the registered interior region, or Artwork fitting.
+13. Run focused Shape Loop/Extrude/Package tests, relevant Artwork Loop regression tests if common geometry changes, and then the appropriate complete quality suite.
+14. Recompare resulting HEAD with the Shape definition and remove this phase when the Feature contract is fully satisfied.
+
+## Completion criteria
+
+Phase 2 is complete when:
+
+- the Shape Loop parameters resolve and validate according to the Shape Feature contract;
+- zero `shape_loop_inner_diameter` produces no Loop;
+- positive `shape_loop_inner_diameter` produces a distinct physical Loop component;
+- Loop position is derived from the complete dimensionalized Shape envelope defined by `shape_size`;
+- the Loop inner opening is externally tangent to the Shape boundary at the selected cardinal position;
+- `shape_loop_width` correctly determines the radial material width surrounding the opening;
+- Loop may extend beyond the normal `shape_size` envelope without changing the meaning of `shape_size`;
+- `shape_loop_raise` controls complete Loop height from `Z = 0`;
+- the default Loop raise derives from the effective `shape_base_raise`, with explicit configuration taking precedence;
+- Loop retains distinct Shape-owned component identity through Extrude and Package;
+- the default Loop color is the resolved Base color;
+- an explicit `shape_loop_color` overrides the Base-color default;
+- physical Loop color is assigned only during Package;
+- changing only `shape_loop_color` does not require recomputing Structure, Compose, or Extrude;
+- Loop participation does not alter the registered interior region or Artwork fitting;
+- important Loop behavior is protected at the Extrude and Package ownership boundaries without unnecessary inventory-style tests;
+- existing Artwork Loop behavior remains correct if common geometry is reused or refactored; and
+- the complete applicable test, type-check, and lint suite is green.
+
 
 # Phase 3 — Rework CONFIG Around Effective Resolution and Provenance
 
