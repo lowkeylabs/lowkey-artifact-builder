@@ -979,6 +979,9 @@ shape_size
 shape_base_raise
 shape_outer_ridge_width
 shape_outer_ridge_raise
+shape_inner_ridge_width
+shape_inner_ridge_raise
+shape_inner_to_outer_ridge_dist
 shape_artwork_raise
 shape_artwork_fill_raise
 ```
