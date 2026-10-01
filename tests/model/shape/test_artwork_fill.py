@@ -112,27 +112,32 @@ def _compose_context(
     manifest_path: Path,
 ) -> Mock:
     """
-    Build a Shape Compose context containing only Compose-owned parameters.
+    Build a Shape Compose context containing representative Compose defaults.
 
     Registered Artwork-fill geometry is a composition concern independent of
     physical printer-color policy. Physical fill participation is decided by
     Extrude through shape_artwork_fill_raise, and physical fill color is
     resolved by Package.
     """
+
     context = Mock(spec=StageContext)
 
     inputs = {
         "structure.structure": structure_path,
         "artwork.vector.manifest": registered_artwork_manifest,
     }
+
     outputs = {
         "composition": composition_path,
         "manifest": manifest_path,
     }
+
     values = {
         "shape_size": 100.0,
         "shape_outer_ridge_width": 0.0,
         "shape_outer_ridge_style": "integrated",
+        "shape_inner_ridge_width": 0.0,
+        "shape_inner_to_outer_ridge_dist": 10.0,
     }
 
     context.input.side_effect = inputs.__getitem__

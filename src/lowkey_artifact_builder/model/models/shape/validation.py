@@ -185,6 +185,102 @@ def _validate_base_color(
         raise ConfigError("shape_base_color must be a nonempty color name.")
 
 
+def _validate_inner_ridge_width(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require inner-ridge width to be nonnegative.
+    """
+
+    ridge_width = resolver(
+        "shape_inner_ridge_width",
+    )
+
+    if not isinstance(
+        ridge_width,
+        int | float,
+    ):
+        raise ConfigError("shape_inner_ridge_width must be numeric.")
+
+    if ridge_width < 0:
+        raise ConfigError("shape_inner_ridge_width must be greater than or equal to 0.")
+
+
+def _validate_inner_ridge_raise(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require the inner-ridge top to remain at or above the base bottom.
+    """
+
+    base_raise = resolver(
+        "shape_base_raise",
+    )
+
+    ridge_raise = resolver(
+        "shape_inner_ridge_raise",
+    )
+
+    if not isinstance(
+        base_raise,
+        int | float,
+    ):
+        raise ConfigError("shape_base_raise must be numeric.")
+
+    if not isinstance(
+        ridge_raise,
+        int | float,
+    ):
+        raise ConfigError("shape_inner_ridge_raise must be numeric.")
+
+    if ridge_raise < -base_raise:
+        raise ConfigError(
+            "shape_inner_ridge_raise must be greater than or equal to -shape_base_raise."
+        )
+
+
+def _validate_inner_to_outer_ridge_dist(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require inner-ridge positioning distance to be nonnegative.
+    """
+
+    ridge_distance = resolver(
+        "shape_inner_to_outer_ridge_dist",
+    )
+
+    if not isinstance(
+        ridge_distance,
+        int | float,
+    ):
+        raise ConfigError("shape_inner_to_outer_ridge_dist must be numeric.")
+
+    if ridge_distance < 0:
+        raise ConfigError("shape_inner_to_outer_ridge_dist must be greater than or equal to 0.")
+
+
+def _validate_inner_ridge_color(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require the inner-ridge color to be a nonempty semantic color name.
+    """
+
+    ridge_color = resolver(
+        "shape_inner_ridge_color",
+    )
+
+    if (
+        not isinstance(
+            ridge_color,
+            str,
+        )
+        or not ridge_color.strip()
+    ):
+        raise ConfigError("shape_inner_ridge_color must be a nonempty color name.")
+
+
 VALIDATORS = (
     ConfigurationValidator(
         parameters=("shape_geometry",),
@@ -205,8 +301,23 @@ VALIDATORS = (
         validate=_validate_outer_ridge_raise,
     ),
     ConfigurationValidator(
+        parameters=(
+            "shape_base_raise",
+            "shape_inner_ridge_raise",
+        ),
+        validate=_validate_inner_ridge_raise,
+    ),
+    ConfigurationValidator(
         parameters=("shape_outer_ridge_width",),
         validate=_validate_outer_ridge_width,
+    ),
+    ConfigurationValidator(
+        parameters=("shape_inner_ridge_width",),
+        validate=_validate_inner_ridge_width,
+    ),
+    ConfigurationValidator(
+        parameters=("shape_inner_to_outer_ridge_dist",),
+        validate=_validate_inner_to_outer_ridge_dist,
     ),
     ConfigurationValidator(
         parameters=("shape_outer_ridge_style",),
@@ -219,6 +330,10 @@ VALIDATORS = (
     ConfigurationValidator(
         parameters=("shape_outer_ridge_color",),
         validate=_validate_outer_ridge_color,
+    ),
+    ConfigurationValidator(
+        parameters=("shape_inner_ridge_color",),
+        validate=_validate_inner_ridge_color,
     ),
 )
 

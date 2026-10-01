@@ -224,6 +224,22 @@ Model tests protect semantics owned by a Model.
 
 A Model test should depend on as little unrelated Model behavior as practical.
 
+Shared Model test fixtures should normally represent ordinary Model defaults
+without making every test responsible for the complete current parameter set.
+
+Adding a defaulted parameter to a Model or stage should not ordinarily require
+unrelated behavioral tests to be rewritten merely because their test resolver
+or fixture enumerates every parameter the implementation may request.
+
+Where practical, shared fixtures should use production defaults or otherwise
+provide representative defaults while allowing tests to override only the
+parameters material to the behavior under test.
+
+Exact assertions about which parameters a stage resolves are appropriate when
+parameter ownership or stage partitioning is itself the behavior being tested.
+Keep that strictness in focused tests rather than imposing it incidentally on
+all tests that exercise the stage.
+
 For example, a test of physical Artwork sizing may establish that:
 
 * the intended physical dimension is achieved;
@@ -571,6 +587,11 @@ exercise the same high-level command or Model.
 Test helpers should make the behavior under test clearer. They should not hide
 important setup or create broad fixtures whose unrelated defaults become
 implicit test dependencies.
+
+Conversely, shared helpers should not make unrelated tests responsible for the
+complete current dependency or parameter inventory. A helper should be strict
+about dependencies only when that strictness is material to the behavior the
+test is intended to protect.
 
 # Commit Messages
 

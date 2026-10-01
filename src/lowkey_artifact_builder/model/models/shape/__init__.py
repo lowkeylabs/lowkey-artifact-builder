@@ -5,8 +5,10 @@ The shape model defines parameterized geometric bodies that may consume
 registered Artwork geometry.
 
 The current declaration establishes registered structural Shape production,
-registered composition, physical dimensionalization, optional outer-ridge
-policy, physical-component discovery, and final artifact packaging.
+registered composition, physical dimensionalization, optional outer-
+and inner-ridge policy, physical-component discovery, and final artifact
+packaging.
+
 """
 # File: src/lowkey_artifact_builder/model/models/shape/__init__.py
 # Copyright 2026 LowKeyLabs LLC
@@ -77,6 +79,8 @@ MODEL = ModelSpec(
                 "shape_size",
                 "shape_outer_ridge_width",
                 "shape_outer_ridge_style",
+                "shape_inner_ridge_width",
+                "shape_inner_to_outer_ridge_dist",
             ),
             products=(
                 ProductSpec(
@@ -104,6 +108,7 @@ MODEL = ModelSpec(
                 "shape_base_raise",
                 "shape_outer_ridge_raise",
                 "shape_outer_ridge_style",
+                "shape_inner_ridge_raise",
                 "shape_artwork_raise",
                 "shape_artwork_fill_raise",
             ),
@@ -129,6 +134,7 @@ MODEL = ModelSpec(
                 "printer_colors",
                 "shape_base_color",
                 "shape_outer_ridge_color",
+                "shape_inner_ridge_color",
                 "shape_artwork_fill_color",
             ),
             products=(

@@ -124,6 +124,73 @@ shape_outer_ridge_raise = 1.0
 shape_outer_ridge_style = "integrated"
 
 
+# outer ridge defaults to shape_base_color unless
+# it is overridden
+
+## shape_outer_ridge_color = "black"
+
+
+# =========================================================
+# Inner ridge
+# =========================================================
+
+#
+# Physical width of the optional inner ridge, measured inward
+# from its positioned outer boundary, in millimeters.
+#
+# For polygon geometry, width is measured perpendicular to each
+# polygon edge.
+#
+# Zero disables the ridge. Positive width enables the ridge.
+#
+
+shape_inner_ridge_width = 0.0
+
+
+#
+# Physical Z displacement of the inner-ridge top relative to
+# the top of the base, in millimeters.
+#
+# Positive values place the ridge top above the base top.
+# Zero places the ridge top flush with the base top.
+# Negative values place the ridge top below the base top.
+#
+# The minimum valid value is -shape_base_raise.
+#
+# Ridge raise does not determine whether the ridge exists.
+#
+
+shape_inner_ridge_raise = 1.0
+
+
+#
+# Physical distance between the inner ridge and its outer
+# positioning reference, in millimeters.
+#
+# When the outer ridge participates, this distance is measured
+# inward from the inside boundary of the outer ridge.
+#
+# When the outer ridge does not participate, this distance is
+# measured inward from the complete Shape boundary.
+#
+
+shape_inner_to_outer_ridge_dist = 10.0
+
+
+#
+# Optional physical printing-color override for the inner ridge.
+#
+# When not explicitly configured, the inner ridge inherits the
+# resolved physical printing color of the Shape base.
+#
+# This parameter affects physical color assignment during
+# packaging only. It does not determine ridge participation
+# or geometry.
+#
+
+## shape_inner_ridge_color = "white"
+
+
 # =========================================================
 # Incorporated Artwork
 # =========================================================

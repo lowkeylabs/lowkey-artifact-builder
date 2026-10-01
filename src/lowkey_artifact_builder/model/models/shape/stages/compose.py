@@ -178,12 +178,21 @@ def registered_interior_region(
         composition,
     ).getroot()
 
-    ridge_boundaries = tuple(
-        element for element in root if element.get("id") == "ridge-inner-boundary"
+    inner_ridge_boundary = next(
+        (element for element in root if element.get("id") == "inner-ridge-inner-boundary"),
+        None,
     )
 
-    if ridge_boundaries:
-        return ridge_boundaries[-1]
+    if inner_ridge_boundary is not None:
+        return inner_ridge_boundary
+
+    outer_ridge_boundary = next(
+        (element for element in root if element.get("id") == "ridge-inner-boundary"),
+        None,
+    )
+
+    if outer_ridge_boundary is not None:
+        return outer_ridge_boundary
 
     shape_boundary = next(
         (element for element in root if element.get("id") == "shape-boundary"),
@@ -226,8 +235,9 @@ def execute(
     one common placement transformation, and registered Artwork-fill geometry
     are retained by the persistent composition manifest.
 
-    Physical ridge width is interpreted relative to physical Shape size so the
-    resulting partition boundary can be represented in registered space.
+    Physical ridge widths and positioning distances are interpreted relative
+    to physical Shape size so the resulting partition boundaries can be
+    represented in registered space.
 
     Physical Z dimensions and physical color assignment remain downstream.
     """
@@ -239,6 +249,7 @@ def execute(
     composition_output = context.output(
         "composition",
     )
+
     manifest_output = context.output(
         "manifest",
     )
@@ -246,11 +257,21 @@ def execute(
     shape_size = float(
         context.resolver("shape_size"),
     )
+
     ridge_width = float(
         context.resolver("shape_outer_ridge_width"),
     )
+
     ridge_style = str(
         context.resolver("shape_outer_ridge_style"),
+    )
+
+    inner_ridge_width = float(
+        context.resolver("shape_inner_ridge_width"),
+    )
+
+    inner_to_outer_ridge_dist = float(
+        context.resolver("shape_inner_to_outer_ridge_dist"),
     )
 
     if ridge_style in {
@@ -262,6 +283,8 @@ def execute(
             composition_output,
             shape_size=shape_size,
             ridge_width=ridge_width,
+            inner_ridge_width=inner_ridge_width,
+            inner_to_outer_ridge_dist=inner_to_outer_ridge_dist,
         )
     else:
         shutil.copyfile(
@@ -545,20 +568,28 @@ def _compose_ridge(
     *,
     shape_size: float,
     ridge_width: float,
+    inner_ridge_width: float = 0.0,
+    inner_to_outer_ridge_dist: float = 10.0,
 ) -> None:
     """
     Compose ridge boundaries in registered Shape space.
 
-    The complete Shape boundary remains unchanged. Physical ridge width is
-    converted into a registered-space inset that establishes the ridge's
-    inner boundary.
+    The complete Shape boundary remains unchanged. Physical ridge widths and
+    positioning distances are converted into registered-space insets that
+    establish ridge boundaries.
 
-    Ridge existence is determined solely by ridge width. Zero width preserves
-    the registered Shape boundary without creating a ridge partition, while
-    negative width is invalid.
+    Outer-ridge existence is determined solely by outer-ridge width. Zero
+    width preserves the registered Shape boundary without creating an outer
+    ridge partition.
 
-    Integrated and separate ridge styles share these registered boundaries.
-    Their different physical component partitioning belongs downstream.
+    Inner-ridge existence is determined solely by inner-ridge width. When the
+    outer ridge participates, its inside boundary establishes the positioning
+    reference for the inner ridge. Otherwise, the complete Shape boundary
+    establishes that reference.
+
+    Integrated and separate outer-ridge styles share these registered
+    boundaries. Their different physical component partitioning belongs
+    downstream.
 
     Circle, square, and regular-polygon registered structures are supported.
     """
@@ -566,17 +597,26 @@ def _compose_ridge(
     if ridge_width < 0.0:
         raise ValueError("shape_outer_ridge_width must be nonnegative.")
 
+    if inner_ridge_width < 0.0:
+        raise ValueError("shape_inner_ridge_width must be nonnegative.")
+
+    if inner_to_outer_ridge_dist < 0.0:
+        raise ValueError("shape_inner_to_outer_ridge_dist must be nonnegative.")
+
     tree = ET.parse(
         structure_input,
     )
+
     root = tree.getroot()
 
     circle = root.find(
         SVG_CIRCLE,
     )
+
     square = root.find(
         SVG_RECT,
     )
+
     polygon = root.find(
         SVG_POLYGON,
     )
@@ -617,6 +657,22 @@ def _compose_ridge(
                 registered_inset=registered_inset,
             )
 
+    if inner_ridge_width > 0.0:
+        registered_distance = inner_to_outer_ridge_dist / shape_size
+        registered_width = inner_ridge_width / shape_size
+
+        reference_boundary = next(
+            (element for element in root if element.get("id") == "ridge-inner-boundary"),
+            outer_boundary,
+        )
+
+        _compose_inner_ridge(
+            root,
+            reference_boundary,
+            registered_distance=registered_distance,
+            registered_width=registered_width,
+        )
+
     #
     # ElementTree namespace registration is process-global. Establish the SVG
     # default namespace at the serialization boundary rather than relying on
@@ -632,6 +688,153 @@ def _compose_ridge(
         output,
         encoding="unicode",
     )
+
+
+def _compose_inner_ridge(
+    root: ET.Element,
+    reference_boundary: ET.Element,
+    *,
+    registered_distance: float,
+    registered_width: float,
+) -> None:
+    """
+    Establish registered outer and inner boundaries for the inner ridge.
+
+    The outer boundary is inset from the current positioning reference by the
+    configured ridge distance. The inner boundary is inset from that same
+    reference by the positioning distance plus the inner-ridge width.
+
+    The positioning reference is the outer ridge's inside boundary when the
+    outer ridge participates and the complete Shape boundary otherwise.
+    """
+
+    outer_inset = registered_distance
+    inner_inset = registered_distance + registered_width
+
+    if reference_boundary.tag == SVG_CIRCLE:
+        reference_radius = float(
+            reference_boundary.get(
+                "r",
+                "0.0",
+            )
+        )
+
+        ET.SubElement(
+            root,
+            SVG_CIRCLE,
+            {
+                "id": "inner-ridge-outer-boundary",
+                "cx": reference_boundary.get("cx", "0.0"),
+                "cy": reference_boundary.get("cy", "0.0"),
+                "r": str(reference_radius - outer_inset),
+            },
+        )
+
+        ET.SubElement(
+            root,
+            SVG_CIRCLE,
+            {
+                "id": "inner-ridge-inner-boundary",
+                "cx": reference_boundary.get("cx", "0.0"),
+                "cy": reference_boundary.get("cy", "0.0"),
+                "r": str(reference_radius - inner_inset),
+            },
+        )
+
+        return
+
+    if reference_boundary.tag == SVG_RECT:
+        reference_x = float(
+            reference_boundary.get(
+                "x",
+                "0.0",
+            )
+        )
+        reference_y = float(
+            reference_boundary.get(
+                "y",
+                "0.0",
+            )
+        )
+        reference_width = float(
+            reference_boundary.get(
+                "width",
+                "0.0",
+            )
+        )
+        reference_height = float(
+            reference_boundary.get(
+                "height",
+                "0.0",
+            )
+        )
+
+        ET.SubElement(
+            root,
+            SVG_RECT,
+            {
+                "id": "inner-ridge-outer-boundary",
+                "x": str(reference_x + outer_inset),
+                "y": str(reference_y + outer_inset),
+                "width": str(reference_width - (2.0 * outer_inset)),
+                "height": str(reference_height - (2.0 * outer_inset)),
+            },
+        )
+
+        ET.SubElement(
+            root,
+            SVG_RECT,
+            {
+                "id": "inner-ridge-inner-boundary",
+                "x": str(reference_x + inner_inset),
+                "y": str(reference_y + inner_inset),
+                "width": str(reference_width - (2.0 * inner_inset)),
+                "height": str(reference_height - (2.0 * inner_inset)),
+            },
+        )
+
+        return
+
+    if reference_boundary.tag == SVG_POLYGON:
+        reference_points = _read_polygon_points(
+            reference_boundary,
+        )
+
+        outer_points = _inset_polygon(
+            reference_points,
+            inset=outer_inset,
+        )
+
+        inner_points = _inset_polygon(
+            reference_points,
+            inset=inner_inset,
+        )
+
+        ET.SubElement(
+            root,
+            SVG_POLYGON,
+            {
+                "id": "inner-ridge-outer-boundary",
+                "points": _format_polygon_points(
+                    outer_points,
+                ),
+            },
+        )
+
+        ET.SubElement(
+            root,
+            SVG_POLYGON,
+            {
+                "id": "inner-ridge-inner-boundary",
+                "points": _format_polygon_points(
+                    inner_points,
+                ),
+            },
+        )
+
+        return
+
+    raise ValueError("Inner-ridge composition requires supported registered Shape geometry.")
 
 
 def _compose_circle_ridge(

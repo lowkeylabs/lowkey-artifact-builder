@@ -59,7 +59,11 @@ def _validate_shape(
     values: dict[str, Any],
 ) -> None:
     """
-    Validate resolved Shape configuration using the model validators.
+    Validate resolved Shape configuration using representative model defaults.
+
+    Individual tests override only the configuration material to the behavior
+    they exercise. The shared defaults keep unrelated validators from making
+    those tests responsible for the Shape model's complete parameter set.
     """
 
     from lowkey_artifact_builder.model.models.shape.validation import (
@@ -73,8 +77,12 @@ def _validate_shape(
         "shape_outer_ridge_width": 0.0,
         "shape_outer_ridge_raise": 1.0,
         "shape_outer_ridge_style": "integrated",
+        "shape_inner_ridge_width": 0.0,
+        "shape_inner_ridge_raise": 1.0,
+        "shape_inner_to_outer_ridge_dist": 10.0,
         "shape_base_color": "white",
         "shape_outer_ridge_color": "white",
+        "shape_inner_ridge_color": "white",
     }
 
     resolved_values.update(
@@ -774,6 +782,8 @@ def test_invalid_shape_ridge_style_fails_when_compose_requires_execution() -> No
         {
             "shape_outer_ridge_width": 1.0,
             "shape_outer_ridge_style": "detached",
+            "shape_inner_ridge_width": 0.0,
+            "shape_inner_to_outer_ridge_dist": 10.0,
         }
     )
 

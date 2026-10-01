@@ -237,15 +237,15 @@ def test_shape_compose_products_have_canonical_relative_paths() -> None:
 
 def test_shape_compose_consumes_structural_partition_parameters() -> None:
     """
-    Registered composition owns the relative structural partition.
+    Registered composition owns the complete relative structural partition.
 
-    Ridge width is a physical Shape policy expressed in registered space
-    relative to shape_size. Ridge style determines whether the structural
-    regions must remain distinguishable for downstream component
-    dimensionalization.
+    Outer- and inner-ridge widths and spacing are physical Shape policies
+    expressed in registered space relative to shape_size. Ridge style determines
+    the outer-ridge structural partition while Inner Ridge geometry establishes
+    the succeeding registered interior boundary.
 
-    Ridge raise remains a physical Z dimension and therefore does not belong
-    to registered composition.
+    Ridge raises remain physical Z dimensions and therefore do not belong to
+    registered composition.
     """
 
     compose_stage = _compose_stage()
@@ -254,6 +254,8 @@ def test_shape_compose_consumes_structural_partition_parameters() -> None:
         "shape_size",
         "shape_outer_ridge_width",
         "shape_outer_ridge_style",
+        "shape_inner_ridge_width",
+        "shape_inner_to_outer_ridge_dist",
     )
 
 
@@ -293,9 +295,10 @@ def test_shape_extrude_depends_on_compose_stage() -> None:
 
 def test_shape_extrude_consumes_physical_dimensionalization_parameters() -> None:
     """
-    Shape extrusion owns physical geometry and component participation.
+    Shape extrusion owns the complete physical dimensionalization partition.
 
     Physical dimensions that affect dimensionalized Shape geometry belong here.
+    Outer- and inner-ridge raises control their physical Z dimensions.
     Artwork-fill participation and height are controlled by
     shape_artwork_fill_raise.
 
@@ -309,6 +312,7 @@ def test_shape_extrude_consumes_physical_dimensionalization_parameters() -> None
         "shape_base_raise",
         "shape_outer_ridge_raise",
         "shape_outer_ridge_style",
+        "shape_inner_ridge_raise",
         "shape_artwork_raise",
         "shape_artwork_fill_raise",
     )
@@ -394,16 +398,18 @@ def test_shape_extrude_does_not_consume_physical_color_parameters() -> None:
     assert "printer_colors" not in extrude_stage.parameters
     assert "shape_base_color" not in extrude_stage.parameters
     assert "shape_outer_ridge_color" not in extrude_stage.parameters
+    assert "shape_inner_ridge_color" not in extrude_stage.parameters
     assert "shape_artwork_fill_color" not in extrude_stage.parameters
 
 
 def test_shape_package_consumes_only_packaging_parameters() -> None:
     """
-    Shape packaging owns physical color assignment.
+    Shape packaging owns the complete physical color-assignment partition.
 
     printer_colors resolves incorporated Artwork Artifact-color identities.
-    Shape-owned base, outer-ridge, and Artwork-fill colors are also physical
-    packaging policy rather than geometry or component-participation policy.
+    Shape-owned base, outer-ridge, inner-ridge, and Artwork-fill colors are
+    physical packaging policy rather than geometry or component-participation
+    policy.
     """
 
     package_stage = _package_stage()
@@ -412,6 +418,7 @@ def test_shape_package_consumes_only_packaging_parameters() -> None:
         "printer_colors",
         "shape_base_color",
         "shape_outer_ridge_color",
+        "shape_inner_ridge_color",
         "shape_artwork_fill_color",
     )
 

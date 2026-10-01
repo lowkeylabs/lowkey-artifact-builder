@@ -53,7 +53,7 @@ At the beginning of a thread and before each meaningful implementation slice:
    is still current;
 5. resolve known semantic or architectural questions before encoding behavior
    in tests, while allowing test-first exploration to discover or clarify
-   uncertain seams and ownership boundaries;   
+   uncertain seams and ownership boundaries;
 6. organize TDD around major behavioral seams or boundaries, using one test or
    a small coherent test set to drive a substantial implementation slice rather
    than creating single-test/single-change cycles;

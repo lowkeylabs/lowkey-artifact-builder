@@ -281,15 +281,22 @@ def _configure_shape_resolver(
     ridge_width: float = 5.0,
     ridge_style: str = "integrated",
     fill_color: str = "none",
+    inner_ridge_width: float = 0.0,
+    inner_to_outer_ridge_dist: float = 10.0,
 ) -> Mock:
     """
     Configure representative Shape parameters for registered composition.
+
+    Optional Inner Ridge behavior defaults to disabled so tests remain focused
+    on the behavior they explicitly configure.
     """
 
     values = {
         "shape_size": shape_size,
         "shape_outer_ridge_width": ridge_width,
         "shape_outer_ridge_style": ridge_style,
+        "shape_inner_ridge_width": inner_ridge_width,
+        "shape_inner_to_outer_ridge_dist": inner_to_outer_ridge_dist,
         "shape_artwork_fill_color": fill_color,
     }
 
@@ -2011,9 +2018,12 @@ def test_compose_stage_resolves_only_registered_partition_parameters(
     """
     Registered composition resolves only parameters needed for partitioning.
 
-    Shape size and ridge width establish the ridge inset in registered space.
-    Ridge style establishes structural partition policy. Physical Z dimensions
-    remain downstream.
+    Shape size and ridge widths establish registered geometry. Outer-ridge
+    style establishes structural partition policy. Inner-ridge distance
+    establishes its position relative to the applicable outer reference
+    boundary.
+
+    Physical Z dimensions and printing colors remain downstream.
     """
 
     structure_input = tmp_path / "structure.svg"
@@ -2047,6 +2057,8 @@ def test_compose_stage_resolves_only_registered_partition_parameters(
         call("shape_size"),
         call("shape_outer_ridge_width"),
         call("shape_outer_ridge_style"),
+        call("shape_inner_ridge_width"),
+        call("shape_inner_to_outer_ridge_dist"),
     ]
 
 
