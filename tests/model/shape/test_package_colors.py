@@ -574,3 +574,240 @@ def test_package_stage_resolves_explicit_shape_color_overrides(
             "shape_artwork_fill_color",
         ),
     ]
+
+
+def test_package_stage_inner_ridge_inherits_base_color(
+    tmp_path: Path,
+) -> None:
+    """
+    Inner Ridge inherits the resolved physical base color when no explicit
+    Inner Ridge color override is configured.
+
+    Inner Ridge participation is established by Extrude and is independent
+    of Package-time physical color policy.
+    """
+
+    component_directory = tmp_path / "extrude"
+    base = component_directory / "base.stl"
+    inner_ridge = component_directory / "inner-ridge.stl"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    _write_component_stl(
+        base,
+        solid_name="shape-base",
+    )
+
+    _write_component_stl(
+        inner_ridge,
+        solid_name="shape-inner-ridge",
+    )
+
+    _write_logical_component_manifest(
+        manifest,
+        (
+            (
+                "base",
+                "base.stl",
+            ),
+            (
+                "inner-ridge",
+                "inner-ridge.stl",
+            ),
+        ),
+    )
+
+    resolver = Mock()
+
+    resolver.side_effect = {
+        "shape_base_color": "test-blue",
+    }.__getitem__
+
+    resolver.has.return_value = False
+
+    resolver.colors = {
+        "test-blue": {
+            "rgb": [
+                0,
+                0,
+                255,
+            ],
+        },
+    }
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    context.artifact_id = "example"
+    context.resolver = resolver
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    package.execute(
+        context,
+    )
+
+    model = _read_model(
+        artifact,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    assert {object_.get("name") for object_ in objects} == {
+        component_name(
+            "example",
+            "base",
+            "test-blue",
+        ),
+        component_name(
+            "example",
+            "inner-ridge",
+            "test-blue",
+        ),
+    }
+
+    resolver.has.assert_called_once_with(
+        "shape_inner_ridge_color",
+    )
+
+
+def test_package_stage_resolves_explicit_inner_ridge_color(
+    tmp_path: Path,
+) -> None:
+    """
+    An explicit Inner Ridge color overrides base-color inheritance.
+
+    Inner Ridge remains an independently identifiable physical component,
+    and its physical color is resolved exclusively during Package.
+    """
+
+    component_directory = tmp_path / "extrude"
+    base = component_directory / "base.stl"
+    inner_ridge = component_directory / "inner-ridge.stl"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    _write_component_stl(
+        base,
+        solid_name="shape-base",
+    )
+
+    _write_component_stl(
+        inner_ridge,
+        solid_name="shape-inner-ridge",
+    )
+
+    _write_logical_component_manifest(
+        manifest,
+        (
+            (
+                "base",
+                "base.stl",
+            ),
+            (
+                "inner-ridge",
+                "inner-ridge.stl",
+            ),
+        ),
+    )
+
+    resolver = Mock()
+
+    values = {
+        "shape_base_color": "test-white",
+        "shape_inner_ridge_color": "test-red",
+    }
+
+    resolver.side_effect = values.__getitem__
+    resolver.has.side_effect = values.__contains__
+
+    resolver.colors = {
+        "test-white": {
+            "rgb": [
+                255,
+                255,
+                255,
+            ],
+        },
+        "test-red": {
+            "rgb": [
+                255,
+                0,
+                0,
+            ],
+        },
+    }
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    context.artifact_id = "example"
+    context.resolver = resolver
+    context.input.return_value = manifest
+    context.output.return_value = artifact
+
+    package.execute(
+        context,
+    )
+
+    model = _read_model(
+        artifact,
+    )
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    assert {object_.get("name") for object_ in objects} == {
+        component_name(
+            "example",
+            "base",
+            "test-white",
+        ),
+        component_name(
+            "example",
+            "inner-ridge",
+            "test-red",
+        ),
+    }
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    inner_ridge_name = component_name(
+        "example",
+        "inner-ridge",
+        "test-red",
+    )
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    packaged_inner_ridge = objects_by_name[inner_ridge_name]
+
+    material_id = packaged_inner_ridge.get(
+        "pid",
+    )
+    assert material_id is not None
+
+    color = materials_by_id[material_id].find(
+        f"{{{CORE_NS}}}base",
+    )
+
+    assert color is not None
+    assert color.get("name") == "test-red"
+    assert color.get("displaycolor") == "#FF0000"
+
+    assert resolver.call_args_list == [
+        call(
+            "shape_base_color",
+        ),
+        call(
+            "shape_inner_ridge_color",
+        ),
+    ]

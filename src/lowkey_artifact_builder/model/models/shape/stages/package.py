@@ -89,8 +89,9 @@ def execute(
     Execute the Shape package stage.
 
     Shape-owned physical colors are resolved here. Base resolves
-    shape_base_color. Ridge and Artwork fill inherit the resolved base color
-    unless their optional Package-time overrides are explicitly configured.
+    shape_base_color. Outer Ridge, Inner Ridge, and Artwork Fill inherit the
+    resolved base color unless their optional Package-time overrides are
+    explicitly configured.
 
     Incorporated Artwork preserves Artifact-color identity through extrusion.
     Package resolves those logical colors against printer_colors using the
@@ -213,16 +214,22 @@ def _resolve_shape_component_colors(
     """
     Resolve physical printer colors for Shape-owned components.
 
-    The structural base establishes the inherited Shape color. Outer ridge and
-    Artwork fill inherit that color unless an explicit Package-time override is
-    configured. Physical color policy does not determine participation.
+    The structural base establishes the inherited Shape color. Outer Ridge,
+    Inner Ridge, and Artwork Fill inherit that color unless an explicit
+    Package-time override is configured. Physical color policy does not
+    determine participation.
     """
     component_names = {component.name for component in components}
 
     if not component_names:
         return {}
 
-    supported_names = {"base", "ridge", "artwork-fill"}
+    supported_names = {
+        "base",
+        "ridge",
+        "inner-ridge",
+        "artwork-fill",
+    }
     unsupported_names = component_names - supported_names
 
     if unsupported_names:
@@ -255,6 +262,19 @@ def _resolve_shape_component_colors(
         else:
             ridge_color = base_color
         colors["ridge"] = ridge_color
+
+    if "inner-ridge" in component_names:
+        if context.resolver.has("shape_inner_ridge_color"):
+            inner_ridge_color_name = context.resolver(
+                "shape_inner_ridge_color",
+            )
+            inner_ridge_color = resolve_palette(
+                (inner_ridge_color_name,),
+                context.resolver.colors,
+            )[0]
+        else:
+            inner_ridge_color = base_color
+        colors["inner-ridge"] = inner_ridge_color
 
     if "artwork-fill" in component_names:
         if context.resolver.has("shape_artwork_fill_color"):
