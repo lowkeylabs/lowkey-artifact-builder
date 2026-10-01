@@ -193,12 +193,17 @@ class CircularBorderLabelFit:
 
         reference boundary
             ↓ border width
-        shared Top/Bottom baseline
-            ↓ resolved common glyph height
+        outer edge of lettering band / shared construction path
+            ↓ resolved common glyph-height allocation
+        inner edge of lettering band
+            ↓ border width
         Border Label inner boundary
 
-    Top lettering extends inward from the shared baseline. Bottom lettering
-    extends outward from that same baseline.
+    The shared construction path is not the typographic baseline of both 
+    labels. It is an SVG text-layout device. Position-specific offsets 
+    derived from the measured font metrics place the Top and Bottom glyph 
+    outlines into the common lettering band before Inkscape converts them 
+    to ordinary path geometry.
 
     A label entry is present only when that label participates.
     """
@@ -573,22 +578,25 @@ def write_registered_circular_label_svg(
     """
     Materialize one fitted circular Border Label as registered SVG path geometry.
 
-    ``baseline_path`` is already expressed in registered Shape coordinates.
+    ``baseline_path`` is the circular SVG construction path used by textPath.
+    It is expressed in registered Shape coordinates.
 
-    ``font_size`` and ``rendered_height`` come from the physical fitting
-    operation. They are converted back into registered Shape coordinates so
-    Compose persists dimensionless geometry and Extrude remains the physical
-    dimensionalization boundary.
+    For circular Border Labels, Top and Bottom may use the same radial
+    construction path while occupying the same physical lettering band from
+    opposite sides. The construction path is not necessarily the final
+    typographic baseline of the rendered glyphs.
 
-    The Top label occupies the lettering band inward from its baseline.
-    The Bottom label occupies the same band outward from its baseline.
+    Measured above- and below-baseline font metrics are used to offset each
+    label relative to the construction path so its complete rendered glyph
+    bounds occupy the intended lettering band.
 
-    Inkscape performs the final text-to-path conversion so downstream stages
-    consume ordinary registered path geometry rather than font-dependent text.
+    Inkscape converts the positioned text to ordinary path geometry. The
+    construction path is then removed; downstream stages consume only the
+    materialized glyph outlines.
 
-    The baseline exists only to support text-on-path conversion. It is removed
-    from the persistent manufacturing product after conversion so Extrude
-    receives glyph outlines only.
+    ``font_size`` and ``rendered_height`` come from physical fitting and are
+    converted to registered Shape coordinates here. Extrude remains responsible
+    for physical dimensionalization.
     """
 
     output = Path(
@@ -636,15 +644,14 @@ def write_registered_circular_label_svg(
     registered_below_baseline = metrics.below_baseline_per_height * registered_rendered_height
 
     #
-    # SVG text normally extends above its baseline.
+    # SVG text is positioned relative to its typographic baseline, while the
+    # supplied path represents the shared radial construction edge used to lay
+    # out circular Border Labels.
     #
-    # At the Top baseline the complete glyph must instead extend inward from
-    # that baseline, so move its baseline inward by its measured
-    # above-baseline extent.
-    #
-    # At the Bottom baseline the complete glyph extends outward from the
-    # baseline. Moving by the measured below-baseline extent keeps descenders
-    # inside that same outward-facing band.
+    # Offset each label according to its measured above-/below-baseline extent
+    # so the complete rendered glyph bounds occupy the intended common lettering
+    # band. Top and Bottom use opposite sides of their measured typographic
+    # bounds when aligning to the shared construction path.
     #
 
     if position == "top":
@@ -1054,32 +1061,22 @@ def _circular_baseline_radii(
     float,
 ]:
     """
-    Return the normative circular Border Label radii.
-
-    Returns:
-
-        (
-            bottom_baseline_radius,
-            top_baseline_radius,
-            inner_boundary_radius,
-        )
+    Return the circular Border Label lettering-band geometry.
 
     Moving inward:
 
         reference boundary
             ↓ border_width
-        shared Top/Bottom baseline
+        shared construction radius / lettering-band outer edge
             ↓ glyph_height
         lettering-band inner edge
             ↓ border_width
         Border Label inner boundary
 
-    Top and Bottom Border Labels share one circular baseline.
-
-    Top lettering extends inward from that baseline. Bottom lettering extends
-    outward from the same baseline. The common glyph-height allocation defines
-    the lettering band, while ``border_width`` preserves clearance on both
-    sides of that band.
+    ``glyph_height`` is the common physical allocation for the lettering
+    band. The shared construction radius is used for SVG text-on-path
+    materialization; it must not be confused with the individual
+    typographic baseline of either rendered label.
     """
 
     baseline_radius = reference_radius - border_width
