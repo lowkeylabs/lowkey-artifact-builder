@@ -34,12 +34,17 @@ from lowkey_artifact_builder.tools.openscad import (
 
 SHAPE_BOUNDARY_ID = "shape-boundary"
 RIDGE_INNER_BOUNDARY_ID = "ridge-inner-boundary"
+INNER_RIDGE_OUTER_BOUNDARY_ID = "inner-ridge-outer-boundary"
+INNER_RIDGE_INNER_BOUNDARY_ID = "inner-ridge-inner-boundary"
 
 BASE_COMPONENT_NAME = "base"
 BASE_COMPONENT_PATH = "base.stl"
 
 RIDGE_COMPONENT_NAME = "ridge"
 RIDGE_COMPONENT_PATH = "ridge.stl"
+
+INNER_RIDGE_COMPONENT_NAME = "inner-ridge"
+INNER_RIDGE_COMPONENT_PATH = "inner-ridge.stl"
 
 ARTWORK_FILL_COMPONENT_NAME = "artwork-fill"
 ARTWORK_FILL_COMPONENT_PATH = "artwork-fill.stl"
@@ -234,6 +239,22 @@ def execute(
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
             )
 
+        inner_ridge = _load_inner_ridge(
+            composition,
+        )
+
+        shape_inner_ridge_raise = 0.0
+
+        if inner_ridge is not None:
+            shape_inner_ridge_raise = context.resolver(
+                "shape_inner_ridge_raise",
+            )
+
+            _validate_inner_ridge_height(
+                shape_base_raise=shape_base_raise,
+                shape_inner_ridge_raise=shape_inner_ridge_raise,
+            )
+
         manifest.parent.mkdir(
             parents=True,
             exist_ok=True,
@@ -289,6 +310,15 @@ def execute(
         else:
             raise ValueError(
                 f"Unsupported registered Shape ridge geometry: {type(ridge).__name__}."
+            )
+
+        if inner_ridge is not None:
+            components += _render_inner_ridge_component(
+                inner_ridge,
+                manifest.parent,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+                shape_inner_ridge_raise=shape_inner_ridge_raise,
             )
 
         artwork_components: tuple[
@@ -350,6 +380,55 @@ def execute(
 # =========================================================
 # Physical component production
 # =========================================================
+
+
+def _render_inner_ridge_component(
+    ridge: RegisteredRidge,
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_inner_ridge_raise: float,
+) -> tuple[
+    tuple[str, str],
+    ...,
+]:
+    """
+    Render the independently printable Inner Ridge component.
+
+    Inner Ridge geometry is established by Compose and consumed here directly.
+    Its physical Z interval begins at the top of the Shape base and is
+    controlled independently by shape_inner_ridge_raise.
+    """
+
+    if shape_inner_ridge_raise <= 0.0:
+        return ()
+
+    output_path = output_directory / INNER_RIDGE_COMPONENT_PATH
+
+    source = _build_inner_ridge_component_scad(
+        ridge,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+        shape_inner_ridge_raise=shape_inner_ridge_raise,
+    )
+
+    render_stl_source(
+        source,
+        output_path,
+    )
+
+    _require_component(
+        output_path,
+        component_name=INNER_RIDGE_COMPONENT_NAME,
+    )
+
+    return (
+        (
+            INNER_RIDGE_COMPONENT_NAME,
+            INNER_RIDGE_COMPONENT_PATH,
+        ),
+    )
 
 
 def _render_artwork_fill_component(
@@ -1339,6 +1418,21 @@ def _validate_ridge_height(
         )
 
 
+def _validate_inner_ridge_height(
+    *,
+    shape_base_raise: float,
+    shape_inner_ridge_raise: float,
+) -> None:
+    """
+    Validate that an Inner Ridge has a nonnegative physical height.
+    """
+
+    if shape_base_raise + shape_inner_ridge_raise < 0.0:
+        raise ExtrudeError(
+            "Shape inner ridge physical height must be greater than or equal to zero."
+        )
+
+
 # =========================================================
 # OpenSCAD construction
 # =========================================================
@@ -1433,6 +1527,98 @@ def _build_scad(
         ),
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+    )
+
+
+def _build_inner_ridge_component_scad(
+    ridge: RegisteredRidge,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_inner_ridge_raise: float,
+) -> str:
+    """
+    Build OpenSCAD source for the independently printable Inner Ridge.
+
+    Compose owns the Inner Ridge X/Y geometry. Extrude consumes its registered
+    outer and inner boundaries and applies only physical dimensionalization.
+    """
+
+    if isinstance(
+        ridge,
+        RegisteredCircleRidge,
+    ):
+        outer = (
+            f"translate(["
+            f"{ridge.outer.cx * shape_size:g}, "
+            f"{ridge.outer.cy * shape_size:g}, 0])\n"
+            f"    circle(r = {ridge.outer.radius * shape_size:g}, $fn = 256);\n"
+        )
+
+        inner = (
+            f"translate(["
+            f"{ridge.inner.cx * shape_size:g}, "
+            f"{ridge.inner.cy * shape_size:g}, 0])\n"
+            f"    circle(r = {ridge.inner.radius * shape_size:g}, $fn = 256);\n"
+        )
+
+    elif isinstance(
+        ridge,
+        RegisteredSquareRidge,
+    ):
+        outer = (
+            f"translate(["
+            f"{ridge.outer.x * shape_size:g}, "
+            f"{ridge.outer.y * shape_size:g}, 0])\n"
+            f"    square(["
+            f"{ridge.outer.width * shape_size:g}, "
+            f"{ridge.outer.height * shape_size:g}], center = false);\n"
+        )
+
+        inner = (
+            f"translate(["
+            f"{ridge.inner.x * shape_size:g}, "
+            f"{ridge.inner.y * shape_size:g}, 0])\n"
+            f"    square(["
+            f"{ridge.inner.width * shape_size:g}, "
+            f"{ridge.inner.height * shape_size:g}], center = false);\n"
+        )
+
+    elif isinstance(
+        ridge,
+        RegisteredPolygonRidge,
+    ):
+        outer = f"polygon(points = {_scad_polygon_points(ridge.outer, shape_size=shape_size)});\n"
+
+        inner = f"polygon(points = {_scad_polygon_points(ridge.inner, shape_size=shape_size)});\n"
+
+    else:
+        raise ValueError(f"Unsupported registered Inner Ridge geometry: {type(ridge).__name__}.")
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_inner_ridge_raise = {shape_inner_ridge_raise:g};\n"
+        "\n"
+        f"// {INNER_RIDGE_OUTER_BOUNDARY_ID}\n"
+        "module registered_inner_ridge_outer_boundary() {\n"
+        f"{_indent_scad(outer, 4)}"
+        "}\n"
+        "\n"
+        f"// {INNER_RIDGE_INNER_BOUNDARY_ID}\n"
+        "module registered_inner_ridge_inner_boundary() {\n"
+        f"{_indent_scad(inner, 4)}"
+        "}\n"
+        "\n"
+        "translate([0, 0, shape_base_raise])\n"
+        "    linear_extrude(\n"
+        "        height = shape_inner_ridge_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        "        difference() {\n"
+        "            registered_inner_ridge_outer_boundary();\n"
+        "            registered_inner_ridge_inner_boundary();\n"
+        "        }\n"
     )
 
 
@@ -2608,6 +2794,143 @@ def _load_composed_artwork(
         raise ValueError("Registered Shape composition Artwork must be an object.")
 
     return artwork
+
+
+def _load_inner_ridge(
+    composition: Path,
+) -> RegisteredRidge | None:
+    """
+    Load the registered Inner Ridge partition from Shape composition.
+
+    Inner Ridge participation and X/Y geometry have already been established
+    during registered composition. Extrusion consumes the persisted semantic
+    outer and inner boundaries directly.
+    """
+
+    tree = ET.parse(
+        composition,
+    )
+
+    root = tree.getroot()
+
+    outer_element: ET.Element | None = None
+    inner_element: ET.Element | None = None
+
+    for element in root.iter():
+        element_id = element.get(
+            "id",
+        )
+
+        if element_id == INNER_RIDGE_OUTER_BOUNDARY_ID:
+            outer_element = element
+
+        elif element_id == INNER_RIDGE_INNER_BOUNDARY_ID:
+            inner_element = element
+
+    if outer_element is None and inner_element is None:
+        return None
+
+    if outer_element is None:
+        raise ValueError(
+            "Registered Inner Ridge composition contains an inner boundary "
+            "without an outer boundary."
+        )
+
+    if inner_element is None:
+        raise ValueError(
+            "Registered Inner Ridge composition contains an outer boundary "
+            "without an inner boundary."
+        )
+
+    outer_kind = _local_name(
+        outer_element.tag,
+    )
+
+    inner_kind = _local_name(
+        inner_element.tag,
+    )
+
+    if outer_kind != inner_kind:
+        raise ValueError(
+            "Registered Inner Ridge outer and inner boundaries must use matching geometry."
+        )
+
+    if outer_kind == "circle":
+        outer = _load_registered_circle(
+            outer_element,
+            boundary_name=INNER_RIDGE_OUTER_BOUNDARY_ID,
+        )
+
+        inner = _load_registered_circle(
+            inner_element,
+            boundary_name=INNER_RIDGE_INNER_BOUNDARY_ID,
+        )
+
+        if inner.radius > outer.radius:
+            raise ValueError("Registered Inner Ridge inner boundary exceeds its outer boundary.")
+
+        return RegisteredCircleRidge(
+            outer=outer,
+            inner=inner,
+        )
+
+    if outer_kind == "rect":
+        outer = _load_registered_rectangle(
+            outer_element,
+            boundary_name=INNER_RIDGE_OUTER_BOUNDARY_ID,
+        )
+
+        inner = _load_registered_rectangle(
+            inner_element,
+            boundary_name=INNER_RIDGE_INNER_BOUNDARY_ID,
+        )
+
+        if outer.width != outer.height:
+            raise ValueError(
+                "Registered Inner Ridge outer square boundary must have equal width and height."
+            )
+
+        if inner.width != inner.height:
+            raise ValueError(
+                "Registered Inner Ridge inner square boundary must have equal width and height."
+            )
+
+        if (
+            inner.x < outer.x
+            or inner.y < outer.y
+            or inner.x + inner.width > outer.x + outer.width
+            or inner.y + inner.height > outer.y + outer.height
+        ):
+            raise ValueError("Registered Inner Ridge inner boundary exceeds its outer boundary.")
+
+        return RegisteredSquareRidge(
+            outer=outer,
+            inner=inner,
+        )
+
+    if outer_kind == "polygon":
+        outer = _load_registered_polygon(
+            outer_element,
+            boundary_name=INNER_RIDGE_OUTER_BOUNDARY_ID,
+        )
+
+        inner = _load_registered_polygon(
+            inner_element,
+            boundary_name=INNER_RIDGE_INNER_BOUNDARY_ID,
+        )
+
+        if len(inner.vertices) != len(outer.vertices):
+            raise ValueError(
+                "Registered Inner Ridge outer and inner polygon boundaries "
+                "must have the same number of vertices."
+            )
+
+        return RegisteredPolygonRidge(
+            outer=outer,
+            inner=inner,
+        )
+
+    raise ValueError(f"Unsupported registered Inner Ridge boundary geometry: {outer_kind!r}.")
 
 
 def _load_ridge(
