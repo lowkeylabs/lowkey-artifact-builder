@@ -142,11 +142,292 @@ Add narrower tests when they help discover an uncertain boundary, protect an
 independently meaningful contract, reproduce a defect, or address a specific
 algorithmic or regression risk.
 
+## Phase 1 — Add Shape Inlaid Raise Style
 
-# Phase 1 — (placeholder)
+### Purpose
 
-(placeholder)
+Extend the Shape model so that its existing physical composition can be
+manufactured using either the current raised dimensionalization or a new
+flat, full-depth inlaid dimensionalization.
 
+Introduce:
+
+```toml
+shape_raise_style = "raised"
+```
+
+with the supported values:
+
+- `"raised"` — preserve the existing Shape dimensionalization behavior;
+- `"inlaid"` — dimensionalize participating surface components through
+  the complete physical thickness of the Shape.
+
+`"raised"` remains the default so that existing artifacts preserve their
+current behavior.
+
+For an inlaid Shape, the physical thickness remains
+`shape_base_raise`. Participating components that would normally be
+raised relative to the Base are instead dimensionalized from `Z = 0`
+through `Z = shape_base_raise`.
+
+The Base occupies the remaining Shape volume after the participating
+component regions are removed. The resulting physical components must
+therefore be non-overlapping, while their union reconstructs the intended
+complete Shape volume.
+
+An inlaid Shape is flat on both physical faces. Because participating
+component geometry extends through the complete Shape thickness, the
+same component/color partition is exposed on both faces.
+
+This phase concerns manufacture of one Shape only. Composition of
+multiple independently manufactured Shapes into a two-sided object is
+outside this phase.
+
+### Architectural Boundary
+
+Raise style is a Shape-owned physical-dimensionalization policy. It is
+not a new Feature and does not introduce parallel inlaid versions of
+existing Features.
+
+Structure and Compose continue to establish registered Shape geometry,
+semantic participation, and component relationships without
+manufacturing physical Z geometry.
+
+Extrude owns interpretation of `shape_raise_style`.
+
+For `"raised"`, Extrude preserves the existing physical
+dimensionalization behavior.
+
+For `"inlaid"`, Extrude dimensionalizes participating surface components
+from `Z = 0` through `Z = shape_base_raise` and removes their occupied
+regions from the Base so that the manufactured physical components do
+not overlap.
+
+The inlaid policy determines manufactured geometry. It must not rewrite
+or replace resolved configuration values merely to produce that
+geometry. Existing component raise values remain part of resolved
+configuration even when the inlaid dimensionalization policy causes
+Extrude to use the complete Base thickness instead.
+
+Package continues to own physical color assignment. An inlaid component
+retains the same semantic component identity and Package color semantics
+as its raised equivalent.
+
+Shape Hole remains subtractive from every intersecting physical
+component according to its existing contract.
+
+Features that extend or otherwise modify the Shape's physical envelope
+must explicitly define how they interact with the Shape raise-style
+policy. Do not infer such behavior merely because a Feature has a
+physical raise value.
+
+### Inlaid Physical Contract
+
+For:
+
+```toml
+shape_raise_style = "inlaid"
+```
+
+the completed Shape has the physical Z extent:
+
+```text
+Z = 0 .. shape_base_raise
+```
+
+Participating surface components occupy:
+
+```text
+Z = 0 .. shape_base_raise
+```
+
+through their respective XY regions.
+
+The Base occupies:
+
+```text
+complete Shape volume
+MINUS
+participating inlaid component volumes
+```
+
+The resulting component volumes must not overlap.
+
+Together, the Base and participating inlaid components must reconstruct
+the intended complete physical Shape.
+
+The inlaid policy must preserve:
+
+- `shape_size` and its existing meaning as the complete Shape envelope;
+- registered Shape geometry;
+- registered interior geometry and Artwork fitting;
+- semantic component identity;
+- existing component color semantics;
+- existing physical Shape thickness as determined by
+  `shape_base_raise`; and
+- the existing ownership boundaries between Structure, Compose,
+  Extrude, and Package.
+
+The inlaid policy changes physical Z dimensionalization and Base
+partitioning. It must not create a separate inlaid model or duplicate
+the existing Shape composition pipeline.
+
+### Scope
+
+Phase 1 should apply the inlaid policy to the existing Shape components
+that participate in the Shape's principal physical surface, including
+the applicable:
+
+- incorporated Artwork components;
+- Shape-owned Artwork fill;
+- Inner Ridge;
+- Outer Ridge; and
+- Top and Bottom Border Labels.
+
+The exact participating component set must be reconciled against the
+current Shape DEFINITION and HEAD before implementation. Components
+whose existing contracts do not represent principal Shape surface
+material should not be included merely because they have physical
+geometry.
+
+Shape Hole is not an inlaid component. It remains a subtractive Feature.
+
+Future Features, including Shape Loop, must define their relationship to
+`shape_raise_style` as part of their own contracts.
+
+### TDD Strategy
+
+Use test-first development at the major behavioral seams. Do not create
+a separate test/change cycle for every affected component when a
+coherent acceptance test can establish the dimensionalization boundary.
+
+Tests should establish the intended physical contract and allow the
+implementation work beneath that boundary to proceed as a coherent
+slice.
+
+#### Extrude Seam
+
+Add focused acceptance coverage establishing that an inlaid Shape:
+
+- retains the configured Shape envelope;
+- has total physical thickness exactly `shape_base_raise`;
+- dimensionalizes representative participating components from
+  `Z = 0` through `Z = shape_base_raise`;
+- removes those component regions from the Base;
+- produces non-overlapping physical components;
+- preserves distinct semantic component identities;
+- reconstructs the intended complete Shape volume from the resulting
+  component partition; and
+- is flat on both physical faces.
+
+Use the tests to discover and confirm the appropriate implementation
+seam before distributing changes across individual component render
+paths.
+
+#### Package Seam
+
+Add focused acceptance coverage establishing that inlaid components
+retain their existing Package-time color semantics.
+
+Changing the raise style must not collapse component identity, move
+physical color ownership out of Package, or introduce a separate
+inlaid-color mechanism.
+
+#### Raised Regression Seam
+
+Protect the existing value chain by establishing that:
+
+```toml
+shape_raise_style = "raised"
+```
+
+preserves current Shape physical dimensionalization.
+
+The default configuration must continue to produce the existing raised
+Shape behavior.
+
+### High-Level Steps
+
+1. Reconcile this contract against the current Shape DEFINITION, Shape
+   Extrude implementation, Package behavior, and representative
+   component construction paths.
+
+2. Identify the existing physical components that participate in the
+   principal Shape surface and therefore belong to the inlaid
+   dimensionalization policy.
+
+3. Add `shape_raise_style` to Shape configuration with the supported
+   values `"raised"` and `"inlaid"` and default it to `"raised"`.
+
+4. Add focused acceptance tests at the major Extrude seam before
+   changing production behavior.
+
+5. Establish a Shape-owned dimensionalization decision that maps
+   `shape_raise_style` to physical Z construction without rewriting
+   resolved component configuration.
+
+6. Preserve the existing `"raised"` dimensionalization path.
+
+7. Implement `"inlaid"` dimensionalization so participating components
+   span `Z = 0` through `Z = shape_base_raise`.
+
+8. Partition participating component regions from the Base before final
+   physical component materialization so that Base and inlaid
+   components do not overlap.
+
+9. Preserve semantic component identity through the inlaid Extrude
+   path.
+
+10. Verify representative Artwork, Ridge, and Border Label geometry
+    through the common dimensionalization boundary rather than
+    introducing unnecessary component-specific inlay systems.
+
+11. Verify that Package continues to assign physical colors through the
+    existing component color contracts.
+
+12. Verify Shape Hole against an inlaid Shape and preserve its existing
+    rule that the Hole subtracts from every intersecting physical
+    component.
+
+13. Update the Shape DEFINITION so that `shape_raise_style`, raised
+    behavior, inlaid behavior, component partitioning, and stage
+    ownership are normative.
+
+14. Run focused Shape dimensionalization and Package tests followed by
+    the appropriate complete quality suite.
+
+### Completion Criteria
+
+Phase 1 is complete when:
+
+- `shape_raise_style` supports `"raised"` and `"inlaid"`;
+- `"raised"` is the default;
+- existing raised Shape behavior remains correct;
+- an inlaid Shape has physical thickness exactly
+  `shape_base_raise`;
+- participating inlaid components extend from `Z = 0` through
+  `Z = shape_base_raise`;
+- the Base excludes the physical regions occupied by those components;
+- Base and inlaid components do not physically overlap;
+- the union of the resulting components reconstructs the intended
+  complete Shape volume;
+- the completed inlaid Shape is flat on both physical faces;
+- the same component partition is exposed on both physical faces;
+- registered Shape geometry, `shape_size`, registered interior, and
+  Artwork fitting retain their existing meanings;
+- semantic component identities are preserved;
+- Package retains ownership of physical color assignment;
+- existing component color semantics remain correct;
+- Shape Hole continues to subtract correctly from every intersecting
+  physical component;
+- resolved component raise configuration is not mutated merely to
+  manufacture the inlaid geometry;
+- no separate inlaid Shape model or duplicated composition pipeline is
+  introduced;
+- no multi-Shape or two-sided assembly mechanism is introduced in this
+  phase; and
+- focused tests, the appropriate complete suite, pyright, and ruff are
+  green.
 
 # Phase 2 — Add Shape Loop
 
@@ -155,6 +436,16 @@ algorithmic or regression risk.
 Implement the Shape Loop Feature defined by the current Shape model specification.
 
 Shape Loop should use the carefully designed and debugged Artwork Loop as behavioral and geometric precedent while remaining a Shape-owned Feature with its own geometry implementation, component, dimensionalization, and Package color semantics.
+
+Shape Loop must integrate deliberately with the Shape raise-style policy
+established by Phase 1. Before encoding Loop physical dimensionalization in
+tests, reconcile the Loop Feature contract for both `shape_raise_style =
+"raised"` and `shape_raise_style = "inlaid"`.
+
+Do not assume that the existing raised Loop Z contract applies unchanged to
+an inlaid Shape. The appropriate inlaid Loop geometry, component partitioning,
+and relationship to the Base must be resolved against the completed Phase 1
+architecture before implementation.
 
 The central manufacturing contract is:
 
@@ -225,8 +516,11 @@ with the default derived from:
 shape_base_raise
 ```
 
-The Loop occupies physical Z from zero through `shape_loop_raise`.
+For a raised Shape, the Loop occupies physical Z from zero through
+`shape_loop_raise`.
 
+Loop dimensionalization for an inlaid Shape must be resolved against the
+raise-style contract established by Phase 1 before implementation.
 Its physical printing color is controlled by:
 
 ```text
@@ -303,7 +597,7 @@ Existing Artwork Loop tests should be used as behavioral evidence and regression
 10. Extend Shape Package to recognize Loop and resolve `shape_loop_color`, defaulting to the resolved Base color when no explicit override exists.
 11. Verify that changing only Loop color affects Package without changing earlier geometry products.
 12. Verify that Loop participation does not alter registered composition, the registered interior region, or Artwork fitting.
-13. Run focused Shape Loop/Extrude/Package tests, relevant Artwork Loop regression tests if common geometry changes, and then the appropriate complete quality suite.
+13. Run focused Shape Loop/Extrude/Package tests, relevant Artwork Loop regression tests, and then the appropriate complete quality suite.
 14. Recompare resulting HEAD with the Shape definition and remove this phase when the Feature contract is fully satisfied.
 
 ## Completion criteria
@@ -326,8 +620,9 @@ Phase 2 is complete when:
 - changing only `shape_loop_color` does not require recomputing Structure, Compose, or Extrude;
 - Loop participation does not alter the registered interior region or Artwork fitting;
 - important Loop behavior is protected at the Extrude and Package ownership boundaries without unnecessary inventory-style tests;
-- existing Artwork Loop behavior remains correct if common geometry is reused or refactored; and
+- existing Artwork Loop behavior remains correct; and
 - the complete applicable test, type-check, and lint suite is green.
+
 
 
 # Phase 3 — Rework CONFIG Around Effective Resolution and Provenance
