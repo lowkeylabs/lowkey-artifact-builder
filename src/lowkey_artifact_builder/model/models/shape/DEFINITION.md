@@ -18,6 +18,7 @@ The initial Shape model supports:
 - circle, square, and regular polygon geometry;
 - configurable regular-polygon side count and rotation;
 - a physical base;
+- raised or full-depth inlaid physical dimensionalization;
 - an optional integrated or separately printable outer ridge;
 - independently assignable base and outer-ridge colors;
 - optional registered Artwork;
@@ -31,6 +32,39 @@ coordinate space. Structural Shape geometry and incorporated Artwork
 remain registered through composition.
 
 Physical dimensionalization occurs after registered composition.
+
+Shape physical Z dimensionalization is controlled by:
+
+```text
+shape_raise_style
+```
+
+The supported raise styles are:
+
+```text
+raised
+inlaid
+```
+
+The default is:
+
+```text
+raised
+```
+
+`raised` preserves the existing Shape dimensionalization in which participating
+surface components may extend above the Base according to their applicable
+raise parameters.
+
+`inlaid` produces a flat, full-depth component partition. Participating
+principal-surface components are dimensionalized from `Z = 0` through
+`Z = shape_base_raise`, and their occupied regions are removed from the Base.
+The resulting physical components are nonoverlapping and together reconstruct
+the intended complete Shape volume.
+
+Raise style is physical-dimensionalization policy. It does not change registered
+Structure or Compose geometry, Feature participation, semantic component
+identity, or Package color policy.
 
 The assembled physical Shape and its partitioning into independently
 printable components are distinct concepts.
@@ -297,6 +331,15 @@ Z = shape_base_raise
 
 Base thickness therefore belongs to physical dimensionalization rather
 than to the registered two-dimensional structural representation.
+
+With `shape_raise_style = "raised"`, the Base retains the existing component
+relationships defined by this document and the participating Feature contracts.
+
+With `shape_raise_style = "inlaid"`, `shape_base_raise` remains the complete
+physical thickness of the Shape. Participating inlaid component regions are
+removed from the Base through that complete thickness so that Base material and
+inlaid component material do not overlap. The Base and participating inlaid
+components together reconstruct the intended complete Shape volume.
 
 ## Color
 
@@ -610,7 +653,23 @@ Changing `shape_size` changes the physical size of the composed geometry
 without changing its registered spatial relationships.
 
 Physical Z dimensions are introduced at the dimensionalization boundary
-according to the semantic role of each component.
+according to the semantic role of each component and the resolved
+`shape_raise_style`.
+
+With `shape_raise_style = "raised"`, the existing component-specific raise
+semantics apply.
+
+With `shape_raise_style = "inlaid"`, participating principal-surface components
+are dimensionalized through the complete Base thickness from `Z = 0` through
+`Z = shape_base_raise`. Their occupied regions are removed from the Base so that
+the resulting physical components are nonoverlapping. The completed Shape is
+flat at both `Z = 0` and `Z = shape_base_raise`, and the same component partition
+is exposed on both physical faces.
+
+The inlaid dimensionalization policy does not rewrite resolved component raise
+configuration. Component raise parameters retain their resolved values and their
+raised-style meanings; Extrude interprets the inlaid style as a different
+physical Z construction.
 
 These dimensions include:
 
@@ -693,10 +752,10 @@ Its default value is:
 1 mm
 ```
 
-Incorporated Artwork is raised on top of the Shape base.
+With `shape_raise_style = "raised"`, incorporated Artwork is raised on top of
+the Shape Base.
 
-The bottom surface of every incorporated Artwork component is located
-at:
+The bottom surface of every incorporated Artwork component is located at:
 
 ```text
 Z = shape_base_raise
@@ -707,6 +766,18 @@ and its top surface is located at:
 ```text
 Z = shape_base_raise + shape_artwork_raise
 ```
+
+With `shape_raise_style = "inlaid"`, every incorporated Artwork component is
+instead dimensionalized through the complete Base thickness:
+
+```text
+Z = 0 through shape_base_raise
+```
+
+The corresponding Artwork regions are removed from the Base so that incorporated
+Artwork and Base material do not overlap. `shape_artwork_raise` retains its
+resolved value and raised-style meaning but does not determine the physical Z
+extent of incorporated Artwork in the inlaid style.
 
 `shape_artwork_raise` must be greater than zero when Artwork is
 incorporated.
@@ -768,7 +839,8 @@ Artwork occupancy and Shape-owned Artwork fill geometry.
 Shape does not determine the fill boundary by independently inspecting
 the bounds of individual Artwork color components.
 
-Artwork fill begins on top of the Shape base.
+With `shape_raise_style = "raised"`, Artwork fill begins on top of the Shape
+Base.
 
 Its bottom surface is located at:
 
@@ -785,14 +857,29 @@ Z = shape_base_raise + shape_artwork_fill_raise
 Artwork fill therefore has physical height determined independently from
 incorporated Artwork.
 
+With `shape_raise_style = "inlaid"`, participating Artwork fill is instead
+dimensionalized through the complete Base thickness:
+
+```text
+Z = 0 through shape_base_raise
+```
+
+The corresponding fill region is removed from the Base so that Artwork fill and
+Base material do not overlap. `shape_artwork_fill_raise` continues to determine
+Artwork-fill participation, but its resolved value does not determine the
+physical Z extent of participating fill in the inlaid style.
+
 `shape_artwork_fill_color` does not determine Artwork-fill participation
 or physical geometry. When Artwork fill participates, its physical color
 is assigned during Shape Package and defaults to the resolved
 `shape_base_color` when no explicit fill color is configured.
 
-When Artwork fill does not exist, only the incorporated Artwork
-components are raised above the base; the remainder of the interior
-region remains at the base top.
+When Artwork fill does not exist, no Artwork-fill component is produced.
+With `shape_raise_style = "raised"`, incorporated Artwork may still rise above
+the Base according to `shape_artwork_raise`, and the remainder of the interior
+region remains at the Base top. With `shape_raise_style = "inlaid"`, incorporated
+Artwork remains a full-depth partition while the remainder of the interior region
+remains Base material through the complete Base thickness.
 
 Artwork fill is a distinct semantic component from the structural base
 even when its resolved color is equal to the base color.
@@ -845,6 +932,7 @@ shape_geometry
 shape_sides
 shape_rotation
 shape_size
+shape_raise_style
 shape_base_raise
 shape_base_color
 shape_outer_ridge_width
@@ -912,6 +1000,28 @@ The `shape_inner_ridge_*` parameters and
 participation, defaults, validation, dimensional semantics, positioning,
 and color policy are defined by the Inner Ridge Feature contract.
 
+`shape_raise_style` selects the Shape physical Z dimensionalization policy.
+
+Its supported values are:
+
+```text
+raised
+inlaid
+```
+
+Its default is:
+
+```text
+raised
+```
+
+`raised` preserves the existing component-specific raise semantics. `inlaid`
+dimensionalizes participating principal-surface components through the complete
+Base thickness while preserving their semantic component identities.
+
+`shape_raise_style` is dimensionalization policy rather than registered
+structural geometry or packaging color policy.
+
 `shape_base_color` selects the base printing color.
 
 Its default is:
@@ -920,8 +1030,13 @@ Its default is:
 white
 ```
 
-`shape_artwork_raise` determines the physical height of Artwork
-incorporated into Shape above the top surface of the Shape base.
+For `shape_raise_style = "raised"`, `shape_artwork_raise` determines the
+physical height of Artwork incorporated into Shape above the top surface of the
+Shape Base.
+
+For `shape_raise_style = "inlaid"`, incorporated Artwork spans the complete
+Base thickness and `shape_artwork_raise` does not determine its manufactured Z
+extent.
 
 Its default is:
 
@@ -936,8 +1051,10 @@ When Artwork is not incorporated, `shape_artwork_raise` does not cause
 Artwork geometry to be produced.
 
 `shape_artwork_fill_raise` determines whether Shape-owned Artwork fill
-participates and determines its physical height above the top surface of
-the Shape base.
+participates. For `shape_raise_style = "raised"`, it also determines the fill's
+physical height above the top surface of the Shape Base. For
+`shape_raise_style = "inlaid"`, participating fill spans the complete Base
+thickness.
 
 Its default is:
 
@@ -971,6 +1088,8 @@ derived default.
 
 `shape_artwork_fill_color` does not determine whether Artwork fill
 participates.
+
+`shape_raise_style` is a dimensionless physical-dimensionalization policy.
 
 The dimensional parameters are:
 
@@ -1191,9 +1310,9 @@ The default outer-ridge raise is:
 
 for both integrated and separate ridge styles.
 
-Ridge raise is measured relative to the top surface of the base.
+For `shape_raise_style = "raised"`, ridge raise is measured relative to the top surface of the Base.
 
-The complete assembled ridge height is therefore:
+Under the raised style, the complete assembled ridge height is therefore:
 
 ```text
 shape_base_raise + shape_outer_ridge_raise
@@ -1252,6 +1371,32 @@ This conversion does not assign physical dimensions to the registered
 coordinate system. It expresses physical Shape policy as a relative
 relationship within registered Shape space.
 
+#### Raise-Style Dimensionalization
+
+With `shape_raise_style = "raised"`, the Outer Ridge uses the raised-style Z
+semantics defined by the Integrated and Separate Outer Ridge subsections below.
+
+With `shape_raise_style = "inlaid"`, a participating Outer Ridge is a
+full-depth physical partition of the Shape perimeter region:
+
+```text
+Z = 0 through shape_base_raise
+```
+
+The corresponding Outer-Ridge region is removed from the Base so that Outer
+Ridge and Base material do not overlap. Under the inlaid policy, a participating
+Outer Ridge therefore remains a distinct semantic and printable component
+through the complete Base thickness regardless of whether its resolved
+`shape_outer_ridge_style` is `integrated` or `separate`. The style retains its
+resolved value and its raised-style semantics, but it does not cause an inlaid
+Outer Ridge to extend above or below the flat Shape faces or to overlap Base
+material.
+
+`shape_outer_ridge_raise` likewise retains its resolved value and raised-style
+meaning but does not determine the physical Z extent of an inlaid Outer Ridge.
+Outer-Ridge participation, X/Y boundaries, registered interior geometry,
+semantic identity, and Package color policy are unchanged by raise style.
+
 #### Integrated Outer Ridge
 
 With:
@@ -1276,8 +1421,8 @@ and:
 the ridge inner boundary
 ```
 
-The dimensionalized integrated ridge is partitioned according to its
-relationship to the top of the base.
+With `shape_raise_style = "raised"`, the dimensionalized integrated ridge is
+partitioned according to its relationship to the top of the Base.
 
 The base material occupies the integrated ridge region from:
 
@@ -1430,7 +1575,7 @@ The base outer boundary becomes the ridge inner boundary.
 The base and ridge therefore occupy adjacent, nonoverlapping X/Y
 regions.
 
-The separately printable base occupies:
+With `shape_raise_style = "raised"`, the separately printable Base occupies:
 
 ```text
 Z = 0
@@ -1442,7 +1587,7 @@ through:
 Z = shape_base_raise
 ```
 
-The separately printable ridge occupies:
+and the separately printable ridge occupies:
 
 ```text
 Z = 0
@@ -1676,16 +1821,16 @@ A conforming Outer Ridge Feature satisfies the following:
 7. Positive Outer-Ridge width defines an Outer Ridge regardless of `shape_outer_ridge_raise`.
 8. Negative Outer-Ridge width is invalid.
 9. The default Outer-Ridge raise is 1 mm for both ridge styles.
-10. Outer-Ridge raise is measured relative to the top of the Base.
-11. The complete assembled ridge height is `shape_base_raise + shape_outer_ridge_raise` for both ridge styles.
+10. With shape_raise_style = "raised", Outer-Ridge raise is measured relative to the top of the Base.
+11. With `shape_raise_style = "raised"`, the complete assembled ridge height is `shape_base_raise + shape_outer_ridge_raise` for both ridge styles.
 12. Outer-Ridge raise may be zero.
 13. Outer-Ridge raise may be negative down to `-shape_base_raise`.
-14. Outer-Ridge raise less than `-shape_base_raise` is invalid.
+14. With shape_raise_style = "raised", Outer-Ridge raise less than `-shape_base_raise` is invalid.
 15. An existing Outer Ridge may be integrated with the Base or partitioned as a separately printable structural component.
 16. With an integrated Outer Ridge, the Base retains the complete Shape X/Y envelope.
 17. With a separate Outer Ridge, the ridge retains the complete Shape outer boundary and the Base outer boundary becomes the ridge inner boundary.
 18. A separate Outer Ridge and its Base occupy adjacent, nonoverlapping X/Y regions.
-19. A separate Outer Ridge occupies Z from zero through `shape_base_raise + shape_outer_ridge_raise`.
+19. With `shape_raise_style = "raised"`, a separate Outer Ridge occupies Z from zero through `shape_base_raise + shape_outer_ridge_raise`.
 20. Integrated and separate ridge styles preserve the same complete Shape envelope, ridge boundaries, registered interior region, and intended assembled ridge height for otherwise identical Shape parameters.
 21. The innermost existing ridge boundary defines the available registered interior region; when no ridge exists, the registered Shape boundary defines the interior region.
 22. Ridge raise does not change the registered ridge inner boundary or registered interior region.
@@ -1698,12 +1843,16 @@ A conforming Outer Ridge Feature satisfies the following:
 29. Shape Extrude does not assign physical color to Outer-Ridge components.
 30. Shape Package applies the Outer Ridge's physical color policy.
 31. Changing only `shape_outer_ridge_color` does not by itself change Shape Structure, Compose, or Extrude geometry.
+32. With `shape_raise_style = "inlaid"`, a participating Outer Ridge spans `Z = 0` through `Z = shape_base_raise`.
+33. Inlaid Outer-Ridge material occupies a nonoverlapping physical partition of the Shape rather than layering on or overlapping the Base.
+34. An inlaid Outer Ridge remains a distinct printable component through the complete Base thickness regardless of whether `shape_outer_ridge_style` resolves to `integrated` or `separate`.
+35. `shape_outer_ridge_raise` and `shape_outer_ridge_style` retain their resolved values and raised-style meanings but do not change the full-depth Z extent or nonoverlapping Base partition of an inlaid Outer Ridge.
 
 ### Inner Ridge
 
 The Inner Ridge Feature provides an optional ridge inset from the perimeter of the Shape.
 
-The Inner Ridge is a Shape-owned component that layers on top of the Base. Unlike a separate Outer Ridge, the Inner Ridge does not partition or reduce the X/Y extent of the Base.
+The Inner Ridge is a Shape-owned component. With `shape_raise_style = "raised"`, it layers on top of the Base. With `shape_raise_style = "inlaid"`, its X/Y region becomes a full-depth physical partition of the Shape. Unlike a separate Outer Ridge, Inner-Ridge participation does not change the registered X/Y extent of the Base.
 
 #### Parameters and Participation
 
@@ -1899,19 +2048,30 @@ A positive Inner-Ridge raise places the Inner-Ridge top above the Base top.
 
 A zero Inner-Ridge raise places the Inner-Ridge top flush with the Base top.
 
-When the Inner Ridge participates, its complete assembled height is:
+With `shape_raise_style = "raised"`, a participating Inner Ridge has complete assembled height:
 
 ```text
 shape_base_raise + shape_inner_ridge_raise
 ```
 
-The Inner Ridge layers on top of the Base.
+With `shape_raise_style = "raised"`, the Inner Ridge layers on top of the Base.
 
 The Base remains present beneath the Inner Ridge and retains its complete X/Y extent.
 
 The Inner Ridge therefore behaves structurally like an integrated ridge rather than partitioning a separate X/Y region from the Base.
 
-For:
+With `shape_raise_style = "inlaid"`, a participating Inner Ridge instead spans:
+
+```text
+Z = 0 through shape_base_raise
+```
+
+The corresponding Inner-Ridge region is removed from the Base so that the
+Inner-Ridge component and Base material do not overlap.
+`shape_inner_ridge_raise` retains its resolved value and raised-style meaning but
+does not determine the physical Z extent of an inlaid Inner Ridge.
+
+With shape_raise_style = "raised", for:
 
 ```text
 shape_inner_ridge_raise > 0
@@ -2044,13 +2204,15 @@ The Inner Ridge and Outer Ridge remain distinct semantic components.
 
 #### Interaction With Base
 
-The Inner Ridge layers on top of the Base.
+With `shape_raise_style = "raised"`, the Inner Ridge layers on top of the Base.
+It does not remove, partition, or reduce the Base X/Y geometry, and the Base
+remains present beneath the Inner Ridge.
 
-It does not remove, partition, or reduce the Base X/Y geometry.
+With `shape_raise_style = "inlaid"`, the Inner-Ridge X/Y region is removed from
+the Base through the complete Base thickness and occupied by the distinct
+Inner-Ridge component.
 
-The Base remains present beneath the Inner Ridge.
-
-The Inner Ridge may have a physical printing color different from the Base even though it is structurally layered on top of the Base.
+The Inner Ridge may have a physical printing color different from the Base under either raise style. Raise style changes physical dimensionalization, not Inner-Ridge color policy.
 
 #### Interaction With Artwork
 
@@ -2095,8 +2257,8 @@ A conforming Inner Ridge Feature satisfies the following:
 15. `shape_inner_ridge_raise` must be greater than or equal to zero.
 16. A zero Inner-Ridge raise is valid.
 17. A negative Inner-Ridge raise is invalid.
-18. The complete assembled Inner-Ridge height is `shape_base_raise + shape_inner_ridge_raise`.
-19. The Inner Ridge layers on top of the Base and does not partition or reduce the Base X/Y geometry.
+18. With `shape_raise_style = "raised"`, the complete assembled Inner-Ridge height is `shape_base_raise + shape_inner_ridge_raise`.
+19. With `shape_raise_style = "raised"`, the Inner Ridge layers on top of the Base and does not partition or reduce the Base X/Y geometry.
 20. When an Inner Ridge participates, its inside boundary defines the available registered interior region.
 21. When no Inner Ridge participates but an Outer Ridge participates, the Outer Ridge's inside boundary defines the available registered interior region.
 22. When neither ridge participates, the outside boundary of the Base defines the available registered interior region.
@@ -2110,6 +2272,9 @@ A conforming Inner Ridge Feature satisfies the following:
 30. The Inner Ridge and Outer Ridge remain distinct semantic components when both participate.
 31. Outer-Ridge style does not change the Inner-Ridge positioning reference when an Outer Ridge participates.
 32. Inner-Ridge participation does not otherwise change the existing Artwork fitting algorithm, Artwork registration, Artwork physical raise, or Artwork-fill dimensionalization.
+33. With `shape_raise_style = "inlaid"`, a participating Inner Ridge spans `Z = 0` through `Z = shape_base_raise`.
+34. Inlaid Inner-Ridge material occupies a nonoverlapping physical partition of the Shape rather than layering on or overlapping the Base.
+35. `shape_inner_ridge_raise` retains its resolved value but does not determine the physical Z extent of an inlaid Inner Ridge.
 
 ### Border Labels
 
@@ -2463,9 +2628,21 @@ The Top Border Label and Bottom Border Label are distinct Shape-owned extrusion 
 
 The two raises are independent.
 
-Border Label extrusion layers on the Base and does not remove or partition the Base in X/Y.
+With `shape_raise_style = "raised"`, Border Label extrusion layers on the Base
+and does not remove or partition the Base in X/Y. The Base remains underneath
+the complete Border Label region.
 
-The Base remains underneath the complete Border Label region.
+With `shape_raise_style = "inlaid"`, each participating Border Label is
+dimensionalized through the complete Base thickness:
+
+```text
+Z = 0 through shape_base_raise
+```
+
+Each participating label region is removed from the Base so that Border Label
+and Base material do not overlap. The configured Top and Bottom Border Label
+raise values retain their resolved values and raised-style meanings but do not
+determine the manufactured Z extent of inlaid labels.
 
 Extrusion owns Border Label physical Z geometry but does not assign physical color.
 
@@ -2537,8 +2714,10 @@ Border Labels must preserve distinct component identity through Extrude and Pack
 28. Border Labels do not determine Inner Ridge participation.
 29. When Inner Ridge participates, its inside boundary determines the incorporated Artwork region.
 30. When Border Labels participate without Inner Ridge, the inner Border Label boundary determines the incorporated Artwork region.
-31. Border Labels layer on Base without reducing the Base X/Y footprint.
-32. When neither Border Label participates, Border Labels do not alter existing Shape geometry or products.
+31. With `shape_raise_style = "raised"`, Border Labels layer on Base without reducing the Base X/Y footprint.
+32. With `shape_raise_style = "inlaid"`, participating Border Labels span `Z = 0` through `Z = shape_base_raise` and occupy nonoverlapping physical partitions removed from the Base.
+33. Border Label raise parameters retain their resolved values but do not determine the physical Z extent of inlaid Border Labels.
+34. When neither Border Label participates, Border Labels do not alter existing Shape geometry or products.
 
 
 ### Loop
@@ -2681,6 +2860,11 @@ The equivalent geometric rule applies to square and polygon Shapes: the Loop inn
 Loop positioning is determined from the complete assembled Shape envelope, not from optional Outer Ridge, Inner Ridge, Border Label, Artwork, or other Feature geometry.
 
 #### Raise
+
+The Loop Feature's relationship to `shape_raise_style = "inlaid"` is not defined
+by the initial inlaid Shape contract. Loop raise-style integration requires an
+explicit extension of this Feature contract. Until that extension is defined,
+the Loop Z semantics below describe the existing raised Shape behavior.
 
 The physical height of the Loop is controlled by:
 
@@ -3080,27 +3264,37 @@ A conforming initial Shape implementation satisfies the following:
 31. Packaged 3MF component names preserve semantic component role and resolved printing-color identity without relying on intermediate component ordinals.
 32. Packaging occurs after physical dimensionalization.
 33. Shape produces a valid printable 3MF containing its structural geometry and any incorporated Artwork components.
-34. Incorporated Artwork begins at the top surface of the Shape base at `Z = shape_base_raise`.
-35. Incorporated Artwork has physical height determined by `shape_artwork_raise`.
-36. The default `shape_artwork_raise` is 1 mm.
-37. `shape_artwork_raise` must be greater than zero when Artwork is incorporated.
-38. All incorporated Artwork components receive the same physical Z dimensionalization.
-39. Standalone `artwork_raise` does not determine incorporated Artwork Z dimensionalization.
-40. Artwork-fill participation is determined solely by `shape_artwork_fill_raise`.
-41. Artwork fill participates when `shape_artwork_fill_raise > 0` and does not participate when `shape_artwork_fill_raise <= 0`.
-42. The default `shape_artwork_fill_raise` is 0 mm.
-43. When Artwork fill exists, its registered geometry is the registered Shape interior region minus the transformed registered Artwork envelope.
-44. Artwork fill begins at the top surface of the Shape base at `Z = shape_base_raise` and has physical height determined by `shape_artwork_fill_raise`.
-45. Artwork fill remains semantically distinct from the structural base even when both resolve to the same printing color.
-46. The default Artwork-fill color is the resolved base color; an explicitly configured `shape_artwork_fill_color` overrides that derived default.
-47. `shape_artwork_fill_color` does not determine Artwork-fill participation or geometry.
-48. Incorporated Artwork preserves logical Artifact-color identity through Shape Compose and Shape Extrude.
-49. Shape Compose and Shape Extrude do not assign physical printer colors to incorporated Artwork.
-50. Shape Extrude owns physical geometry and component participation and does not assign physical colors to Shape-owned components.
-51. Shape Package applies physical color policy for Shape-owned components.
-52. Shape Package resolves incorporated Artwork Artifact-color identity to physical printer colors using `printer_colors`.
-53. Changing only `printer_colors`, `shape_base_color`, `shape_artwork_fill_color`, or Feature-specific packaging color parameters does not by itself change Shape Structure, Compose, or Extrude geometry.
-54. Changing `shape_artwork_fill_raise` changes Artwork-fill participation or physical geometry and therefore affects Shape Extrude and downstream Package.
+34. `shape_raise_style` supports `raised` and `inlaid`, with `raised` as the default.
+35. `shape_raise_style` changes physical Z dimensionalization without changing registered Shape geometry, registered interior geometry, or Artwork fitting.
+36. With `shape_raise_style = "raised"`, incorporated Artwork begins at the top surface of the Shape Base at `Z = shape_base_raise`.
+37. With `shape_raise_style = "raised"`, incorporated Artwork has physical height determined by `shape_artwork_raise`.
+38. The default `shape_artwork_raise` is 1 mm.
+39. `shape_artwork_raise` must be greater than zero when Artwork is incorporated.
+40. With `shape_raise_style = "inlaid"`, incorporated Artwork spans `Z = 0` through `Z = shape_base_raise`, regardless of its resolved `shape_artwork_raise`.
+41. All incorporated Artwork components receive the same raise-style physical Z dimensionalization.
+42. Standalone `artwork_raise` does not determine incorporated Artwork Z dimensionalization.
+43. Artwork-fill participation is determined solely by `shape_artwork_fill_raise`.
+44. Artwork fill participates when `shape_artwork_fill_raise > 0` and does not participate when `shape_artwork_fill_raise <= 0`.
+45. The default `shape_artwork_fill_raise` is 0 mm.
+46. When Artwork fill exists, its registered geometry is the registered Shape interior region minus the transformed registered Artwork envelope.
+47. With `shape_raise_style = "raised"`, Artwork fill begins at the top surface of the Shape Base at `Z = shape_base_raise` and has physical height determined by `shape_artwork_fill_raise`.
+48. With `shape_raise_style = "inlaid"`, participating Artwork fill spans `Z = 0` through `Z = shape_base_raise`, regardless of its resolved `shape_artwork_fill_raise`.
+49. Inlaid principal-surface components occupy nonoverlapping physical partitions removed from the Base through the complete Base thickness.
+50. The union of the inlaid Base and participating inlaid components reconstructs the intended complete Shape volume and is flat at both physical faces.
+51. Component raise parameters retain their resolved values when `shape_raise_style = "inlaid"`; the inlaid policy changes manufactured Z dimensionalization rather than resolved configuration.
+52. Artwork fill remains semantically distinct from the structural Base even when both resolve to the same printing color.
+53. The default Artwork-fill color is the resolved Base color; an explicitly configured `shape_artwork_fill_color` overrides that derived default.
+54. `shape_artwork_fill_color` does not determine Artwork-fill participation or geometry.
+55. Incorporated Artwork preserves logical Artifact-color identity through Shape Compose and Shape Extrude.
+56. Shape Compose and Shape Extrude do not assign physical printer colors to incorporated Artwork.
+57. Shape Extrude owns physical geometry and component participation and does not assign physical colors to Shape-owned components.
+58. Shape Package applies physical color policy for Shape-owned components.
+59. Shape Package resolves incorporated Artwork Artifact-color identity to physical printer colors using `printer_colors`.
+60. Changing only `printer_colors`, `shape_base_color`, `shape_artwork_fill_color`, or Feature-specific packaging color parameters does not by itself change Shape Structure, Compose, or Extrude geometry.
+61. Changing `shape_artwork_fill_raise` changes Artwork-fill participation and therefore affects Shape Extrude and downstream Package; with raised style it also changes fill physical height.
+62. The initial inlaid Shape contract applies to incorporated Artwork, Artwork fill, Outer Ridge, Inner Ridge, and Border Labels.
+63. Hole remains subtractive through every intersecting physical component under either raise style.
+64. Loop interaction with `shape_raise_style = "inlaid"` requires an explicit Loop Feature-contract extension and is not inferred from the model-wide inlaid contract.
 
 ## Scope
 
@@ -3122,3 +3316,4 @@ Each Feature subsection in this document defines that Feature's participation, g
 The Shape model does not provide arbitrary free-form modeling or placement. Capabilities outside the structural, registered-composition, dimensionalization, Feature, and packaging contracts defined by this document require an explicit extension of the Shape model.
 
 New Shape capabilities must be introduced deliberately through the appropriate model or Feature contract rather than inferred from implementation behavior.
+
