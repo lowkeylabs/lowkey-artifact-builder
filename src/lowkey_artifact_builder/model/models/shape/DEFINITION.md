@@ -2949,8 +2949,74 @@ hole radius = shape_hole_diameter / 2
 inset = hole radius + shape_hole_edge_distance
 
 Hole center X = 0
-Hole center
+Hole center Y = shape radius - inset
 ```
+
+The equivalent geometric rule applies to square and polygon Shapes: the nearest edge of the Hole is inset from the dimensionalized Shape boundary by `shape_hole_edge_distance` at the selected cardinal position.
+
+Hole positioning is determined from the complete assembled Shape envelope defined by `shape_size`, not from optional Outer Ridge, Inner Ridge, Border Label, Artwork, or other Feature geometry.
+
+#### Subtraction
+
+A participating Hole is subtracted from the complete manufactured Shape.
+
+Any physical material intersecting the Hole is removed regardless of which Shape Feature or component owns that material.
+
+This includes, when intersected:
+
+- Base;
+- Outer Ridge;
+- Inner Ridge;
+- Border Labels;
+- Artwork fill;
+- incorporated Artwork components;
+- Loop;
+- other physical Shape components.
+
+The Hole passes through the complete physical Z extent of every intersecting component.
+
+The Hole does not itself produce a physical component.
+
+Subtraction does not change the semantic or color identity of the remaining portions of intersected components.
+
+#### Interaction With Registered Geometry
+
+The Hole is physical subtractive geometry applied during Shape dimensionalization.
+
+It does not alter the registered Shape interior region or the registered geometry used for incorporated Artwork placement.
+
+Hole participation therefore does not change Artwork fitting, registration, or registered composition.
+
+#### Product Participation
+
+A Hole does not contribute a component to the dimensionalized Shape or packaged 3MF.
+
+Shape Extrude applies the Hole subtraction to all intersecting physical components.
+
+Shape Package packages the resulting components without Hole-specific geometry or color policy.
+
+#### Hole Invariants
+
+A conforming Hole Feature satisfies the following:
+
+1. Hole is subtractive Shape-owned geometry and is not a physical component.
+2. Hole participation is determined solely by `shape_hole_diameter`.
+3. Zero `shape_hole_diameter` disables the Hole.
+4. Negative `shape_hole_diameter` is invalid.
+5. Hole position is one of the four supported cardinal positions.
+6. The default Hole position is zero degrees at the top of the Shape.
+7. The nearest Hole edge is inset from the complete assembled Shape boundary by `shape_hole_edge_distance`.
+8. The default Hole edge distance is 0.4 mm.
+9. A participating Hole requires `shape_hole_edge_distance >= 0.4 mm`.
+10. Hole positioning is derived from the Shape envelope defined by `shape_size`, not from optional Feature geometry.
+11. Hole participation does not change the meaning or configured value of `shape_size`.
+12. A participating Hole removes every intersecting physical material regardless of component ownership.
+13. Hole subtraction passes through the complete physical Z extent of every intersecting component.
+14. Hole subtraction preserves the semantic and color identity of remaining component material.
+15. Hole participation does not change the registered interior region or incorporated Artwork fitting.
+16. A Hole does not have independent raise or color policy.
+17. A Hole does not produce an independent Extrude or Package component.
+18. A participating Hole removes any Loop material intersecting the Hole.
 
 
 ## Final Product
@@ -3038,43 +3104,21 @@ A conforming initial Shape implementation satisfies the following:
 
 ## Scope
 
-The initial Shape model includes:
+The Shape model defines primarily two-dimensional structural objects that are composed in registered Shape space and subsequently dimensionalized into physical manufacturing geometry.
 
-- circle geometry;
-- square geometry;
-- configurable regular polygon geometry;
-- polygon side count of three or greater;
-- polygon rotation;
-- canonical registered Shape geometry;
-- physical Shape size;
-- physical base thickness;
-- optional integrated outer ridge;
-- optional separately printable outer ridge;
-- positive, zero, and permitted negative outer-ridge raise;
-- base and outer-ridge color assignment;
-- optional inner ridge with independent width, raise, position, and color;
-- structural component partitioning;
-- optional registered Artwork;
-- centered, aspect-preserving Artwork fitting;
-- registered Shape/Artwork composition;
-- Shape-owned physical raise for incorporated Artwork;
-- optional Shape-owned Artwork fill geometry with independent physical raise;
+Shape owns:
 
-- Artwork-fill color assignment with base-color inheritance;
-- downstream physical dimensionalization;
-- final multicomponent 3MF packaging, including physical color assignment for
-  Shape-owned components and physical printer assignment for incorporated Artwork.
+- its structural geometry and physical dimensions;
+- the registered Shape coordinate space;
+- placement and dimensionalization of incorporated registered Artwork;
+- Shape-owned physical components and Features;
+- preservation of component identity required for downstream manufacturing;
+- packaging of the resulting physical components into a printable artifact.
 
-The initial Shape model does not include:
+Optional Shape capabilities are defined as Features.
 
-- irregular polygons;
-- dashed ridges;
-- hangers;
-- handles;
-- arbitrary Artwork positioning;
-- multiple independent Artwork placements;
-- recessed or embedded Artwork;
-- arbitrary custom Shape outlines.
+Each Feature subsection in this document defines that Feature's participation, geometry, dimensional behavior, interactions, component semantics, and other applicable policy. The presence or absence of a Feature in a particular realization is determined by that Feature's contract rather than by this Scope section.
 
-These capabilities may be added later by deliberately extending the
-Shape definition.
+The Shape model does not provide arbitrary free-form modeling or placement. Capabilities outside the structural, registered-composition, dimensionalization, Feature, and packaging contracts defined by this document require an explicit extension of the Shape model.
+
+New Shape capabilities must be introduced deliberately through the appropriate model or Feature contract rather than inferred from implementation behavior.

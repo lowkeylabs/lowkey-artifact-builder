@@ -144,6 +144,8 @@ def _write_composition_manifest(
     path: Path,
     *,
     artwork_component: Path | None = None,
+    top_border_label: Path | None = None,
+    bottom_border_label: Path | None = None,
 ) -> None:
     """
     Write the minimum persistent Shape composition manifest.
@@ -151,6 +153,10 @@ def _write_composition_manifest(
     When Artwork participates, its registered 0.30 x 0.20 geometry is
     positioned across the top-center region of the Shape so the physical
     Hole intersects it.
+
+    Border Labels retain their top/bottom semantic identity so Hole tests can
+    establish whether Extrude sends only potentially intersecting components
+    through physical subtraction.
     """
 
     artwork: dict[str, object] | None = None
@@ -182,9 +188,27 @@ def _write_composition_manifest(
             ],
         }
 
+    border_labels = {
+        "top": (
+            {
+                "path": top_border_label.name,
+            }
+            if top_border_label is not None
+            else None
+        ),
+        "bottom": (
+            {
+                "path": bottom_border_label.name,
+            }
+            if bottom_border_label is not None
+            else None
+        ),
+    }
+
     path.write_text(
         json.dumps(
             {
+                "border_labels": border_labels,
                 "artwork": artwork,
                 "artwork_fill": None,
             },
@@ -475,3 +499,250 @@ def test_shape_hole_subtracts_from_base_and_incorporated_artwork(
             )
             for x, y, _ in vertices
         ), bounds
+
+
+def test_shape_hole_is_applied_before_component_stl_materialization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Shape Hole participates in component construction before STL materialization.
+
+    Hole subtraction must operate on the component's constructive OpenSCAD
+    geometry rather than by importing an already-manufactured STL into a second
+    Boolean operation.
+
+    This keeps Hole at the Shape Extrude boundary while avoiding a fragile
+    STL -> OpenSCAD -> STL manufacturing round trip.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    output_manifest = tmp_path / "products.json"
+
+    _write_circular_composition(
+        composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    _configure_extrude_context(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+        output_manifest=output_manifest,
+        values={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "integrated",
+            "shape_inner_ridge_raise": 1.0,
+            "shape_top_border_label_raise": 1.0,
+            "shape_bottom_border_label_raise": 1.0,
+            "shape_artwork_raise": 1.0,
+            "shape_hole_diameter": 2.0,
+            "shape_hole_position": 0,
+            "shape_hole_edge_distance": 0.4,
+        },
+    )
+
+    rendered_sources: list[tuple[str, Path]] = []
+
+    def capture_render(
+        source: str,
+        output: Path,
+    ) -> None:
+        rendered_sources.append(
+            (
+                source,
+                output,
+            ),
+        )
+
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        capture_render,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    base_renders = [source for source, output in rendered_sources if output.name == "base.stl"]
+
+    assert len(base_renders) == 1
+
+    base_source = base_renders[0]
+
+    assert "difference()" in base_source
+    assert "hole_radius = 1" in base_source
+
+    assert not any(output.name == ".base-hole.stl" for _, output in rendered_sources)
+
+
+def test_shape_hole_is_constructed_with_separate_circle_ridge_scad(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Shape Hole participates in separate Outer Ridge construction.
+
+    A ridge builder may declare reusable OpenSCAD modules before emitting its
+    physical geometry. Hole subtraction must therefore be incorporated by the
+    builder rather than wrapping the builder's complete SCAD source inside a
+    difference() block.
+
+    The resulting ridge source must retain its declarations outside the
+    physical Boolean expression and be materialized exactly once.
+    """
+
+    ridge = extrude.RegisteredCircleRidge(
+        outer=extrude.RegisteredCircle(
+            cx=0.0,
+            cy=0.0,
+            radius=0.5,
+        ),
+        inner=extrude.RegisteredCircle(
+            cx=0.0,
+            cy=0.0,
+            radius=0.48,
+        ),
+    )
+
+    hole = extrude.create_hole_geometry(
+        envelope_bounds=extrude.Bounds(
+            min_x=-50.0,
+            min_y=-50.0,
+            max_x=50.0,
+            max_y=50.0,
+        ),
+        diameter=2.0,
+        edge_distance=0.4,
+        position=0,
+    )
+
+    rendered_sources: list[tuple[str, Path]] = []
+
+    def capture_render(
+        source: str,
+        output: Path,
+    ) -> None:
+        rendered_sources.append(
+            (
+                source,
+                output,
+            ),
+        )
+
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        capture_render,
+    )
+
+    extrude._render_separate_circle_ridge_components(
+        ridge,
+        tmp_path,
+        shape_size=100.0,
+        shape_base_raise=1.5,
+        shape_outer_ridge_raise=1.0,
+        hole=hole,
+    )
+
+    ridge_renders = [source for source, output in rendered_sources if output.name == "ridge.stl"]
+
+    assert len(ridge_renders) == 1
+
+    ridge_source = ridge_renders[0]
+
+    assert "hole_radius = 1" in ridge_source
+    assert "difference()" in ridge_source
+
+    module_position = ridge_source.index("module registered_shape_boundary()")
+    difference_position = ridge_source.index("difference()")
+
+    assert module_position < difference_position
+
+
+def test_shape_hole_is_subtracted_from_border_label_before_extrusion() -> None:
+    hole = extrude.create_hole_geometry(
+        envelope_bounds=extrude.Bounds(
+            min_x=-50.0,
+            min_y=-50.0,
+            max_x=50.0,
+            max_y=50.0,
+        ),
+        diameter=2.0,
+        edge_distance=0.4,
+        position=0,
+    )
+
+    source = extrude._build_border_label_component_scad(
+        "/tmp/border-label.svg",
+        shape_size=100.0,
+        shape_base_raise=1.5,
+        shape_border_label_raise=1.0,
+        hole=hole,
+    )
+
+    extrude_position = source.index("linear_extrude(")
+    difference_position = source.index("difference()")
+    import_position = source.index('import("/tmp/border-label.svg"')
+    hole_position = source.index("circle(")
+
+    assert extrude_position < difference_position
+    assert difference_position < import_position
+    assert difference_position < hole_position
+
+
+def test_shape_hole_is_subtracted_from_artwork_before_extrusion() -> None:
+    hole = extrude.create_hole_geometry(
+        envelope_bounds=extrude.Bounds(
+            min_x=-50.0,
+            min_y=-50.0,
+            max_x=50.0,
+            max_y=50.0,
+        ),
+        diameter=2.0,
+        edge_distance=0.4,
+        position=0,
+    )
+
+    source = extrude._build_artwork_component_scad(
+        "/tmp/artwork.svg",
+        shape_size=100.0,
+        shape_base_raise=1.5,
+        shape_artwork_raise=1.0,
+        artwork_registered_width=1.0,
+        artwork_registered_height=1.0,
+        artwork_scale=1.0,
+        artwork_translate_x=0.0,
+        artwork_translate_y=0.0,
+        hole=hole,
+    )
+
+    extrude_position = source.index("linear_extrude(")
+    difference_position = source.index("difference()")
+    import_position = source.index('import("/tmp/artwork.svg"')
+    hole_position = source.index("circle(")
+
+    assert extrude_position < difference_position
+    assert difference_position < import_position
+    assert difference_position < hole_position

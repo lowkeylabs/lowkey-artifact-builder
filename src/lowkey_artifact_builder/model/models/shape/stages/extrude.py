@@ -177,7 +177,7 @@ def execute(
 
     A participating Shape Hole is resolved once from the complete physical
     Shape envelope and subtracted from every independently printable physical
-    component before the component manifest is written.
+    component before STL materialization.
     """
 
     composition = context.input(
@@ -310,6 +310,7 @@ def execute(
                 manifest.parent,
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
+                hole=hole,
             )
 
         elif isinstance(
@@ -323,6 +324,7 @@ def execute(
                 shape_base_raise=shape_base_raise,
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
                 shape_outer_ridge_style=shape_outer_ridge_style,
+                hole=hole,
             )
 
         elif isinstance(
@@ -336,6 +338,7 @@ def execute(
                 shape_base_raise=shape_base_raise,
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
                 shape_outer_ridge_style=shape_outer_ridge_style,
+                hole=hole,
             )
 
         elif isinstance(
@@ -349,6 +352,7 @@ def execute(
                 shape_base_raise=shape_base_raise,
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
                 shape_outer_ridge_style=shape_outer_ridge_style,
+                hole=hole,
             )
 
         else:
@@ -363,6 +367,7 @@ def execute(
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
                 shape_inner_ridge_raise=shape_inner_ridge_raise,
+                hole=hole,
             )
 
         top_border_label = border_labels.get(
@@ -383,6 +388,7 @@ def execute(
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
                 shape_border_label_raise=shape_top_border_label_raise,
+                hole=hole,
             )
 
         bottom_border_label = border_labels.get(
@@ -403,6 +409,7 @@ def execute(
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
                 shape_border_label_raise=shape_bottom_border_label_raise,
+                hole=hole,
             )
 
         artwork_components: tuple[
@@ -418,6 +425,7 @@ def execute(
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
                 shape_artwork_raise=shape_artwork_raise,
+                hole=hole,
             )
 
         artwork_fill_components: tuple[
@@ -432,24 +440,6 @@ def execute(
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
                 shape_artwork_fill_raise=shape_artwork_fill_raise,
-            )
-
-        if hole is not None:
-            component_paths = tuple(component_path for _, component_path in components)
-
-            artwork_component_paths = tuple(
-                component_path for _, component_path, _ in artwork_components
-            )
-
-            artwork_fill_component_paths = tuple(
-                component_path for _, component_path in artwork_fill_components
-            )
-
-            _subtract_hole_from_components(
-                manifest.parent,
-                component_paths=(
-                    component_paths + artwork_component_paths + artwork_fill_component_paths
-                ),
                 hole=hole,
             )
 
@@ -495,6 +485,7 @@ def _render_border_label_component(
     shape_size: float,
     shape_base_raise: float,
     shape_border_label_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -540,6 +531,7 @@ def _render_border_label_component(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         shape_border_label_raise=shape_border_label_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -567,6 +559,7 @@ def _render_inner_ridge_component(
     shape_size: float,
     shape_base_raise: float,
     shape_inner_ridge_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -589,6 +582,7 @@ def _render_inner_ridge_component(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         shape_inner_ridge_raise=shape_inner_ridge_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -616,6 +610,7 @@ def _render_artwork_fill_component(
     shape_size: float,
     shape_base_raise: float,
     shape_artwork_fill_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -635,6 +630,7 @@ def _render_artwork_fill_component(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         shape_artwork_fill_raise=shape_artwork_fill_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -663,6 +659,7 @@ def _render_artwork_components(
     shape_size: float,
     shape_base_raise: float,
     shape_artwork_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> tuple[
     tuple[str, str, dict[str, object]],
     ...,
@@ -681,6 +678,9 @@ def _render_artwork_components(
     The persistent registered coordinate extent is required so downstream
     physical dimensionalization retains the Artwork coordinate-system
     contract.
+
+    A participating Shape Hole is subtracted from each Artwork component's
+    native constructive geometry before STL materialization.
     """
 
     registered_extent = artwork.get(
@@ -847,6 +847,7 @@ def _render_artwork_components(
             artwork_scale=scale,
             artwork_translate_x=translate_x,
             artwork_translate_y=translate_y,
+            hole=hole,
         )
 
         render_stl_source(
@@ -878,6 +879,7 @@ def _render_no_ridge_components(
     *,
     shape_size: float,
     shape_base_raise: float,
+    hole: HoleGeometry | None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -894,6 +896,7 @@ def _render_no_ridge_components(
         ),
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -920,6 +923,7 @@ def _render_baseline_components(
     *,
     shape_size: float,
     shape_base_raise: float,
+    hole: HoleGeometry | None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -933,6 +937,7 @@ def _render_baseline_components(
         output_directory,
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+        hole=hole,
     )
 
 
@@ -944,6 +949,7 @@ def _render_circle_ridge_components(
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
     shape_outer_ridge_style: str,
+    hole: HoleGeometry | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -959,6 +965,7 @@ def _render_circle_ridge_components(
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
             shape_outer_ridge_raise=shape_outer_ridge_raise,
+            hole=hole,
         )
 
     if shape_outer_ridge_style == "separate":
@@ -968,6 +975,7 @@ def _render_circle_ridge_components(
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
             shape_outer_ridge_raise=shape_outer_ridge_raise,
+            hole=hole,
         )
 
     raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
@@ -981,6 +989,7 @@ def _render_square_ridge_components(
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
     shape_outer_ridge_style: str,
+    hole: HoleGeometry | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -996,6 +1005,7 @@ def _render_square_ridge_components(
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
             shape_outer_ridge_raise=shape_outer_ridge_raise,
+            hole=hole,
         )
 
     if shape_outer_ridge_style == "separate":
@@ -1005,6 +1015,7 @@ def _render_square_ridge_components(
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
             shape_outer_ridge_raise=shape_outer_ridge_raise,
+            hole=hole,
         )
 
     raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
@@ -1018,6 +1029,7 @@ def _render_polygon_ridge_components(
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
     shape_outer_ridge_style: str,
+    hole: HoleGeometry | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1033,6 +1045,7 @@ def _render_polygon_ridge_components(
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
             shape_outer_ridge_raise=shape_outer_ridge_raise,
+            hole=hole,
         )
 
     if shape_outer_ridge_style == "separate":
@@ -1042,6 +1055,7 @@ def _render_polygon_ridge_components(
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
             shape_outer_ridge_raise=shape_outer_ridge_raise,
+            hole=hole,
         )
 
     raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
@@ -1054,6 +1068,7 @@ def _render_integrated_polygon_ridge_components(
     shape_size: float,
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1061,6 +1076,9 @@ def _render_integrated_polygon_ridge_components(
     """
     Render independently printable components for a positive integrated
     polygon ridge.
+
+    A participating Shape Hole is incorporated into each component's native
+    constructive OpenSCAD geometry before STL materialization.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
@@ -1069,6 +1087,7 @@ def _render_integrated_polygon_ridge_components(
         ridge.outer,
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -1096,6 +1115,7 @@ def _render_integrated_polygon_ridge_components(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         shape_outer_ridge_raise=shape_outer_ridge_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -1127,12 +1147,16 @@ def _render_separate_polygon_ridge_components(
     shape_size: float,
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
 ]:
     """
     Render independently printable components for a separate polygon ridge.
+
+    A participating Shape Hole is incorporated into each component's native
+    constructive OpenSCAD geometry before STL materialization.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
@@ -1141,6 +1165,7 @@ def _render_separate_polygon_ridge_components(
         ridge.inner,
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -1170,6 +1195,7 @@ def _render_separate_polygon_ridge_components(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         shape_outer_ridge_raise=shape_outer_ridge_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -1201,12 +1227,16 @@ def _render_integrated_circle_ridge_components(
     shape_size: float,
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
 ]:
     """
     Render independently printable components for an integrated circle ridge.
+
+    A participating Shape Hole is incorporated into each component's native
+    constructive OpenSCAD geometry before STL materialization.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
@@ -1216,6 +1246,7 @@ def _render_integrated_circle_ridge_components(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         shape_outer_ridge_raise=shape_outer_ridge_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -1243,6 +1274,7 @@ def _render_integrated_circle_ridge_components(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         shape_outer_ridge_raise=shape_outer_ridge_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -1274,12 +1306,16 @@ def _render_separate_circle_ridge_components(
     shape_size: float,
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
 ]:
     """
     Render independently printable components for a separate circle ridge.
+
+    A participating Shape Hole is incorporated into each component's native
+    constructive OpenSCAD geometry before STL materialization.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
@@ -1288,6 +1324,7 @@ def _render_separate_circle_ridge_components(
         ridge.inner,
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -1317,6 +1354,7 @@ def _render_separate_circle_ridge_components(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         shape_outer_ridge_raise=shape_outer_ridge_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -1348,6 +1386,7 @@ def _render_integrated_square_ridge_components(
     shape_size: float,
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1358,6 +1397,9 @@ def _render_integrated_square_ridge_components(
     For positive ridge raise, the base occupies the complete square footprint
     through the base top and the ridge component occupies only the perimeter
     volume above that top.
+
+    A participating Shape Hole is incorporated into each component's native
+    constructive OpenSCAD geometry before STL materialization.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
@@ -1367,6 +1409,7 @@ def _render_integrated_square_ridge_components(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         shape_outer_ridge_raise=shape_outer_ridge_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -1394,6 +1437,7 @@ def _render_integrated_square_ridge_components(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         shape_outer_ridge_raise=shape_outer_ridge_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -1425,6 +1469,7 @@ def _render_separate_square_ridge_components(
     shape_size: float,
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1435,6 +1480,9 @@ def _render_separate_square_ridge_components(
     The base occupies the registered inner square while the ridge occupies
     the surrounding registered perimeter from Z=0 through the assembled
     ridge height.
+
+    A participating Shape Hole is incorporated into each component's native
+    constructive OpenSCAD geometry before STL materialization.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
@@ -1443,6 +1491,7 @@ def _render_separate_square_ridge_components(
         ridge.inner,
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -1472,6 +1521,7 @@ def _render_separate_square_ridge_components(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         shape_outer_ridge_raise=shape_outer_ridge_raise,
+        hole=hole,
     )
 
     render_stl_source(
@@ -1493,89 +1543,6 @@ def _render_separate_square_ridge_components(
             RIDGE_COMPONENT_NAME,
             RIDGE_COMPONENT_PATH,
         ),
-    )
-
-
-def _subtract_hole_from_components(
-    output_directory: Path,
-    *,
-    component_paths: tuple[str, ...],
-    hole: HoleGeometry,
-) -> None:
-    """
-    Subtract one participating Shape Hole from every physical component.
-
-    Shape Hole is a complete-manufacture subtractive Feature. The subtraction
-    therefore occurs after ordinary physical component production so the same
-    Hole applies uniformly to structural Shape material, Shape-owned Features,
-    and incorporated Artwork without changing component ownership or identity.
-
-    Components that do not intersect the Hole remain geometrically unchanged.
-    """
-
-    for component_path in component_paths:
-        path = output_directory / component_path
-
-        if not path.is_file():
-            raise ExtrudeError(
-                f"Cannot subtract Shape Hole from missing physical component: {path}"
-            )
-
-        temporary_path = path.with_name(
-            f".{path.stem}-hole{path.suffix}",
-        )
-
-        source = _build_hole_subtraction_scad(
-            _scad_path(
-                path,
-            ),
-            hole=hole,
-        )
-
-        render_stl_source(
-            source,
-            temporary_path,
-        )
-
-        if not temporary_path.is_file():
-            raise ExtrudeError(
-                "Shape Hole subtraction completed without creating the expected "
-                f"temporary STL: {temporary_path}"
-            )
-
-        temporary_path.replace(
-            path,
-        )
-
-
-def _build_hole_subtraction_scad(
-    source: str,
-    *,
-    hole: HoleGeometry,
-) -> str:
-    """
-    Build OpenSCAD source subtracting a Shape Hole from one physical component.
-
-    The Hole cutter spans effectively unbounded Z relative to manufactured
-    Shape components so every intersecting physical layer is removed.
-    """
-
-    return (
-        f"hole_center_x = {hole.center_x:g};\n"
-        f"hole_center_y = {hole.center_y:g};\n"
-        f"hole_radius = {hole.radius:g};\n"
-        "\n"
-        "difference() {\n"
-        f'    import("{source}");\n'
-        "\n"
-        "    translate([hole_center_x, hole_center_y, -1000])\n"
-        "        cylinder(\n"
-        "            h = 2000,\n"
-        "            r = hole_radius,\n"
-        "            center = false,\n"
-        "            $fn = 256\n"
-        "        );\n"
-        "}\n"
     )
 
 
@@ -1813,6 +1780,7 @@ def _build_scad(
             ),
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
+            hole=None,
         )
 
     if isinstance(
@@ -1868,6 +1836,7 @@ def _build_scad(
         ),
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+        hole=None,
     )
 
 
@@ -1877,6 +1846,7 @@ def _build_border_label_component_scad(
     shape_size: float,
     shape_base_raise: float,
     shape_border_label_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> str:
     """
     Build OpenSCAD source for one Shape Border Label component.
@@ -1899,21 +1869,43 @@ def _build_border_label_component_scad(
         registered SVG Bottom  -> negative physical Y
 
     Z begins at the top of the complete Shape base.
+
+    A participating Shape Hole is subtracted from the registered planar
+    component geometry before extrusion so SVG-derived geometry is
+    materialized as STL only once.
     """
+
+    planar_geometry = (
+        "scale([shape_size, shape_size, 1])\n"
+        "    translate([-0.5, -1.5, 0])\n"
+        f'        import("{source}", dpi = 25.4);\n'
+    )
+
+    if hole is not None:
+        planar_geometry = (
+            "difference() {\n"
+            f"{_indent_scad(planar_geometry, 4)}"
+            "\n"
+            "    translate([hole_center_x, hole_center_y, 0])\n"
+            "        circle(\n"
+            "            r = hole_radius,\n"
+            "            $fn = 256\n"
+            "        );\n"
+            "}\n"
+        )
 
     return (
         f"shape_size = {shape_size:g};\n"
         f"shape_base_raise = {shape_base_raise:g};\n"
         f"shape_border_label_raise = {shape_border_label_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
         "\n"
         "translate([0, 0, shape_base_raise])\n"
         "    linear_extrude(\n"
         "        height = shape_border_label_raise,\n"
         "        center = false\n"
         "    )\n"
-        "        scale([shape_size, shape_size, 1])\n"
-        "            translate([-0.5, -1.5, 0])\n"
-        f'                import("{source}", dpi = 25.4);\n'
+        f"{_indent_scad(planar_geometry, 8)}"
     )
 
 
@@ -1923,12 +1915,16 @@ def _build_inner_ridge_component_scad(
     shape_size: float,
     shape_base_raise: float,
     shape_inner_ridge_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> str:
     """
     Build OpenSCAD source for the independently printable Inner Ridge.
 
     Compose owns the Inner Ridge X/Y geometry. Extrude consumes its registered
     outer and inner boundaries and applies only physical dimensionalization.
+
+    A participating Shape Hole is subtracted from the physical ridge geometry
+    while registered boundary modules remain top-level declarations.
     """
 
     if isinstance(
@@ -1982,21 +1978,7 @@ def _build_inner_ridge_component_scad(
     else:
         raise ValueError(f"Unsupported registered Inner Ridge geometry: {type(ridge).__name__}.")
 
-    return (
-        f"shape_size = {shape_size:g};\n"
-        f"shape_base_raise = {shape_base_raise:g};\n"
-        f"shape_inner_ridge_raise = {shape_inner_ridge_raise:g};\n"
-        "\n"
-        f"// {INNER_RIDGE_OUTER_BOUNDARY_ID}\n"
-        "module registered_inner_ridge_outer_boundary() {\n"
-        f"{_indent_scad(outer, 4)}"
-        "}\n"
-        "\n"
-        f"// {INNER_RIDGE_INNER_BOUNDARY_ID}\n"
-        "module registered_inner_ridge_inner_boundary() {\n"
-        f"{_indent_scad(inner, 4)}"
-        "}\n"
-        "\n"
+    geometry = (
         "translate([0, 0, shape_base_raise])\n"
         "    linear_extrude(\n"
         "        height = shape_inner_ridge_raise,\n"
@@ -2008,6 +1990,25 @@ def _build_inner_ridge_component_scad(
         "        }\n"
     )
 
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_inner_ridge_raise = {shape_inner_ridge_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"// {INNER_RIDGE_OUTER_BOUNDARY_ID}\n"
+        "module registered_inner_ridge_outer_boundary() {\n"
+        f"{_indent_scad(outer, 4)}"
+        "}\n"
+        "\n"
+        f"// {INNER_RIDGE_INNER_BOUNDARY_ID}\n"
+        "module registered_inner_ridge_inner_boundary() {\n"
+        f"{_indent_scad(inner, 4)}"
+        "}\n"
+        "\n"
+        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
+    )
+
 
 def _build_artwork_fill_scad(
     artwork_fill: RegisteredArtworkFill,
@@ -2015,6 +2016,7 @@ def _build_artwork_fill_scad(
     shape_size: float,
     shape_base_raise: float,
     shape_artwork_fill_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> str:
     """
     Build OpenSCAD source for Shape-owned Artwork fill.
@@ -2022,6 +2024,9 @@ def _build_artwork_fill_scad(
     Registered fill geometry is dimensionalized using Shape's physical X/Y
     size. The fill begins at the top of the structural base and has its own
     Shape-owned physical height.
+
+    A participating Shape Hole is subtracted from the physical Artwork Fill
+    before STL materialization.
     """
 
     outer = _build_registered_fill_boundary_scad(
@@ -2034,19 +2039,7 @@ def _build_artwork_fill_scad(
         shape_size=shape_size,
     )
 
-    return (
-        f"shape_size = {shape_size:g};\n"
-        f"shape_base_raise = {shape_base_raise:g};\n"
-        f"shape_artwork_fill_raise = {shape_artwork_fill_raise:g};\n"
-        "\n"
-        "module registered_artwork_fill_outer_boundary() {\n"
-        f"{_indent_scad(outer, 4)}"
-        "}\n"
-        "\n"
-        "module registered_artwork_fill_inner_boundary() {\n"
-        f"{_indent_scad(inner, 4)}"
-        "}\n"
-        "\n"
+    geometry = (
         "translate([0, 0, shape_base_raise])\n"
         "    linear_extrude(\n"
         "        height = shape_artwork_fill_raise,\n"
@@ -2056,6 +2049,23 @@ def _build_artwork_fill_scad(
         "            registered_artwork_fill_outer_boundary();\n"
         "            registered_artwork_fill_inner_boundary();\n"
         "        }\n"
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_artwork_fill_raise = {shape_artwork_fill_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        "module registered_artwork_fill_outer_boundary() {\n"
+        f"{_indent_scad(outer, 4)}"
+        "}\n"
+        "\n"
+        "module registered_artwork_fill_inner_boundary() {\n"
+        f"{_indent_scad(inner, 4)}"
+        "}\n"
+        "\n"
+        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
     )
 
 
@@ -2288,6 +2298,54 @@ def _indent_scad(
     )
 
 
+def _build_hole_parameters_scad(
+    hole: HoleGeometry | None,
+) -> str:
+    """
+    Build OpenSCAD parameter declarations for a participating Shape Hole.
+    """
+
+    if hole is None:
+        return ""
+
+    return (
+        f"hole_center_x = {hole.center_x:g};\n"
+        f"hole_center_y = {hole.center_y:g};\n"
+        f"hole_radius = {hole.radius:g};\n"
+    )
+
+
+def _build_hole_subtracted_geometry_scad(
+    geometry: str,
+    *,
+    hole: HoleGeometry | None,
+) -> str:
+    """
+    Apply Shape Hole subtraction to one executable physical geometry expression.
+
+    The caller owns the complete SCAD program, including parameter and module
+    declarations. This helper operates only on executable constructive geometry
+    and therefore never moves declarations inside a geometry block.
+    """
+
+    if hole is None:
+        return geometry
+
+    return (
+        "difference() {\n"
+        f"{_indent_scad(geometry, 4)}"
+        "\n"
+        "    translate([hole_center_x, hole_center_y, -1000])\n"
+        "        cylinder(\n"
+        "            h = 2000,\n"
+        "            r = hole_radius,\n"
+        "            center = false,\n"
+        "            $fn = 256\n"
+        "        );\n"
+        "}\n"
+    )
+
+
 def _build_artwork_component_scad(
     source: str,
     *,
@@ -2299,6 +2357,7 @@ def _build_artwork_component_scad(
     artwork_scale: float,
     artwork_translate_x: float,
     artwork_translate_y: float,
+    hole: HoleGeometry | None = None,
 ) -> str:
     """
     Build OpenSCAD source for one incorporated Artwork component.
@@ -2309,13 +2368,35 @@ def _build_artwork_component_scad(
 
     The persistent Artwork-to-Shape composition transform is expressed in SVG
     registered coordinates. Its Y translation is therefore converted into the
-    OpenSCAD coordinate system before being applied. X coordinates require no
-    conversion.
+    OpenSCAD coordinate system before being applied.
 
-    Shape then maps its registered coordinates into physical X/Y space.
-
-    The resulting component begins at the physical top of the Shape base.
+    A participating Shape Hole is subtracted from the planar Artwork geometry
+    before extrusion so SVG-derived geometry is materialized as STL only once.
     """
+
+    planar_geometry = (
+        "scale([shape_size, shape_size, 1])\n"
+        "    translate([\n"
+        "        artwork_translate_x,\n"
+        "        artwork_openscad_translate_y,\n"
+        "        0\n"
+        "    ])\n"
+        "        scale([artwork_scale, artwork_scale, 1])\n"
+        f'            import("{source}", dpi = 25.4);\n'
+    )
+
+    if hole is not None:
+        planar_geometry = (
+            "difference() {\n"
+            f"{_indent_scad(planar_geometry, 4)}"
+            "\n"
+            "    translate([hole_center_x, hole_center_y, 0])\n"
+            "        circle(\n"
+            "            r = hole_radius,\n"
+            "            $fn = 256\n"
+            "        );\n"
+            "}\n"
+        )
 
     return (
         f"shape_size = {shape_size:g};\n"
@@ -2329,20 +2410,14 @@ def _build_artwork_component_scad(
         "artwork_openscad_translate_y = "
         "-(artwork_registered_height * artwork_scale) "
         "- artwork_translate_y;\n"
+        f"{_build_hole_parameters_scad(hole)}"
         "\n"
         "translate([0, 0, shape_base_raise])\n"
         "    linear_extrude(\n"
         "        height = shape_artwork_raise,\n"
         "        center = false\n"
         "    )\n"
-        "        scale([shape_size, shape_size, 1])\n"
-        "            translate([\n"
-        "                artwork_translate_x,\n"
-        "                artwork_openscad_translate_y,\n"
-        "                0\n"
-        "            ])\n"
-        "                scale([artwork_scale, artwork_scale, 1])\n"
-        f'                    import("{source}", dpi = 25.4);\n'
+        f"{_indent_scad(planar_geometry, 8)}"
     )
 
 
@@ -2389,27 +2464,55 @@ def _build_integrated_polygon_ridge_scad(
 
 
 def _build_base_scad(
-    source: str,
+    composition: str,
     *,
     shape_size: float,
     shape_base_raise: float,
+    hole: HoleGeometry | None,
 ) -> str:
     """
-    Build OpenSCAD source for the baseline no-ridge Shape base.
+    Build OpenSCAD source for the physical Shape base.
+
+    A participating Shape Hole is subtracted from the constructive planar
+    geometry before the base is materialized as STL.
     """
 
-    return (
-        f"shape_size = {shape_size:g};\n"
-        f"shape_base_raise = {shape_base_raise:g};\n"
-        "\n"
-        "linear_extrude(\n"
-        "    height = shape_base_raise,\n"
-        "    center = false\n"
-        ")\n"
-        "    scale([shape_size, shape_size, 1])\n"
-        "        translate([-0.5, -1.5, 0])\n"
-        f'            import("{source}", dpi = 25.4);\n'
-    )
+    shape_source = f"""\
+scale([shape_size, shape_size, 1])
+    translate([-0.5, -1.5, 0])
+        import("{composition}", dpi = 25.4);
+"""
+
+    if hole is None:
+        planar_source = shape_source
+        hole_parameters = ""
+    else:
+        hole_parameters = (
+            f"hole_center_x = {hole.center_x:g};\n"
+            f"hole_center_y = {hole.center_y:g};\n"
+            f"hole_radius = {hole.radius:g};\n"
+        )
+
+        planar_source = f"""\
+difference() {{
+{shape_source}
+    translate([hole_center_x, hole_center_y, 0])
+        circle(
+            r = hole_radius,
+            $fn = 256
+        );
+}}
+"""
+
+    return f"""\
+shape_size = {shape_size:g};
+shape_base_raise = {shape_base_raise:g};
+{hole_parameters}
+linear_extrude(
+    height = shape_base_raise,
+    center = false
+)
+{planar_source}"""
 
 
 def _build_circle_base_scad(
@@ -2417,25 +2520,55 @@ def _build_circle_base_scad(
     *,
     shape_size: float,
     shape_base_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> str:
     """
     Build OpenSCAD source for a physical circle base.
+
+    A participating Shape Hole is subtracted from the native constructive
+    geometry before the base is materialized as STL.
     """
 
     x = circle.cx * shape_size
     y = circle.cy * shape_size
     radius = circle.radius * shape_size
 
+    if hole is None:
+        return (
+            f"shape_size = {shape_size:g};\n"
+            f"shape_base_raise = {shape_base_raise:g};\n"
+            "\n"
+            "linear_extrude(\n"
+            "    height = shape_base_raise,\n"
+            "    center = false\n"
+            ")\n"
+            f"    translate([{x:g}, {y:g}, 0])\n"
+            f"        circle(r = {radius:g}, $fn = 256);\n"
+        )
+
     return (
         f"shape_size = {shape_size:g};\n"
         f"shape_base_raise = {shape_base_raise:g};\n"
+        f"hole_center_x = {hole.center_x:g};\n"
+        f"hole_center_y = {hole.center_y:g};\n"
+        f"hole_radius = {hole.radius:g};\n"
         "\n"
-        "linear_extrude(\n"
-        "    height = shape_base_raise,\n"
-        "    center = false\n"
-        ")\n"
-        f"    translate([{x:g}, {y:g}, 0])\n"
-        f"        circle(r = {radius:g}, $fn = 256);\n"
+        "difference() {\n"
+        "    linear_extrude(\n"
+        "        height = shape_base_raise,\n"
+        "        center = false\n"
+        "    )\n"
+        f"        translate([{x:g}, {y:g}, 0])\n"
+        f"            circle(r = {radius:g}, $fn = 256);\n"
+        "\n"
+        "    translate([hole_center_x, hole_center_y, -1000])\n"
+        "        cylinder(\n"
+        "            h = 2000,\n"
+        "            r = hole_radius,\n"
+        "            center = false,\n"
+        "            $fn = 256\n"
+        "        );\n"
+        "}\n"
     )
 
 
@@ -2444,6 +2577,7 @@ def _build_rectangle_base_scad(
     *,
     shape_size: float,
     shape_base_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> str:
     """
     Build OpenSCAD source for a physical registered rectangle base.
@@ -2454,16 +2588,21 @@ def _build_rectangle_base_scad(
     width = rectangle.width * shape_size
     height = rectangle.height * shape_size
 
-    return (
-        f"shape_size = {shape_size:g};\n"
-        f"shape_base_raise = {shape_base_raise:g};\n"
-        "\n"
+    geometry = (
         "linear_extrude(\n"
         "    height = shape_base_raise,\n"
         "    center = false\n"
         ")\n"
         f"    translate([{x:g}, {y:g}, 0])\n"
         f"        square([{width:g}, {height:g}], center = false);\n"
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
     )
 
 
@@ -2473,9 +2612,13 @@ def _build_integrated_circle_base_scad(
     shape_size: float,
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> str:
     """
     Build OpenSCAD source for the base material of an integrated circle ridge.
+
+    A participating Shape Hole is subtracted from the native constructive
+    base geometry before STL materialization.
     """
 
     if shape_outer_ridge_raise >= 0.0:
@@ -2483,6 +2626,7 @@ def _build_integrated_circle_base_scad(
             ridge.outer,
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
+            hole=hole,
         )
 
     outer_x = ridge.outer.cx * shape_size
@@ -2493,23 +2637,7 @@ def _build_integrated_circle_base_scad(
     inner_y = ridge.inner.cy * shape_size
     inner_radius = ridge.inner.radius * shape_size
 
-    return (
-        f"shape_size = {shape_size:g};\n"
-        f"shape_base_raise = {shape_base_raise:g};\n"
-        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
-        "\n"
-        f"// {SHAPE_BOUNDARY_ID}\n"
-        "module registered_shape_boundary() {\n"
-        f"    translate([{outer_x:g}, {outer_y:g}, 0])\n"
-        f"        circle(r = {outer_radius:g}, $fn = 256);\n"
-        "}\n"
-        "\n"
-        f"// {RIDGE_INNER_BOUNDARY_ID}\n"
-        "module registered_ridge_inner_boundary() {\n"
-        f"    translate([{inner_x:g}, {inner_y:g}, 0])\n"
-        f"        circle(r = {inner_radius:g}, $fn = 256);\n"
-        "}\n"
-        "\n"
+    geometry = (
         "union() {\n"
         "    linear_extrude(\n"
         "        height = shape_base_raise,\n"
@@ -2528,6 +2656,27 @@ def _build_integrated_circle_base_scad(
         "}\n"
     )
 
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"// {SHAPE_BOUNDARY_ID}\n"
+        "module registered_shape_boundary() {\n"
+        f"    translate([{outer_x:g}, {outer_y:g}, 0])\n"
+        f"        circle(r = {outer_radius:g}, $fn = 256);\n"
+        "}\n"
+        "\n"
+        f"// {RIDGE_INNER_BOUNDARY_ID}\n"
+        "module registered_ridge_inner_boundary() {\n"
+        f"    translate([{inner_x:g}, {inner_y:g}, 0])\n"
+        f"        circle(r = {inner_radius:g}, $fn = 256);\n"
+        "}\n"
+        "\n"
+        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
+    )
+
 
 def _build_integrated_square_base_scad(
     ridge: RegisteredSquareRidge,
@@ -2535,6 +2684,7 @@ def _build_integrated_square_base_scad(
     shape_size: float,
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> str:
     """
     Build OpenSCAD source for the base material of an integrated square ridge.
@@ -2548,6 +2698,9 @@ def _build_integrated_square_base_scad(
         interior  -> Z=0 through shape_base_raise
         perimeter -> Z=0 through
                      shape_base_raise + shape_outer_ridge_raise
+
+    A participating Shape Hole is subtracted from the native constructive
+    base geometry before STL materialization.
     """
 
     if shape_outer_ridge_raise >= 0.0:
@@ -2555,6 +2708,7 @@ def _build_integrated_square_base_scad(
             ridge.outer,
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
+            hole=hole,
         )
 
     boundaries = _build_square_boundary_modules(
@@ -2562,13 +2716,7 @@ def _build_integrated_square_base_scad(
         shape_size=shape_size,
     )
 
-    return (
-        f"shape_size = {shape_size:g};\n"
-        f"shape_base_raise = {shape_base_raise:g};\n"
-        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
-        "\n"
-        f"{boundaries}"
-        "\n"
+    geometry = (
         "union() {\n"
         "    linear_extrude(\n"
         "        height = shape_base_raise,\n"
@@ -2587,6 +2735,17 @@ def _build_integrated_square_base_scad(
         "}\n"
     )
 
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"{boundaries}"
+        "\n"
+        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
+    )
+
 
 def _build_integrated_circle_ridge_component_scad(
     ridge: RegisteredCircleRidge,
@@ -2594,9 +2753,13 @@ def _build_integrated_circle_ridge_component_scad(
     shape_size: float,
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> str:
     """
     Build OpenSCAD source for the independently printable integrated ridge.
+
+    A participating Shape Hole is subtracted from the native constructive
+    ridge geometry before STL materialization.
     """
 
     outer_x = ridge.outer.cx * shape_size
@@ -2607,23 +2770,7 @@ def _build_integrated_circle_ridge_component_scad(
     inner_y = ridge.inner.cy * shape_size
     inner_radius = ridge.inner.radius * shape_size
 
-    return (
-        f"shape_size = {shape_size:g};\n"
-        f"shape_base_raise = {shape_base_raise:g};\n"
-        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
-        "\n"
-        f"// {SHAPE_BOUNDARY_ID}\n"
-        "module registered_shape_boundary() {\n"
-        f"    translate([{outer_x:g}, {outer_y:g}, 0])\n"
-        f"        circle(r = {outer_radius:g}, $fn = 256);\n"
-        "}\n"
-        "\n"
-        f"// {RIDGE_INNER_BOUNDARY_ID}\n"
-        "module registered_ridge_inner_boundary() {\n"
-        f"    translate([{inner_x:g}, {inner_y:g}, 0])\n"
-        f"        circle(r = {inner_radius:g}, $fn = 256);\n"
-        "}\n"
-        "\n"
+    geometry = (
         "translate([0, 0, shape_base_raise])\n"
         "    linear_extrude(\n"
         "        height = shape_outer_ridge_raise,\n"
@@ -2635,30 +2782,11 @@ def _build_integrated_circle_ridge_component_scad(
         "        }\n"
     )
 
-
-def _build_separate_circle_ridge_component_scad(
-    ridge: RegisteredCircleRidge,
-    *,
-    shape_size: float,
-    shape_base_raise: float,
-    shape_outer_ridge_raise: float,
-) -> str:
-    """
-    Build OpenSCAD source for an independently printable separate circle ridge.
-    """
-
-    outer_x = ridge.outer.cx * shape_size
-    outer_y = ridge.outer.cy * shape_size
-    outer_radius = ridge.outer.radius * shape_size
-
-    inner_x = ridge.inner.cx * shape_size
-    inner_y = ridge.inner.cy * shape_size
-    inner_radius = ridge.inner.radius * shape_size
-
     return (
         f"shape_size = {shape_size:g};\n"
         f"shape_base_raise = {shape_base_raise:g};\n"
         f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
         "\n"
         f"// {SHAPE_BOUNDARY_ID}\n"
         "module registered_shape_boundary() {\n"
@@ -2672,6 +2800,55 @@ def _build_separate_circle_ridge_component_scad(
         f"        circle(r = {inner_radius:g}, $fn = 256);\n"
         "}\n"
         "\n"
+        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
+    )
+
+
+def _build_separate_circle_ridge_component_scad(
+    ridge: RegisteredCircleRidge,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+    hole: HoleGeometry | None = None,
+) -> str:
+    """
+    Build OpenSCAD source for an independently printable separate circle ridge.
+
+    Registered boundary modules remain top-level declarations. A participating
+    Shape Hole is subtracted only from the executable physical ridge geometry,
+    before STL materialization.
+    """
+
+    outer_x = ridge.outer.cx * shape_size
+    outer_y = ridge.outer.cy * shape_size
+    outer_radius = ridge.outer.radius * shape_size
+
+    inner_x = ridge.inner.cx * shape_size
+    inner_y = ridge.inner.cy * shape_size
+    inner_radius = ridge.inner.radius * shape_size
+
+    parameters = (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+    )
+
+    boundaries = (
+        f"// {SHAPE_BOUNDARY_ID}\n"
+        "module registered_shape_boundary() {\n"
+        f"    translate([{outer_x:g}, {outer_y:g}, 0])\n"
+        f"        circle(r = {outer_radius:g}, $fn = 256);\n"
+        "}\n"
+        "\n"
+        f"// {RIDGE_INNER_BOUNDARY_ID}\n"
+        "module registered_ridge_inner_boundary() {\n"
+        f"    translate([{inner_x:g}, {inner_y:g}, 0])\n"
+        f"        circle(r = {inner_radius:g}, $fn = 256);\n"
+        "}\n"
+    )
+
+    ridge_geometry = (
         "linear_extrude(\n"
         "    height = shape_base_raise + shape_outer_ridge_raise,\n"
         "    center = false\n"
@@ -2680,6 +2857,33 @@ def _build_separate_circle_ridge_component_scad(
         "        registered_shape_boundary();\n"
         "        registered_ridge_inner_boundary();\n"
         "    }\n"
+    )
+
+    if hole is None:
+        return parameters + "\n" + boundaries + "\n" + ridge_geometry
+
+    return (
+        parameters
+        + f"hole_center_x = {hole.center_x:g};\n"
+        + f"hole_center_y = {hole.center_y:g};\n"
+        + f"hole_radius = {hole.radius:g};\n"
+        + "\n"
+        + boundaries
+        + "\n"
+        + "difference() {\n"
+        + _indent_scad(
+            ridge_geometry,
+            4,
+        )
+        + "\n"
+        + "    translate([hole_center_x, hole_center_y, -1000])\n"
+        + "        cylinder(\n"
+        + "            h = 2000,\n"
+        + "            r = hole_radius,\n"
+        + "            center = false,\n"
+        + "            $fn = 256\n"
+        + "        );\n"
+        + "}\n"
     )
 
 
@@ -2786,9 +2990,13 @@ def _build_integrated_square_ridge_component_scad(
     shape_size: float,
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> str:
     """
     Build OpenSCAD source for a positive integrated square ridge component.
+
+    A participating Shape Hole is subtracted from the native constructive
+    ridge geometry before STL materialization.
     """
 
     boundaries = _build_square_boundary_modules(
@@ -2796,13 +3004,7 @@ def _build_integrated_square_ridge_component_scad(
         shape_size=shape_size,
     )
 
-    return (
-        f"shape_size = {shape_size:g};\n"
-        f"shape_base_raise = {shape_base_raise:g};\n"
-        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
-        "\n"
-        f"{boundaries}"
-        "\n"
+    geometry = (
         "translate([0, 0, shape_base_raise])\n"
         "    linear_extrude(\n"
         "        height = shape_outer_ridge_raise,\n"
@@ -2814,6 +3016,17 @@ def _build_integrated_square_ridge_component_scad(
         "        }\n"
     )
 
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"{boundaries}"
+        "\n"
+        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
+    )
+
 
 def _build_separate_square_ridge_component_scad(
     ridge: RegisteredSquareRidge,
@@ -2821,9 +3034,13 @@ def _build_separate_square_ridge_component_scad(
     shape_size: float,
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> str:
     """
     Build OpenSCAD source for an independently printable separate square ridge.
+
+    A participating Shape Hole is subtracted from the native constructive
+    ridge geometry before STL materialization.
     """
 
     boundaries = _build_square_boundary_modules(
@@ -2831,13 +3048,7 @@ def _build_separate_square_ridge_component_scad(
         shape_size=shape_size,
     )
 
-    return (
-        f"shape_size = {shape_size:g};\n"
-        f"shape_base_raise = {shape_base_raise:g};\n"
-        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
-        "\n"
-        f"{boundaries}"
-        "\n"
+    geometry = (
         "linear_extrude(\n"
         "    height = shape_base_raise + shape_outer_ridge_raise,\n"
         "    center = false\n"
@@ -2846,6 +3057,17 @@ def _build_separate_square_ridge_component_scad(
         "        registered_shape_boundary();\n"
         "        registered_ridge_inner_boundary();\n"
         "    }\n"
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"{boundaries}"
+        "\n"
+        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
     )
 
 
@@ -2930,6 +3152,7 @@ def _build_polygon_base_scad(
     *,
     shape_size: float,
     shape_base_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> str:
     """
     Build OpenSCAD source for a physical registered polygon base.
@@ -2940,15 +3163,20 @@ def _build_polygon_base_scad(
         shape_size=shape_size,
     )
 
-    return (
-        f"shape_size = {shape_size:g};\n"
-        f"shape_base_raise = {shape_base_raise:g};\n"
-        "\n"
+    geometry = (
         "linear_extrude(\n"
         "    height = shape_base_raise,\n"
         "    center = false\n"
         ")\n"
         f"    polygon(points = {points});\n"
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
     )
 
 
@@ -2958,9 +3186,13 @@ def _build_integrated_polygon_ridge_component_scad(
     shape_size: float,
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> str:
     """
     Build OpenSCAD source for a positive integrated polygon ridge component.
+
+    A participating Shape Hole is subtracted from the native constructive
+    ridge geometry before STL materialization.
     """
 
     boundaries = _build_polygon_boundary_modules(
@@ -2968,13 +3200,7 @@ def _build_integrated_polygon_ridge_component_scad(
         shape_size=shape_size,
     )
 
-    return (
-        f"shape_size = {shape_size:g};\n"
-        f"shape_base_raise = {shape_base_raise:g};\n"
-        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
-        "\n"
-        f"{boundaries}"
-        "\n"
+    geometry = (
         "translate([0, 0, shape_base_raise])\n"
         "    linear_extrude(\n"
         "        height = shape_outer_ridge_raise,\n"
@@ -2986,6 +3212,17 @@ def _build_integrated_polygon_ridge_component_scad(
         "        }\n"
     )
 
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"{boundaries}"
+        "\n"
+        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
+    )
+
 
 def _build_separate_polygon_ridge_component_scad(
     ridge: RegisteredPolygonRidge,
@@ -2993,9 +3230,13 @@ def _build_separate_polygon_ridge_component_scad(
     shape_size: float,
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
+    hole: HoleGeometry | None = None,
 ) -> str:
     """
     Build OpenSCAD source for an independently printable separate polygon ridge.
+
+    A participating Shape Hole is subtracted from the native constructive
+    ridge geometry before STL materialization.
     """
 
     boundaries = _build_polygon_boundary_modules(
@@ -3003,13 +3244,7 @@ def _build_separate_polygon_ridge_component_scad(
         shape_size=shape_size,
     )
 
-    return (
-        f"shape_size = {shape_size:g};\n"
-        f"shape_base_raise = {shape_base_raise:g};\n"
-        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
-        "\n"
-        f"{boundaries}"
-        "\n"
+    geometry = (
         "linear_extrude(\n"
         "    height = shape_base_raise + shape_outer_ridge_raise,\n"
         "    center = false\n"
@@ -3018,6 +3253,17 @@ def _build_separate_polygon_ridge_component_scad(
         "        registered_shape_boundary();\n"
         "        registered_ridge_inner_boundary();\n"
         "    }\n"
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"{boundaries}"
+        "\n"
+        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
     )
 
 

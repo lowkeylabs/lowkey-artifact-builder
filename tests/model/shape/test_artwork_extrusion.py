@@ -747,6 +747,7 @@ def test_artwork_extrusion_passes_registered_extent_to_scad_builder(
         artwork_scale: float,
         artwork_translate_x: float,
         artwork_translate_y: float,
+        hole: extrude.HoleGeometry | None = None,
     ) -> str:
         received["width"] = artwork_registered_width
         received["height"] = artwork_registered_height
