@@ -54,6 +54,7 @@ def _shape_resolver(
         "shape_rotation": 0.0,
         "shape_size": 100.0,
         "shape_base_raise": 2.0,
+        "shape_raise_style": "raised",
         "shape_outer_ridge_width": 0.0,
         "shape_outer_ridge_raise": 1.0,
         "shape_outer_ridge_style": "integrated",
@@ -247,6 +248,47 @@ def test_shape_artwork_fill_raise_change_invalidates_extrude_and_package(
             tmp_path,
             overrides={
                 "shape_artwork_fill_raise": 0.6,
+            },
+        )
+    )
+
+    assert after["structure"] == before["structure"]
+    assert after["compose"] == before["compose"]
+
+    assert after["extrude"] != before["extrude"]
+    assert after["package"] != before["package"]
+
+
+# =========================================================
+# Raise-style materiality
+# =========================================================
+
+
+def test_shape_raise_style_change_invalidates_extrude_and_package(
+    tmp_path: Path,
+) -> None:
+    """
+    Changing Shape raise style preserves registered geometry only.
+
+    shape_raise_style controls physical dimensionalization at Extrude.
+    Structure and Compose therefore retain identical required fingerprints,
+    while Extrude and downstream Package receive new required fingerprints.
+    """
+
+    before = create_required_fingerprints(
+        _shape_plan(
+            tmp_path,
+            overrides={
+                "shape_raise_style": "raised",
+            },
+        )
+    )
+
+    after = create_required_fingerprints(
+        _shape_plan(
+            tmp_path,
+            overrides={
+                "shape_raise_style": "inlaid",
             },
         )
     )

@@ -474,6 +474,24 @@ def _validate_hole_edge_distance(
         )
 
 
+def _validate_raise_style(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require Shape raise style to be one of the supported styles.
+    """
+
+    raise_style = resolver(
+        "shape_raise_style",
+    )
+
+    if raise_style not in (
+        "raised",
+        "inlaid",
+    ):
+        raise ConfigError("shape_raise_style must be one of: raised, inlaid.")
+
+
 VALIDATORS = (
     ConfigurationValidator(
         parameters=("shape_geometry",),
@@ -515,6 +533,10 @@ VALIDATORS = (
     ConfigurationValidator(
         parameters=("shape_outer_ridge_style",),
         validate=_validate_outer_ridge_style,
+    ),
+    ConfigurationValidator(
+        parameters=("shape_raise_style",),
+        validate=_validate_raise_style,
     ),
     ConfigurationValidator(
         parameters=("shape_base_color",),

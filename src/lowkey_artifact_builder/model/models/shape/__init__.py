@@ -120,6 +120,7 @@ MODEL = ModelSpec(
             parameters=(
                 "shape_size",
                 "shape_base_raise",
+                "shape_raise_style",
                 "shape_outer_ridge_raise",
                 "shape_outer_ridge_style",
                 "shape_inner_ridge_raise",

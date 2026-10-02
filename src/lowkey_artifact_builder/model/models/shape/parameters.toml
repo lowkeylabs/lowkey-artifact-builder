@@ -69,6 +69,28 @@ shape_size = 100.0
 shape_base_raise = 2.0
 
 #
+# Physical dimensionalization policy for Shape surface components.
+#
+# Supported values:
+#
+#     raised
+#     inlaid
+#
+# "raised" preserves component-specific raise semantics above the
+# structural base.
+#
+# "inlaid" dimensionalizes participating principal-surface components
+# through the complete Shape thickness. Their occupied regions are
+# removed from the base through that same thickness.
+#
+# This policy does not alter registered Shape geometry or rewrite
+# resolved component raise values.
+#
+
+shape_raise_style = "raised"
+
+
+#
 # Semantic printing color of the structural base.
 #
 # Color names are resolved through the shared color catalog.

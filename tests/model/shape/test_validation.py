@@ -1162,3 +1162,45 @@ def test_border_label_shared_geometry_parameters_are_valid(
         match=message,
     ):
         _validate_shape(shape_resolver, values)
+
+
+@pytest.mark.parametrize(
+    "raise_style",
+    (
+        "raised",
+        "inlaid",
+    ),
+)
+def test_shape_accepts_supported_raise_style(
+    shape_resolver: Resolver,
+    raise_style: str,
+) -> None:
+    """
+    Shape accepts every raise style defined by the model contract.
+    """
+
+    _validate_shape(
+        shape_resolver,
+        {
+            "shape_raise_style": raise_style,
+        },
+    )
+
+
+def test_shape_rejects_unsupported_raise_style(
+    shape_resolver: Resolver,
+) -> None:
+    """
+    Shape raise style must be one of the model-defined styles.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_raise_style",
+    ):
+        _validate_shape(
+            shape_resolver,
+            {
+                "shape_raise_style": "embedded",
+            },
+        )

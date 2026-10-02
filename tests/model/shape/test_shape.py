@@ -304,11 +304,12 @@ def test_shape_extrude_consumes_physical_dimensionalization_parameters() -> None
     """
     Shape extrusion owns the complete physical dimensionalization partition.
 
+    Raise style selects the Shape-owned physical Z dimensionalization policy.
     Physical dimensions that affect dimensionalized Shape geometry belong here.
-    Outer- and inner-ridge raises control their physical Z dimensions. Top and
-    Bottom Border Label raises independently control their physical Z dimensions.
-    Artwork-fill participation and height are controlled by
-    shape_artwork_fill_raise.
+    Outer- and inner-ridge raises control their raised-style physical Z
+    dimensions. Top and Bottom Border Label raises independently control their
+    raised-style physical Z dimensions. Artwork-fill participation and
+    raised-style height are controlled by shape_artwork_fill_raise.
 
     Shape Hole is likewise physical manufacturing geometry. Its diameter,
     cardinal position, and edge distance therefore belong to Extrude rather
@@ -322,6 +323,7 @@ def test_shape_extrude_consumes_physical_dimensionalization_parameters() -> None
     assert extrude_stage.parameters == (
         "shape_size",
         "shape_base_raise",
+        "shape_raise_style",
         "shape_outer_ridge_raise",
         "shape_outer_ridge_style",
         "shape_inner_ridge_raise",

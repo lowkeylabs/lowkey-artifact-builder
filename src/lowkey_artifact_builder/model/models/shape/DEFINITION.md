@@ -3316,4 +3316,3 @@ Each Feature subsection in this document defines that Feature's participation, g
 The Shape model does not provide arbitrary free-form modeling or placement. Capabilities outside the structural, registered-composition, dimensionalization, Feature, and packaging contracts defined by this document require an explicit extension of the Shape model.
 
 New Shape capabilities must be introduced deliberately through the appropriate model or Feature contract rather than inferred from implementation behavior.
-
