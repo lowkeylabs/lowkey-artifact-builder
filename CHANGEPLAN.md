@@ -154,7 +154,7 @@ algorithmic or regression risk.
 
 Implement the Shape Loop Feature defined by the current Shape model specification.
 
-Shape Loop should closely reuse the carefully designed and debugged geometry of the existing Artwork Loop while adopting Shape's established component, dimensionalization, and Package color semantics.
+Shape Loop should use the carefully designed and debugged Artwork Loop as behavioral and geometric precedent while remaining a Shape-owned Feature with its own geometry implementation, component, dimensionalization, and Package color semantics.
 
 The central manufacturing contract is:
 
@@ -253,19 +253,11 @@ Shape Extrude should produce a distinct semantic Loop component while leaving it
 
 Shape Package owns Loop physical color assignment. It should recognize the Loop as a supported Shape-owned component, apply an explicit `shape_loop_color` when configured, and otherwise inherit the resolved Base color.
 
-Reuse the existing Artwork Loop geometry implementation or extract genuinely model-independent geometry only where doing so preserves clear model ownership.
+Shape owns its Loop geometry and policy. Implement Shape Loop in the Shape model rather than reusing or extracting the Artwork Loop implementation.
 
-Any shared abstraction should represent genuinely common mechanical geometry:
+Artwork Loop should serve as proven behavioral and geometric precedent. The shared `Bounds` primitive may be used for the physical envelope, but `LoopGeometry`, Loop construction, participation, Shape-specific raise, Shape-specific color, component identity, and Stage ownership remain model-owned.
 
-```text
-physical envelope
-      +
-inner diameter / width / cardinal position
-      ↓
-physical Loop geometry
-```
-
-while participation, Shape-specific raise, Shape-specific color, component identity, and Stage ownership remain owned by the Shape model.
+Do not introduce a shared Loop Feature or generic Loop manufacturing subsystem merely because the Artwork and Shape geometry calculations are initially similar.
 
 Do not make Shape Loop inherit Artwork's attachment-color policy. Artwork requires attachment-layer color inheritance because standalone Artwork has dynamic Artifact-color layers. Shape has an established semantic Base color and therefore follows Shape-owned component color policy.
 
@@ -304,7 +296,7 @@ Existing Artwork Loop tests should be used as behavioral evidence and regression
 3. Add the Shape Loop configuration parameters and validation defined by the Shape specification.
 4. Add the derived `shape_loop_raise` behavior from the effective `shape_base_raise` while preserving explicit override precedence.
 5. Establish the high-value failing test or small coherent test set at the Shape Extrude manufacturing seam.
-6. Reuse or appropriately generalize the proven Artwork Loop geometry calculation for the dimensionalized Shape envelope.
+6. Implement the Shape-owned Loop geometry using the proven Artwork Loop geometry calculation as precedent and the shared `Bounds` primitive for the dimensionalized Shape envelope.
 7. Produce a distinct Shape-owned Loop extrusion component with physical Z from zero through `shape_loop_raise`.
 8. Preserve Loop semantic component identity through the Shape extrusion manifest.
 9. Establish the focused Package seam for Loop physical color.
