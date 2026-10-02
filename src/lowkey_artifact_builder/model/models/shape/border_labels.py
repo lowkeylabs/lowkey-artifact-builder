@@ -199,10 +199,10 @@ class CircularBorderLabelFit:
             ↓ border width
         Border Label inner boundary
 
-    The shared construction path is not the typographic baseline of both 
-    labels. It is an SVG text-layout device. Position-specific offsets 
-    derived from the measured font metrics place the Top and Bottom glyph 
-    outlines into the common lettering band before Inkscape converts them 
+    The shared construction path is not the typographic baseline of both
+    labels. It is an SVG text-layout device. Position-specific offsets
+    derived from the measured font metrics place the Top and Bottom glyph
+    outlines into the common lettering band before Inkscape converts them
     to ordinary path geometry.
 
     A label entry is present only when that label participates.

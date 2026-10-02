@@ -412,6 +412,9 @@ def _make_extrude_resolver(
     shape_outer_ridge_raise: float = 1.0,
     shape_outer_ridge_style: str = "integrated",
     shape_artwork_raise: float = 1.0,
+    shape_hole_diameter: float = 0.0,
+    shape_hole_position: int = 0,
+    shape_hole_edge_distance: float = 0.4,
 ) -> Mock:
     """
     Create a resolver satisfying the Shape extrude-stage parameter contract.
@@ -424,6 +427,9 @@ def _make_extrude_resolver(
             "shape_outer_ridge_raise": shape_outer_ridge_raise,
             "shape_outer_ridge_style": shape_outer_ridge_style,
             "shape_artwork_raise": shape_artwork_raise,
+            "shape_hole_diameter": shape_hole_diameter,
+            "shape_hole_position": shape_hole_position,
+            "shape_hole_edge_distance": shape_hole_edge_distance,
         }.__getitem__,
     )
 
@@ -1782,13 +1788,6 @@ def test_extrude_stage_materializes_declared_component_manifest(
     context.output.assert_called_once_with(
         "manifest",
     )
-
-    assert resolver.call_args_list == [
-        call("shape_size"),
-        call("shape_base_raise"),
-        call("shape_outer_ridge_raise"),
-        call("shape_outer_ridge_style"),
-    ]
 
     assert manifest.is_file()
 

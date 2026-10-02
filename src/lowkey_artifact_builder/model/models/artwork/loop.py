@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from lowkey_artifact_builder.model.geometry import Bounds
+
 # =========================================================
 # Errors
 # =========================================================
@@ -33,41 +35,6 @@ class LoopGeometryError(ValueError):
 # =========================================================
 # Geometry
 # =========================================================
-
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class Bounds:
-    """
-    Axis-aligned dimensionalized Artwork envelope bounds.
-    """
-
-    min_x: float
-    min_y: float
-    max_x: float
-    max_y: float
-
-    @property
-    def center_x(
-        self,
-    ) -> float:
-        """
-        Return the horizontal center of the envelope.
-        """
-
-        return (self.min_x + self.max_x) / 2.0
-
-    @property
-    def center_y(
-        self,
-    ) -> float:
-        """
-        Return the vertical center of the envelope.
-        """
-
-        return (self.min_y + self.max_y) / 2.0
 
 
 @dataclass(

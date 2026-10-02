@@ -343,3 +343,46 @@ shape_artwork_fill_raise = 0.0
 #
 
 ## shape_artwork_fill_color = "white"
+
+
+# =========================================================
+# Hole
+# =========================================================
+
+#
+# Physical diameter of the optional subtractive Hole,
+# in millimeters.
+#
+# Zero disables the Hole. Positive diameter enables the Hole.
+#
+
+shape_hole_diameter = 0.0
+
+
+#
+# Cardinal position of the Hole relative to the complete
+# dimensionalized Shape envelope, in degrees.
+#
+# Supported values:
+#
+#     0      top
+#     90     right
+#     180    bottom
+#     -90    left
+#
+# This value has no geometric effect while the Hole is disabled.
+#
+
+shape_hole_position = 0
+
+
+#
+# Physical distance from the nearest edge of the Hole to the
+# complete dimensionalized Shape boundary, in millimeters.
+#
+# A participating Hole requires at least 0.4 mm of edge distance.
+#
+# This value has no geometric effect while the Hole is disabled.
+#
+
+shape_hole_edge_distance = 1.0

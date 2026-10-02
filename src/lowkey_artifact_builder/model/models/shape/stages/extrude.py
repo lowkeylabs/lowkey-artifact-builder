@@ -24,6 +24,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from lowkey_artifact_builder.engine import StageContext
+from lowkey_artifact_builder.model.geometry import Bounds
+from lowkey_artifact_builder.model.models.shape.hole import (
+    HoleGeometry,
+    create_hole_geometry,
+)
 from lowkey_artifact_builder.tools.openscad import (
     render_stl_source,
 )
@@ -169,6 +174,10 @@ def execute(
 
     Shape owns all physical X/Y and Z semantics of the resulting assembly.
     Physical printer-color assignment belongs to downstream packaging.
+
+    A participating Shape Hole is resolved once from the complete physical
+    Shape envelope and subtracted from every independently printable physical
+    component before the component manifest is written.
     """
 
     composition = context.input(
@@ -198,6 +207,31 @@ def execute(
     shape_outer_ridge_style = context.resolver(
         "shape_outer_ridge_style",
     )
+
+    shape_hole_diameter = context.resolver(
+        "shape_hole_diameter",
+    )
+
+    hole: HoleGeometry | None = None
+
+    if shape_hole_diameter > 0.0:
+        half_size = shape_size / 2.0
+
+        hole = create_hole_geometry(
+            envelope_bounds=Bounds(
+                min_x=-half_size,
+                min_y=-half_size,
+                max_x=half_size,
+                max_y=half_size,
+            ),
+            diameter=shape_hole_diameter,
+            edge_distance=context.resolver(
+                "shape_hole_edge_distance",
+            ),
+            position=context.resolver(
+                "shape_hole_position",
+            ),
+        )
 
     if not composition.is_file():
         raise ExtrudeError(f"Registered Shape composition does not exist: {composition}")
@@ -398,6 +432,25 @@ def execute(
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
                 shape_artwork_fill_raise=shape_artwork_fill_raise,
+            )
+
+        if hole is not None:
+            component_paths = tuple(component_path for _, component_path in components)
+
+            artwork_component_paths = tuple(
+                component_path for _, component_path, _ in artwork_components
+            )
+
+            artwork_fill_component_paths = tuple(
+                component_path for _, component_path in artwork_fill_components
+            )
+
+            _subtract_hole_from_components(
+                manifest.parent,
+                component_paths=(
+                    component_paths + artwork_component_paths + artwork_fill_component_paths
+                ),
+                hole=hole,
             )
 
         _write_component_manifest(
@@ -1440,6 +1493,89 @@ def _render_separate_square_ridge_components(
             RIDGE_COMPONENT_NAME,
             RIDGE_COMPONENT_PATH,
         ),
+    )
+
+
+def _subtract_hole_from_components(
+    output_directory: Path,
+    *,
+    component_paths: tuple[str, ...],
+    hole: HoleGeometry,
+) -> None:
+    """
+    Subtract one participating Shape Hole from every physical component.
+
+    Shape Hole is a complete-manufacture subtractive Feature. The subtraction
+    therefore occurs after ordinary physical component production so the same
+    Hole applies uniformly to structural Shape material, Shape-owned Features,
+    and incorporated Artwork without changing component ownership or identity.
+
+    Components that do not intersect the Hole remain geometrically unchanged.
+    """
+
+    for component_path in component_paths:
+        path = output_directory / component_path
+
+        if not path.is_file():
+            raise ExtrudeError(
+                f"Cannot subtract Shape Hole from missing physical component: {path}"
+            )
+
+        temporary_path = path.with_name(
+            f".{path.stem}-hole{path.suffix}",
+        )
+
+        source = _build_hole_subtraction_scad(
+            _scad_path(
+                path,
+            ),
+            hole=hole,
+        )
+
+        render_stl_source(
+            source,
+            temporary_path,
+        )
+
+        if not temporary_path.is_file():
+            raise ExtrudeError(
+                "Shape Hole subtraction completed without creating the expected "
+                f"temporary STL: {temporary_path}"
+            )
+
+        temporary_path.replace(
+            path,
+        )
+
+
+def _build_hole_subtraction_scad(
+    source: str,
+    *,
+    hole: HoleGeometry,
+) -> str:
+    """
+    Build OpenSCAD source subtracting a Shape Hole from one physical component.
+
+    The Hole cutter spans effectively unbounded Z relative to manufactured
+    Shape components so every intersecting physical layer is removed.
+    """
+
+    return (
+        f"hole_center_x = {hole.center_x:g};\n"
+        f"hole_center_y = {hole.center_y:g};\n"
+        f"hole_radius = {hole.radius:g};\n"
+        "\n"
+        "difference() {\n"
+        f'    import("{source}");\n'
+        "\n"
+        "    translate([hole_center_x, hole_center_y, -1000])\n"
+        "        cylinder(\n"
+        "            h = 2000,\n"
+        "            r = hole_radius,\n"
+        "            center = false,\n"
+        "            $fn = 256\n"
+        "        );\n"
+        "}\n"
     )
 
 

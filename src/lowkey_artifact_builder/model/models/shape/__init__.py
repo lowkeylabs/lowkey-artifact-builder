@@ -127,6 +127,9 @@ MODEL = ModelSpec(
                 "shape_bottom_border_label_raise",
                 "shape_artwork_raise",
                 "shape_artwork_fill_raise",
+                "shape_hole_diameter",
+                "shape_hole_position",
+                "shape_hole_edge_distance",
             ),
             products=(
                 ProductSpec(

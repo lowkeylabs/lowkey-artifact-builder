@@ -374,6 +374,106 @@ def _validate_border_label_end_margin(
         raise ConfigError("shape_border_label_end_margin must be greater than or equal to zero.")
 
 
+def _validate_hole_diameter(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require Hole diameter to be nonnegative.
+
+    Zero disables Hole participation.
+    """
+
+    diameter = resolver(
+        "shape_hole_diameter",
+    )
+
+    if isinstance(
+        diameter,
+        bool,
+    ) or not isinstance(
+        diameter,
+        int | float,
+    ):
+        raise ConfigError("shape_hole_diameter must be numeric.")
+
+    if diameter < 0:
+        raise ConfigError("shape_hole_diameter must be greater than or equal to zero.")
+
+
+def _validate_hole_position(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require a participating Hole to use a supported cardinal position.
+    """
+
+    diameter = resolver(
+        "shape_hole_diameter",
+    )
+
+    if diameter == 0:
+        return
+
+    position = resolver(
+        "shape_hole_position",
+    )
+
+    if (
+        isinstance(
+            position,
+            bool,
+        )
+        or not isinstance(
+            position,
+            int,
+        )
+        or position
+        not in (
+            0,
+            90,
+            180,
+            -90,
+        )
+    ):
+        raise ConfigError(
+            "shape_hole_position must be one of 0, 90, 180, or -90 when the Hole participates."
+        )
+
+
+def _validate_hole_edge_distance(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require a participating Hole to remain at least 0.4 mm from the Shape edge.
+    """
+
+    diameter = resolver(
+        "shape_hole_diameter",
+    )
+
+    if diameter == 0:
+        return
+
+    edge_distance = resolver(
+        "shape_hole_edge_distance",
+    )
+
+    if isinstance(
+        edge_distance,
+        bool,
+    ) or not isinstance(
+        edge_distance,
+        int | float,
+    ):
+        raise ConfigError("shape_hole_edge_distance must be numeric.")
+
+    if edge_distance < 0.4:
+        raise ConfigError(
+            "shape_hole_edge_distance must be greater than or equal to 0.4 "
+            "when the Hole participates."
+        )
+
+
 VALIDATORS = (
     ConfigurationValidator(
         parameters=("shape_geometry",),
@@ -447,6 +547,24 @@ VALIDATORS = (
     ConfigurationValidator(
         parameters=("shape_border_label_end_margin",),
         validate=_validate_border_label_end_margin,
+    ),
+    ConfigurationValidator(
+        parameters=("shape_hole_diameter",),
+        validate=_validate_hole_diameter,
+    ),
+    ConfigurationValidator(
+        parameters=(
+            "shape_hole_diameter",
+            "shape_hole_position",
+        ),
+        validate=_validate_hole_position,
+    ),
+    ConfigurationValidator(
+        parameters=(
+            "shape_hole_diameter",
+            "shape_hole_edge_distance",
+        ),
+        validate=_validate_hole_edge_distance,
     ),
 )
 

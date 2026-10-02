@@ -310,6 +310,10 @@ def test_shape_extrude_consumes_physical_dimensionalization_parameters() -> None
     Artwork-fill participation and height are controlled by
     shape_artwork_fill_raise.
 
+    Shape Hole is likewise physical manufacturing geometry. Its diameter,
+    cardinal position, and edge distance therefore belong to Extrude rather
+    than registered composition or packaging.
+
     Physical color policy does not participate in extrusion.
     """
 
@@ -325,6 +329,9 @@ def test_shape_extrude_consumes_physical_dimensionalization_parameters() -> None
         "shape_bottom_border_label_raise",
         "shape_artwork_raise",
         "shape_artwork_fill_raise",
+        "shape_hole_diameter",
+        "shape_hole_position",
+        "shape_hole_edge_distance",
     )
 
 

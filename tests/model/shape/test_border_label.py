@@ -224,6 +224,15 @@ def _configure_extrude_context(
     manifest: Path,
     values: dict[str, object],
 ) -> None:
+    """
+    Configure the Shape Extrude boundary for Border Label feature tests.
+
+    Parameters material to the behavior under test are supplied explicitly.
+    Unrelated optional Shape Extrude features use their ordinary
+    nonparticipating defaults so adding such a feature does not require
+    Border Label tests to enumerate its parameter contract.
+    """
+
     inputs = {
         "compose.composition": composition,
         "compose.manifest": composition_manifest,
@@ -233,9 +242,26 @@ def _configure_extrude_context(
         "manifest": manifest,
     }
 
+    defaults = {
+        "shape_hole_diameter": 0.0,
+    }
+
+    def resolver(
+        name: str,
+    ) -> object:
+        if name in values:
+            return values[name]
+
+        if name in defaults:
+            return defaults[name]
+
+        raise KeyError(
+            name,
+        )
+
     context.input.side_effect = inputs.__getitem__
     context.output.side_effect = outputs.__getitem__
-    context.resolver.side_effect = values.__getitem__
+    context.resolver.side_effect = resolver
 
 
 def _configure_compose_context(

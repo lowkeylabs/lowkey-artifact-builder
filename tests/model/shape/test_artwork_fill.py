@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from unittest.mock import Mock, call
+from unittest.mock import Mock
 
 import pytest
 
@@ -1395,6 +1395,11 @@ def _physical_fill_extrude_context(
 ) -> Mock:
     """
     Configure Shape extrusion for Artwork-fill dimensionalization tests.
+
+    Parameters material to Artwork-fill behavior are explicit. Unrelated
+    Shape Extrude features use their ordinary nonparticipating defaults so
+    adding a new feature does not require Artwork-fill tests to enumerate
+    that feature's parameter contract.
     """
 
     context = Mock(
@@ -1419,9 +1424,26 @@ def _physical_fill_extrude_context(
         "shape_artwork_fill_raise": artwork_fill_raise,
     }
 
+    defaults = {
+        "shape_hole_diameter": 0.0,
+    }
+
+    def resolver(
+        name: str,
+    ) -> object:
+        if name in values:
+            return values[name]
+
+        if name in defaults:
+            return defaults[name]
+
+        raise KeyError(
+            name,
+        )
+
     context.input.side_effect = inputs.__getitem__
     context.output.side_effect = outputs.__getitem__
-    context.resolver.side_effect = values.__getitem__
+    context.resolver.side_effect = resolver
 
     return context
 
@@ -1718,16 +1740,21 @@ def test_artwork_fill_physical_geometry_is_independent_of_ridge_style(
             artwork_fill_raise=0.6,
         )
 
-        values = {
-            "shape_size": 100.0,
-            "shape_base_raise": 2.0,
-            "shape_outer_ridge_raise": 1.0,
-            "shape_outer_ridge_style": style,
-            "shape_artwork_raise": 0.6,
-            "shape_artwork_fill_raise": 0.6,
-        }
+        original_resolver = context.resolver.side_effect
 
-        context.resolver.side_effect = values.__getitem__
+        def resolver(
+            name: str,
+            *,
+            ridge_style: str = style,
+            fallback_resolver=original_resolver,
+        ) -> object:
+            if name == "shape_outer_ridge_style":
+                return ridge_style
+
+            assert fallback_resolver is not None
+            return fallback_resolver(
+                name,
+            )
 
         extrude.execute(
             context,
@@ -1956,7 +1983,8 @@ def test_artwork_fill_extrusion_does_not_resolve_physical_color(
     Artwork-fill extrusion does not resolve physical printer color.
 
     Physical color policy belongs exclusively to Shape Package. Extrusion
-    resolves only the dimensional parameters material to physical geometry.
+    may resolve whatever dimensional parameters its participating Features
+    require, but it must not resolve shape_artwork_fill_color.
     """
 
     composition = tmp_path / "composition.svg"
@@ -1999,18 +2027,28 @@ def test_artwork_fill_extrusion_does_not_resolve_physical_color(
         artwork_fill_raise=0.6,
     )
 
+    original_resolver = context.resolver.side_effect
+
+    def resolver(
+        name: str,
+    ) -> object:
+        if name == "shape_artwork_fill_color":
+            raise AssertionError("Extrude must not resolve shape_artwork_fill_color.")
+
+        assert original_resolver is not None
+        return original_resolver(
+            name,
+        )
+
+    context.resolver.side_effect = resolver
+
     extrude.execute(
         context,
     )
 
-    assert context.resolver.call_args_list == [
-        call("shape_size"),
-        call("shape_base_raise"),
-        call("shape_outer_ridge_raise"),
-        call("shape_outer_ridge_style"),
-        call("shape_artwork_raise"),
-        call("shape_artwork_fill_raise"),
-    ]
+    assert all(
+        call.args != ("shape_artwork_fill_color",) for call in context.resolver.call_args_list
+    )
 
 
 def test_artwork_fill_remains_distinct_from_incorporated_artwork(

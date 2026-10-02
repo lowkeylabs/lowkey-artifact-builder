@@ -112,10 +112,13 @@ def _make_extrude_resolver(
     shape_inner_ridge_raise: float = 1.5,
 ) -> Mock:
     """
-    Build a strict resolver containing representative Extrude defaults.
+    Build a strict resolver containing parameters material to Inner Ridge
+    extrusion.
 
-    Only parameters owned by Shape Extrude belong here. Unknown parameter
-    requests continue to fail so the test detects accidental stage coupling.
+    Unrelated optional Shape Extrude features use their ordinary
+    nonparticipating defaults. Unknown parameter requests continue to fail so
+    the test detects accidental stage coupling without requiring Inner Ridge
+    tests to enumerate every optional Extrude Feature.
     """
 
     values = {
@@ -126,8 +129,25 @@ def _make_extrude_resolver(
         "shape_inner_ridge_raise": shape_inner_ridge_raise,
     }
 
+    defaults = {
+        "shape_hole_diameter": 0.0,
+    }
+
+    def resolver(
+        name: str,
+    ) -> object:
+        if name in values:
+            return values[name]
+
+        if name in defaults:
+            return defaults[name]
+
+        raise KeyError(
+            name,
+        )
+
     return Mock(
-        side_effect=values.__getitem__,
+        side_effect=resolver,
     )
 
 

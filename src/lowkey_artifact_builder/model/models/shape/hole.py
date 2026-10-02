@@ -1,15 +1,18 @@
 """
-Artwork Hole planar geometry.
+Shape Hole planar geometry.
 
-This module owns Artwork-specific planar geometry for the optional
-standalone Hole Feature.
+This module owns Shape-specific planar geometry for the optional
+Hole Feature.
 
-Hole geometry is derived from the applicable dimensionalized Artwork
+Hole geometry is derived from the complete dimensionalized Shape
 outer boundary. The Hole is circular and is positioned inward from one
 of the cardinal boundaries by its radius plus the configured edge
 distance.
+
+This module defines geometry only. It does not own Hole participation,
+configuration resolution, subtraction, extrusion, or packaging.
 """
-# File: src/lowkey_artifact_builder/model/models/artwork/hole.py
+# File: src/lowkey_artifact_builder/model/models/shape/hole.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 
@@ -26,7 +29,7 @@ from lowkey_artifact_builder.model.geometry import Bounds
 )
 class HoleGeometry:
     """
-    Resolved planar geometry for one participating Artwork Hole.
+    Resolved planar geometry for one participating Shape Hole.
     """
 
     envelope_bounds: Bounds
@@ -45,13 +48,13 @@ def create_hole_geometry(
     position: int,
 ) -> HoleGeometry:
     """
-    Create planar geometry for a participating Artwork Hole.
+    Create planar geometry for a participating Shape Hole.
 
     The Hole center lies on the selected cardinal axis through the
-    applicable outer-boundary center. Its nearest circular edge is
-    ``edge_distance`` inward from the selected boundary.
+    complete dimensionalized Shape boundary center. Its nearest circular
+    edge is ``edge_distance`` inward from the selected boundary.
 
-    Cardinal positions use the same orientation as Artwork Loop:
+    Cardinal positions are:
 
         0       top (+Y)
         90      right (+X)
@@ -61,6 +64,10 @@ def create_hole_geometry(
     Configuration validation owns validity of diameter, edge distance,
     and position. This function resolves already-valid configuration
     into physical planar geometry.
+
+    The supplied bounds describe the complete Shape envelope established
+    by ``shape_size``. Optional features that extend beyond that envelope
+    do not redefine the Hole positioning boundary.
     """
 
     radius = diameter / 2.0
@@ -99,7 +106,6 @@ def create_hole_geometry(
 
 
 __all__ = [
-    "Bounds",
     "HoleGeometry",
     "create_hole_geometry",
 ]
