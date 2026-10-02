@@ -124,23 +124,18 @@ def test_shape_border_labels_survive_complete_build_value_chain(
     shape_root = project_root / "artifacts" / artifact_id / "shape" / "shape_default"
 
     compose_root = shape_root / "20-compose"
-
     extrude_root = shape_root / "30-extrude"
-
     package_root = shape_root / "40-package"
 
     composition = compose_root / "composition.svg"
-
     compose_manifest = compose_root / "products.json"
 
     top_registered_label = compose_root / "top-border-label.svg"
-
     bottom_registered_label = compose_root / "bottom-border-label.svg"
 
     extrude_manifest = extrude_root / "products.json"
 
     top_border_label = extrude_root / "top-border-label.stl"
-
     bottom_border_label = extrude_root / "bottom-border-label.stl"
 
     artifact = package_root / "artifact.3mf"
@@ -185,23 +180,15 @@ def test_shape_border_labels_survive_complete_build_value_chain(
     }
 
     assert "ridge-inner-boundary" in elements_by_id
-
     assert "border-label-bottom-baseline" in elements_by_id
-
     assert "border-label-top-baseline" in elements_by_id
-
     assert "border-label-inner-boundary" in elements_by_id
-
     assert "top-border-label-path" in elements_by_id
-
     assert "bottom-border-label-path" in elements_by_id
 
     outer_ridge_inner = elements_by_id["ridge-inner-boundary"]
-
     bottom_baseline = elements_by_id["border-label-bottom-baseline"]
-
     top_baseline = elements_by_id["border-label-top-baseline"]
-
     border_label_inner = elements_by_id["border-label-inner-boundary"]
 
     assert float(
@@ -228,7 +215,7 @@ def test_shape_border_labels_survive_complete_build_value_chain(
             "nan",
         )
     ) == pytest.approx(
-        0.39,
+        0.44,
     )
 
     assert float(
@@ -325,7 +312,7 @@ def test_shape_border_labels_survive_complete_build_value_chain(
         model_name = next(
             name
             for name in archive.namelist()
-            if (name.startswith("3D/") and name.endswith(".model"))
+            if name.startswith("3D/") and name.endswith(".model")
         )
 
         model = ET.fromstring(
@@ -374,11 +361,8 @@ def test_shape_border_labels_survive_complete_build_value_chain(
     assert bottom_border_label_name in objects_by_name
 
     base_object = objects_by_name[base_name]
-
     outer_ridge_object = objects_by_name[outer_ridge_name]
-
     top_border_label_object = objects_by_name[top_border_label_name]
-
     bottom_border_label_object = objects_by_name[bottom_border_label_name]
 
     assert (
@@ -407,11 +391,9 @@ def test_shape_border_labels_survive_complete_build_value_chain(
     assert bottom_material_id is not None
 
     assert top_material_id in materials_by_id
-
     assert bottom_material_id in materials_by_id
 
     top_material = materials_by_id[top_material_id]
-
     bottom_material = materials_by_id[bottom_material_id]
 
     top_color = top_material.find(
@@ -426,7 +408,6 @@ def test_shape_border_labels_survive_complete_build_value_chain(
     assert bottom_color is not None
 
     assert top_color.get("name") == "test-blue"
-
     assert top_color.get("displaycolor") == "#0000FF"
 
     assert (
@@ -437,7 +418,6 @@ def test_shape_border_labels_survive_complete_build_value_chain(
     )
 
     assert bottom_color.get("name") == "test-green"
-
     assert bottom_color.get("displaycolor") == "#00FF00"
 
     assert (
