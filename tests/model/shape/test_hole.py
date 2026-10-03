@@ -503,6 +503,129 @@ def test_shape_hole_subtracts_from_base_and_incorporated_artwork(
         ), bounds
 
 
+def test_shape_hole_subtracts_through_inlaid_component_partition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Hole subtraction composes with inlaid component partitioning.
+
+    Under inlaid dimensionalization, incorporated Artwork is removed from
+    Base and spans the complete Shape thickness as its own physical component.
+
+    A participating Hole remains independently subtractive from both Base and
+    Artwork. Hole does not become a manufactured component.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    artwork_component = tmp_path / "artwork-1.svg"
+    output_manifest = tmp_path / "products.json"
+
+    _write_circular_composition(
+        composition,
+    )
+
+    _write_artwork_component(
+        artwork_component,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
+        artwork_component=artwork_component,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    _configure_extrude_context(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+        output_manifest=output_manifest,
+        values={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_raise_style": "inlaid",
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "integrated",
+            "shape_inner_ridge_raise": 1.0,
+            "shape_top_border_label_raise": 1.0,
+            "shape_bottom_border_label_raise": 1.0,
+            "shape_artwork_raise": 1.0,
+            "shape_hole_diameter": 10.0,
+            "shape_hole_position": 0,
+            "shape_hole_edge_distance": 2.0,
+        },
+    )
+
+    rendered_sources: dict[str, str] = {}
+
+    def capture_render(
+        source: str,
+        output: Path,
+    ) -> None:
+        rendered_sources[output.name] = source
+
+        output.write_text(
+            "solid test\nendsolid test\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        extrude,
+        "render_stl_source",
+        capture_render,
+    )
+
+    extrude.execute(
+        context,
+    )
+
+    data = json.loads(
+        output_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert [component["name"] for component in data["components"]] == [
+        "base",
+        "artwork-1",
+    ]
+
+    assert set(rendered_sources) == {
+        "base.stl",
+        "artwork-1.stl",
+    }
+
+    base_source = rendered_sources["base.stl"]
+    artwork_source = rendered_sources["artwork-1.stl"]
+
+    #
+    # Inlaid Base construction contains both independent planar
+    # subtractions: the incorporated Artwork partition and the Hole.
+    #
+
+    assert "difference()" in base_source
+    assert artwork_component.resolve().as_posix() in base_source
+    assert "hole_center_x = 0;" in base_source
+    assert "hole_center_y = 43;" in base_source
+    assert "hole_radius = 5;" in base_source
+
+    #
+    # Artwork retains full-depth inlaid dimensionalization while receiving
+    # the same Hole subtraction before physical extrusion.
+    #
+
+    assert "artwork_z_offset = 0;" in artwork_source
+    assert "artwork_height = 2;" in artwork_source
+    assert "difference()" in artwork_source
+    assert "hole_center_x = 0;" in artwork_source
+    assert "hole_center_y = 43;" in artwork_source
+    assert "hole_radius = 5;" in artwork_source
+
+
 def test_shape_hole_is_applied_before_component_stl_materialization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
