@@ -2859,24 +2859,15 @@ The equivalent geometric rule applies to square and polygon Shapes: the Loop inn
 
 Loop positioning is determined from the complete assembled Shape envelope, not from optional Outer Ridge, Inner Ridge, Border Label, Artwork, or other Feature geometry.
 
-#### Raise
+#### Raise-Style Dimensionalization
 
-The Loop Feature's relationship to `shape_raise_style = "inlaid"` is not defined
-by the initial inlaid Shape contract. Loop raise-style integration requires an
-explicit extension of this Feature contract. Until that extension is defined,
-the Loop Z semantics below describe the existing raised Shape behavior.
-
-The physical height of the Loop is controlled by:
+The physical raise of the Loop is controlled by:
 
 ```text
 shape_loop_raise
 ```
 
-`shape_loop_raise` is a physical dimension measured in millimeters from:
-
-```text
-Z = 0
-```
+`shape_loop_raise` is a physical dimension measured in millimeters.
 
 The default Loop raise is the resolved Base raise:
 
@@ -2890,19 +2881,41 @@ An explicitly configured `shape_loop_raise` overrides this derived Base-raise de
 
 When the Loop participates, `shape_loop_raise` must be greater than zero.
 
-The dimensionalized Loop occupies:
+With:
 
 ```text
-Z = 0
+shape_raise_style = "raised"
 ```
 
-through:
+the dimensionalized Loop occupies:
 
 ```text
-Z = shape_loop_raise
+Z = 0 through shape_loop_raise
 ```
 
-The default behavior therefore produces a Loop having the same complete physical height as the Base.
+The default raised behavior therefore produces a Loop having the same complete physical height as the Base.
+
+An explicitly configured `shape_loop_raise` may produce a raised-style Loop having a complete physical height different from the Base.
+
+With:
+
+```text
+shape_raise_style = "inlaid"
+```
+
+a participating Loop instead occupies:
+
+```text
+Z = 0 through shape_base_raise
+```
+
+The inlaid Loop therefore has the same complete physical thickness as the inlaid Shape.
+
+`shape_loop_raise` retains its resolved value and raised-style meaning under the inlaid policy, but it does not determine the manufactured Z extent of the Loop.
+
+Unlike principal-surface inlaid components, the Loop extends outside the complete Shape envelope and is additive geometry rather than a region partitioned from the Base. Its inlaid dimensionalization therefore does not require a corresponding Loop region to be removed from the Base.
+
+Raise style changes the Loop's physical Z dimensionalization without changing its participation, X/Y geometry, position, semantic component identity, or Package color policy.
 
 #### Component Identity
 
@@ -2992,21 +3005,24 @@ A conforming Loop Feature satisfies the following:
 11. The Loop inner opening is externally tangent to the complete assembled Shape envelope at the selected cardinal position.
 12. Loop positioning is derived from the Shape envelope defined by `shape_size`, not from optional Feature geometry.
 13. The Loop explicitly extends beyond the Shape envelope without changing the meaning or configured value of `shape_size`.
-14. `shape_loop_raise` determines the complete physical Loop height from `Z = 0`.
-15. The default Loop raise is the resolved `shape_base_raise`.
-16. An explicitly configured Loop raise overrides its derived Base-raise default.
-17. A participating Loop must have positive physical height.
-18. A participating Loop is a distinct Shape-owned physical component.
-19. The default Loop color is the resolved Base color.
-20. An explicitly configured Loop color overrides its derived Base-color default.
-21. Loop color does not determine Loop participation or geometry.
-22. Shape Extrude does not assign physical color to Loop geometry.
-23. Shape Package applies the Loop's physical color policy.
-24. Changing only `shape_loop_color` does not by itself change Shape Structure, Compose, or Extrude geometry.
-25. Loop participation does not change the registered interior region used for incorporated Artwork.
-26. Loop participation does not cause another optional Shape Feature to participate.
-27. A participating Hole removes any Loop material intersecting the Hole.
-
+14. The default Loop raise is the resolved `shape_base_raise`.
+15. An explicitly configured Loop raise overrides its derived Base-raise default.
+16. A participating Loop must have a positive resolved `shape_loop_raise`.
+17. With `shape_raise_style = "raised"`, `shape_loop_raise` determines the complete physical Loop height from `Z = 0`.
+18. With `shape_raise_style = "inlaid"`, a participating Loop spans `Z = 0` through `Z = shape_base_raise`.
+19. `shape_loop_raise` retains its resolved value and raised-style meaning but does not determine the manufactured Z extent of an inlaid Loop.
+20. An inlaid Loop is additive full-depth geometry and does not require a corresponding region to be removed from the Base.
+21. Raise style does not change Loop participation, X/Y geometry, position, semantic component identity, or Package color policy.
+22. A participating Loop is a distinct Shape-owned physical component.
+23. The default Loop color is the resolved Base color.
+24. An explicitly configured Loop color overrides its derived Base-color default.
+25. Loop color does not determine Loop participation or geometry.
+26. Shape Extrude does not assign physical color to Loop geometry.
+27. Shape Package applies the Loop's physical color policy.
+28. Changing only `shape_loop_color` does not by itself change Shape Structure, Compose, or Extrude geometry.
+29. Loop participation does not change the registered interior region used for incorporated Artwork.
+30. Loop participation does not cause another optional Shape Feature to participate.
+31. A participating Hole removes any Loop material intersecting the Hole.
 
 ### Hole
 
@@ -3292,9 +3308,8 @@ A conforming initial Shape implementation satisfies the following:
 59. Shape Package resolves incorporated Artwork Artifact-color identity to physical printer colors using `printer_colors`.
 60. Changing only `printer_colors`, `shape_base_color`, `shape_artwork_fill_color`, or Feature-specific packaging color parameters does not by itself change Shape Structure, Compose, or Extrude geometry.
 61. Changing `shape_artwork_fill_raise` changes Artwork-fill participation and therefore affects Shape Extrude and downstream Package; with raised style it also changes fill physical height.
-62. The initial inlaid Shape contract applies to incorporated Artwork, Artwork fill, Outer Ridge, Inner Ridge, and Border Labels.
+62. The initial inlaid Shape contract applies to incorporated Artwork, Artwork fill, Outer Ridge, Inner Ridge, Border Labels, and Loop.
 63. Hole remains subtractive through every intersecting physical component under either raise style.
-64. Loop interaction with `shape_raise_style = "inlaid"` requires an explicit Loop Feature-contract extension and is not inferred from the model-wide inlaid contract.
 
 ## Scope
 
