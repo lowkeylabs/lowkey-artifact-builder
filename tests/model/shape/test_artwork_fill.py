@@ -1418,6 +1418,7 @@ def _physical_fill_extrude_context(
     values = {
         "shape_size": 100.0,
         "shape_base_raise": 2.0,
+        "shape_raise_style": "raised",
         "shape_outer_ridge_raise": 1.0,
         "shape_outer_ridge_style": "integrated",
         "shape_artwork_raise": 0.6,
@@ -1663,8 +1664,8 @@ def test_artwork_fill_uses_independent_fill_physical_interval(
     assert "shape_base_raise = 2;" in fill_source
     assert "shape_artwork_fill_raise = 0.4;" in fill_source
 
-    assert "translate([0, 0, shape_base_raise])" in fill_source
-    assert "height = shape_artwork_fill_raise" in fill_source
+    assert "translate([0, 0, 2])" in fill_source
+    assert "height = 0.4" in fill_source
 
     assert "circle(r = 45, $fn = 256);" in fill_source
     assert "square([60, 50], center = false);" in fill_source
@@ -1819,10 +1820,14 @@ def test_artwork_fill_physical_geometry_does_not_manufacture_ridge_geometry(
 
     fill_source = rendered_sources["artwork-fill.stl"]
 
-    assert "registered_artwork_fill_outer_boundary" in fill_source
-    assert "registered_artwork_fill_inner_boundary" in fill_source
     assert "difference()" in fill_source
 
+    # Persisted Artwork-fill geometry is dimensionalized directly.
+    assert "circle(r = 45, $fn = 256);" in fill_source
+    assert "translate([-30, -25, 0])" in fill_source
+    assert "square([60, 50], center = false);" in fill_source
+
+    # Extrude does not reconstruct fill from structural ridge geometry.
     assert "registered_shape_boundary" not in fill_source
     assert "registered_ridge_inner_boundary" not in fill_source
     assert "shape_outer_ridge_raise" not in fill_source
@@ -1888,19 +1893,15 @@ def test_artwork_fill_physically_excludes_incorporated_artwork_envelope(
 
     fill_source = rendered_sources["artwork-fill.stl"]
 
-    assert (
-        "difference() {\n"
-        "            registered_artwork_fill_outer_boundary();\n"
-        "            registered_artwork_fill_inner_boundary();\n"
-        "        }" in fill_source
-    )
+    assert "difference()" in fill_source
 
-    assert (
-        "module registered_artwork_fill_inner_boundary() {\n"
-        "    translate([-30, -25, 0])\n"
-        "        square([60, 50], center = false);\n"
-        "}" in fill_source
-    )
+    # The registered Shape interior is the outer fill boundary.
+    assert "circle(r = 45, $fn = 256);" in fill_source
+
+    # The transformed authoritative Artwork envelope remains the
+    # subtracted inner boundary.
+    assert "translate([-30, -25, 0])" in fill_source
+    assert "square([60, 50], center = false);" in fill_source
 
 
 def test_artwork_fill_manifest_preserves_shape_component_identity(

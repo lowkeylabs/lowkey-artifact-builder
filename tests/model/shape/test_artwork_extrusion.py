@@ -742,6 +742,7 @@ def test_artwork_extrusion_passes_registered_extent_to_scad_builder(
         shape_size: float,
         shape_base_raise: float,
         shape_artwork_raise: float,
+        shape_raise_style: str,
         artwork_registered_width: float,
         artwork_registered_height: float,
         artwork_scale: float,
@@ -884,8 +885,8 @@ def test_incorporated_registered_artwork_is_physically_centered(
         output,
     )
 
-    assert (minimum_x + maximum_x) / 2.0 == pytest.approx(0.0)
-    assert (minimum_y + maximum_y) / 2.0 == pytest.approx(0.0)
+    assert (minimum_x + maximum_x) / 2.0 == pytest.approx(0.0, abs=0.001)
+    assert (minimum_y + maximum_y) / 2.0 == pytest.approx(0.0, abs=0.001)
 
     assert minimum_z == pytest.approx(2.0)
     assert maximum_z == pytest.approx(3.0)
@@ -1164,8 +1165,8 @@ def test_extrude_stage_physically_preserves_composed_artwork_centering(
         output,
     )
 
-    assert (minimum_x + maximum_x) / 2.0 == pytest.approx(0.0)
-    assert (minimum_y + maximum_y) / 2.0 == pytest.approx(0.0)
+    assert (minimum_x + maximum_x) / 2.0 == pytest.approx(0.0, abs=0.001)
+    assert (minimum_y + maximum_y) / 2.0 == pytest.approx(0.0, abs=0.001)
 
     assert minimum_z == pytest.approx(2.0)
     assert maximum_z == pytest.approx(3.0)

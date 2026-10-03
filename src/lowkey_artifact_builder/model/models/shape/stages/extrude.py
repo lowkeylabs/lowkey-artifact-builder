@@ -200,6 +200,10 @@ def execute(
         "shape_base_raise",
     )
 
+    shape_raise_style = context.resolver(
+        "shape_raise_style",
+    )
+
     shape_outer_ridge_raise = context.resolver(
         "shape_outer_ridge_raise",
     )
@@ -304,6 +308,30 @@ def execute(
             exist_ok=True,
         )
 
+        inlaid_planar_geometries: list[str] = []
+
+        if shape_raise_style == "inlaid":
+            if artwork is not None:
+                inlaid_planar_geometries.append(
+                    _build_artwork_planar_union_scad(
+                        artwork,
+                        composition_manifest.parent,
+                        shape_size=shape_size,
+                    )
+                )
+
+            if inner_ridge is not None and shape_inner_ridge_raise > 0.0:
+                inlaid_planar_geometries.append(
+                    _build_inner_ridge_planar_geometry_scad(
+                        inner_ridge,
+                        shape_size=shape_size,
+                    )
+                )
+
+        inlaid_planar_subtraction = _build_planar_union_scad(
+            inlaid_planar_geometries,
+        )
+
         if ridge is None:
             components = _render_no_ridge_components(
                 composition,
@@ -311,6 +339,7 @@ def execute(
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
                 hole=hole,
+                planar_subtraction=inlaid_planar_subtraction,
             )
 
         elif isinstance(
@@ -322,6 +351,7 @@ def execute(
                 manifest.parent,
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
+                shape_raise_style=shape_raise_style,
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
                 shape_outer_ridge_style=shape_outer_ridge_style,
                 hole=hole,
@@ -336,6 +366,7 @@ def execute(
                 manifest.parent,
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
+                shape_raise_style=shape_raise_style,
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
                 shape_outer_ridge_style=shape_outer_ridge_style,
                 hole=hole,
@@ -350,6 +381,7 @@ def execute(
                 manifest.parent,
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
+                shape_raise_style=shape_raise_style,
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
                 shape_outer_ridge_style=shape_outer_ridge_style,
                 hole=hole,
@@ -366,6 +398,7 @@ def execute(
                 manifest.parent,
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
+                shape_raise_style=shape_raise_style,
                 shape_inner_ridge_raise=shape_inner_ridge_raise,
                 hole=hole,
             )
@@ -387,6 +420,7 @@ def execute(
                 component_path=TOP_BORDER_LABEL_COMPONENT_PATH,
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
+                shape_raise_style=shape_raise_style,
                 shape_border_label_raise=shape_top_border_label_raise,
                 hole=hole,
             )
@@ -408,6 +442,7 @@ def execute(
                 component_path=BOTTOM_BORDER_LABEL_COMPONENT_PATH,
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
+                shape_raise_style=shape_raise_style,
                 shape_border_label_raise=shape_bottom_border_label_raise,
                 hole=hole,
             )
@@ -424,6 +459,7 @@ def execute(
                 manifest.parent,
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
+                shape_raise_style=shape_raise_style,
                 shape_artwork_raise=shape_artwork_raise,
                 hole=hole,
             )
@@ -439,6 +475,7 @@ def execute(
                 manifest.parent,
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
+                shape_raise_style=shape_raise_style,
                 shape_artwork_fill_raise=shape_artwork_fill_raise,
                 hole=hole,
             )
@@ -486,6 +523,7 @@ def _render_border_label_component(
     shape_base_raise: float,
     shape_border_label_raise: float,
     hole: HoleGeometry | None = None,
+    shape_raise_style: str = "raised",
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -494,42 +532,39 @@ def _render_border_label_component(
     Dimensionalize one persistent registered Border Label component.
 
     Compose has already established participation and registered X/Y glyph
-    geometry. Extrude introduces Shape's physical X/Y scale and the label's
-    independent physical Z raise.
+    geometry.
 
-    A zero raise preserves the semantic registered component but produces no
-    independently printable physical component.
+    Raised dimensionalization begins at the top of the Shape base and uses
+    shape_border_label_raise as the component height.
+
+    Inlaid dimensionalization preserves the same registered X/Y geometry while
+    spanning the component through the complete Shape base thickness.
     """
 
     if shape_border_label_raise <= 0.0:
         return ()
 
-    source_name = label.get(
+    raw_path = label.get(
         "path",
     )
 
-    if (
-        not isinstance(
-            source_name,
-            str,
-        )
-        or not source_name
+    if not isinstance(
+        raw_path,
+        str,
     ):
-        raise ValueError(f"Registered Shape composition {component_name} requires a path.")
+        raise ExtrudeError(f"Registered {component_name} is missing its component path.")
 
-    source_path = source_directory / source_name
-
-    if not source_path.is_file():
-        raise ExtrudeError(f"Registered {component_name} geometry does not exist: {source_path}")
-
+    source_path = source_directory / raw_path
     output_path = output_directory / component_path
 
+    if not source_path.is_file():
+        raise ExtrudeError(f"Registered {component_name} component does not exist: {source_path}")
+
     source = _build_border_label_component_scad(
-        _scad_path(
-            source_path,
-        ),
+        source_path,
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+        shape_raise_style=shape_raise_style,
         shape_border_label_raise=shape_border_label_raise,
         hole=hole,
     )
@@ -560,6 +595,7 @@ def _render_inner_ridge_component(
     shape_base_raise: float,
     shape_inner_ridge_raise: float,
     hole: HoleGeometry | None = None,
+    shape_raise_style: str = "raised",
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -568,8 +604,12 @@ def _render_inner_ridge_component(
     Render the independently printable Inner Ridge component.
 
     Inner Ridge geometry is established by Compose and consumed here directly.
-    Its physical Z interval begins at the top of the Shape base and is
-    controlled independently by shape_inner_ridge_raise.
+
+    Raised dimensionalization begins at the top of the Shape base and uses
+    shape_inner_ridge_raise as the component height.
+
+    Inlaid dimensionalization preserves the same registered X/Y partition while
+    spanning the component through the complete Shape base thickness.
     """
 
     if shape_inner_ridge_raise <= 0.0:
@@ -581,6 +621,7 @@ def _render_inner_ridge_component(
         ridge,
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+        shape_raise_style=shape_raise_style,
         shape_inner_ridge_raise=shape_inner_ridge_raise,
         hole=hole,
     )
@@ -604,31 +645,41 @@ def _render_inner_ridge_component(
 
 
 def _render_artwork_fill_component(
-    artwork_fill: RegisteredArtworkFill,
+    fill: RegisteredArtworkFill,
     output_directory: Path,
     *,
     shape_size: float,
     shape_base_raise: float,
     shape_artwork_fill_raise: float,
     hole: HoleGeometry | None = None,
+    shape_raise_style: str = "raised",
 ) -> tuple[
     tuple[str, str],
     ...,
 ]:
     """
-    Dimensionalize the persistent registered Artwork-fill region.
+    Render the independently printable Shape-owned Artwork Fill component.
 
-    Artwork fill receives Shape's physical X/Y mapping. Its physical Z
-    interval begins at the top of the structural base and is controlled
-    independently by shape_artwork_fill_raise.
+    Registered Artwork Fill geometry is established by Compose and consumed
+    here directly.
+
+    Raised dimensionalization begins at the top of the Shape base and uses
+    shape_artwork_fill_raise as the component height.
+
+    Inlaid dimensionalization preserves the same registered X/Y partition while
+    spanning the component through the complete Shape base thickness.
     """
+
+    if shape_artwork_fill_raise <= 0.0:
+        return ()
 
     output_path = output_directory / ARTWORK_FILL_COMPONENT_PATH
 
     source = _build_artwork_fill_scad(
-        artwork_fill,
+        fill,
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
+        shape_raise_style=shape_raise_style,
         shape_artwork_fill_raise=shape_artwork_fill_raise,
         hole=hole,
     )
@@ -660,6 +711,7 @@ def _render_artwork_components(
     shape_base_raise: float,
     shape_artwork_raise: float,
     hole: HoleGeometry | None = None,
+    shape_raise_style: str = "raised",
 ) -> tuple[
     tuple[str, str, dict[str, object]],
     ...,
@@ -842,6 +894,7 @@ def _render_artwork_components(
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
             shape_artwork_raise=shape_artwork_raise,
+            shape_raise_style=shape_raise_style,
             artwork_registered_width=registered_width,
             artwork_registered_height=registered_height,
             artwork_scale=scale,
@@ -880,12 +933,16 @@ def _render_no_ridge_components(
     shape_size: float,
     shape_base_raise: float,
     hole: HoleGeometry | None,
+    planar_subtraction: str | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
 ]:
     """
     Render physical components for a Shape without an outer ridge.
+
+    Optional planar subtraction removes participating inlaid surface-component
+    regions from the Base before materialization.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
@@ -897,6 +954,7 @@ def _render_no_ridge_components(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         hole=hole,
+        planar_subtraction=planar_subtraction,
     )
 
     render_stl_source(
@@ -941,6 +999,204 @@ def _render_baseline_components(
     )
 
 
+def _surface_component_interval(
+    *,
+    shape_base_raise: float,
+    component_raise: float,
+    shape_raise_style: str = "raised",
+) -> tuple[float, float]:
+    """
+    Resolve the physical Z offset and height of a Shape surface component.
+
+    Raised components begin at the top of the structural base and extend by
+    their component-specific raise.
+
+    Inlaid components span the complete Shape thickness. The resolved
+    component raise retains its raised-style configuration meaning but does
+    not determine the inlaid physical Z interval.
+    """
+
+    if shape_raise_style == "raised":
+        return (
+            shape_base_raise,
+            component_raise,
+        )
+
+    if shape_raise_style == "inlaid":
+        return (
+            0.0,
+            shape_base_raise,
+        )
+
+    raise ValueError(
+        f"Unsupported Shape raise style: {shape_raise_style!r}",
+    )
+
+
+def _surface_component_height(
+    *,
+    shape_base_raise: float,
+    component_raise: float,
+    shape_raise_style: str = "raised",
+) -> float:
+    """
+    Resolve the physical height of a Shape principal-surface component.
+
+    Raised dimensionalization preserves the component-specific raise above
+    the structural base.
+
+    Inlaid dimensionalization spans the component through the complete Shape
+    thickness. The resolved component raise remains configuration with its
+    raised-style meaning, but does not determine the inlaid Z extent.
+    """
+
+    if shape_raise_style == "raised":
+        return shape_base_raise + component_raise
+
+    if shape_raise_style == "inlaid":
+        return shape_base_raise
+
+    raise ValueError(
+        f"Unsupported Shape raise style: {shape_raise_style!r}",
+    )
+
+
+def _build_separate_circle_ridge_component_scad_at_height(
+    ridge: RegisteredCircleRidge,
+    *,
+    shape_size: float,
+    component_height: float,
+    hole: HoleGeometry | None = None,
+) -> str:
+    """
+    Build a separate circle-ridge component at one resolved physical height.
+
+    The registered ridge partition owns X/Y geometry. The caller owns the
+    physical Z policy and supplies the complete component height.
+    """
+
+    outer_x = ridge.outer.cx * shape_size
+    outer_y = ridge.outer.cy * shape_size
+    outer_radius = ridge.outer.radius * shape_size
+
+    inner_x = ridge.inner.cx * shape_size
+    inner_y = ridge.inner.cy * shape_size
+    inner_radius = ridge.inner.radius * shape_size
+
+    geometry = (
+        "linear_extrude(\n"
+        "    height = component_height,\n"
+        "    center = false\n"
+        ")\n"
+        "    difference() {\n"
+        "        registered_shape_boundary();\n"
+        "        registered_ridge_inner_boundary();\n"
+        "    }\n"
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"component_height = {component_height:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"// {SHAPE_BOUNDARY_ID}\n"
+        "module registered_shape_boundary() {\n"
+        f"    translate([{outer_x:g}, {outer_y:g}, 0])\n"
+        f"        circle(r = {outer_radius:g}, $fn = 256);\n"
+        "}\n"
+        "\n"
+        f"// {RIDGE_INNER_BOUNDARY_ID}\n"
+        "module registered_ridge_inner_boundary() {\n"
+        f"    translate([{inner_x:g}, {inner_y:g}, 0])\n"
+        f"        circle(r = {inner_radius:g}, $fn = 256);\n"
+        "}\n"
+        "\n"
+        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
+    )
+
+
+def _build_separate_square_ridge_component_scad_at_height(
+    ridge: RegisteredSquareRidge,
+    *,
+    shape_size: float,
+    component_height: float,
+    hole: HoleGeometry | None = None,
+) -> str:
+    """
+    Build a separate square-ridge component at one resolved physical height.
+
+    The registered ridge partition owns X/Y geometry. The caller owns the
+    physical Z policy and supplies the complete component height.
+    """
+
+    boundaries = _build_square_boundary_modules(
+        ridge,
+        shape_size=shape_size,
+    )
+
+    geometry = (
+        "linear_extrude(\n"
+        "    height = component_height,\n"
+        "    center = false\n"
+        ")\n"
+        "    difference() {\n"
+        "        registered_shape_boundary();\n"
+        "        registered_ridge_inner_boundary();\n"
+        "    }\n"
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"component_height = {component_height:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"{boundaries}"
+        "\n"
+        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
+    )
+
+
+def _build_separate_polygon_ridge_component_scad_at_height(
+    ridge: RegisteredPolygonRidge,
+    *,
+    shape_size: float,
+    component_height: float,
+    hole: HoleGeometry | None = None,
+) -> str:
+    """
+    Build a separate polygon ridge component at an explicit physical height.
+
+    The registered outer and inner polygon boundaries determine the X/Y
+    partition. component_height determines only the physical Z extent.
+    """
+
+    boundaries = _build_polygon_boundary_modules(
+        ridge,
+        shape_size=shape_size,
+    )
+
+    geometry = (
+        "linear_extrude(\n"
+        "    height = component_height,\n"
+        "    center = false\n"
+        ")\n"
+        "    difference() {\n"
+        "        registered_shape_boundary();\n"
+        "        registered_ridge_inner_boundary();\n"
+        "    }\n"
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"component_height = {component_height:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"{boundaries}"
+        "\n"
+        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
+    )
+
+
 def _render_circle_ridge_components(
     ridge: RegisteredCircleRidge,
     output_directory: Path,
@@ -950,6 +1206,7 @@ def _render_circle_ridge_components(
     shape_outer_ridge_raise: float,
     shape_outer_ridge_style: str,
     hole: HoleGeometry | None = None,
+    shape_raise_style: str = "raised",
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -974,6 +1231,7 @@ def _render_circle_ridge_components(
             output_directory,
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
+            shape_raise_style=shape_raise_style,
             shape_outer_ridge_raise=shape_outer_ridge_raise,
             hole=hole,
         )
@@ -990,6 +1248,7 @@ def _render_square_ridge_components(
     shape_outer_ridge_raise: float,
     shape_outer_ridge_style: str,
     hole: HoleGeometry | None = None,
+    shape_raise_style: str = "raised",
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1014,6 +1273,7 @@ def _render_square_ridge_components(
             output_directory,
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
+            shape_raise_style=shape_raise_style,
             shape_outer_ridge_raise=shape_outer_ridge_raise,
             hole=hole,
         )
@@ -1030,6 +1290,7 @@ def _render_polygon_ridge_components(
     shape_outer_ridge_raise: float,
     shape_outer_ridge_style: str,
     hole: HoleGeometry | None = None,
+    shape_raise_style: str = "raised",
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1054,6 +1315,7 @@ def _render_polygon_ridge_components(
             output_directory,
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
+            shape_raise_style=shape_raise_style,
             shape_outer_ridge_raise=shape_outer_ridge_raise,
             hole=hole,
         )
@@ -1148,6 +1410,7 @@ def _render_separate_polygon_ridge_components(
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
     hole: HoleGeometry | None = None,
+    shape_raise_style: str = "raised",
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1155,8 +1418,14 @@ def _render_separate_polygon_ridge_components(
     """
     Render independently printable components for a separate polygon ridge.
 
-    A participating Shape Hole is incorporated into each component's native
-    constructive OpenSCAD geometry before STL materialization.
+    The registered ridge partition already establishes nonoverlapping Base and
+    Ridge X/Y regions.
+
+    Raised dimensionalization extends the Ridge through the assembled ridge
+    height.
+
+    Inlaid dimensionalization preserves the same registered partition while
+    making both Base and Ridge span the complete Shape base thickness.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
@@ -1178,9 +1447,13 @@ def _render_separate_polygon_ridge_components(
         component_name=BASE_COMPONENT_NAME,
     )
 
-    assembled_ridge_height = shape_base_raise + shape_outer_ridge_raise
+    ridge_height = _surface_component_height(
+        shape_raise_style=shape_raise_style,
+        shape_base_raise=shape_base_raise,
+        component_raise=shape_outer_ridge_raise,
+    )
 
-    if assembled_ridge_height == 0.0:
+    if ridge_height <= 0.0:
         return (
             (
                 BASE_COMPONENT_NAME,
@@ -1190,13 +1463,27 @@ def _render_separate_polygon_ridge_components(
 
     ridge_output = output_directory / RIDGE_COMPONENT_PATH
 
-    ridge_source = _build_separate_polygon_ridge_component_scad(
-        ridge,
-        shape_size=shape_size,
-        shape_base_raise=shape_base_raise,
-        shape_outer_ridge_raise=shape_outer_ridge_raise,
-        hole=hole,
-    )
+    if shape_raise_style == "raised":
+        ridge_source = _build_separate_polygon_ridge_component_scad(
+            ridge,
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+            shape_outer_ridge_raise=shape_outer_ridge_raise,
+            hole=hole,
+        )
+
+    elif shape_raise_style == "inlaid":
+        ridge_source = _build_separate_polygon_ridge_component_scad_at_height(
+            ridge,
+            shape_size=shape_size,
+            component_height=shape_base_raise,
+            hole=hole,
+        )
+
+    else:
+        raise ValueError(
+            f"Unsupported Shape raise style: {shape_raise_style!r}",
+        )
 
     render_stl_source(
         ridge_source,
@@ -1307,6 +1594,7 @@ def _render_separate_circle_ridge_components(
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
     hole: HoleGeometry | None = None,
+    shape_raise_style: str = "raised",
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1314,8 +1602,14 @@ def _render_separate_circle_ridge_components(
     """
     Render independently printable components for a separate circle ridge.
 
-    A participating Shape Hole is incorporated into each component's native
-    constructive OpenSCAD geometry before STL materialization.
+    The registered ridge partition already establishes nonoverlapping Base and
+    Ridge X/Y regions.
+
+    Raised dimensionalization extends the Ridge through the assembled ridge
+    height.
+
+    Inlaid dimensionalization preserves the same registered partition while
+    making both Base and Ridge span the complete Shape base thickness.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
@@ -1337,9 +1631,13 @@ def _render_separate_circle_ridge_components(
         component_name=BASE_COMPONENT_NAME,
     )
 
-    assembled_ridge_height = shape_base_raise + shape_outer_ridge_raise
+    ridge_height = _surface_component_height(
+        shape_raise_style=shape_raise_style,
+        shape_base_raise=shape_base_raise,
+        component_raise=shape_outer_ridge_raise,
+    )
 
-    if assembled_ridge_height == 0.0:
+    if ridge_height <= 0.0:
         return (
             (
                 BASE_COMPONENT_NAME,
@@ -1349,13 +1647,27 @@ def _render_separate_circle_ridge_components(
 
     ridge_output = output_directory / RIDGE_COMPONENT_PATH
 
-    ridge_source = _build_separate_circle_ridge_component_scad(
-        ridge,
-        shape_size=shape_size,
-        shape_base_raise=shape_base_raise,
-        shape_outer_ridge_raise=shape_outer_ridge_raise,
-        hole=hole,
-    )
+    if shape_raise_style == "raised":
+        ridge_source = _build_separate_circle_ridge_component_scad(
+            ridge,
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+            shape_outer_ridge_raise=shape_outer_ridge_raise,
+            hole=hole,
+        )
+
+    elif shape_raise_style == "inlaid":
+        ridge_source = _build_separate_circle_ridge_component_scad_at_height(
+            ridge,
+            shape_size=shape_size,
+            component_height=shape_base_raise,
+            hole=hole,
+        )
+
+    else:
+        raise ValueError(
+            f"Unsupported Shape raise style: {shape_raise_style!r}",
+        )
 
     render_stl_source(
         ridge_source,
@@ -1470,6 +1782,7 @@ def _render_separate_square_ridge_components(
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
     hole: HoleGeometry | None = None,
+    shape_raise_style: str = "raised",
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1477,12 +1790,14 @@ def _render_separate_square_ridge_components(
     """
     Render independently printable components for a separate square ridge.
 
-    The base occupies the registered inner square while the ridge occupies
-    the surrounding registered perimeter from Z=0 through the assembled
-    ridge height.
+    The registered ridge partition already establishes nonoverlapping Base and
+    Ridge X/Y regions.
 
-    A participating Shape Hole is incorporated into each component's native
-    constructive OpenSCAD geometry before STL materialization.
+    Raised dimensionalization extends the Ridge through the assembled ridge
+    height.
+
+    Inlaid dimensionalization preserves the same registered partition while
+    making both Base and Ridge span the complete Shape base thickness.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
@@ -1504,9 +1819,13 @@ def _render_separate_square_ridge_components(
         component_name=BASE_COMPONENT_NAME,
     )
 
-    assembled_ridge_height = shape_base_raise + shape_outer_ridge_raise
+    ridge_height = _surface_component_height(
+        shape_raise_style=shape_raise_style,
+        shape_base_raise=shape_base_raise,
+        component_raise=shape_outer_ridge_raise,
+    )
 
-    if assembled_ridge_height == 0.0:
+    if ridge_height <= 0.0:
         return (
             (
                 BASE_COMPONENT_NAME,
@@ -1516,13 +1835,27 @@ def _render_separate_square_ridge_components(
 
     ridge_output = output_directory / RIDGE_COMPONENT_PATH
 
-    ridge_source = _build_separate_square_ridge_component_scad(
-        ridge,
-        shape_size=shape_size,
-        shape_base_raise=shape_base_raise,
-        shape_outer_ridge_raise=shape_outer_ridge_raise,
-        hole=hole,
-    )
+    if shape_raise_style == "raised":
+        ridge_source = _build_separate_square_ridge_component_scad(
+            ridge,
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+            shape_outer_ridge_raise=shape_outer_ridge_raise,
+            hole=hole,
+        )
+
+    elif shape_raise_style == "inlaid":
+        ridge_source = _build_separate_square_ridge_component_scad_at_height(
+            ridge,
+            shape_size=shape_size,
+            component_height=shape_base_raise,
+            hole=hole,
+        )
+
+    else:
+        raise ValueError(
+            f"Unsupported Shape raise style: {shape_raise_style!r}",
+        )
 
     render_stl_source(
         ridge_source,
@@ -1841,18 +2174,18 @@ def _build_scad(
 
 
 def _build_border_label_component_scad(
-    source: str,
+    source: str | Path,
     *,
     shape_size: float,
     shape_base_raise: float,
     shape_border_label_raise: float,
-    hole: HoleGeometry | None = None,
+    hole: HoleGeometry | None,
+    shape_raise_style: str = "raised",
 ) -> str:
     """
-    Build OpenSCAD source for one Shape Border Label component.
+    Build OpenSCAD for one registered Border Label component.
 
-    Border Label SVG geometry is already expressed in registered Shape
-    coordinates by Compose.
+    Compose owns the persistent registered glyph geometry.
 
     Registered Shape geometry uses SVG coordinates: X increases rightward
     and Y increases downward. OpenSCAD imports SVG geometry into its
@@ -1868,41 +2201,54 @@ def _build_border_label_component_scad(
         registered SVG Top     -> positive physical Y
         registered SVG Bottom  -> negative physical Y
 
-    Z begins at the top of the complete Shape base.
+    Raised labels begin at the top of the structural base and extend by
+    shape_border_label_raise.
 
-    A participating Shape Hole is subtracted from the registered planar
-    component geometry before extrusion so SVG-derived geometry is
-    materialized as STL only once.
+    Inlaid labels preserve the same registered X/Y geometry while spanning
+    the complete Shape thickness.
+
+    A participating Shape Hole is subtracted from the physical Border Label
+    geometry.
     """
 
+    label_z_offset, label_height = _surface_component_interval(
+        shape_raise_style=shape_raise_style,
+        shape_base_raise=shape_base_raise,
+        component_raise=shape_border_label_raise,
+    )
+
+    source_path = Path(source)
+
     planar_geometry = (
-        "scale([shape_size, shape_size, 1])\n"
+        f"scale([{shape_size:g}, {shape_size:g}, 1])\n"
         "    translate([-0.5, -1.5, 0])\n"
-        f'        import("{source}", dpi = 25.4);\n'
+        f'        import("{source_path.as_posix()}", dpi = 25.4);\n'
     )
 
     if hole is not None:
+        hole_parameters = _build_hole_parameters_scad(
+            hole,
+        )
+
         planar_geometry = (
             "difference() {\n"
             f"{_indent_scad(planar_geometry, 4)}"
-            "\n"
-            "    translate([hole_center_x, hole_center_y, 0])\n"
-            "        circle(\n"
-            "            r = hole_radius,\n"
-            "            $fn = 256\n"
-            "        );\n"
+            "    translate([hole_x, hole_y])\n"
+            "        circle(r = hole_radius, $fn = 256);\n"
             "}\n"
         )
+    else:
+        hole_parameters = ""
 
     return (
         f"shape_size = {shape_size:g};\n"
         f"shape_base_raise = {shape_base_raise:g};\n"
         f"shape_border_label_raise = {shape_border_label_raise:g};\n"
-        f"{_build_hole_parameters_scad(hole)}"
+        f"{hole_parameters}"
         "\n"
-        "translate([0, 0, shape_base_raise])\n"
+        f"translate([0, 0, {label_z_offset:g}])\n"
         "    linear_extrude(\n"
-        "        height = shape_border_label_raise,\n"
+        f"        height = {label_height:g},\n"
         "        center = false\n"
         "    )\n"
         f"{_indent_scad(planar_geometry, 8)}"
@@ -1916,12 +2262,21 @@ def _build_inner_ridge_component_scad(
     shape_base_raise: float,
     shape_inner_ridge_raise: float,
     hole: HoleGeometry | None = None,
+    shape_raise_style: str = "raised",
 ) -> str:
     """
     Build OpenSCAD source for the independently printable Inner Ridge.
 
     Compose owns the Inner Ridge X/Y geometry. Extrude consumes its registered
     outer and inner boundaries and applies only physical dimensionalization.
+
+    Raised dimensionalization places the Inner Ridge above the structural base
+    using shape_inner_ridge_raise.
+
+    Inlaid dimensionalization preserves the registered X/Y partition while
+    spanning the component through the complete Shape thickness. The resolved
+    shape_inner_ridge_raise retains its raised-style meaning but does not
+    determine the inlaid Z interval.
 
     A participating Shape Hole is subtracted from the physical ridge geometry
     while registered boundary modules remain top-level declarations.
@@ -1978,10 +2333,23 @@ def _build_inner_ridge_component_scad(
     else:
         raise ValueError(f"Unsupported registered Inner Ridge geometry: {type(ridge).__name__}.")
 
+    if shape_raise_style == "raised":
+        inner_ridge_z_offset = shape_base_raise
+        inner_ridge_height = shape_inner_ridge_raise
+
+    elif shape_raise_style == "inlaid":
+        inner_ridge_z_offset = 0.0
+        inner_ridge_height = shape_base_raise
+
+    else:
+        raise ValueError(
+            f"Unsupported Shape raise style: {shape_raise_style!r}",
+        )
+
     geometry = (
-        "translate([0, 0, shape_base_raise])\n"
+        "translate([0, 0, inner_ridge_z_offset])\n"
         "    linear_extrude(\n"
-        "        height = shape_inner_ridge_raise,\n"
+        "        height = inner_ridge_height,\n"
         "        center = false\n"
         "    )\n"
         "        difference() {\n"
@@ -1994,6 +2362,8 @@ def _build_inner_ridge_component_scad(
         f"shape_size = {shape_size:g};\n"
         f"shape_base_raise = {shape_base_raise:g};\n"
         f"shape_inner_ridge_raise = {shape_inner_ridge_raise:g};\n"
+        f"inner_ridge_z_offset = {inner_ridge_z_offset:g};\n"
+        f"inner_ridge_height = {inner_ridge_height:g};\n"
         f"{_build_hole_parameters_scad(hole)}"
         "\n"
         f"// {INNER_RIDGE_OUTER_BOUNDARY_ID}\n"
@@ -2011,61 +2381,67 @@ def _build_inner_ridge_component_scad(
 
 
 def _build_artwork_fill_scad(
-    artwork_fill: RegisteredArtworkFill,
+    fill: RegisteredArtworkFill,
     *,
     shape_size: float,
     shape_base_raise: float,
     shape_artwork_fill_raise: float,
-    hole: HoleGeometry | None = None,
+    hole: HoleGeometry | None,
+    shape_raise_style: str = "raised",
 ) -> str:
     """
-    Build OpenSCAD source for Shape-owned Artwork fill.
+    Build OpenSCAD for the physical Shape-owned Artwork Fill component.
 
-    Registered fill geometry is dimensionalized using Shape's physical X/Y
-    size. The fill begins at the top of the structural base and has its own
-    Shape-owned physical height.
+    Registered X/Y fill geometry is preserved from Compose.
 
-    A participating Shape Hole is subtracted from the physical Artwork Fill
-    before STL materialization.
+    Raised dimensionalization begins at the top of the structural base and
+    extends by shape_artwork_fill_raise.
+
+    Inlaid dimensionalization spans the complete Shape thickness. The resolved
+    fill raise remains configuration with its raised-style meaning but does not
+    determine the inlaid physical Z interval.
     """
 
-    outer = _build_registered_fill_boundary_scad(
-        artwork_fill.outer_boundary,
+    fill_z_offset, fill_height = _surface_component_interval(
+        shape_raise_style=shape_raise_style,
+        shape_base_raise=shape_base_raise,
+        component_raise=shape_artwork_fill_raise,
+    )
+
+    outer_boundary = _build_registered_fill_boundary_scad(
+        fill.outer_boundary,
+        shape_size=shape_size,
+    )
+    inner_boundary = _build_registered_fill_boundary_scad(
+        fill.inner_boundary,
         shape_size=shape_size,
     )
 
-    inner = _build_registered_fill_boundary_scad(
-        artwork_fill.inner_boundary,
-        shape_size=shape_size,
+    planar_geometry = (
+        f"difference() {{\n{_indent_scad(outer_boundary, 4)}{_indent_scad(inner_boundary, 4)}}}\n"
     )
 
     geometry = (
-        "translate([0, 0, shape_base_raise])\n"
+        f"translate([0, 0, {fill_z_offset:g}])\n"
         "    linear_extrude(\n"
-        "        height = shape_artwork_fill_raise,\n"
+        f"        height = {fill_height:g},\n"
         "        center = false\n"
         "    )\n"
-        "        difference() {\n"
-        "            registered_artwork_fill_outer_boundary();\n"
-        "            registered_artwork_fill_inner_boundary();\n"
-        "        }\n"
+        f"{_indent_scad(planar_geometry, 8)}"
     )
+
+    if hole is not None:
+        geometry = _build_hole_subtracted_geometry_scad(
+            geometry,
+            hole=hole,
+        )
 
     return (
         f"shape_size = {shape_size:g};\n"
         f"shape_base_raise = {shape_base_raise:g};\n"
         f"shape_artwork_fill_raise = {shape_artwork_fill_raise:g};\n"
-        f"{_build_hole_parameters_scad(hole)}"
         "\n"
-        "module registered_artwork_fill_outer_boundary() {\n"
-        f"{_indent_scad(outer, 4)}"
-        "}\n"
-        "\n"
-        "module registered_artwork_fill_inner_boundary() {\n"
-        f"{_indent_scad(inner, 4)}"
-        "}\n"
-        "\n"
-        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
+        f"{geometry}"
     )
 
 
@@ -2346,6 +2722,232 @@ def _build_hole_subtracted_geometry_scad(
     )
 
 
+def _build_inner_ridge_planar_geometry_scad(
+    ridge: RegisteredRidge,
+    *,
+    shape_size: float,
+) -> str:
+    """
+    Build the physical planar footprint of one registered Inner Ridge.
+
+    Compose owns the registered Inner Ridge partition. This helper applies only
+    Shape's physical X/Y dimensionalization so the resulting planar geometry can
+    participate in inlaid Base subtraction.
+    """
+
+    if isinstance(
+        ridge,
+        RegisteredCircleRidge,
+    ):
+        outer = (
+            f"translate(["
+            f"{ridge.outer.cx * shape_size:g}, "
+            f"{ridge.outer.cy * shape_size:g}, 0])\n"
+            f"    circle(r = {ridge.outer.radius * shape_size:g}, $fn = 256);\n"
+        )
+
+        inner = (
+            f"translate(["
+            f"{ridge.inner.cx * shape_size:g}, "
+            f"{ridge.inner.cy * shape_size:g}, 0])\n"
+            f"    circle(r = {ridge.inner.radius * shape_size:g}, $fn = 256);\n"
+        )
+
+    elif isinstance(
+        ridge,
+        RegisteredSquareRidge,
+    ):
+        outer = (
+            f"translate(["
+            f"{ridge.outer.x * shape_size:g}, "
+            f"{ridge.outer.y * shape_size:g}, 0])\n"
+            f"    square(["
+            f"{ridge.outer.width * shape_size:g}, "
+            f"{ridge.outer.height * shape_size:g}], center = false);\n"
+        )
+
+        inner = (
+            f"translate(["
+            f"{ridge.inner.x * shape_size:g}, "
+            f"{ridge.inner.y * shape_size:g}, 0])\n"
+            f"    square(["
+            f"{ridge.inner.width * shape_size:g}, "
+            f"{ridge.inner.height * shape_size:g}], center = false);\n"
+        )
+
+    elif isinstance(
+        ridge,
+        RegisteredPolygonRidge,
+    ):
+        outer = f"polygon(points = {_scad_polygon_points(ridge.outer, shape_size=shape_size)});\n"
+
+        inner = f"polygon(points = {_scad_polygon_points(ridge.inner, shape_size=shape_size)});\n"
+
+    else:
+        raise ValueError(f"Unsupported registered Inner Ridge geometry: {type(ridge).__name__}.")
+
+    return f"difference() {{\n{_indent_scad(outer, 4)}{_indent_scad(inner, 4)}}}\n"
+
+
+def _build_artwork_planar_geometry_scad(
+    source: str,
+    *,
+    shape_size: float,
+    artwork_registered_height: float,
+    artwork_scale: float,
+    artwork_translate_x: float,
+    artwork_translate_y: float,
+) -> str:
+    """
+    Build physical planar geometry for one registered Artwork component.
+
+    Registered Artwork uses a zero-origin SVG coordinate system with positive Y
+    downward. OpenSCAD SVG import maps that geometry into its upward-positive
+    coordinate system while preserving the Artwork's top-view orientation.
+
+    The persistent Artwork-to-Shape composition transform is expressed in SVG
+    registered coordinates. Its Y translation is therefore converted into the
+    OpenSCAD coordinate system before being applied.
+    """
+
+    artwork_openscad_translate_y = (
+        -(artwork_registered_height * artwork_scale) - artwork_translate_y
+    )
+
+    return (
+        f"scale([{shape_size:g}, {shape_size:g}, 1])\n"
+        "    translate([\n"
+        f"        {artwork_translate_x:g},\n"
+        f"        {artwork_openscad_translate_y:g},\n"
+        "        0\n"
+        "    ])\n"
+        f"        scale([{artwork_scale:g}, {artwork_scale:g}, 1])\n"
+        f'            import("{source}", dpi = 25.4);\n'
+    )
+
+
+def _build_artwork_planar_union_scad(
+    artwork: dict[str, object],
+    source_directory: Path,
+    *,
+    shape_size: float,
+) -> str:
+    """
+    Build the union of incorporated registered Artwork in physical X/Y space.
+
+    The resulting planar geometry represents the complete physical footprint
+    occupied by incorporated Artwork and is suitable for subtraction from an
+    inlaid Shape Base.
+    """
+
+    registered_extent = artwork.get(
+        "registered_extent",
+    )
+    transform = artwork.get(
+        "transform",
+    )
+    components = artwork.get(
+        "components",
+    )
+
+    if not isinstance(
+        registered_extent,
+        dict,
+    ):
+        raise ValueError("Registered Shape composition Artwork requires a registered extent.")
+
+    if not isinstance(
+        transform,
+        dict,
+    ):
+        raise ValueError("Registered Shape composition Artwork requires a transform.")
+
+    if not isinstance(
+        components,
+        list,
+    ):
+        raise ValueError("Registered Shape composition Artwork requires components.")
+
+    registered_height = float(
+        registered_extent["height"],
+    )
+    scale = float(
+        transform["scale"],
+    )
+    translate_x = float(
+        transform["translate_x"],
+    )
+    translate_y = float(
+        transform["translate_y"],
+    )
+
+    geometries: list[str] = []
+
+    for component in components:
+        if not isinstance(
+            component,
+            dict,
+        ):
+            raise ValueError("Registered Artwork component must be an object.")
+
+        source_path = source_directory / str(
+            component["path"],
+        )
+
+        if not source_path.is_file():
+            raise ValueError(f"Registered Artwork component does not exist: {source_path}")
+
+        geometries.append(
+            _build_artwork_planar_geometry_scad(
+                _scad_path(
+                    source_path,
+                ),
+                shape_size=shape_size,
+                artwork_registered_height=registered_height,
+                artwork_scale=scale,
+                artwork_translate_x=translate_x,
+                artwork_translate_y=translate_y,
+            )
+        )
+
+    return (
+        "union() {\n"
+        + "".join(
+            _indent_scad(
+                geometry,
+                4,
+            )
+            for geometry in geometries
+        )
+        + "}\n"
+    )
+
+
+def _build_planar_union_scad(
+    geometries: list[str],
+) -> str | None:
+    """
+    Build one planar union from participating physical X/Y geometries.
+
+    An empty collection represents no planar subtraction.
+    """
+
+    if not geometries:
+        return None
+
+    return (
+        "union() {\n"
+        + "".join(
+            _indent_scad(
+                geometry,
+                4,
+            )
+            for geometry in geometries
+        )
+        + "}\n"
+    )
+
+
 def _build_artwork_component_scad(
     source: str,
     *,
@@ -2358,31 +2960,45 @@ def _build_artwork_component_scad(
     artwork_translate_x: float,
     artwork_translate_y: float,
     hole: HoleGeometry | None = None,
+    shape_raise_style: str = "raised",
 ) -> str:
     """
     Build OpenSCAD source for one incorporated Artwork component.
 
-    Registered Artwork uses a zero-origin SVG coordinate system with positive Y
-    downward. OpenSCAD SVG import maps that geometry into its upward-positive
-    coordinate system while preserving the Artwork's top-view orientation.
+    Registered Artwork uses its persistent registered-space transform for
+    physical X/Y placement.
 
-    The persistent Artwork-to-Shape composition transform is expressed in SVG
-    registered coordinates. Its Y translation is therefore converted into the
-    OpenSCAD coordinate system before being applied.
+    Raised dimensionalization places Artwork above the structural base using
+    shape_artwork_raise.
+
+    Inlaid dimensionalization spans Artwork through the complete Shape
+    thickness. The resolved shape_artwork_raise retains its raised-style
+    meaning but does not determine the inlaid Z interval.
 
     A participating Shape Hole is subtracted from the planar Artwork geometry
     before extrusion so SVG-derived geometry is materialized as STL only once.
     """
 
-    planar_geometry = (
-        "scale([shape_size, shape_size, 1])\n"
-        "    translate([\n"
-        "        artwork_translate_x,\n"
-        "        artwork_openscad_translate_y,\n"
-        "        0\n"
-        "    ])\n"
-        "        scale([artwork_scale, artwork_scale, 1])\n"
-        f'            import("{source}", dpi = 25.4);\n'
+    if shape_raise_style == "raised":
+        artwork_z_offset = shape_base_raise
+        artwork_height = shape_artwork_raise
+
+    elif shape_raise_style == "inlaid":
+        artwork_z_offset = 0.0
+        artwork_height = shape_base_raise
+
+    else:
+        raise ValueError(
+            f"Unsupported Shape raise style: {shape_raise_style!r}",
+        )
+
+    planar_geometry = _build_artwork_planar_geometry_scad(
+        source,
+        shape_size=shape_size,
+        artwork_registered_height=artwork_registered_height,
+        artwork_scale=artwork_scale,
+        artwork_translate_x=artwork_translate_x,
+        artwork_translate_y=artwork_translate_y,
     )
 
     if hole is not None:
@@ -2402,19 +3018,14 @@ def _build_artwork_component_scad(
         f"shape_size = {shape_size:g};\n"
         f"shape_base_raise = {shape_base_raise:g};\n"
         f"shape_artwork_raise = {shape_artwork_raise:g};\n"
+        f"artwork_z_offset = {artwork_z_offset:g};\n"
+        f"artwork_height = {artwork_height:g};\n"
         f"artwork_registered_width = {artwork_registered_width:g};\n"
-        f"artwork_registered_height = {artwork_registered_height:g};\n"
-        f"artwork_scale = {artwork_scale:g};\n"
-        f"artwork_translate_x = {artwork_translate_x:g};\n"
-        f"artwork_translate_y = {artwork_translate_y:g};\n"
-        "artwork_openscad_translate_y = "
-        "-(artwork_registered_height * artwork_scale) "
-        "- artwork_translate_y;\n"
         f"{_build_hole_parameters_scad(hole)}"
         "\n"
-        "translate([0, 0, shape_base_raise])\n"
+        "translate([0, 0, artwork_z_offset])\n"
         "    linear_extrude(\n"
-        "        height = shape_artwork_raise,\n"
+        "        height = artwork_height,\n"
         "        center = false\n"
         "    )\n"
         f"{_indent_scad(planar_geometry, 8)}"
@@ -2469,12 +3080,16 @@ def _build_base_scad(
     shape_size: float,
     shape_base_raise: float,
     hole: HoleGeometry | None,
+    planar_subtraction: str | None = None,
 ) -> str:
     """
     Build OpenSCAD source for the physical Shape base.
 
-    A participating Shape Hole is subtracted from the constructive planar
-    geometry before the base is materialized as STL.
+    Optional planar subtraction removes participating inlaid surface-component
+    regions from the Base before physical extrusion.
+
+    A participating Shape Hole is independently subtracted from the constructive
+    planar geometry before the Base is materialized as STL.
     """
 
     shape_source = f"""\
@@ -2483,26 +3098,45 @@ scale([shape_size, shape_size, 1])
         import("{composition}", dpi = 25.4);
 """
 
-    if hole is None:
-        planar_source = shape_source
-        hole_parameters = ""
-    else:
+    subtractive_geometry: list[str] = []
+
+    if planar_subtraction is not None:
+        subtractive_geometry.append(
+            planar_subtraction,
+        )
+
+    hole_parameters = ""
+
+    if hole is not None:
         hole_parameters = (
             f"hole_center_x = {hole.center_x:g};\n"
             f"hole_center_y = {hole.center_y:g};\n"
             f"hole_radius = {hole.radius:g};\n"
         )
 
-        planar_source = f"""\
-difference() {{
-{shape_source}
-    translate([hole_center_x, hole_center_y, 0])
-        circle(
-            r = hole_radius,
-            $fn = 256
-        );
-}}
-"""
+        subtractive_geometry.append(
+            "translate([hole_center_x, hole_center_y, 0])\n"
+            "    circle(\n"
+            "        r = hole_radius,\n"
+            "        $fn = 256\n"
+            "    );\n"
+        )
+
+    if subtractive_geometry:
+        planar_source = (
+            "difference() {\n"
+            f"{_indent_scad(shape_source, 4)}"
+            + "".join(
+                _indent_scad(
+                    geometry,
+                    4,
+                )
+                for geometry in subtractive_geometry
+            )
+            + "}\n"
+        )
+    else:
+        planar_source = shape_source
 
     return f"""\
 shape_size = {shape_size:g};
@@ -2813,77 +3447,48 @@ def _build_separate_circle_ridge_component_scad(
     hole: HoleGeometry | None = None,
 ) -> str:
     """
-    Build OpenSCAD source for an independently printable separate circle ridge.
+    Build OpenSCAD source for a separate circle ridge component.
 
-    Registered boundary modules remain top-level declarations. A participating
-    Shape Hole is subtracted only from the executable physical ridge geometry,
-    before STL materialization.
+    This function preserves the raised-style construction contract used by
+    existing callers and tests.
     """
 
-    outer_x = ridge.outer.cx * shape_size
-    outer_y = ridge.outer.cy * shape_size
-    outer_radius = ridge.outer.radius * shape_size
+    assembled_ridge_height = shape_base_raise + shape_outer_ridge_raise
 
-    inner_x = ridge.inner.cx * shape_size
-    inner_y = ridge.inner.cy * shape_size
-    inner_radius = ridge.inner.radius * shape_size
-
-    parameters = (
-        f"shape_size = {shape_size:g};\n"
-        f"shape_base_raise = {shape_base_raise:g};\n"
-        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+    return _build_separate_circle_ridge_component_scad_at_height(
+        ridge,
+        shape_size=shape_size,
+        component_height=assembled_ridge_height,
+        hole=hole,
     )
 
-    boundaries = (
-        f"// {SHAPE_BOUNDARY_ID}\n"
-        "module registered_shape_boundary() {\n"
-        f"    translate([{outer_x:g}, {outer_y:g}, 0])\n"
-        f"        circle(r = {outer_radius:g}, $fn = 256);\n"
-        "}\n"
-        "\n"
-        f"// {RIDGE_INNER_BOUNDARY_ID}\n"
-        "module registered_ridge_inner_boundary() {\n"
-        f"    translate([{inner_x:g}, {inner_y:g}, 0])\n"
-        f"        circle(r = {inner_radius:g}, $fn = 256);\n"
-        "}\n"
-    )
 
-    ridge_geometry = (
-        "linear_extrude(\n"
-        "    height = shape_base_raise + shape_outer_ridge_raise,\n"
-        "    center = false\n"
-        ")\n"
-        "    difference() {\n"
-        "        registered_shape_boundary();\n"
-        "        registered_ridge_inner_boundary();\n"
-        "    }\n"
-    )
+def _build_separate_polygon_ridge_component_scad(
+    ridge: RegisteredPolygonRidge,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_outer_ridge_raise: float,
+    hole: HoleGeometry | None = None,
+) -> str:
+    """
+    Build OpenSCAD source for an independently printable separate polygon ridge.
 
-    if hole is None:
-        return parameters + "\n" + boundaries + "\n" + ridge_geometry
+    The registered polygon ridge owns the X/Y partition. The separate ridge
+    occupies the registered perimeter from Z=0 through the complete assembled
+    ridge height.
 
-    return (
-        parameters
-        + f"hole_center_x = {hole.center_x:g};\n"
-        + f"hole_center_y = {hole.center_y:g};\n"
-        + f"hole_radius = {hole.radius:g};\n"
-        + "\n"
-        + boundaries
-        + "\n"
-        + "difference() {\n"
-        + _indent_scad(
-            ridge_geometry,
-            4,
-        )
-        + "\n"
-        + "    translate([hole_center_x, hole_center_y, -1000])\n"
-        + "        cylinder(\n"
-        + "            h = 2000,\n"
-        + "            r = hole_radius,\n"
-        + "            center = false,\n"
-        + "            $fn = 256\n"
-        + "        );\n"
-        + "}\n"
+    A participating Shape Hole is subtracted from the native constructive
+    ridge geometry before STL materialization.
+    """
+
+    assembled_ridge_height = shape_base_raise + shape_outer_ridge_raise
+
+    return _build_separate_polygon_ridge_component_scad_at_height(
+        ridge,
+        shape_size=shape_size,
+        component_height=assembled_ridge_height,
+        hole=hole,
     )
 
 
@@ -2895,18 +3500,39 @@ def _build_separate_polygon_ridge_scad(
     shape_outer_ridge_raise: float,
 ) -> str:
     """
-    Build OpenSCAD source for complete separate polygon ridge geometry.
+    Build complete assembled geometry for a separate polygon ridge.
+
+    This helper exists for complete-geometry construction used by the
+    compatibility/test boundary. Ridge style changes component partitioning,
+    not the intended assembled Shape geometry.
     """
+
+    assembled_ridge_height = shape_base_raise + shape_outer_ridge_raise
 
     boundaries = _build_polygon_boundary_modules(
         ridge,
         shape_size=shape_size,
     )
 
+    if assembled_ridge_height <= 0.0:
+        return (
+            f"shape_size = {shape_size:g};\n"
+            f"shape_base_raise = {shape_base_raise:g};\n"
+            f"assembled_ridge_height = {assembled_ridge_height:g};\n"
+            "\n"
+            f"{boundaries}"
+            "\n"
+            "linear_extrude(\n"
+            "    height = shape_base_raise,\n"
+            "    center = false\n"
+            ")\n"
+            "    registered_ridge_inner_boundary();\n"
+        )
+
     return (
         f"shape_size = {shape_size:g};\n"
         f"shape_base_raise = {shape_base_raise:g};\n"
-        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
+        f"assembled_ridge_height = {assembled_ridge_height:g};\n"
         "\n"
         f"{boundaries}"
         "\n"
@@ -2918,7 +3544,7 @@ def _build_separate_polygon_ridge_scad(
         "        registered_ridge_inner_boundary();\n"
         "\n"
         "    linear_extrude(\n"
-        "        height = shape_base_raise + shape_outer_ridge_raise,\n"
+        "        height = assembled_ridge_height,\n"
         "        center = false\n"
         "    )\n"
         "        difference() {\n"
@@ -3037,37 +3663,19 @@ def _build_separate_square_ridge_component_scad(
     hole: HoleGeometry | None = None,
 ) -> str:
     """
-    Build OpenSCAD source for an independently printable separate square ridge.
+    Build OpenSCAD source for a separate square ridge component.
 
-    A participating Shape Hole is subtracted from the native constructive
-    ridge geometry before STL materialization.
+    This function preserves the raised-style construction contract used by
+    existing callers and tests.
     """
 
-    boundaries = _build_square_boundary_modules(
+    assembled_ridge_height = shape_base_raise + shape_outer_ridge_raise
+
+    return _build_separate_square_ridge_component_scad_at_height(
         ridge,
         shape_size=shape_size,
-    )
-
-    geometry = (
-        "linear_extrude(\n"
-        "    height = shape_base_raise + shape_outer_ridge_raise,\n"
-        "    center = false\n"
-        ")\n"
-        "    difference() {\n"
-        "        registered_shape_boundary();\n"
-        "        registered_ridge_inner_boundary();\n"
-        "    }\n"
-    )
-
-    return (
-        f"shape_size = {shape_size:g};\n"
-        f"shape_base_raise = {shape_base_raise:g};\n"
-        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
-        f"{_build_hole_parameters_scad(hole)}"
-        "\n"
-        f"{boundaries}"
-        "\n"
-        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
+        component_height=assembled_ridge_height,
+        hole=hole,
     )
 
 
@@ -3210,49 +3818,6 @@ def _build_integrated_polygon_ridge_component_scad(
         "            registered_shape_boundary();\n"
         "            registered_ridge_inner_boundary();\n"
         "        }\n"
-    )
-
-    return (
-        f"shape_size = {shape_size:g};\n"
-        f"shape_base_raise = {shape_base_raise:g};\n"
-        f"shape_outer_ridge_raise = {shape_outer_ridge_raise:g};\n"
-        f"{_build_hole_parameters_scad(hole)}"
-        "\n"
-        f"{boundaries}"
-        "\n"
-        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
-    )
-
-
-def _build_separate_polygon_ridge_component_scad(
-    ridge: RegisteredPolygonRidge,
-    *,
-    shape_size: float,
-    shape_base_raise: float,
-    shape_outer_ridge_raise: float,
-    hole: HoleGeometry | None = None,
-) -> str:
-    """
-    Build OpenSCAD source for an independently printable separate polygon ridge.
-
-    A participating Shape Hole is subtracted from the native constructive
-    ridge geometry before STL materialization.
-    """
-
-    boundaries = _build_polygon_boundary_modules(
-        ridge,
-        shape_size=shape_size,
-    )
-
-    geometry = (
-        "linear_extrude(\n"
-        "    height = shape_base_raise + shape_outer_ridge_raise,\n"
-        "    center = false\n"
-        ")\n"
-        "    difference() {\n"
-        "        registered_shape_boundary();\n"
-        "        registered_ridge_inner_boundary();\n"
-        "    }\n"
     )
 
     return (

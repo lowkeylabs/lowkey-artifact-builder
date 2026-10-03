@@ -1054,6 +1054,7 @@ def test_extrude_produces_independent_border_label_components(
         values={
             "shape_size": 100.0,
             "shape_base_raise": 2.0,
+            "shape_raise_style": "raised",
             "shape_outer_ridge_raise": 1.0,
             "shape_outer_ridge_style": "integrated",
             "shape_top_border_label_raise": 1.0,
@@ -1178,6 +1179,7 @@ def test_zero_raise_suppresses_only_that_border_label_component(
         values={
             "shape_size": 100.0,
             "shape_base_raise": 2.0,
+            "shape_raise_style": "raised",
             "shape_outer_ridge_raise": 1.0,
             "shape_outer_ridge_style": "integrated",
             "shape_top_border_label_raise": 0.0,
@@ -1581,6 +1583,7 @@ def test_extrude_preserves_registered_border_label_xy_placement(
         values={
             "shape_size": 100.0,
             "shape_base_raise": 2.0,
+            "shape_raise_style": "raised",
             "shape_outer_ridge_raise": 0.0,
             "shape_outer_ridge_style": "integrated",
             "shape_top_border_label_raise": 1.0,
@@ -1723,6 +1726,7 @@ def test_real_border_label_glyphs_extrude_within_shape_envelope(
         values={
             "shape_size": 100.0,
             "shape_base_raise": 2.0,
+            "shape_raise_style": "raised",
             "shape_outer_ridge_raise": 0.0,
             "shape_outer_ridge_style": "integrated",
             "shape_top_border_label_raise": 1.0,

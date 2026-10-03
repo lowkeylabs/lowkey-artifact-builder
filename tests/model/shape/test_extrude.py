@@ -409,6 +409,7 @@ def _make_extrude_resolver(
     *,
     shape_size: float = 100.0,
     shape_base_raise: float = 2.0,
+    shape_raise_style: str = "raised",
     shape_outer_ridge_raise: float = 1.0,
     shape_outer_ridge_style: str = "integrated",
     shape_artwork_raise: float = 1.0,
@@ -424,6 +425,7 @@ def _make_extrude_resolver(
         side_effect={
             "shape_size": shape_size,
             "shape_base_raise": shape_base_raise,
+            "shape_raise_style": shape_raise_style,
             "shape_outer_ridge_raise": shape_outer_ridge_raise,
             "shape_outer_ridge_style": shape_outer_ridge_style,
             "shape_artwork_raise": shape_artwork_raise,

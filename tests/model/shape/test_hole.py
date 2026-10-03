@@ -297,6 +297,7 @@ def test_shape_hole_is_positioned_from_envelope_and_subtracted_from_base(
         values={
             "shape_size": 100.0,
             "shape_base_raise": 2.0,
+            "shape_raise_style": "raised",
             "shape_outer_ridge_raise": 1.0,
             "shape_outer_ridge_style": "integrated",
             "shape_inner_ridge_raise": 1.0,
@@ -408,6 +409,7 @@ def test_shape_hole_subtracts_from_base_and_incorporated_artwork(
         values={
             "shape_size": 100.0,
             "shape_base_raise": 2.0,
+            "shape_raise_style": "raised",
             "shape_outer_ridge_raise": 1.0,
             "shape_outer_ridge_style": "integrated",
             "shape_inner_ridge_raise": 1.0,
@@ -540,6 +542,7 @@ def test_shape_hole_is_applied_before_component_stl_materialization(
         values={
             "shape_size": 100.0,
             "shape_base_raise": 2.0,
+            "shape_raise_style": "raised",
             "shape_outer_ridge_raise": 1.0,
             "shape_outer_ridge_style": "integrated",
             "shape_inner_ridge_raise": 1.0,

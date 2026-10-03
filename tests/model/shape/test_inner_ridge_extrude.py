@@ -124,6 +124,7 @@ def _make_extrude_resolver(
     values = {
         "shape_size": shape_size,
         "shape_base_raise": shape_base_raise,
+        "shape_raise_style": "raised",
         "shape_outer_ridge_raise": shape_outer_ridge_raise,
         "shape_outer_ridge_style": shape_outer_ridge_style,
         "shape_inner_ridge_raise": shape_inner_ridge_raise,
