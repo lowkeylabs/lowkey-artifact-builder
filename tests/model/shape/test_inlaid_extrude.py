@@ -1361,3 +1361,291 @@ def test_inlaid_border_label_spans_complete_shape_thickness(
         ),
         abs=0.01,
     )
+
+
+@pytest.mark.slow
+def test_inlaid_artwork_fill_is_removed_from_base(
+    tmp_path: Path,
+) -> None:
+    """
+    Inlaid Artwork Fill partitions the Base through the complete Shape
+    thickness.
+
+    Base and Artwork Fill are complementary physical regions whose union
+    reconstructs the same complete Shape as an otherwise identical Shape
+    without Artwork Fill.
+
+    The same partition is exposed at both physical faces.
+    """
+
+    partitioned_directory = tmp_path / "partitioned"
+    reference_directory = tmp_path / "reference"
+
+    partitioned_composition = partitioned_directory / "composition.svg"
+    partitioned_composition_manifest = partitioned_directory / "composition-products.json"
+    partitioned_manifest = partitioned_directory / "products.json"
+
+    _write_artwork_fill_composition(
+        partitioned_composition,
+    )
+    _write_artwork_fill_manifest(
+        partitioned_composition_manifest,
+    )
+
+    partitioned_context = Mock(
+        spec=StageContext,
+    )
+
+    partitioned_context.resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_raise_style": "inlaid",
+            "shape_outer_ridge_raise": 0.0,
+            "shape_outer_ridge_style": "integrated",
+            "shape_artwork_fill_raise": 0.6,
+            "shape_hole_diameter": 0.0,
+        }.__getitem__,
+    )
+
+    _configure_extrude_context_inputs(
+        partitioned_context,
+        composition=partitioned_composition,
+        composition_manifest=partitioned_composition_manifest,
+    )
+
+    partitioned_context.output.return_value = partitioned_manifest
+
+    extrude.execute(
+        partitioned_context,
+    )
+
+    data = _read_manifest(
+        partitioned_manifest,
+    )
+
+    artwork_fill_component = next(
+        component for component in data["components"] if component["name"] == "artwork-fill"
+    )
+
+    base = partitioned_manifest.parent / "base.stl"
+    artwork_fill = partitioned_manifest.parent / artwork_fill_component["path"]
+
+    reference_composition = reference_directory / "composition.svg"
+    reference_composition_manifest = reference_directory / "composition-products.json"
+    reference_manifest = reference_directory / "products.json"
+
+    _write_artwork_fill_composition(
+        reference_composition,
+    )
+    _write_composition_manifest(
+        reference_composition_manifest,
+    )
+
+    reference_context = Mock(
+        spec=StageContext,
+    )
+
+    reference_context.resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_raise_style": "inlaid",
+            "shape_outer_ridge_raise": 0.0,
+            "shape_outer_ridge_style": "integrated",
+            "shape_hole_diameter": 0.0,
+        }.__getitem__,
+    )
+
+    _configure_extrude_context_inputs(
+        reference_context,
+        composition=reference_composition,
+        composition_manifest=reference_composition_manifest,
+    )
+
+    reference_context.output.return_value = reference_manifest
+
+    extrude.execute(
+        reference_context,
+    )
+
+    reference_base = reference_manifest.parent / "base.stl"
+
+    for z in (
+        0.0,
+        2.0,
+    ):
+        base_area = _stl_face_area(
+            base,
+            z=z,
+        )
+        artwork_fill_area = _stl_face_area(
+            artwork_fill,
+            z=z,
+        )
+        reference_area = _stl_face_area(
+            reference_base,
+            z=z,
+        )
+
+        assert artwork_fill_area > 0.0
+
+        assert base_area + artwork_fill_area == pytest.approx(
+            reference_area,
+            rel=0.001,
+        )
+
+
+@pytest.mark.slow
+def test_inlaid_border_label_is_removed_from_base(
+    tmp_path: Path,
+) -> None:
+    """
+    An inlaid Border Label partitions the Base through the complete Shape
+    thickness.
+
+    Base and Border Label are complementary physical regions whose union
+    reconstructs the same complete Shape as an otherwise identical Shape
+    without the label.
+
+    The same partition is exposed at both physical faces.
+    """
+
+    partitioned_directory = tmp_path / "partitioned"
+    reference_directory = tmp_path / "reference"
+
+    partitioned_composition = partitioned_directory / "composition.svg"
+    partitioned_composition_manifest = partitioned_directory / "composition-products.json"
+    partitioned_manifest = partitioned_directory / "products.json"
+
+    _write_artwork_composition(
+        partitioned_composition,
+    )
+
+    top_border_label = partitioned_directory / "top-border-label.svg"
+
+    _write_border_label_component(
+        top_border_label,
+        element_id="top-border-label",
+        d=("M 0.10,-0.40 L 0.20,-0.40 L 0.20,-0.30 L 0.10,-0.30 Z"),
+    )
+
+    partitioned_composition_manifest.write_text(
+        json.dumps(
+            {
+                "composition": "composition.svg",
+                "border_labels": {
+                    "top": {
+                        "path": top_border_label.name,
+                    },
+                    "bottom": None,
+                },
+                "artwork": None,
+                "artwork_fill": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    partitioned_context = Mock(
+        spec=StageContext,
+    )
+
+    partitioned_context.resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_raise_style": "inlaid",
+            "shape_outer_ridge_raise": 0.0,
+            "shape_outer_ridge_style": "integrated",
+            "shape_top_border_label_raise": 1.0,
+            "shape_hole_diameter": 0.0,
+        }.__getitem__,
+    )
+
+    _configure_extrude_context_inputs(
+        partitioned_context,
+        composition=partitioned_composition,
+        composition_manifest=partitioned_composition_manifest,
+    )
+
+    partitioned_context.output.return_value = partitioned_manifest
+
+    extrude.execute(
+        partitioned_context,
+    )
+
+    data = _read_manifest(
+        partitioned_manifest,
+    )
+
+    border_label_component = next(
+        component for component in data["components"] if component["name"] == "top-border-label"
+    )
+
+    base = partitioned_manifest.parent / "base.stl"
+    border_label = partitioned_manifest.parent / border_label_component["path"]
+
+    reference_composition = reference_directory / "composition.svg"
+    reference_composition_manifest = reference_directory / "composition-products.json"
+    reference_manifest = reference_directory / "products.json"
+
+    _write_artwork_composition(
+        reference_composition,
+    )
+    _write_composition_manifest(
+        reference_composition_manifest,
+    )
+
+    reference_context = Mock(
+        spec=StageContext,
+    )
+
+    reference_context.resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_raise_style": "inlaid",
+            "shape_outer_ridge_raise": 0.0,
+            "shape_outer_ridge_style": "integrated",
+            "shape_hole_diameter": 0.0,
+        }.__getitem__,
+    )
+
+    _configure_extrude_context_inputs(
+        reference_context,
+        composition=reference_composition,
+        composition_manifest=reference_composition_manifest,
+    )
+
+    reference_context.output.return_value = reference_manifest
+
+    extrude.execute(
+        reference_context,
+    )
+
+    reference_base = reference_manifest.parent / "base.stl"
+
+    for z in (
+        0.0,
+        2.0,
+    ):
+        base_area = _stl_face_area(
+            base,
+            z=z,
+        )
+        border_label_area = _stl_face_area(
+            border_label,
+            z=z,
+        )
+        reference_area = _stl_face_area(
+            reference_base,
+            z=z,
+        )
+
+        assert border_label_area > 0.0
+
+        assert base_area + border_label_area == pytest.approx(
+            reference_area,
+            rel=0.001,
+        )

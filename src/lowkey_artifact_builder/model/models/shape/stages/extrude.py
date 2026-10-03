@@ -303,6 +303,28 @@ def execute(
                 shape_inner_ridge_raise=shape_inner_ridge_raise,
             )
 
+        top_border_label = border_labels.get(
+            "top",
+        )
+
+        shape_top_border_label_raise = 0.0
+
+        if top_border_label is not None:
+            shape_top_border_label_raise = context.resolver(
+                "shape_top_border_label_raise",
+            )
+
+        bottom_border_label = border_labels.get(
+            "bottom",
+        )
+
+        shape_bottom_border_label_raise = 0.0
+
+        if bottom_border_label is not None:
+            shape_bottom_border_label_raise = context.resolver(
+                "shape_bottom_border_label_raise",
+            )
+
         manifest.parent.mkdir(
             parents=True,
             exist_ok=True,
@@ -320,10 +342,56 @@ def execute(
                     )
                 )
 
+            if artwork_fill is not None and shape_artwork_fill_raise > 0.0:
+                inlaid_planar_geometries.append(
+                    _build_artwork_fill_planar_geometry_scad(
+                        artwork_fill,
+                        shape_size=shape_size,
+                    )
+                )
+
             if inner_ridge is not None and shape_inner_ridge_raise > 0.0:
                 inlaid_planar_geometries.append(
                     _build_inner_ridge_planar_geometry_scad(
                         inner_ridge,
+                        shape_size=shape_size,
+                    )
+                )
+
+            if top_border_label is not None and shape_top_border_label_raise > 0.0:
+                raw_path = top_border_label.get(
+                    "path",
+                )
+
+                if not isinstance(
+                    raw_path,
+                    str,
+                ):
+                    raise ExtrudeError("Registered top-border-label is missing its component path.")
+
+                inlaid_planar_geometries.append(
+                    _build_border_label_planar_geometry_scad(
+                        composition_manifest.parent / raw_path,
+                        shape_size=shape_size,
+                    )
+                )
+
+            if bottom_border_label is not None and shape_bottom_border_label_raise > 0.0:
+                raw_path = bottom_border_label.get(
+                    "path",
+                )
+
+                if not isinstance(
+                    raw_path,
+                    str,
+                ):
+                    raise ExtrudeError(
+                        "Registered bottom-border-label is missing its component path."
+                    )
+
+                inlaid_planar_geometries.append(
+                    _build_border_label_planar_geometry_scad(
+                        composition_manifest.parent / raw_path,
                         shape_size=shape_size,
                     )
                 )
@@ -403,15 +471,7 @@ def execute(
                 hole=hole,
             )
 
-        top_border_label = border_labels.get(
-            "top",
-        )
-
         if top_border_label is not None:
-            shape_top_border_label_raise = context.resolver(
-                "shape_top_border_label_raise",
-            )
-
             components += _render_border_label_component(
                 top_border_label,
                 composition_manifest.parent,
@@ -425,15 +485,7 @@ def execute(
                 hole=hole,
             )
 
-        bottom_border_label = border_labels.get(
-            "bottom",
-        )
-
         if bottom_border_label is not None:
-            shape_bottom_border_label_raise = context.resolver(
-                "shape_bottom_border_label_raise",
-            )
-
             components += _render_border_label_component(
                 bottom_border_label,
                 composition_manifest.parent,
@@ -2173,6 +2225,31 @@ def _build_scad(
     )
 
 
+def _build_border_label_planar_geometry_scad(
+    source: str | Path,
+    *,
+    shape_size: float,
+) -> str:
+    """
+    Build the physical planar footprint of one registered Border Label.
+
+    Compose owns the persistent registered glyph geometry. This helper applies
+    the same registered-SVG-to-physical-Shape transform used for component
+    extrusion so that inlaid Base partitioning consumes exactly the same X/Y
+    geometry.
+    """
+
+    source_path = Path(
+        source,
+    )
+
+    return (
+        f"scale([{shape_size:g}, {shape_size:g}, 1])\n"
+        "    translate([-0.5, -1.5, 0])\n"
+        f'        import("{source_path.as_posix()}", dpi = 25.4);\n'
+    )
+
+
 def _build_border_label_component_scad(
     source: str | Path,
     *,
@@ -2217,12 +2294,9 @@ def _build_border_label_component_scad(
         component_raise=shape_border_label_raise,
     )
 
-    source_path = Path(source)
-
-    planar_geometry = (
-        f"scale([{shape_size:g}, {shape_size:g}, 1])\n"
-        "    translate([-0.5, -1.5, 0])\n"
-        f'        import("{source_path.as_posix()}", dpi = 25.4);\n'
+    planar_geometry = _build_border_label_planar_geometry_scad(
+        source,
+        shape_size=shape_size,
     )
 
     if hole is not None:
@@ -2380,6 +2454,35 @@ def _build_inner_ridge_component_scad(
     )
 
 
+def _build_artwork_fill_planar_geometry_scad(
+    fill: RegisteredArtworkFill,
+    *,
+    shape_size: float,
+) -> str:
+    """
+    Build the physical planar footprint of registered Shape Artwork Fill.
+
+    Compose owns the registered Artwork Fill partition. This helper applies
+    only Shape's physical X/Y dimensionalization so the resulting planar
+    geometry can be shared by component extrusion and inlaid Base
+    partitioning.
+    """
+
+    outer_boundary = _build_registered_fill_boundary_scad(
+        fill.outer_boundary,
+        shape_size=shape_size,
+    )
+
+    inner_boundary = _build_registered_fill_boundary_scad(
+        fill.inner_boundary,
+        shape_size=shape_size,
+    )
+
+    return (
+        f"difference() {{\n{_indent_scad(outer_boundary, 4)}{_indent_scad(inner_boundary, 4)}}}\n"
+    )
+
+
 def _build_artwork_fill_scad(
     fill: RegisteredArtworkFill,
     *,
@@ -2408,17 +2511,9 @@ def _build_artwork_fill_scad(
         component_raise=shape_artwork_fill_raise,
     )
 
-    outer_boundary = _build_registered_fill_boundary_scad(
-        fill.outer_boundary,
+    planar_geometry = _build_artwork_fill_planar_geometry_scad(
+        fill,
         shape_size=shape_size,
-    )
-    inner_boundary = _build_registered_fill_boundary_scad(
-        fill.inner_boundary,
-        shape_size=shape_size,
-    )
-
-    planar_geometry = (
-        f"difference() {{\n{_indent_scad(outer_boundary, 4)}{_indent_scad(inner_boundary, 4)}}}\n"
     )
 
     geometry = (
