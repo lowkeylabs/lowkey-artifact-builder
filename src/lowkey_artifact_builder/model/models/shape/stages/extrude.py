@@ -423,6 +423,7 @@ def execute(
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
                 shape_outer_ridge_style=shape_outer_ridge_style,
                 hole=hole,
+                planar_subtraction=inlaid_planar_subtraction,
             )
 
         elif isinstance(
@@ -438,6 +439,7 @@ def execute(
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
                 shape_outer_ridge_style=shape_outer_ridge_style,
                 hole=hole,
+                planar_subtraction=inlaid_planar_subtraction,
             )
 
         elif isinstance(
@@ -453,6 +455,7 @@ def execute(
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
                 shape_outer_ridge_style=shape_outer_ridge_style,
                 hole=hole,
+                planar_subtraction=inlaid_planar_subtraction,
             )
 
         else:
@@ -1259,6 +1262,7 @@ def _render_circle_ridge_components(
     shape_outer_ridge_style: str,
     hole: HoleGeometry | None = None,
     shape_raise_style: str = "raised",
+    planar_subtraction: str | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1286,6 +1290,7 @@ def _render_circle_ridge_components(
             shape_raise_style=shape_raise_style,
             shape_outer_ridge_raise=shape_outer_ridge_raise,
             hole=hole,
+            planar_subtraction=planar_subtraction,
         )
 
     raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
@@ -1301,6 +1306,7 @@ def _render_square_ridge_components(
     shape_outer_ridge_style: str,
     hole: HoleGeometry | None = None,
     shape_raise_style: str = "raised",
+    planar_subtraction: str | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1328,6 +1334,7 @@ def _render_square_ridge_components(
             shape_raise_style=shape_raise_style,
             shape_outer_ridge_raise=shape_outer_ridge_raise,
             hole=hole,
+            planar_subtraction=planar_subtraction,
         )
 
     raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
@@ -1343,6 +1350,7 @@ def _render_polygon_ridge_components(
     shape_outer_ridge_style: str,
     hole: HoleGeometry | None = None,
     shape_raise_style: str = "raised",
+    planar_subtraction: str | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1370,6 +1378,7 @@ def _render_polygon_ridge_components(
             shape_raise_style=shape_raise_style,
             shape_outer_ridge_raise=shape_outer_ridge_raise,
             hole=hole,
+            planar_subtraction=planar_subtraction,
         )
 
     raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
@@ -1463,6 +1472,7 @@ def _render_separate_polygon_ridge_components(
     shape_outer_ridge_raise: float,
     hole: HoleGeometry | None = None,
     shape_raise_style: str = "raised",
+    planar_subtraction: str | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1478,6 +1488,9 @@ def _render_separate_polygon_ridge_components(
 
     Inlaid dimensionalization preserves the same registered partition while
     making both Base and Ridge span the complete Shape base thickness.
+
+    Optional planar subtraction removes participating inlaid surface-component
+    regions from the Base before physical extrusion.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
@@ -1487,6 +1500,7 @@ def _render_separate_polygon_ridge_components(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         hole=hole,
+        planar_subtraction=planar_subtraction,
     )
 
     render_stl_source(
@@ -1647,6 +1661,7 @@ def _render_separate_circle_ridge_components(
     shape_outer_ridge_raise: float,
     hole: HoleGeometry | None = None,
     shape_raise_style: str = "raised",
+    planar_subtraction: str | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1662,6 +1677,9 @@ def _render_separate_circle_ridge_components(
 
     Inlaid dimensionalization preserves the same registered partition while
     making both Base and Ridge span the complete Shape base thickness.
+
+    Optional planar subtraction removes participating inlaid surface-component
+    regions from the Base before physical extrusion.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
@@ -1671,6 +1689,7 @@ def _render_separate_circle_ridge_components(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         hole=hole,
+        planar_subtraction=planar_subtraction,
     )
 
     render_stl_source(
@@ -1835,6 +1854,7 @@ def _render_separate_square_ridge_components(
     shape_outer_ridge_raise: float,
     hole: HoleGeometry | None = None,
     shape_raise_style: str = "raised",
+    planar_subtraction: str | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1850,6 +1870,9 @@ def _render_separate_square_ridge_components(
 
     Inlaid dimensionalization preserves the same registered partition while
     making both Base and Ridge span the complete Shape base thickness.
+
+    Optional planar subtraction removes participating inlaid surface-component
+    regions from the Base before physical extrusion.
     """
 
     base = output_directory / BASE_COMPONENT_PATH
@@ -1859,6 +1882,7 @@ def _render_separate_square_ridge_components(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         hole=hole,
+        planar_subtraction=planar_subtraction,
     )
 
     render_stl_source(
@@ -3250,54 +3274,66 @@ def _build_circle_base_scad(
     shape_size: float,
     shape_base_raise: float,
     hole: HoleGeometry | None = None,
+    planar_subtraction: str | None = None,
 ) -> str:
     """
     Build OpenSCAD source for a physical circle base.
 
-    A participating Shape Hole is subtracted from the native constructive
-    geometry before the base is materialized as STL.
+    Optional planar subtraction removes participating inlaid surface-component
+    regions from the Base before physical extrusion.
+
+    A participating Shape Hole is independently subtracted from the constructive
+    planar geometry before the Base is materialized as STL.
     """
 
     x = circle.cx * shape_size
     y = circle.cy * shape_size
     radius = circle.radius * shape_size
 
-    if hole is None:
-        return (
-            f"shape_size = {shape_size:g};\n"
-            f"shape_base_raise = {shape_base_raise:g};\n"
-            "\n"
-            "linear_extrude(\n"
-            "    height = shape_base_raise,\n"
-            "    center = false\n"
-            ")\n"
-            f"    translate([{x:g}, {y:g}, 0])\n"
-            f"        circle(r = {radius:g}, $fn = 256);\n"
+    base_geometry = f"translate([{x:g}, {y:g}, 0])\n    circle(r = {radius:g}, $fn = 256);\n"
+
+    subtractive_geometry: list[str] = []
+
+    if planar_subtraction is not None:
+        subtractive_geometry.append(
+            planar_subtraction,
         )
+
+    if hole is not None:
+        subtractive_geometry.append(
+            "translate([hole_center_x, hole_center_y, 0])\n"
+            "    circle(r = hole_radius, $fn = 256);\n"
+        )
+
+    if subtractive_geometry:
+        planar_geometry = (
+            "difference() {\n"
+            + _indent_scad(
+                base_geometry,
+                4,
+            )
+            + "".join(
+                _indent_scad(
+                    geometry,
+                    4,
+                )
+                for geometry in subtractive_geometry
+            )
+            + "}\n"
+        )
+    else:
+        planar_geometry = base_geometry
 
     return (
         f"shape_size = {shape_size:g};\n"
         f"shape_base_raise = {shape_base_raise:g};\n"
-        f"hole_center_x = {hole.center_x:g};\n"
-        f"hole_center_y = {hole.center_y:g};\n"
-        f"hole_radius = {hole.radius:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
         "\n"
-        "difference() {\n"
-        "    linear_extrude(\n"
-        "        height = shape_base_raise,\n"
-        "        center = false\n"
-        "    )\n"
-        f"        translate([{x:g}, {y:g}, 0])\n"
-        f"            circle(r = {radius:g}, $fn = 256);\n"
-        "\n"
-        "    translate([hole_center_x, hole_center_y, -1000])\n"
-        "        cylinder(\n"
-        "            h = 2000,\n"
-        "            r = hole_radius,\n"
-        "            center = false,\n"
-        "            $fn = 256\n"
-        "        );\n"
-        "}\n"
+        "linear_extrude(\n"
+        "    height = shape_base_raise,\n"
+        "    center = false\n"
+        ")\n"
+        f"{_indent_scad(planar_geometry, 4)}"
     )
 
 
@@ -3307,9 +3343,16 @@ def _build_rectangle_base_scad(
     shape_size: float,
     shape_base_raise: float,
     hole: HoleGeometry | None = None,
+    planar_subtraction: str | None = None,
 ) -> str:
     """
     Build OpenSCAD source for a physical registered rectangle base.
+
+    Optional planar subtraction removes participating inlaid surface-component
+    regions from the Base before physical extrusion.
+
+    A participating Shape Hole is independently subtracted from the constructive
+    planar geometry before the Base is materialized as STL.
     """
 
     x = rectangle.x * shape_size
@@ -3317,21 +3360,52 @@ def _build_rectangle_base_scad(
     width = rectangle.width * shape_size
     height = rectangle.height * shape_size
 
-    geometry = (
-        "linear_extrude(\n"
-        "    height = shape_base_raise,\n"
-        "    center = false\n"
-        ")\n"
-        f"    translate([{x:g}, {y:g}, 0])\n"
-        f"        square([{width:g}, {height:g}], center = false);\n"
+    base_geometry = (
+        f"translate([{x:g}, {y:g}, 0])\n    square([{width:g}, {height:g}], center = false);\n"
     )
+
+    subtractive_geometry: list[str] = []
+
+    if planar_subtraction is not None:
+        subtractive_geometry.append(
+            planar_subtraction,
+        )
+
+    if hole is not None:
+        subtractive_geometry.append(
+            "translate([hole_center_x, hole_center_y, 0])\n"
+            "    circle(r = hole_radius, $fn = 256);\n"
+        )
+
+    if subtractive_geometry:
+        planar_geometry = (
+            "difference() {\n"
+            + _indent_scad(
+                base_geometry,
+                4,
+            )
+            + "".join(
+                _indent_scad(
+                    geometry,
+                    4,
+                )
+                for geometry in subtractive_geometry
+            )
+            + "}\n"
+        )
+    else:
+        planar_geometry = base_geometry
 
     return (
         f"shape_size = {shape_size:g};\n"
         f"shape_base_raise = {shape_base_raise:g};\n"
         f"{_build_hole_parameters_scad(hole)}"
         "\n"
-        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
+        "linear_extrude(\n"
+        "    height = shape_base_raise,\n"
+        "    center = false\n"
+        ")\n"
+        f"{_indent_scad(planar_geometry, 4)}"
     )
 
 
@@ -3856,9 +3930,16 @@ def _build_polygon_base_scad(
     shape_size: float,
     shape_base_raise: float,
     hole: HoleGeometry | None = None,
+    planar_subtraction: str | None = None,
 ) -> str:
     """
     Build OpenSCAD source for a physical registered polygon base.
+
+    Optional planar subtraction removes participating inlaid surface-component
+    regions from the Base before physical extrusion.
+
+    A participating Shape Hole is independently subtracted from the constructive
+    planar geometry before the Base is materialized as STL.
     """
 
     points = _scad_polygon_points(
@@ -3866,20 +3947,50 @@ def _build_polygon_base_scad(
         shape_size=shape_size,
     )
 
-    geometry = (
-        "linear_extrude(\n"
-        "    height = shape_base_raise,\n"
-        "    center = false\n"
-        ")\n"
-        f"    polygon(points = {points});\n"
-    )
+    base_geometry = f"polygon(points = {points});\n"
+
+    subtractive_geometry: list[str] = []
+
+    if planar_subtraction is not None:
+        subtractive_geometry.append(
+            planar_subtraction,
+        )
+
+    if hole is not None:
+        subtractive_geometry.append(
+            "translate([hole_center_x, hole_center_y, 0])\n"
+            "    circle(r = hole_radius, $fn = 256);\n"
+        )
+
+    if subtractive_geometry:
+        planar_geometry = (
+            "difference() {\n"
+            + _indent_scad(
+                base_geometry,
+                4,
+            )
+            + "".join(
+                _indent_scad(
+                    geometry,
+                    4,
+                )
+                for geometry in subtractive_geometry
+            )
+            + "}\n"
+        )
+    else:
+        planar_geometry = base_geometry
 
     return (
         f"shape_size = {shape_size:g};\n"
         f"shape_base_raise = {shape_base_raise:g};\n"
         f"{_build_hole_parameters_scad(hole)}"
         "\n"
-        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
+        "linear_extrude(\n"
+        "    height = shape_base_raise,\n"
+        "    center = false\n"
+        ")\n"
+        f"{_indent_scad(planar_geometry, 4)}"
     )
 
 

@@ -21,6 +21,84 @@ from lowkey_artifact_builder.model.models.shape.stages import extrude
 # =========================================================
 
 
+def _write_square_ridge_composition(
+    path: Path,
+) -> None:
+    """
+    Write registered square geometry containing an outer-ridge partition.
+
+    The complete Shape is 1.0 x 1.0 registered units. The inner boundary is
+    inset by 0.05 on every side, producing a 5 mm separate Outer Ridge on a
+    100 mm Shape.
+    """
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    path.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="-0.5 -0.5 1.0 1.0"
+>
+    <rect
+        id="shape-boundary"
+        x="-0.5"
+        y="-0.5"
+        width="1.0"
+        height="1.0"
+    />
+    <rect
+        id="ridge-inner-boundary"
+        x="-0.45"
+        y="-0.45"
+        width="0.9"
+        height="0.9"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+
+def _write_polygon_ridge_composition(
+    path: Path,
+) -> None:
+    """
+    Write registered polygon geometry containing an outer-ridge partition.
+
+    The representative Shape uses concentric square polygons so the test
+    exercises registered polygon extrusion without introducing unrelated
+    polygon-area complexity.
+    """
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    path.write_text(
+        """
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="-0.5 -0.5 1.0 1.0"
+>
+    <polygon
+        id="shape-boundary"
+        points="-0.5,-0.5 0.5,-0.5 0.5,0.5 -0.5,0.5"
+    />
+    <polygon
+        id="ridge-inner-boundary"
+        points="-0.45,-0.45 0.45,-0.45 0.45,0.45 -0.45,0.45"
+    />
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
+
+
 def _write_artwork_fill_composition(
     path: Path,
 ) -> None:
@@ -1647,5 +1725,307 @@ def test_inlaid_border_label_is_removed_from_base(
 
         assert base_area + border_label_area == pytest.approx(
             reference_area,
+            rel=0.001,
+        )
+
+
+@pytest.mark.slow
+def test_inlaid_outer_ridge_and_artwork_form_one_complete_partition(
+    tmp_path: Path,
+) -> None:
+    """
+    Outer Ridge and incorporated Artwork compose into one inlaid partition.
+
+    A representative circular Shape contains both:
+
+        separate Outer Ridge -> 45..50 mm annulus
+        incorporated Artwork -> 20 x 40 mm interior rectangle
+
+    Under inlaid dimensionalization, Base, Ridge, and Artwork all span the
+    complete Shape thickness and occupy complementary physical regions.
+
+    Their union must reconstruct exactly one complete 100 mm circular Shape
+    at both physical faces. In particular, the Artwork region must be removed
+    from the Base even when Base construction is owned by the Outer Ridge path.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    manifest = tmp_path / "products.json"
+
+    #
+    # Reuse the registered Outer Ridge geometry and incorporated Artwork
+    # manifest already exercised independently by this test module.
+    #
+
+    _write_ridge_composition(
+        composition,
+    )
+
+    _write_artwork_composition_manifest(
+        composition_manifest,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = _make_inlaid_extrude_resolver()
+
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
+
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    components = {component["name"]: component for component in data["components"]}
+
+    assert set(components) == {
+        "base",
+        "ridge",
+        "artwork-1",
+    }
+
+    base = manifest.parent / components["base"]["path"]
+    ridge = manifest.parent / components["ridge"]["path"]
+    artwork = manifest.parent / components["artwork-1"]["path"]
+
+    #
+    # Every member of the inlaid partition spans the same complete physical
+    # thickness.
+    #
+
+    for component in (
+        base,
+        ridge,
+        artwork,
+    ):
+        bounds = _stl_bounds(
+            component,
+        )
+
+        assert bounds[4:] == pytest.approx(
+            (
+                0.0,
+                2.0,
+            ),
+            abs=0.002,
+        )
+
+    #
+    # The three semantic components must form one nonoverlapping partition of
+    # the complete circular Shape at both physical faces.
+    #
+    # This is deliberately an assembled-area assertion rather than separate
+    # component-area expectations. Outer Ridge and Artwork already have
+    # independent geometry tests above; this test owns their composition.
+    #
+
+    expected_complete_area = pytest.approx(
+        3.141592653589793 * 50.0**2,
+        rel=0.001,
+    )
+
+    for z in (
+        0.0,
+        2.0,
+    ):
+        base_area = _stl_face_area(
+            base,
+            z=z,
+        )
+        ridge_area = _stl_face_area(
+            ridge,
+            z=z,
+        )
+        artwork_area = _stl_face_area(
+            artwork,
+            z=z,
+        )
+
+        assert artwork_area > 0.0
+
+        assert (base_area + ridge_area + artwork_area) == expected_complete_area
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    (
+        "write_composition",
+        "expected_base_bounds",
+        "expected_ridge_bounds",
+        "expected_complete_area",
+    ),
+    [
+        (
+            _write_square_ridge_composition,
+            (
+                -45.0,
+                45.0,
+                -45.0,
+                45.0,
+                0.0,
+                2.0,
+            ),
+            (
+                -50.0,
+                50.0,
+                -50.0,
+                50.0,
+                0.0,
+                2.0,
+            ),
+            100.0 * 100.0,
+        ),
+        (
+            _write_polygon_ridge_composition,
+            (
+                -45.0,
+                45.0,
+                -45.0,
+                45.0,
+                0.0,
+                2.0,
+            ),
+            (
+                -50.0,
+                50.0,
+                -50.0,
+                50.0,
+                0.0,
+                2.0,
+            ),
+            100.0 * 100.0,
+        ),
+    ],
+    ids=(
+        "square",
+        "polygon",
+    ),
+)
+def test_inlaid_separate_ridge_geometry_partitions_complete_shape(
+    tmp_path: Path,
+    write_composition,
+    expected_base_bounds: tuple[
+        float,
+        float,
+        float,
+        float,
+        float,
+        float,
+    ],
+    expected_ridge_bounds: tuple[
+        float,
+        float,
+        float,
+        float,
+        float,
+        float,
+    ],
+    expected_complete_area: float,
+) -> None:
+    """
+    Alternate registered geometries obey the complete inlaid ridge contract.
+
+    Square and polygon Shape paths each pass through their own registered Base
+    builder. This acceptance seam verifies that both geometry-specific paths
+    preserve the same inlaid physical contract already established for circle:
+
+        Base and Ridge span the complete Shape thickness;
+        Base and Ridge retain their registered X/Y partition;
+        their union reconstructs exactly one complete Shape face;
+        the same partition is exposed at Z=0 and Z=shape_base_raise.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    manifest = tmp_path / "products.json"
+
+    write_composition(
+        composition,
+    )
+    _write_composition_manifest(
+        composition_manifest,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = _make_inlaid_extrude_resolver()
+
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
+
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    assert data["components"] == [
+        {
+            "name": "base",
+            "path": "base.stl",
+        },
+        {
+            "name": "ridge",
+            "path": "ridge.stl",
+        },
+    ]
+
+    base = manifest.parent / "base.stl"
+    ridge = manifest.parent / "ridge.stl"
+
+    assert base.is_file()
+    assert ridge.is_file()
+
+    assert _stl_bounds(
+        base,
+    ) == pytest.approx(
+        expected_base_bounds,
+        abs=0.002,
+    )
+
+    assert _stl_bounds(
+        ridge,
+    ) == pytest.approx(
+        expected_ridge_bounds,
+        abs=0.002,
+    )
+
+    for z in (
+        0.0,
+        2.0,
+    ):
+        base_area = _stl_face_area(
+            base,
+            z=z,
+        )
+        ridge_area = _stl_face_area(
+            ridge,
+            z=z,
+        )
+
+        assert base_area > 0.0
+        assert ridge_area > 0.0
+
+        assert base_area + ridge_area == pytest.approx(
+            expected_complete_area,
             rel=0.001,
         )
