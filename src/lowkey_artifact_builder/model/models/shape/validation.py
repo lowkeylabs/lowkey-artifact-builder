@@ -589,6 +589,49 @@ def _validate_raise_style(
         raise ConfigError("shape_raise_style must be one of: raised, inlaid.")
 
 
+def _validate_loop_raise(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Validate Shape Loop raise when the Loop participates.
+    """
+
+    inner_diameter = resolver(
+        "shape_loop_inner_diameter",
+    )
+
+    if not isinstance(
+        inner_diameter,
+        int | float,
+    ) or isinstance(
+        inner_diameter,
+        bool,
+    ):
+        return
+
+    if inner_diameter <= 0.0:
+        return
+
+    raise_value = resolver(
+        "shape_loop_raise",
+    )
+
+    if (
+        not isinstance(
+            raise_value,
+            int | float,
+        )
+        or isinstance(
+            raise_value,
+            bool,
+        )
+        or raise_value <= 0.0
+    ):
+        raise ConfigError(
+            "shape_loop_raise must be greater than zero when Shape Loop participates."
+        )
+
+
 VALIDATORS = (
     ConfigurationValidator(
         parameters=("shape_geometry",),
@@ -702,6 +745,13 @@ VALIDATORS = (
             "shape_loop_position",
         ),
         validate=_validate_loop_position,
+    ),
+    ConfigurationValidator(
+        parameters=(
+            "shape_loop_inner_diameter",
+            "shape_loop_raise",
+        ),
+        validate=_validate_loop_raise,
     ),
 )
 

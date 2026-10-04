@@ -895,3 +895,65 @@ def test_shape_hole_is_subtracted_from_artwork_before_extrusion() -> None:
     assert extrude_position < difference_position
     assert difference_position < import_position
     assert difference_position < hole_position
+
+
+def test_shape_hole_is_subtracted_from_loop_before_extrusion() -> None:
+    """
+    Shape Hole subtracts from intersecting Loop material before extrusion.
+
+    Loop remains a distinct additive physical component, while Hole retains
+    its global subtractive contract across manufactured Shape components.
+    """
+
+    envelope_bounds = extrude.Bounds(
+        min_x=-50.0,
+        min_y=-50.0,
+        max_x=50.0,
+        max_y=50.0,
+    )
+
+    hole = extrude.create_hole_geometry(
+        envelope_bounds=envelope_bounds,
+        diameter=4.0,
+        edge_distance=0.4,
+        position=0,
+    )
+
+    loop = extrude.create_loop_geometry(
+        envelope_bounds=envelope_bounds,
+        inner_diameter=4.0,
+        width=3.0,
+        position=0,
+    )
+
+    source = extrude._build_loop_component_scad(
+        loop,
+        component_height=2.0,
+        hole=hole,
+    )
+
+    hole_difference_position = source.index("difference()")
+    extrude_position = source.index("linear_extrude(")
+    annulus_difference_position = source.index(
+        "difference()",
+        hole_difference_position + 1,
+    )
+    outer_circle_position = source.index(
+        "circle(r = outer_radius",
+    )
+    inner_circle_position = source.index(
+        "circle(r = inner_radius",
+    )
+    hole_position = source.index(
+        "hole_radius = 2",
+    )
+    hole_cutter_position = source.index(
+        "translate([hole_center_x, hole_center_y, -1000])",
+    )
+
+    assert hole_position < hole_difference_position
+    assert hole_difference_position < extrude_position
+    assert extrude_position < annulus_difference_position
+    assert annulus_difference_position < outer_circle_position
+    assert outer_circle_position < inner_circle_position
+    assert inner_circle_position < hole_cutter_position

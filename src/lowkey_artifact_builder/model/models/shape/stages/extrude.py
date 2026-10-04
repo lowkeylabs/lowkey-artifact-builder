@@ -504,6 +504,7 @@ def execute(
                 shape_loop_raise=context.resolver(
                     "shape_loop_raise",
                 ),
+                hole=hole,
             )
 
         if inner_ridge is not None:
@@ -616,6 +617,7 @@ def _render_loop_component(
     *,
     shape_base_raise: float,
     shape_loop_raise: float,
+    hole: HoleGeometry | None = None,
     shape_raise_style: str = "raised",
 ) -> tuple[
     tuple[str, str],
@@ -632,6 +634,8 @@ def _render_loop_component(
     Inlaid dimensionalization spans the complete Shape base thickness.
     Unlike inlaid principal-surface components, Loop does not partition or
     subtract material from the Shape Base.
+
+    A participating Shape Hole is subtracted from intersecting Loop material.
     """
 
     if shape_raise_style == "raised":
@@ -653,6 +657,7 @@ def _render_loop_component(
     source = _build_loop_component_scad(
         loop,
         component_height=component_height,
+        hole=hole,
     )
 
     render_stl_source(
@@ -2359,21 +2364,18 @@ def _build_loop_component_scad(
     loop: LoopGeometry,
     *,
     component_height: float,
+    hole: HoleGeometry | None = None,
 ) -> str:
     """
     Build the independently printable Shape Loop component.
 
     Shape Loop is an annulus whose X/Y position has already been resolved
     relative to the complete physical Shape envelope.
+
+    A participating Shape Hole is subtracted from intersecting Loop material.
     """
 
-    return (
-        f"component_height = {component_height:g};\n"
-        f"center_x = {loop.center_x:g};\n"
-        f"center_y = {loop.center_y:g};\n"
-        f"outer_radius = {loop.outer_radius:g};\n"
-        f"inner_radius = {loop.inner_radius:g};\n"
-        "\n"
+    geometry = (
         "linear_extrude(\n"
         "    height = component_height,\n"
         "    center = false\n"
@@ -2383,6 +2385,17 @@ def _build_loop_component_scad(
         "            circle(r = outer_radius, $fn = 256);\n"
         "            circle(r = inner_radius, $fn = 256);\n"
         "        }\n"
+    )
+
+    return (
+        f"component_height = {component_height:g};\n"
+        f"center_x = {loop.center_x:g};\n"
+        f"center_y = {loop.center_y:g};\n"
+        f"outer_radius = {loop.outer_radius:g};\n"
+        f"inner_radius = {loop.inner_radius:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"{_build_hole_subtracted_geometry_scad(geometry, hole=hole)}"
     )
 
 

@@ -315,6 +315,10 @@ def test_shape_extrude_consumes_physical_dimensionalization_parameters() -> None
     cardinal position, and edge distance therefore belong to Extrude rather
     than registered composition or packaging.
 
+    Shape Loop is additive physical manufacturing geometry. Its participation,
+    radial width, cardinal position, and raised-style physical height therefore
+    belong to Extrude rather than registered composition or packaging.
+
     Physical color policy does not participate in extrusion.
     """
 
@@ -334,6 +338,10 @@ def test_shape_extrude_consumes_physical_dimensionalization_parameters() -> None
         "shape_hole_diameter",
         "shape_hole_position",
         "shape_hole_edge_distance",
+        "shape_loop_inner_diameter",
+        "shape_loop_width",
+        "shape_loop_position",
+        "shape_loop_raise",
     )
 
 

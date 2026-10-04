@@ -303,3 +303,67 @@ def test_shape_raise_style_change_invalidates_extrude_and_package(
 
     assert after["extrude"] != before["extrude"]
     assert after["package"] != before["package"]
+
+
+@pytest.mark.parametrize(
+    ("parameter", "before_value", "after_value"),
+    [
+        (
+            "shape_loop_inner_diameter",
+            0.0,
+            4.0,
+        ),
+        (
+            "shape_loop_width",
+            1.0,
+            2.0,
+        ),
+        (
+            "shape_loop_position",
+            0,
+            90,
+        ),
+        (
+            "shape_loop_raise",
+            2.0,
+            3.0,
+        ),
+    ],
+)
+def test_shape_loop_geometry_change_invalidates_extrude_and_package(
+    tmp_path: Path,
+    parameter: str,
+    before_value: object,
+    after_value: object,
+) -> None:
+    """
+    Changing Shape Loop physical geometry preserves registered geometry.
+
+    Loop physical dimensionalization belongs to Extrude. Structure and
+    Compose therefore retain identical required fingerprints while Extrude
+    and downstream Package receive different required fingerprints.
+    """
+
+    before = create_required_fingerprints(
+        _shape_plan(
+            tmp_path,
+            overrides={
+                parameter: before_value,
+            },
+        )
+    )
+
+    after = create_required_fingerprints(
+        _shape_plan(
+            tmp_path,
+            overrides={
+                parameter: after_value,
+            },
+        )
+    )
+
+    assert after["structure"] == before["structure"]
+    assert after["compose"] == before["compose"]
+
+    assert after["extrude"] != before["extrude"]
+    assert after["package"] != before["package"]

@@ -1319,3 +1319,51 @@ def test_shape_loop_rejects_noncardinal_position_when_participating(
                 "shape_loop_position": 45,
             },
         )
+
+
+@pytest.mark.parametrize(
+    "raise_value",
+    (
+        0.0,
+        -0.1,
+    ),
+)
+def test_shape_loop_requires_positive_raise_when_participating(
+    shape_resolver: Resolver,
+    raise_value: float,
+) -> None:
+    """
+    A participating Loop requires a positive resolved Loop raise.
+
+    The resolved raise remains valid configuration under both Shape
+    raise styles even though inlaid dimensionalization uses the Base
+    thickness as the manufactured Loop height.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_loop_raise",
+    ):
+        _validate_shape(
+            shape_resolver,
+            {
+                "shape_loop_inner_diameter": 4.0,
+                "shape_loop_raise": raise_value,
+            },
+        )
+
+
+def test_shape_loop_raise_does_not_require_positive_value_when_not_participating(
+    shape_resolver: Resolver,
+) -> None:
+    """
+    Loop raise does not constrain configuration when Loop does not participate.
+    """
+
+    _validate_shape(
+        shape_resolver,
+        {
+            "shape_loop_inner_diameter": 0.0,
+            "shape_loop_raise": 0.0,
+        },
+    )

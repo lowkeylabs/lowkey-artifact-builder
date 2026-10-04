@@ -131,6 +131,10 @@ MODEL = ModelSpec(
                 "shape_hole_diameter",
                 "shape_hole_position",
                 "shape_hole_edge_distance",
+                "shape_loop_inner_diameter",
+                "shape_loop_width",
+                "shape_loop_position",
+                "shape_loop_raise",
             ),
             products=(
                 ProductSpec(
