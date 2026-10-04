@@ -137,219 +137,9 @@ Add narrower tests when they help discover an uncertain boundary, protect an
 independently meaningful contract, reproduce a defect, or address a specific
 algorithmic or regression risk.
 
-## Phase 1 — (placeholder)
 
-(placeholder)
 
-# Phase 2 — Add Shape Loop
-
-## Purpose
-
-Implement the Shape Loop Feature defined by the current Shape model specification.
-Shape Loop should use the carefully designed and debugged Artwork Loop as behavioral and geometric precedent while remaining a Shape-owned Feature with its own geometry implementation, component, dimensionalization, and Package color semantics.
-Shape Loop must integrate with the Shape raise-style policy established by
-Phase 1.
-The Shape specification now defines the raise-style contract:
-
-- with `shape_raise_style = "raised"`, Loop occupies physical Z from zero
-
-  through `shape_loop_raise`;
-
-- with `shape_raise_style = "inlaid"`, Loop occupies the complete Shape
-
-  thickness from `Z = 0` through `shape_base_raise`;
-
-- `shape_loop_raise` remains resolved configuration under `"inlaid"` but does
-
-  not determine the manufactured Loop height; and
-
-- because Loop is additive geometry outside the principal Shape envelope,
-
-  inlaid Loop does not require a corresponding subtraction from Base.
-The central manufacturing contract is:
-
-> A participating Shape Loop is additive Shape-owned geometry whose inner opening is externally tangent to the complete assembled Shape envelope at the selected cardinal position.
-
-Loop is a distinct physical component. Unlike Hole, it adds material and therefore participates in both Shape Extrude component production and Shape Package color assignment.
-The Loop is positioned relative to the complete assembled Shape envelope defined by `shape_size`. Optional Shape Features do not redefine that positioning boundary.
-This phase should migrate proven Artwork Loop behavior rather than redesigning Loop geometry.
-
-## Required behavior to establish
-
-Shape defines:
-
-```text
-shape_loop_inner_diameter
-shape_loop_width
-shape_loop_position
-shape_loop_raise
-shape_loop_color
-```
-
-with participation determined solely by:
-
-```text
-shape_loop_inner_diameter > 0
-```
-
-Zero inner diameter disables Loop participation.
-Loop uses the same cardinal-position convention as Artwork Loop:
-
-```text
-0      -> top
-90     -> right
-180    -> bottom
--90    -> left
-```
-
-The Loop inner opening is externally tangent to the dimensionalized complete Shape boundary at the selected cardinal position.
-Its geometry is determined by:
-
-```text
-inner radius = shape_loop_inner_diameter / 2
-outer radius =
-    inner radius
-    + shape_loop_width
-```
-
-Loop explicitly extends beyond the normal `shape_size` envelope. This extension is part of the Loop Feature contract and does not change the meaning or configured value of `shape_size`.
-Loop positioning must not depend on whether an Outer Ridge, Inner Ridge, Border Label, Artwork fill, incorporated Artwork, or other optional Feature participates.
-A participating Loop is a distinct Shape-owned physical component.
-Its physical dimensionalization follows the Shape raise-style policy.
-`shape_loop_raise` defaults from:
-
-```text
-shape_base_raise
-```
-
-For a raised Shape, the Loop occupies:
-
-```text
-Z = 0 .. shape_loop_raise
-```
-
-For an inlaid Shape, the Loop occupies:
-
-```text
-Z = 0 .. shape_base_raise
-```
-
-`shape_loop_raise` remains resolved configuration under `"inlaid"` but does
-not determine the manufactured Loop height.
-Because Loop is additive geometry outside the principal Shape envelope,
-inlaid Loop does not participate in the Base/component partition and does
-not require a corresponding subtraction from Base.
-Its physical printing color is controlled by:
-
-```text
-shape_loop_color
-```
-
-with the default derived from the resolved:
-
-```text
-shape_base_color
-```
-
-Loop physical color is Package policy. Changing only `shape_loop_color` must not invalidate or recompute Structure, Compose, or Extrude geometry.
-Loop participation does not alter the registered interior region or Artwork fitting.
-
-## Implementation boundary
-
-Shape Extrude owns Loop physical dimensionalization and component participation.
-Structure and Compose should not manufacture physical Loop geometry or change registered Shape/Artwork composition merely because Loop participates.
-Shape Extrude should produce a distinct semantic Loop component while leaving its physical printer color unresolved.
-Shape Package owns Loop physical color assignment. It should recognize the Loop as a supported Shape-owned component, apply an explicit `shape_loop_color` when configured, and otherwise inherit the resolved Base color.
-Shape owns its Loop geometry and policy. Implement Shape Loop in the Shape model rather than reusing or extracting the Artwork Loop implementation.
-Artwork Loop should serve as proven behavioral and geometric precedent. The shared `Bounds` primitive may be used for the physical envelope, but `LoopGeometry`, Loop construction, participation, Shape-specific raise, Shape-specific color, component identity, and Stage ownership remain model-owned.
-Do not introduce a shared Loop Feature or generic Loop manufacturing subsystem merely because the Artwork and Shape geometry calculations are initially similar.
-Do not make Shape Loop inherit Artwork's attachment-color policy. Artwork requires attachment-layer color inheritance because standalone Artwork has dynamic Artifact-color layers. Shape has an established semantic Base color and therefore follows Shape-owned component color policy.
-
-## TDD seams
-
-Establish Loop through two major behavioral boundaries without decomposing the work into single-change cycles.
-
-### Extrude seam
-
-Use one high-value test or small coherent test group to establish that a participating Loop:
-
-- is positioned relative to the dimensionalized Shape envelope;
-- preserves the proven inner-opening tangency rule;
-- receives the configured/default physical raise; and
-- becomes a distinct Shape-owned physical component.
-
-The test should establish the manufacturing boundary rather than separately inventorying every internal helper or cardinal branch.
-
-### Package seam
-
-Use a focused Package-level test to establish that:
-
-- Loop is recognized as a Shape-owned component;
-- its default physical color is the resolved Base color;
-- an explicit `shape_loop_color` overrides that inherited color; and
-- color resolution remains Package-only behavior.
-
-These are separate meaningful seams because Extrude owns physical component production while Package owns physical printer color.
-Existing Artwork Loop tests should be used as behavioral evidence and regression protection rather than mechanically duplicated into a full parallel Shape test suite.
-
-## High-level implementation steps
-
-1. Audit the existing Artwork Loop parameters, validation, geometry helper, Extrude integration, Package behavior, and focused tests against the new Shape Loop Feature contract.
-2. Audit current Shape parameter registration, derivation, validation, Stage parameter ownership, Extrude component construction, Package component-color handling, and relevant tests.
-3. Add the Shape Loop configuration parameters and validation defined by the Shape specification.
-4. Add the derived `shape_loop_raise` behavior from the effective `shape_base_raise` while preserving explicit override precedence.
-5. Establish the high-value failing test or small coherent test set at the Shape Extrude manufacturing seam.
-6. Implement the Shape-owned Loop geometry using the proven Artwork Loop geometry calculation as precedent and the shared `Bounds` primitive for the dimensionalized Shape envelope.
-7. Produce a distinct Shape-owned Loop extrusion component, using
-
-   `shape_loop_raise` for its complete height under `"raised"` and
-   `shape_base_raise` for its complete height under `"inlaid"`; do not add
-   inlaid Loop geometry to the shared Base-partition subtraction.
-
-8. Preserve Loop semantic component identity through the Shape extrusion manifest.
-9. Establish the focused Package seam for Loop physical color.
-10. Extend Shape Package to recognize Loop and resolve `shape_loop_color`, defaulting to the resolved Base color when no explicit override exists.
-11. Verify that changing only Loop color affects Package without changing earlier geometry products.
-12. Verify that Loop participation does not alter registered composition, the registered interior region, or Artwork fitting.
-13. Run focused Shape Loop/Extrude/Package tests, relevant Artwork Loop regression tests, and then the appropriate complete quality suite.
-14. Recompare resulting HEAD with the Shape definition and remove this phase when the Feature contract is fully satisfied.
-
-## Completion criteria
-
-Phase 2 is complete when:
-
-- the Shape Loop parameters resolve and validate according to the Shape Feature contract;
-- zero `shape_loop_inner_diameter` produces no Loop;
-- positive `shape_loop_inner_diameter` produces a distinct physical Loop component;
-- Loop position is derived from the complete dimensionalized Shape envelope defined by `shape_size`;
-- the Loop inner opening is externally tangent to the Shape boundary at the selected cardinal position;
-- `shape_loop_width` correctly determines the radial material width surrounding the opening;
-- Loop may extend beyond the normal `shape_size` envelope without changing the meaning of `shape_size`;
-- under `"raised"`, `shape_loop_raise` controls complete Loop height from
-
-  `Z = 0`;
-
-- under `"inlaid"`, Loop spans the complete Shape thickness from `Z = 0`
-
-  through `shape_base_raise`, while `shape_loop_raise` remains resolved
-  configuration without determining manufactured height;
-
-- inlaid Loop remains additive outside the principal Shape envelope and does
-
-  not participate in Base subtraction;
-
-- the default Loop raise derives from the effective `shape_base_raise`, with explicit configuration taking precedence;
-- Loop retains distinct Shape-owned component identity through Extrude and Package;
-- the default Loop color is the resolved Base color;
-- an explicit `shape_loop_color` overrides the Base-color default;
-- physical Loop color is assigned only during Package;
-- changing only `shape_loop_color` does not require recomputing Structure, Compose, or Extrude;
-- Loop participation does not alter the registered interior region or Artwork fitting;
-- important Loop behavior is protected at the Extrude and Package ownership boundaries without unnecessary inventory-style tests;
-- existing Artwork Loop behavior remains correct; and
-- the complete applicable test, type-check, and lint suite is green.
-
-# Phase 3 — Rework CONFIG Around Effective Resolution and Provenance
+# Phase 1 — Rework CONFIG Around Effective Resolution and Provenance
 
 ## Purpose
 
@@ -440,7 +230,7 @@ internals.
 
 ## Completion criteria
 
-Phase 3 is complete when:
+Phase 1 is complete when:
 
 - CONFIG can inspect a selected Realization's effective settings;
 - each reported setting can identify meaningful provenance/ownership according
@@ -466,7 +256,7 @@ Phase 3 is complete when:
 
 **---**
 
-# Phase 4 — Consolidate Remaining CLI Surfaces and Final Acceptance
+# Phase 2 — Consolidate Remaining CLI Surfaces and Final Acceptance
 
 ## Purpose
 
@@ -607,7 +397,7 @@ is not already protected.
 
 ## Completion criteria
 
-Phase 4 is complete when:
+Phase 2 is complete when:
 
 - the public CLI presents a short, coherent manufacturing workflow;
 - secondary and developer capabilities have intentional homes;
