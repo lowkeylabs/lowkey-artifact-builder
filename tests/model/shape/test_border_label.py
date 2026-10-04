@@ -244,6 +244,7 @@ def _configure_extrude_context(
 
     defaults = {
         "shape_hole_diameter": 0.0,
+        "shape_loop_inner_diameter": 0.0,
     }
 
     def resolver(

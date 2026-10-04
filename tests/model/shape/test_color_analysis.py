@@ -43,6 +43,7 @@ class StubResolver:
                 "black",
                 "white",
             ],
+            "shape_loop_inner_diameter": 0.0,
             **values,
         }
         self._system_values = {
@@ -626,3 +627,51 @@ def test_shape_color_analysis_identifies_artwork_color_usage() -> None:
     assert analysis.artwork_used_by == {
         1: ("artwork",),
     }
+
+
+def test_shape_color_analysis_includes_participating_loop_semantic_color() -> None:
+    """
+    A participating Shape Loop contributes its semantic physical color
+    to the color analysis.
+
+    A disabled Loop does not contribute color usage.
+    """
+
+    disabled = analyze_shape_colors(
+        resolver=StubResolver(
+            {
+                "shape_base_color": "white",
+                "shape_outer_ridge_width": 0.0,
+                "shape_artwork_fill_color": "none",
+                "shape_loop_inner_diameter": 0.0,
+                "shape_loop_color": "black",
+            }
+        ),
+    )
+
+    assert len(disabled.colors) == 1
+    assert disabled.colors[0].color == "white"
+    assert disabled.colors[0].used_by == ("base",)
+
+    participating = analyze_shape_colors(
+        resolver=StubResolver(
+            {
+                "shape_base_color": "white",
+                "shape_outer_ridge_width": 0.0,
+                "shape_artwork_fill_color": "none",
+                "shape_loop_inner_diameter": 4.0,
+                "shape_loop_color": "black",
+            }
+        ),
+    )
+
+    assert len(participating.colors) == 2
+
+    base_color = participating.colors[0]
+    loop_color = participating.colors[1]
+
+    assert base_color.color == "white"
+    assert base_color.used_by == ("base",)
+
+    assert loop_color.color == "black"
+    assert loop_color.used_by == ("loop",)

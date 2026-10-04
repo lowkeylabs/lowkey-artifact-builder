@@ -29,6 +29,10 @@ from lowkey_artifact_builder.model.models.shape.hole import (
     HoleGeometry,
     create_hole_geometry,
 )
+from lowkey_artifact_builder.model.models.shape.loop import (
+    LoopGeometry,
+    create_loop_geometry,
+)
 from lowkey_artifact_builder.tools.openscad import (
     render_stl_source,
 )
@@ -44,6 +48,9 @@ INNER_RIDGE_INNER_BOUNDARY_ID = "inner-ridge-inner-boundary"
 
 BASE_COMPONENT_NAME = "base"
 BASE_COMPONENT_PATH = "base.stl"
+
+LOOP_COMPONENT_NAME = "loop"
+LOOP_COMPONENT_PATH = "loop.stl"
 
 RIDGE_COMPONENT_NAME = "ridge"
 RIDGE_COMPONENT_PATH = "ridge.stl"
@@ -234,6 +241,31 @@ def execute(
             ),
             position=context.resolver(
                 "shape_hole_position",
+            ),
+        )
+
+    shape_loop_inner_diameter = context.resolver(
+        "shape_loop_inner_diameter",
+    )
+
+    loop: LoopGeometry | None = None
+
+    if shape_loop_inner_diameter > 0.0:
+        half_size = shape_size / 2.0
+
+        loop = create_loop_geometry(
+            envelope_bounds=Bounds(
+                min_x=-half_size,
+                min_y=-half_size,
+                max_x=half_size,
+                max_y=half_size,
+            ),
+            inner_diameter=shape_loop_inner_diameter,
+            width=context.resolver(
+                "shape_loop_width",
+            ),
+            position=context.resolver(
+                "shape_loop_position",
             ),
         )
 
@@ -463,6 +495,17 @@ def execute(
                 f"Unsupported registered Shape ridge geometry: {type(ridge).__name__}."
             )
 
+        if loop is not None:
+            components += _render_loop_component(
+                loop,
+                manifest.parent,
+                shape_base_raise=shape_base_raise,
+                shape_raise_style=shape_raise_style,
+                shape_loop_raise=context.resolver(
+                    "shape_loop_raise",
+                ),
+            )
+
         if inner_ridge is not None:
             components += _render_inner_ridge_component(
                 inner_ridge,
@@ -565,6 +608,69 @@ def execute(
 # =========================================================
 # Physical component production
 # =========================================================
+
+
+def _render_loop_component(
+    loop: LoopGeometry,
+    output_directory: Path,
+    *,
+    shape_base_raise: float,
+    shape_loop_raise: float,
+    shape_raise_style: str = "raised",
+) -> tuple[
+    tuple[str, str],
+    ...,
+]:
+    """
+    Render the independently printable Shape Loop component.
+
+    Loop is additive physical geometry beginning at Z=0.
+
+    Raised dimensionalization uses shape_loop_raise as the complete Loop
+    height.
+
+    Inlaid dimensionalization spans the complete Shape base thickness.
+    Unlike inlaid principal-surface components, Loop does not partition or
+    subtract material from the Shape Base.
+    """
+
+    if shape_raise_style == "raised":
+        component_height = shape_loop_raise
+
+    elif shape_raise_style == "inlaid":
+        component_height = shape_base_raise
+
+    else:
+        raise ValueError(
+            f"Unsupported Shape raise style: {shape_raise_style!r}",
+        )
+
+    if component_height <= 0.0:
+        return ()
+
+    output_path = output_directory / LOOP_COMPONENT_PATH
+
+    source = _build_loop_component_scad(
+        loop,
+        component_height=component_height,
+    )
+
+    render_stl_source(
+        source,
+        output_path,
+    )
+
+    _require_component(
+        output_path,
+        component_name=LOOP_COMPONENT_NAME,
+    )
+
+    return (
+        (
+            LOOP_COMPONENT_NAME,
+            LOOP_COMPONENT_PATH,
+        ),
+    )
 
 
 def _render_border_label_component(
@@ -2246,6 +2352,37 @@ def _build_scad(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         hole=None,
+    )
+
+
+def _build_loop_component_scad(
+    loop: LoopGeometry,
+    *,
+    component_height: float,
+) -> str:
+    """
+    Build the independently printable Shape Loop component.
+
+    Shape Loop is an annulus whose X/Y position has already been resolved
+    relative to the complete physical Shape envelope.
+    """
+
+    return (
+        f"component_height = {component_height:g};\n"
+        f"center_x = {loop.center_x:g};\n"
+        f"center_y = {loop.center_y:g};\n"
+        f"outer_radius = {loop.outer_radius:g};\n"
+        f"inner_radius = {loop.inner_radius:g};\n"
+        "\n"
+        "linear_extrude(\n"
+        "    height = component_height,\n"
+        "    center = false\n"
+        ")\n"
+        "    translate([center_x, center_y])\n"
+        "        difference() {\n"
+        "            circle(r = outer_radius, $fn = 256);\n"
+        "            circle(r = inner_radius, $fn = 256);\n"
+        "        }\n"
     )
 
 

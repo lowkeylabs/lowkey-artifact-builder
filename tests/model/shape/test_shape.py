@@ -419,6 +419,7 @@ def test_shape_extrude_does_not_consume_physical_color_parameters() -> None:
     assert "shape_outer_ridge_color" not in extrude_stage.parameters
     assert "shape_inner_ridge_color" not in extrude_stage.parameters
     assert "shape_artwork_fill_color" not in extrude_stage.parameters
+    assert "shape_loop_color" not in extrude_stage.parameters
 
 
 def test_shape_package_consumes_only_packaging_parameters() -> None:
@@ -427,8 +428,8 @@ def test_shape_package_consumes_only_packaging_parameters() -> None:
 
     printer_colors resolves incorporated Artwork Artifact-color identities.
     Shape-owned base, outer-ridge, inner-ridge, Top and Bottom Border Label,
-    and Artwork-fill colors are physical packaging policy rather than geometry
-    or component-participation policy.
+    Artwork-fill, and Loop colors are physical packaging policy rather than
+    geometry or component-participation policy.
     """
 
     package_stage = _package_stage()
@@ -441,6 +442,7 @@ def test_shape_package_consumes_only_packaging_parameters() -> None:
         "shape_top_border_label_color",
         "shape_bottom_border_label_color",
         "shape_artwork_fill_color",
+        "shape_loop_color",
     )
 
 

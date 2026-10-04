@@ -182,3 +182,114 @@ def test_shape_ridge_color_derivation_does_not_validate_base_color(
     )
 
     assert resolver("shape_outer_ridge_color") == ""
+
+
+# =========================================================
+# Loop derivation
+# =========================================================
+
+
+def test_shape_loop_raise_defaults_from_effective_base_raise(
+    tmp_path: Path,
+) -> None:
+    """
+    Loop raise follows the effective Shape base raise by default.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "parameters": {
+                "shape_base_raise": 3.25,
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert resolver("shape_loop_raise") == pytest.approx(3.25)
+
+
+def test_shape_explicit_loop_raise_overrides_derivation(
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit Loop raise takes precedence over its derived default.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "parameters": {
+                "shape_base_raise": 3.25,
+                "shape_loop_raise": 1.5,
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert resolver("shape_loop_raise") == pytest.approx(1.5)
+
+
+def test_shape_loop_color_defaults_from_effective_base_color(
+    tmp_path: Path,
+) -> None:
+    """
+    Loop inherits the effective Shape base color by default.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "parameters": {
+                "shape_base_color": "red",
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert resolver("shape_loop_color") == "red"
+
+
+def test_shape_explicit_loop_color_overrides_derivation(
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit Loop color resolves independently of the Base color.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "parameters": {
+                "shape_base_color": "white",
+                "shape_loop_color": "black",
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert resolver("shape_loop_color") == "black"

@@ -229,6 +229,12 @@ def _configure_extrude_context(
     """
     Configure the Shape Extrude boundary for Hole feature tests.
 
+    Parameters material to Hole behavior are supplied explicitly.
+
+    Unrelated optional Shape Extrude features use their ordinary
+    nonparticipating defaults so adding such a feature does not require
+    Hole tests to enumerate its parameter contract.
+
     The resolver remains strict so unexpected parameter resolution fails
     rather than silently manufacturing test defaults.
     """
@@ -242,9 +248,26 @@ def _configure_extrude_context(
         "manifest": output_manifest,
     }
 
+    nonparticipating_defaults = {
+        "shape_loop_inner_diameter": 0.0,
+    }
+
+    def resolver(
+        name: str,
+    ) -> object:
+        if name in values:
+            return values[name]
+
+        if name in nonparticipating_defaults:
+            return nonparticipating_defaults[name]
+
+        raise KeyError(
+            name,
+        )
+
     context.input.side_effect = inputs.__getitem__
     context.output.side_effect = outputs.__getitem__
-    context.resolver.side_effect = values.__getitem__
+    context.resolver.side_effect = resolver
 
 
 @pytest.mark.slow

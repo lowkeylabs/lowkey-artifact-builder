@@ -416,6 +416,10 @@ def _make_extrude_resolver(
     shape_hole_diameter: float = 0.0,
     shape_hole_position: int = 0,
     shape_hole_edge_distance: float = 0.4,
+    shape_loop_inner_diameter: float = 0.0,
+    shape_loop_width: float = 1.0,
+    shape_loop_position: int = 0,
+    shape_loop_raise: float = 2.0,
 ) -> Mock:
     """
     Create a resolver satisfying the Shape extrude-stage parameter contract.
@@ -432,6 +436,10 @@ def _make_extrude_resolver(
             "shape_hole_diameter": shape_hole_diameter,
             "shape_hole_position": shape_hole_position,
             "shape_hole_edge_distance": shape_hole_edge_distance,
+            "shape_loop_inner_diameter": shape_loop_inner_diameter,
+            "shape_loop_width": shape_loop_width,
+            "shape_loop_position": shape_loop_position,
+            "shape_loop_raise": shape_loop_raise,
         }.__getitem__,
     )
 
@@ -4533,3 +4541,113 @@ def test_render_artwork_components_preserves_artifact_color_without_printer_assi
             },
         ),
     )
+
+
+# =========================================================
+# Loop physical component
+# =========================================================
+
+
+@pytest.mark.parametrize(
+    ("raise_style", "loop_raise", "expected_height"),
+    [
+        ("raised", 1.25, 1.25),
+        ("inlaid", 1.25, 2.0),
+    ],
+)
+def test_shape_loop_is_distinct_tangent_additive_component(
+    tmp_path: Path,
+    raise_style: str,
+    loop_raise: float,
+    expected_height: float,
+) -> None:
+    """
+    Participating Loop is independently printable additive Shape geometry.
+
+    The Loop inner opening is tangent to the complete 100 mm Shape envelope.
+    With a 4 mm opening and 1 mm radial width at the top position:
+
+        Shape top boundary = +50 mm
+        Loop center Y      = +52 mm
+        Loop outer edge    = +55 mm
+
+    Raised dimensionalization uses shape_loop_raise from Z=0.
+
+    Inlaid dimensionalization instead spans the complete Shape thickness and
+    remains additive rather than participating in Base subtraction.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    manifest = tmp_path / "products.json"
+
+    _write_composition(
+        composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
+    )
+
+    resolver = _make_extrude_resolver(
+        shape_size=100.0,
+        shape_base_raise=2.0,
+        shape_raise_style=raise_style,
+        shape_loop_inner_diameter=4.0,
+        shape_loop_width=1.0,
+        shape_loop_position=0,
+        shape_loop_raise=loop_raise,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
+
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    loop_component = next(
+        component for component in data["components"] if component["name"] == "loop"
+    )
+
+    assert set(loop_component) == {
+        "name",
+        "path",
+    }
+
+    loop_path = manifest.parent / loop_component["path"]
+
+    bounds = _stl_bounds(
+        loop_path,
+    )
+
+    assert bounds[0] == pytest.approx(-3.0, abs=0.05)
+    assert bounds[1] == pytest.approx(3.0, abs=0.05)
+    assert bounds[2] == pytest.approx(49.0, abs=0.05)
+    assert bounds[3] == pytest.approx(55.0, abs=0.05)
+    assert bounds[4] == pytest.approx(0.0)
+    assert bounds[5] == pytest.approx(expected_height)
+
+    base = manifest.parent / "base.stl"
+    base_bounds = _stl_bounds(
+        base,
+    )
+
+    assert base_bounds[0] == pytest.approx(-50.0)
+    assert base_bounds[1] == pytest.approx(50.0)
+    assert base_bounds[2] == pytest.approx(-50.0)
+    assert base_bounds[3] == pytest.approx(50.0)

@@ -143,6 +143,55 @@ def derive_shape_bottom_border_label_color(
     )
 
 
+def derive_shape_loop_raise(
+    resolver: Resolver,
+) -> float:
+    """
+    Derive the Loop raise from the resolved base raise.
+
+    By default, the Loop uses the same physical height as the Shape base.
+
+    Because the base raise is resolved through the artifact Resolver,
+    workspace or artifact overrides of shape_base_raise are reflected
+    in the derived Loop raise.
+
+    An explicitly configured shape_loop_raise value overrides this
+    derivation through normal configuration resolution.
+
+    Shape configuration validity is enforced separately by the model's
+    configuration validators.
+    """
+
+    return resolver(
+        "shape_base_raise",
+    )
+
+
+def derive_shape_loop_color(
+    resolver: Resolver,
+) -> str:
+    """
+    Derive the Loop color from the resolved base color.
+
+    By default, the Loop uses the same semantic printing color as the
+    Shape base.
+
+    Because the base color is resolved through the artifact Resolver,
+    workspace or artifact overrides of shape_base_color are reflected
+    in the derived Loop color.
+
+    An explicitly configured shape_loop_color value overrides this
+    derivation through normal configuration resolution.
+
+    Shape configuration validity is enforced separately by the model's
+    configuration validators.
+    """
+
+    return resolver(
+        "shape_base_color",
+    )
+
+
 # =========================================================
 # Registry
 # =========================================================
@@ -154,6 +203,8 @@ DERIVED = {
     "shape_top_border_label_color": derive_shape_top_border_label_color,
     "shape_bottom_border_label_color": derive_shape_bottom_border_label_color,
     "shape_artwork_fill_color": derive_shape_artwork_fill_color,
+    "shape_loop_raise": derive_shape_loop_raise,
+    "shape_loop_color": derive_shape_loop_color,
 }
 
 
@@ -167,6 +218,8 @@ __all__ = [
     "derive_shape_artwork_fill_color",
     "derive_shape_bottom_border_label_color",
     "derive_shape_inner_ridge_color",
+    "derive_shape_loop_color",
+    "derive_shape_loop_raise",
     "derive_shape_outer_ridge_color",
     "derive_shape_top_border_label_color",
 ]

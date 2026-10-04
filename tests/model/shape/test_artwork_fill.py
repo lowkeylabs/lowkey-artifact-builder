@@ -1396,10 +1396,11 @@ def _physical_fill_extrude_context(
     """
     Configure Shape extrusion for Artwork-fill dimensionalization tests.
 
-    Parameters material to Artwork-fill behavior are explicit. Unrelated
-    Shape Extrude features use their ordinary nonparticipating defaults so
-    adding a new feature does not require Artwork-fill tests to enumerate
-    that feature's parameter contract.
+    Parameters material to Artwork-fill behavior are explicit.
+
+    Unrelated optional Shape Extrude features resolve to their ordinary
+    nonparticipating defaults so adding another optional Feature does not
+    require Artwork-fill tests to enumerate that Feature's parameter contract.
     """
 
     context = Mock(
@@ -1425,8 +1426,9 @@ def _physical_fill_extrude_context(
         "shape_artwork_fill_raise": artwork_fill_raise,
     }
 
-    defaults = {
+    nonparticipating_defaults = {
         "shape_hole_diameter": 0.0,
+        "shape_loop_inner_diameter": 0.0,
     }
 
     def resolver(
@@ -1435,8 +1437,8 @@ def _physical_fill_extrude_context(
         if name in values:
             return values[name]
 
-        if name in defaults:
-            return defaults[name]
+        if name in nonparticipating_defaults:
+            return nonparticipating_defaults[name]
 
         raise KeyError(
             name,

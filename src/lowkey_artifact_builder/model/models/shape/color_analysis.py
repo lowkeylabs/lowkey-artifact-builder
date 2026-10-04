@@ -175,6 +175,37 @@ def analyze_shape_colors(
             "outer-ridge",
         )
 
+    loop_inner_diameter = resolver(
+        "shape_loop_inner_diameter",
+    )
+
+    if not isinstance(
+        loop_inner_diameter,
+        int | float,
+    ) or isinstance(
+        loop_inner_diameter,
+        bool,
+    ):
+        raise TypeError("shape_loop_inner_diameter must resolve to a number.")
+
+    if loop_inner_diameter > 0.0:
+        loop_color = resolver(
+            "shape_loop_color",
+        )
+
+        if not isinstance(
+            loop_color,
+            str,
+        ):
+            raise TypeError("shape_loop_color must resolve to a color name.")
+
+        usage.setdefault(
+            loop_color,
+            [],
+        ).append(
+            "loop",
+        )
+
     artwork_fill_color = resolver(
         "shape_artwork_fill_color",
     )

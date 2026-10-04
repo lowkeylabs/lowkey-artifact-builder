@@ -132,6 +132,7 @@ def _make_extrude_resolver(
 
     defaults = {
         "shape_hole_diameter": 0.0,
+        "shape_loop_inner_diameter": 0.0,
     }
 
     def resolver(

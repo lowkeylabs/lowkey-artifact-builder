@@ -474,6 +474,103 @@ def _validate_hole_edge_distance(
         )
 
 
+def _validate_loop_inner_diameter(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require Loop inner diameter to be nonnegative.
+
+    Zero disables Loop participation.
+    """
+
+    diameter = resolver(
+        "shape_loop_inner_diameter",
+    )
+
+    if isinstance(
+        diameter,
+        bool,
+    ) or not isinstance(
+        diameter,
+        int | float,
+    ):
+        raise ConfigError("shape_loop_inner_diameter must be numeric.")
+
+    if diameter < 0:
+        raise ConfigError("shape_loop_inner_diameter must be greater than or equal to zero.")
+
+
+def _validate_loop_width(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require a participating Loop to have positive radial width.
+    """
+
+    diameter = resolver(
+        "shape_loop_inner_diameter",
+    )
+
+    if diameter == 0:
+        return
+
+    width = resolver(
+        "shape_loop_width",
+    )
+
+    if isinstance(
+        width,
+        bool,
+    ) or not isinstance(
+        width,
+        int | float,
+    ):
+        raise ConfigError("shape_loop_width must be numeric.")
+
+    if width <= 0:
+        raise ConfigError("shape_loop_width must be greater than zero when the Loop participates.")
+
+
+def _validate_loop_position(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require a participating Loop to use a supported cardinal position.
+    """
+
+    diameter = resolver(
+        "shape_loop_inner_diameter",
+    )
+
+    if diameter == 0:
+        return
+
+    position = resolver(
+        "shape_loop_position",
+    )
+
+    if (
+        isinstance(
+            position,
+            bool,
+        )
+        or not isinstance(
+            position,
+            int,
+        )
+        or position
+        not in (
+            0,
+            90,
+            180,
+            -90,
+        )
+    ):
+        raise ConfigError(
+            "shape_loop_position must be one of 0, 90, 180, or -90 when the Loop participates."
+        )
+
+
 def _validate_raise_style(
     resolver: ConfigurationResolver,
 ) -> None:
@@ -587,6 +684,24 @@ VALIDATORS = (
             "shape_hole_edge_distance",
         ),
         validate=_validate_hole_edge_distance,
+    ),
+    ConfigurationValidator(
+        parameters=("shape_loop_inner_diameter",),
+        validate=_validate_loop_inner_diameter,
+    ),
+    ConfigurationValidator(
+        parameters=(
+            "shape_loop_inner_diameter",
+            "shape_loop_width",
+        ),
+        validate=_validate_loop_width,
+    ),
+    ConfigurationValidator(
+        parameters=(
+            "shape_loop_inner_diameter",
+            "shape_loop_position",
+        ),
+        validate=_validate_loop_position,
     ),
 )
 

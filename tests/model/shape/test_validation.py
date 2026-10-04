@@ -1204,3 +1204,118 @@ def test_shape_rejects_unsupported_raise_style(
                 "shape_raise_style": "embedded",
             },
         )
+
+
+# =========================================================
+# Shape Loop validation
+# =========================================================
+
+
+@pytest.mark.parametrize(
+    "diameter",
+    (
+        0.0,
+        4.0,
+    ),
+)
+def test_shape_loop_inner_diameter_may_disable_or_enable_loop(
+    shape_resolver: Resolver,
+    diameter: float,
+) -> None:
+    """
+    Zero Loop inner diameter disables participation; positive enables it.
+    """
+
+    _validate_shape(
+        shape_resolver,
+        {
+            "shape_loop_inner_diameter": diameter,
+        },
+    )
+
+
+def test_shape_loop_inner_diameter_cannot_be_negative(
+    shape_resolver: Resolver,
+) -> None:
+    """
+    Negative Loop inner diameter is invalid.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_loop_inner_diameter",
+    ):
+        _validate_shape(
+            shape_resolver,
+            {
+                "shape_loop_inner_diameter": -0.1,
+            },
+        )
+
+
+def test_shape_loop_requires_positive_width_when_participating(
+    shape_resolver: Resolver,
+) -> None:
+    """
+    A participating Loop requires positive radial material width.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_loop_width",
+    ):
+        _validate_shape(
+            shape_resolver,
+            {
+                "shape_loop_inner_diameter": 4.0,
+                "shape_loop_width": 0.0,
+            },
+        )
+
+
+@pytest.mark.parametrize(
+    "position",
+    (
+        0,
+        90,
+        180,
+        -90,
+    ),
+)
+def test_shape_loop_accepts_cardinal_positions_when_participating(
+    shape_resolver: Resolver,
+    position: int,
+) -> None:
+    """
+    Participating Loop uses the Shape cardinal-position convention.
+    """
+
+    _validate_shape(
+        shape_resolver,
+        {
+            "shape_loop_inner_diameter": 4.0,
+            "shape_loop_width": 1.0,
+            "shape_loop_position": position,
+        },
+    )
+
+
+def test_shape_loop_rejects_noncardinal_position_when_participating(
+    shape_resolver: Resolver,
+) -> None:
+    """
+    A participating Loop requires one of the defined cardinal positions.
+    """
+
+    with pytest.raises(
+        ConfigError,
+        match="shape_loop_position",
+    ):
+        _validate_shape(
+            shape_resolver,
+            {
+                "shape_loop_inner_diameter": 4.0,
+                "shape_loop_width": 1.0,
+                "shape_loop_position": 45,
+            },
+        )

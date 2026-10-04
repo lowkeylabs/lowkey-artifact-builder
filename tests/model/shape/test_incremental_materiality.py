@@ -177,6 +177,11 @@ def _shape_plan(
             "white",
             "red",
         ),
+        (
+            "shape_loop_color",
+            "white",
+            "red",
+        ),
     ],
 )
 def test_shape_physical_color_change_invalidates_only_package(

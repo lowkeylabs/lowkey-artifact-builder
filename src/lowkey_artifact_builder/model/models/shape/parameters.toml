@@ -408,3 +408,74 @@ shape_hole_position = 0
 #
 
 shape_hole_edge_distance = 1.0
+
+
+# =========================================================
+# Loop
+# =========================================================
+
+#
+# Physical inner diameter of the optional additive Loop,
+# in millimeters.
+#
+# Zero disables the Loop. Positive diameter enables the Loop.
+#
+
+shape_loop_inner_diameter = 0.0
+
+
+#
+# Radial material width of the optional Loop, in millimeters.
+#
+# A participating Loop requires positive width.
+#
+# This value has no geometric effect while the Loop is disabled.
+#
+
+shape_loop_width = 1.0
+
+
+#
+# Cardinal position of the Loop relative to the complete
+# dimensionalized Shape envelope, in degrees.
+#
+# Supported values:
+#
+#     0      top
+#     90     right
+#     180    bottom
+#     -90    left
+#
+# This value has no geometric effect while the Loop is disabled.
+#
+
+shape_loop_position = 0
+
+
+#
+# Physical height of the Loop, in millimeters.
+#
+# By default, Loop raise follows the effective Shape base raise.
+#
+# Under raised dimensionalization, the Loop extends from Z=0
+# through this height.
+#
+# Under inlaid dimensionalization, the Loop instead spans the
+# complete Shape base thickness while remaining additive geometry.
+#
+
+## shape_loop_raise = 2.0
+
+
+#
+# Optional physical printing-color override for the Loop.
+#
+# When not explicitly configured, the Loop inherits the resolved
+# physical printing color of the Shape base.
+#
+# This parameter affects physical color assignment during
+# packaging only. It does not determine Loop participation
+# or geometry.
+#
+
+## shape_loop_color = "white"

@@ -89,7 +89,7 @@ def execute(
     Execute the Shape package stage.
 
     Shape-owned physical colors are resolved here. Base resolves
-    shape_base_color. Outer Ridge, Inner Ridge, and Artwork Fill inherit the
+    shape_base_color. Outer Ridge, Inner Ridge, Loop, and Artwork Fill inherit the
     resolved base color unless their optional Package-time overrides are
     explicitly configured.
 
@@ -215,9 +215,9 @@ def _resolve_shape_component_colors(
     Resolve physical printer colors for Shape-owned components.
 
     The structural base establishes the inherited Shape color. Outer Ridge,
-    Inner Ridge, Border Labels, and Artwork Fill inherit that color unless an
-    explicit Package-time override is configured. Physical color policy does
-    not determine participation.
+    Inner Ridge, Border Labels, Artwork Fill, and Loop inherit that color
+    unless an explicit Package-time override is configured. Physical color
+    policy does not determine participation.
     """
 
     component_names = {component.name for component in components}
@@ -232,6 +232,7 @@ def _resolve_shape_component_colors(
         "top-border-label",
         "bottom-border-label",
         "artwork-fill",
+        "loop",
     }
 
     unsupported_names = component_names - supported_names
@@ -350,6 +351,24 @@ def _resolve_shape_component_colors(
             artwork_fill_color = base_color
 
         colors["artwork-fill"] = artwork_fill_color
+
+    if "loop" in component_names:
+        if context.resolver.has(
+            "shape_loop_color",
+        ):
+            loop_color_name = context.resolver(
+                "shape_loop_color",
+            )
+
+            loop_color = resolve_palette(
+                (loop_color_name,),
+                context.resolver.colors,
+            )[0]
+
+        else:
+            loop_color = base_color
+
+        colors["loop"] = loop_color
 
     return colors
 

@@ -158,6 +158,7 @@ MODEL = ModelSpec(
                 "shape_top_border_label_color",
                 "shape_bottom_border_label_color",
                 "shape_artwork_fill_color",
+                "shape_loop_color",
             ),
             products=(
                 ProductSpec(
