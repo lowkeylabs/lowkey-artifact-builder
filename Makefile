@@ -9,6 +9,13 @@ test-fast:
 check-setup:
 	uv run scripts/check_dependencies.py
 
+# this upgrades 24.04 to recognize inkscape 1.4.4.
+# 24.04 defaults to inkscape 1.2.2
+inkscape-upgrade:
+	sudo add-apt-repository ppa:inkscape.dev/stable
+	sudo apt update
+	apt-cache policy inkscape
+
 setup:
 	sudo apt install openscad
 	sudo apt install inkscape
