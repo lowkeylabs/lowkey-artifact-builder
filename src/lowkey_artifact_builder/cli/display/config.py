@@ -396,44 +396,9 @@ def display_realization_configuration(
     console.print(table)
 
 
-# =========================================================
-# Available Variants
-# =========================================================
-
-
-def display_available_variants(
-    artifact_id: str,
-    variants: Sequence[str],
-) -> None:
-    """
-    Display the qualified Variants available to an Artifact.
-    """
-
-    console.print(f"[bold]{artifact_id} Available Variants[/bold]")
-    console.print()
-
-    table = create_table()
-
-    table.add_column(
-        "Variant",
-    )
-
-    for variant in variants:
-        table.add_row(
-            variant,
-        )
-
-    console.print(table)
-
-    console.print()
-    console.print(f"Build one with [bold]artifact build {artifact_id} --variant <variant>[/bold]")
-    console.print(f"Build all with [bold]artifact build {artifact_id} --all-variants[/bold]")
-
-
 __all__ = [
     "display_artifact_config",
     "display_artifact_definition",
-    "display_available_variants",
     "display_realization_configuration",
     "display_realization_definition",
 ]

@@ -28,7 +28,6 @@ from lowkey_artifact_builder.cli.display.common import (
 from lowkey_artifact_builder.cli.display.config import (
     display_artifact_config,
     display_artifact_definition,
-    display_available_variants,
     display_realization_configuration,
     display_realization_definition,
 )
@@ -41,7 +40,6 @@ __all__ = [
     "create_table",
     "display_artifact_config",
     "display_artifact_definition",
-    "display_available_variants",
     "display_build_plan",
     "display_color_analysis",
     "display_create_status",
