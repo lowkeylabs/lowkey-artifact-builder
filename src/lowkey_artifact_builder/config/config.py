@@ -368,7 +368,7 @@ class Resolver:
         Resolve all known values into a dictionary.
 
         This is primarily intended for configuration inspection and
-        command-line --dump output.
+        diagnostic consumers requiring the complete resolved value set.
         """
 
         return {name: self.resolve(name) for name in self.names()}

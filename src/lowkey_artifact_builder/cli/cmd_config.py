@@ -29,8 +29,6 @@ from lowkey_artifact_builder.cli.bindings import (
 )
 from lowkey_artifact_builder.cli.display import (
     display_artifact_definition,
-    display_model_workplans,
-    display_models,
     display_realization_configuration,
 )
 from lowkey_artifact_builder.config import (
@@ -43,9 +41,6 @@ from lowkey_artifact_builder.config import (
     list_artifacts,
     load_artifact_config,
 )
-from lowkey_artifact_builder.model import (
-    build_model_registry,
-)
 
 # =========================================================
 # CLI
@@ -56,21 +51,6 @@ from lowkey_artifact_builder.model import (
 @click.argument(
     "artifact_ids",
     nargs=-1,
-)
-@click.option(
-    "--list-models",
-    is_flag=True,
-    help="List available artifact models.",
-)
-@click.option(
-    "--dump",
-    is_flag=True,
-    help="Display complete configuration information.",
-)
-@click.option(
-    "--workplan",
-    is_flag=True,
-    help="Display model stage workplans.",
 )
 @click.option(
     "--realization",
@@ -90,9 +70,6 @@ from lowkey_artifact_builder.model import (
 )
 def cli(
     artifact_ids: tuple[str, ...],
-    list_models: bool,
-    dump: bool,
-    workplan: bool,
     realization: str | None,
     create: bool,
     parameters: tuple[str, ...],
@@ -106,46 +83,8 @@ def cli(
     """
 
     # =====================================================
-    # Model inspection
-    # =====================================================
-
-    if list_models:
-        if artifact_ids:
-            raise click.UsageError("--list-models cannot be used with artifact IDs.")
-
-        if realization is not None:
-            raise click.UsageError("--realization cannot be used with --list-models.")
-
-        if create:
-            raise click.UsageError("--create cannot be used with --list-models.")
-
-        if parameters:
-            raise click.UsageError("--parameters cannot be used with --list-models.")
-
-        if dump and workplan:
-            raise click.UsageError("--dump and --workplan cannot be used together.")
-
-        registry = build_model_registry()
-        models = registry.all_models()
-
-        if workplan:
-            display_model_workplans(
-                models,
-            )
-            return
-
-        display_models(
-            models,
-            dump=dump,
-        )
-        return
-
-    # =====================================================
     # Artifact option validation
     # =====================================================
-
-    if workplan:
-        raise click.UsageError("--workplan currently requires --list-models.")
 
     if create and realization is None:
         raise click.UsageError("--create requires --realization.")

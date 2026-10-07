@@ -60,8 +60,11 @@ def test_cli_config_help() -> None:
     assert "Usage:" in result.output
 
 
-def test_cli_config_help_lists_model_option() -> None:
-    """The config command exposes model listing."""
+def test_cli_config_help_exposes_artifact_configuration_options() -> None:
+    """
+    CONFIG exposes Artifact and Realization configuration rather than
+    Model-registry inspection.
+    """
 
     runner = CliRunner()
 
@@ -71,69 +74,14 @@ def test_cli_config_help_lists_model_option() -> None:
     )
 
     assert result.exit_code == 0
-    assert "--list-models" in result.output
 
+    assert "--realization" in result.output
+    assert "--create" in result.output
+    assert "--parameters" in result.output
 
-# =========================================================
-# Model listing
-# =========================================================
-
-
-def test_cli_config_list_models() -> None:
-    """Config lists the registered artifact models."""
-
-    runner = CliRunner()
-
-    result = runner.invoke(
-        cli,
-        [
-            "config",
-            "--list-models",
-        ],
-    )
-
-    assert result.exit_code == 0
-
-    assert "Available Models" in result.output
-
-
-def test_cli_config_list_models_dump() -> None:
-    """Config can dump complete registered model definitions."""
-
-    runner = CliRunner()
-
-    result = runner.invoke(
-        cli,
-        [
-            "config",
-            "--list-models",
-            "--dump",
-        ],
-    )
-
-    assert result.exit_code == 0
-
-    assert "Features" in result.output
-    assert "Stages" in result.output
-
-
-def test_cli_config_list_models_rejects_artifact_ids() -> None:
-    """Model listing cannot be combined with artifact IDs."""
-
-    runner = CliRunner()
-
-    result = runner.invoke(
-        cli,
-        [
-            "config",
-            "example",
-            "--list-models",
-        ],
-    )
-
-    assert result.exit_code != 0
-
-    assert "--list-models cannot be used with artifact IDs." in result.output
+    assert "--list-models" not in result.output
+    assert "--dump" not in result.output
+    assert "--workplan" not in result.output
 
 
 def test_cli_uses_default_logging_without_verbose(
