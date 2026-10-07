@@ -1,11 +1,9 @@
 # Command-Line Interface
 
 This document describes the `artifact` command-line interface from the
-
 operator's perspective.
 
 System terminology, relationships, and invariants are defined by
-
 `ARCHITECTURE.md`. This document does not redefine them.
 
 ## Operator goal
@@ -18,247 +16,180 @@ The primary CLI workflow is simple:
 The normal value chain is:
 
 ``` text
-
 customer image
-
-      │
-
-      ▼
-
-identify / create Artifact
-
-      │
-
-      ▼
-
-select Realization
-
-      │
-
-      ▼
-
-verify readiness
-
-      │
-
-      ▼
-
-build if necessary
-
-      │
-
-      ▼
-
-3MF
-
-      │
-
-      ▼
-
+      │
+      ▼
+artifact create
+      │
+      ▼
+managed Artifact
+      │
+      ▼
+artifact build
+      │
+      ▼
+correct printable 3MF
+      │
+      ▼
 slicer / share / upload / print
 ```
 
-Inspection and configuration commands support this workflow. They should
-
-not create unnecessary steps when a suitable current 3MF already exists.
+`create` and `build` define the ordinary manufacturing path. `show`,
+`config`, `colors`, and `clean` support that path when inspection,
+customization, color selection, or maintenance is needed. They should
+not become mandatory ceremony before routine manufacturing.
 
 ## Working directory
 
-The CLI operates on the current working directory.
+The CLI operates on the current working directory as the project root.
 
-A working directory may contain:
+A project may contain:
 
--   incoming source images;
-
--   `originals/`, containing preserved Artifact sources; and
-
--   `artifacts/`, containing managed Artifact state and generated
+-   root-level PNG files awaiting intake;
+-   `originals/`, containing preserved Artifact registrations and source
+    artwork; and
+-   `artifacts/`, containing materialized Artifact state and generated
     Products.
 
 The operator should not need to create internal directories before using
+the CLI. Missing collection directories normally represent empty
+collections rather than errors.
 
-the CLI. Missing storage directories are normally equivalent to empty
-
-collections, not exceptional conditions.
+Artifact registration and Artifact materialization are distinct. An
+Artifact may be registered under `originals/` before
+`artifacts/<artifact_id>/artifact.toml` exists.
 
 ## Presentation
 
-The CLI should present information for operator decisions rather than
-expose
+The CLI presents information needed for operator decisions rather than
+exposing implementation mechanics.
 
-internal implementation activity.
+Where output is naturally structured as rows and columns, Rich tables
+are appropriate for information such as:
 
-Where output is naturally structured as rows and columns, prefer the
-Python
-
-`rich` package for terminal presentation.
-
-Use Rich tables for content such as:
-
--   Artifact lists;
-
--   Realization lists and manufacturing state;
-
+-   Artifact inventories;
+-   Realization manufacturing state;
 -   color analysis and assignments;
+-   configuration summaries; and
+-   build or batch summaries.
 
--   configuration summaries where values are naturally tabular;
-
--   build or batch summaries; and
-
--   other repeated structured records.
-
-Tables should normally include concise column headers that identify the
-
-operator-relevant meaning of each value.
-
-For example:
-
-``` text
-
-Realization          Type       State       3MF
-
-artwork_default      built-in   current     artwork_default.3mf
-
-shape_default        built-in   not built   —
-
-shape_ornament       built-in   current     shape_ornament.3mf
-
-large-ornament       custom     stale       large-ornament.3mf
-```
-
-Prefer Rich's semantic formatting capabilities over manually aligning
-columns,
-
-drawing separators, or embedding terminal escape sequences in
-application
-
-logic.
-
-Rich presentation remains a UI concern. Reusable application operations
-should
-
-return structured information or semantic events rather than Rich
-tables,
-
-renderables, terminal markup, or presentation-specific strings.
-
-Do not force naturally simple output into a table. A short success
-message,
-
-single path, warning, prompt, or actionable error should remain simple
-when a
-
+Routine output should remain terse. A short success message, Product
+path, warning, prompt, or actionable error should remain simple when a
 table would add visual weight without helping the operator.
 
-Routine output should remain terse. Rich is used to improve readability
-and
+Operator-facing Product paths should be relative to the project root
+when practical.
 
-operator comprehension, not to increase the amount of information
-displayed.
+Reusable application operations remain independent of terminal
+presentation. Rich tables, markup, and other presentation-specific
+objects belong to the CLI layer.
 
-## CLI semantic verbosity and logging
+## Semantic verbosity and diagnostic logging
 
-Before continuing the Artwork planning/reuse investigation, clean up
-BUILD
+Semantic manufacturing messages and Python diagnostic logging are
+separate concerns.
 
-observation so subsequent manufacturing work is easier to inspect.
+Top-level semantic messaging options are:
 
-Keep semantic execution messaging independent from Python logging.
+``` text
+-v, --verbose
+-vv, --very-verbose
+--quiet
+```
 
-### Semantic messaging
+Default BUILD output reports the operator-relevant manufacturing result.
+`--verbose` shows manufacturing progress, including Stage completion and
+reuse. `--very-verbose` shows richer semantic execution diagnostics,
+including Product-state information that explains execution and reuse
+decisions. `--quiet` suppresses semantic messaging.
 
--   Default BUILD output reports only Artifact/Realization completion
-    and the
+`--quiet`, `--verbose`, and `--very-verbose` are mutually exclusive.
 
-  resulting manufacturing Product.
+Diagnostic logging is controlled independently with:
 
--   Display operator-facing paths relative to the project root when
-    possible.
+``` text
+--log-level=LEVEL
+```
 
--   `-v`, `--verbose` shows manufacturing progress, including Stage
-    completion
+Supported logging levels are:
 
-  and reuse.
+``` text
+TRACE
+DEBUG
+INFO
+PROGRESS
+SUCCESS
+WARNING
+ERROR
+CRITICAL
+```
 
--   `-vv`, `--very-verbose` shows richer semantic diagnostics, including
-    the
+`--log-level` controls Python diagnostic logging only. It may be
+combined with any semantic messaging mode, including `--quiet`.
 
-  Product-state information explaining execution/reuse decisions.
-
--   `--quiet` suppresses semantic messaging, including normal completion
-    output.
-
--   Quiet, verbose, and very-verbose are mutually exclusive.
-
--   Keep the internal verbosity representation extensible; do not
-    unnecessarily
-
-  constrain future verbosity levels.
-
-Semantic messaging should be derived from structured execution events
-rather
-
-than Python log messages. Prefer operator terminology such as `reused`
-where
-
-the underlying engine event is `stage.skipped` because an existing
-Product is
-
-current.
-
-### Diagnostic logging
-
--   Add top-level `--log-level=LEVEL`.
-
--   Support the levels already recognized by `logging_config.py`.
-
--   `--log-level` controls Python diagnostic logging only.
-
--   `-v`, `-vv`, and `--quiet` do not alter the configured Python log
-    level.
-
--   `--log-level` may therefore be combined with any semantic messaging
-    mode,
-
-  including `--quiet`.
-
-Implement this as a small TDD slice using the existing semantic
-execution-event
-
-channel. Do not change engine execution behavior as part of this work.
+Semantic output should use operator terminology. For example, an engine
+decision to skip execution because a current Product can be reused
+should normally be presented to the operator as reuse rather than as an
+implementation-level skip.
 
 ## Commands
 
 ### `artifact create`
 
-Registers incoming source material as a managed Artifact.
+Registers Artifact identity and ingests source artwork. CREATE does not
+materialize Artifact workspaces or manufacture Products.
 
-The operator assigns the `artifact_id` during creation.
+With no options:
 
 ``` text
-
-artifact create baird-lilo --source lilo.png
+artifact create
 ```
 
-Without an explicit source, `create` may discover source images in the
+CREATE inspects the intake state, including registered Artifacts and
+root-level PNG sources available for ingestion.
 
-working directory for ingestion.
+To ingest one PNG using its filename stem as the Artifact ID:
 
-`create` owns source ingestion and Artifact identity. It does not need
-to
+``` text
+artifact create --source lilo.png
+```
 
-build manufacturing Products.
+To assign the Artifact ID explicitly:
+
+``` text
+artifact create --artifact-id baird-lilo --source lilo.png
+```
+
+To ingest all eligible root-level PNG sources:
+
+``` text
+artifact create --all-sources
+```
+
+A source-less Artifact may be registered explicitly:
+
+``` text
+artifact create --artifact-id blank-coaster
+```
+
+Successfully ingested source artwork is preserved under `originals/`
+using the canonical Artifact identity. CREATE owns registration and
+source ingestion; BUILD owns Artifact workspace materialization and
+manufacturing.
 
 ### `artifact show`
 
-Answers progressively:
+SHOW answers progressively:
 
-> What Artifacts exist in this workspace, and what is their
-> manufacturing state?
+> What Artifacts exist in this project, and what is their manufacturing
+> state?
 
 > What can I manufacture from this Artifact, and what already exists?
 
 > What is the manufacturing state of this specific Realization?
+
+SHOW is read-only. It does not materialize missing work or modify
+persistent Artifact state.
 
 #### Workspace inventory
 
@@ -268,38 +199,12 @@ With no Artifact ID:
 artifact show
 ```
 
-`show` discovers Artifact identities from the workspace and presents a
-manufacturing summary.
+SHOW discovers registered Artifacts and presents a manufacturing
+summary.
 
-Artifact identity may be established by preserved registration under
-`./originals/` or by a stable `./artifacts/<artifact_id>/` workspace
-directory.
-
-For each discovered Artifact, the summary should make it possible to
-determine:
-
--   whether the Artifact is materialized;
--   how many effective Realizations are defined for the Artifact; and
--   how those Realizations are distributed across the established
-    manufacturing   states, such as current, stale, and not built.
-
-An Artifact is materialized when
-`./artifacts/<artifact_id>/artifact.toml` exists. The existence of the
-Artifact directory alone does not imply materialization, and
-materialization does not imply that any Realization or Product is
-current.
-
-An unmaterialized Artifact remains visible. Its effective Realizations
-are still part of the inventory and have manufacturing status
-independently of Artifact materialization.
-
-Workspace `show` uses the same manufacturing-state semantics as focused
-Artifact inspection. Every effective Realization should be accounted for
-by the reported state summary; `show` does not introduce a separate
-workspace-level manufacturing-state model.
-
-The exact terminal columns and layout are presentation decisions and may
-evolve as the implementation is refined.
+For each Artifact, the summary accounts for its effective Realizations
+and their established manufacturing states, including current, stale,
+and not built. Registered but unmaterialized Artifacts remain visible.
 
 #### Artifact inspection
 
@@ -309,14 +214,11 @@ Given an Artifact:
 artifact show baird-lilo
 ```
 
-`show` presents its available canonical and custom Realizations, their
-useful manufacturing state, and available manufacturing outputs.
+SHOW presents the Artifact's effective built-in and custom Realizations,
+their manufacturing state, and accessible manufacturing outputs.
 
-The operator should be able to determine whether a desired manufacturing
-Product can be used immediately or whether additional work is required.
-
-Operator-facing Product paths should be useful relative paths rather
-than unnecessarily long absolute filesystem paths.
+The operator should be able to determine whether a desired 3MF can be
+used immediately or whether additional work is required.
 
 #### Realization inspection
 
@@ -326,236 +228,337 @@ A specific Realization may be selected:
 artifact show baird-lilo --realization shape_ornament
 ```
 
-This presents the same manufacturing information narrowed to that
-Realization.
+This narrows the same manufacturing inspection to one Realization.
 
-`show` does not display effective construction configuration merely
-because a Realization is selected. Effective configuration, provenance,
-and operator customization belong to `config`.
-
-Across all three scopes, `show` is an inspection operation. It does not
-materialize missing work or modify persistent Artifact state.
+SHOW describes manufacturing state and available Products. Effective
+construction configuration and provenance belong to CONFIG.
 
 ### `artifact config`
 
-Answers:
+CONFIG inspects and changes construction configuration for existing
+Artifacts and Realizations.
 
-> What parameters control construction of this Realization, what values
-> are effective, and where did those values come from?
-
-`config` is the operator-facing surface for inspecting and changing
-construction configuration.
-
-For a selected Realization, `config` should expose the controlling Model
-parameters that affect construction, their effective values, and the
-configuration source responsible for each value. This supports both
-routine configuration and power-user debugging of the effective
-resolution chain.
-
-Configuration source and operator mutation target are distinct concepts.
-Reported provenance may include system, Model, Variant, workspace,
-derived, Artifact, or Realization configuration. Reporting an upstream
-source does not imply that the operator should modify that source.
-
-Normal operator parameter changes are persisted as sparse Realization
-overrides in the Artifact's `artifact.toml`. System, workspace, Model,
-and Variant configuration are not the normal operator mutation surface.
-
-For example, inspection of a selected Realization should make
-information of this form available:
+For one Artifact:
 
 ``` text
-Parameter                    Value        Source
-shape_size                   100          model
-shape_outer_ridge_width      2            variant 'ornament'
-shape_loop_raise             2            derived
-shape_base_color             white        artifact
+artifact config baird-lilo
 ```
 
-The exact terminal layout is a presentation decision and may evolve. The
-important contract is that the operator can discover the construction
-parameters, inspect their effective values, and understand their
-provenance.
+CONFIG presents the authored Artifact configuration and effective
+Realization catalog.
 
-Parameter changes may be made through `config` without requiring the
-operator to edit `artifact.toml` directly. The Artifact and Realization
-are selected explicitly. For example:
+For one selected Realization:
+
+``` text
+artifact config baird-lilo --realization shape_ornament
+```
+
+CONFIG presents the controlling Model construction parameters, their
+effective values, and the source responsible for each value.
+
+Provenance may include system, Model, Variant, workspace, derived,
+Artifact, or Realization configuration. Provenance answers why an
+effective value has its current value; it does not identify the normal
+operator mutation target.
+
+Normal operator parameter changes are persisted as sparse Realization
+overrides in the Artifact's `artifact.toml`:
 
 ``` text
 artifact config baird-lilo --realization shape_ornament \
     --parameters shape_size=200
 ```
 
-A parameter change creates or updates a sparse override for the selected
-Realization in the Artifact's `artifact.toml`. It does not modify whichever
-upstream source supplied the previous effective value merely because that
-source appears in provenance.
+The change does not modify an upstream system, workspace, Model, or
+Variant source merely because that source supplied the previous
+effective value.
 
-`config` is not a substitute for `show`. `config` explains the
-construction configuration that determines a Realization; `show`
-describes manufacturing state and available manufacturing Products.
+CONFIG can also create an additional named Realization. The source
+Variant is supplied explicitly through the parameter bindings:
 
-Configuration inspection is normally needed only when the operator wants
-to understand, debug, or change construction configuration.
+``` text
+artifact config baird-lilo --realization large-ornament --create \
+    --parameters variant=shape.ornament \
+    --parameters shape_size=125
+```
+
+Realization configuration and creation may also be applied across all
+existing Artifacts by omitting the Artifact ID:
+
+``` text
+artifact config --realization shape_ornament \
+    --parameters shape_size=110
+```
+
+Bulk operations validate their applicable scope before mutation.
+
+CONFIG is not a substitute for SHOW. CONFIG explains construction
+configuration; SHOW describes manufacturing state and accessible
+manufacturing Products.
 
 ### `artifact colors`
 
-Answers:
+COLORS analyzes physical color requirements and manages operator
+printer-color assignments.
 
-> What colors are available or configured for printing?
-
-`colors` owns color-assignment analysis and operator color selection.
+Analyze an Artifact:
 
 ``` text
+artifact colors baird-lilo
+```
 
+Analyze a selected Realization:
+
+``` text
 artifact colors baird-lilo --realization shape_ornament
 ```
 
-Color changes are explicit:
+Color analysis consumes existing manufacturing Products. It does not
+execute BUILD stages to manufacture or refresh missing prerequisites.
+When required manufacturing state is unavailable, BUILD remains
+responsible for creating it.
+
+COLORS also supports explicit recoloring operations:
 
 ``` text
-
---recolor=printer
-
---recolor=library
-
---recolor=reset
-
---recolor=reset-all-realizations
+artifact colors baird-lilo --recolor printer
+artifact colors baird-lilo --recolor library
+artifact colors baird-lilo --recolor reset
+artifact colors baird-lilo --recolor reset-all-realizations
 ```
+
+A selected Realization may be combined with recoloring modes where that
+scope is meaningful:
+
+``` text
+artifact colors baird-lilo --realization shape_ornament --recolor printer
+```
+
+Recoloring persists printer-color configuration at the selected Artifact
+or Realization scope and updates applicable existing final 3MF color
+assignments without manufacturing missing geometry. Recoloring therefore
+requires the existing manufacturing Products needed by the operation.
+
+`reset` removes the selected `printer_colors` override so normal
+configuration inheritance resumes. `reset-all-realizations` removes
+Realization-specific `printer_colors` overrides in the selected Artifact
+scope and cannot be combined with `--realization`.
 
 Catalog colors are advisory and are not a recoloring target.
 
-Color analysis should be used when color selection requires operator
-
-attention; it should not be a mandatory step before every build or
-print.
+Color analysis and recoloring are support operations. They are not
+mandatory steps before every build or print.
 
 ### `artifact build`
 
-Answers:
+BUILD makes requested manufacturing Products current using
+dependency-driven incremental execution.
 
-> What work is necessary to make the requested manufacturing Product
-> current?
-
-Build should execute only the work required by the requested scope.
+Bare BUILD is a read-only project-status operation:
 
 ``` text
+artifact build
+```
 
+To build one selected Realization:
+
+``` text
 artifact build baird-lilo --realization shape_ornament
 ```
 
-Already-current Products should be reused.
+Without `--realization`, explicitly selected Artifacts are built across
+their effective Realizations:
 
-From the operator's perspective, the important result is a current
+``` text
+artifact build baird-lilo
+```
 
+To incrementally build every effective Realization of every project
+Artifact:
+
+``` text
+artifact build --build-all
+```
+
+Already-current Products are reused. BUILD executes only work required
+to make the requested manufacturing Products current.
+
+To clean and rebuild one selected Artifact Realization:
+
+``` text
+artifact build baird-lilo --realization shape_ornament --rebuild
+```
+
+To clean and rebuild every effective Realization of every project
+Artifact:
+
+``` text
+artifact build --rebuild-all
+```
+
+`--dry-run` displays normal build planning without performing
+manufacturing work.
+
+From the operator's perspective, the important BUILD result is a current
 manufacturing Product, normally a 3MF, ready for downstream use.
+
+#### Independent Stage execution
+
+BUILD also exposes an advanced developer capability for executing
+exactly one declared Stage independently:
+
+``` text
+artifact build baird-lilo --stage vector
+```
+
+A Realization may be selected when needed:
+
+``` text
+artifact build baird-lilo --stage vector --realization artwork_default
+```
+
+Independent Stage execution may bind declared inputs, parameters, and
+outputs explicitly:
+
+``` text
+artifact build baird-lilo --stage vector \
+    --input raster.manifest=external/raster.json \
+    --parameter artwork_size=90 \
+    --output manifest=external/vector.json
+```
+
+`--input`, `--parameter`, and `--output` belong only to independent
+Stage execution. Independent Stage execution accepts exactly one
+Artifact and is separate from normal dependency-driven Artifact
+manufacturing.
+
+This capability is intended for development, diagnostics, and
+exceptional low-level execution. It is not part of the ordinary
+source-to-3MF workflow.
 
 ### `artifact clean`
 
-Removes generated state according to the selected scope.
+CLEAN removes generated Products while preserving persistent Artifact
+configuration and Artifact-owned inputs.
+
+Clean generated Products for one Artifact:
+
+``` text
+artifact clean baird-lilo
+```
+
+Clean one Realization of one Artifact:
+
+``` text
+artifact clean baird-lilo --realization shape_ornament
+```
+
+Clean one Realization across all existing Artifacts:
+
+``` text
+artifact clean --realization shape_ornament
+```
+
+With no Artifact ID or Realization, CLEAN targets all existing Artifacts
+and asks for confirmation:
+
+``` text
+artifact clean
+```
+
+For unattended project-wide cleaning:
+
+``` text
+artifact clean --force
+```
 
 Cleaning is a maintenance operation rather than part of the normal path
-
-from source image to printer.
+from source image to printable 3MF.
 
 ## Scope
 
-Commands operating on existing Artifacts should use a consistent scope
+Commands operating on existing Artifacts use the narrowest scope
+appropriate to their purpose.
 
-vocabulary where applicable:
+Common scope patterns include:
 
 ``` text
-
 COMMAND
-
-    all applicable Artifacts
+    project-wide or discovery scope, where supported
 
 COMMAND baird-lilo
-
-    Artifact baird-lilo
+    Artifact baird-lilo
 
 COMMAND --realization shape_ornament
-
-    that Realization across applicable Artifacts
+    that Realization across applicable Artifacts, where supported
 
 COMMAND baird-lilo --realization shape_ornament
-
-    that Realization of baird-lilo
+    that Realization of baird-lilo
 ```
 
-Individual commands may support only the scopes meaningful to their
+Individual commands support only the scopes meaningful to their
+operation. Omitting an Artifact ID does not universally mean "all
+Artifacts"; for example, bare BUILD reports project status rather than
+requesting project-wide manufacturing. Explicit project-wide BUILD
+execution uses `--build-all` or `--rebuild-all`.
 
-operation.
+## Empty projects and errors
 
-## Empty workspaces and errors
-
-Broad discovery over an empty workspace is normally successful:
+Broad discovery over an empty project is normally successful. For
+example:
 
 ``` text
-
 artifact show
-No artifacts found.
 ```
 
-Missing directories alone should not produce tracebacks.
+may report that no Artifacts exist without producing an error or
+traceback.
 
-An explicitly requested object that does not exist is an operator error:
+Missing collection directories alone should not produce tracebacks.
 
-``` text
+An explicitly requested Artifact or Realization that does not exist is
+an operator error and should produce a concise CLI error. Malformed or
+inconsistent persistent Artifact state is also an error and should be
+reported clearly rather than silently treated as an empty project.
 
-artifact show baird-lilo
-
-Error: Artifact 'baird-lilo' does not exist.
-```
-
-Likewise, requesting an unavailable Realization should produce a concise
-
-CLI error.
-
-Malformed or inconsistent persistent Artifact state is also an error and
-
-should be reported clearly rather than silently treated as an empty
-
-workspace.
-
-Expected operator and configuration errors should not expose Python
-
-tracebacks.
+Expected operator, configuration, planning, and manufacturing errors
+should cross the CLI boundary as concise actionable messages without
+Python tracebacks. Unexpected invariant or programming failures should
+not be indiscriminately converted into ordinary operator errors.
 
 ## Common workflows
 
 ### New customer image
 
+For a specific incoming image:
+
 ``` text
-
-artifact show
-artifact create baird-lilo --source lilo.png
-
+artifact create --artifact-id baird-lilo --source lilo.png
 artifact show baird-lilo
+artifact build baird-lilo --realization shape_ornament
 ```
 
-The operator can then select the appropriate Realization and build it if
+If the desired Realization is already known, SHOW is optional; CREATE
+followed directly by BUILD is the normal short manufacturing path.
 
-necessary.
+For a batch of root-level PNGs:
+
+``` text
+artifact create --all-sources
+artifact show
+artifact build --build-all
+```
 
 ### Existing current Realization
 
 ``` text
-
 artifact show baird-lilo
-
-        │
-
-        ▼
-
+        │
+        ▼
 shape_ornament is current
-
-        │
-
-        ▼
-
-use shape_ornament.3mf
+        │
+        ▼
+use the existing shape_ornament.3mf
 ```
 
 No build or additional inspection is necessary.
@@ -563,70 +566,105 @@ No build or additional inspection is necessary.
 ### Missing or stale Realization
 
 ``` text
-
 artifact show baird-lilo
-
-        │
-
-        ▼
-
-shape_ornament is missing/stale
-
-        │
-
-        ▼
-
+        │
+        ▼
+shape_ornament is stale or not built
+        │
+        ▼
 artifact build baird-lilo --realization shape_ornament
-
-        │
-
-        ▼
-
-use shape_ornament.3mf
+        │
+        ▼
+use the resulting shape_ornament.3mf
 ```
 
-### Realization needs operator attention
+### Configuration exception
+
+Inspect the effective construction configuration:
 
 ``` text
-
-artifact show baird-lilo
-
-        │
-
-        ├── configuration question
-
-        │       └── artifact config ...
-
-        │
-
-        └── color question
-
-                └── artifact colors ...
+artifact config baird-lilo --realization shape_ornament
 ```
 
-After any required adjustment, build only what is necessary and use the
+Apply only the required sparse override:
 
-resulting 3MF.
+``` text
+artifact config baird-lilo --realization shape_ornament \
+    --parameters shape_size=110
+```
+
+Then build the affected Realization:
+
+``` text
+artifact build baird-lilo --realization shape_ornament
+```
+
+Dependency-driven execution determines which manufacturing work must
+actually be repeated.
+
+### Color exception
+
+Inspect the relevant physical color state:
+
+``` text
+artifact colors baird-lilo --realization shape_ornament
+```
+
+If an operator color assignment is required:
+
+``` text
+artifact colors baird-lilo --realization shape_ornament --recolor printer
+```
+
+COLORS does not manufacture missing geometry. If required manufacturing
+Products do not yet exist or are not usable for the requested color
+operation, BUILD must bring them current.
+
+### Regenerate selected generated work
+
+Clean only the affected Realization:
+
+``` text
+artifact clean baird-lilo --realization shape_ornament
+```
+
+Then rebuild it:
+
+``` text
+artifact build baird-lilo --realization shape_ornament
+```
+
+BUILD regenerates the required dependency-driven work and produces the
+current final 3MF.
 
 ## Guiding principle
 
 Commands are not independent utilities. Together they support the
-shortest
-
-practical path from incoming artwork to a usable manufacturing Product.
+shortest practical path from incoming artwork to a usable manufacturing
+Product.
 
 When designing or changing the CLI, prefer workflows that let the
 operator:
 
-1.  find the Artifact quickly;
-
-2.  see available Realizations and their state;
-
-3.  identify an existing usable 3MF;
-
+1.  register incoming artwork with minimal ceremony;
+2.  discover effective Realizations and their manufacturing state when
+    needed;
+3.  reuse an existing current 3MF whenever possible;
 4.  make only necessary configuration or color decisions;
-
 5.  build only missing or stale work; and
-
 6.  retrieve the resulting 3MF for slicing, sharing, uploading, or
     printing.
+
+The ordinary path should remain:
+
+``` text
+artifact create
+      ↓
+artifact build
+      ↓
+printable 3MF
+```
+
+Inspection, customization, developer Stage execution, and maintenance
+remain available when they answer a specific operator or developer need.
+
