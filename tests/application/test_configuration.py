@@ -24,6 +24,10 @@ from lowkey_artifact_builder.application.configuration import (
     RealizationConfiguration,
     inspect_realization_configuration,
 )
+from lowkey_artifact_builder.config import (
+    configure_artifact,
+    configure_realization,
+)
 
 # =========================================================
 # Effective Realization configuration
@@ -173,3 +177,68 @@ def test_configuration_inspection_reports_model_parameters_values_and_sources(
             ),
         ),
     )
+
+
+def test_realization_override_changes_effective_value_and_provenance(
+    tmp_path: Path,
+) -> None:
+    """
+    Configuration inspection observes a local Realization override
+    through the normal configuration authoring and resolution path.
+    """
+
+    configure_artifact(
+        "skippy",
+        values={
+            "source": "artifacts/skippy/artifact.png",
+        },
+        project_root=tmp_path,
+    )
+
+    configure_realization(
+        "skippy",
+        "shape_ornament",
+        parameters={
+            "shape_size": 110,
+        },
+        project_root=tmp_path,
+    )
+
+    configuration = inspect_realization_configuration(
+        "skippy",
+        "shape_ornament",
+        project_root=tmp_path,
+    )
+
+    parameters = {parameter.name: parameter for parameter in configuration.parameters}
+
+    assert parameters["shape_size"].value == 110
+    assert parameters["shape_size"].source == "realization 'shape_ornament'"
+
+
+def test_configuration_inspection_includes_derived_model_parameter(
+    tmp_path: Path,
+) -> None:
+    """
+    Configuration inspection includes derived construction parameters
+    with their effective values and derived provenance.
+    """
+
+    configure_artifact(
+        "skippy",
+        values={
+            "source": "artifacts/skippy/artifact.png",
+        },
+        project_root=tmp_path,
+    )
+
+    configuration = inspect_realization_configuration(
+        "skippy",
+        "shape_ornament",
+        project_root=tmp_path,
+    )
+
+    parameters = {parameter.name: parameter for parameter in configuration.parameters}
+
+    assert parameters["shape_loop_raise"].value == parameters["shape_base_raise"].value
+    assert parameters["shape_loop_raise"].source == "derived"
