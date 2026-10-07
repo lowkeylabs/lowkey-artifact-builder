@@ -46,8 +46,7 @@ def _invoke(
 
 def test_config_requires_artifact_id() -> None:
     """
-    Artifact configuration requires an artifact ID unless performing
-    model inspection.
+    Artifact configuration inspection requires an Artifact ID.
     """
 
     result = _invoke()

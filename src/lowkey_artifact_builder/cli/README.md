@@ -357,10 +357,9 @@ Reported provenance may include system, Model, Variant, workspace,
 derived, Artifact, or Realization configuration. Reporting an upstream
 source does not imply that the operator should modify that source.
 
-Normal operator changes are persisted as sparse overrides in the
-Artifact's `artifact.toml`, at Artifact or Realization scope as
-appropriate. System, workspace, Model, and Variant configuration are not
-the normal operator mutation surface.
+Normal operator parameter changes are persisted as sparse Realization
+overrides in the Artifact's `artifact.toml`. System, workspace, Model,
+and Variant configuration are not the normal operator mutation surface.
 
 For example, inspection of a selected Realization should make
 information of this form available:
@@ -379,16 +378,18 @@ parameters, inspect their effective values, and understand their
 provenance.
 
 Parameter changes may be made through `config` without requiring the
-operator to edit `artifact.toml` directly. For example:
+operator to edit `artifact.toml` directly. The Artifact and Realization
+are selected explicitly. For example:
 
 ``` text
-artifact config shape_ornament --parameter shape_size=200
+artifact config baird-lilo --realization shape_ornament \
+    --parameters shape_size=200
 ```
 
-A parameter change creates or updates the appropriate sparse Artifact or
-Realization override. It does not modify whichever upstream source
-supplied the previous effective value merely because that source appears
-in provenance.
+A parameter change creates or updates a sparse override for the selected
+Realization in the Artifact's `artifact.toml`. It does not modify whichever
+upstream source supplied the previous effective value merely because that
+source appears in provenance.
 
 `config` is not a substitute for `show`. `config` explains the
 construction configuration that determines a Realization; `show`
