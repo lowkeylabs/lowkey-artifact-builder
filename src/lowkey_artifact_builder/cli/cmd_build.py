@@ -1,11 +1,11 @@
 """
 Build command.
 
-Builds explicitly selected artifact Variants from their declared model
-workflows. An unqualified build request discovers and displays the
-Variants available to the Artifact without requesting execution.
+Builds effective Artifact Realizations through their declared Model
+workflows. An unqualified build request reports read-only project build
+status without requesting execution.
 
-A configured artifact may also execute exactly one declared stage
+A configured Artifact may also execute exactly one declared Stage
 independently, with optional explicit input, parameter, and output
 bindings.
 """
@@ -136,11 +136,10 @@ def cli(
 
     Positional arguments are artifact IDs.
 
-    Without --stage, --variant selects one Variant for incremental
-    execution and --all-variants selects all applicable Variants.
-    When neither selection is supplied for explicitly named Artifacts,
-    the command displays the available Variants without requesting
-    execution.
+    Without --stage, BUILD operates on effective Artifact Realizations.
+    An optional --realization selects one Realization; otherwise BUILD
+    incrementally builds every effective Realization of each selected
+    Artifact.
 
     With --stage, exactly one declared stage is executed independently.
     An optional --realization selects the Artifact Realization for that
@@ -280,7 +279,7 @@ def cli(
 
 
 # =========================================================
-# Variant discovery
+# Build status
 # =========================================================
 
 
@@ -730,102 +729,6 @@ def _display_execution_event(
 
     if event.kind == "stage.failed":
         click.echo(f"Stage failed: {event.stage_name}")
-
-
-# =========================================================
-# Graph-driven build
-# =========================================================
-
-
-def _execute_build(
-    artifact_ids: tuple[str, ...],
-    *,
-    model_name: str | None,
-    variant_name: str | None,
-    all_variants: bool,
-    dry_run: bool,
-) -> None:
-    """
-    Execute explicitly selected graph-driven artifact builds.
-
-    Normal execution delegates artifact orchestration to the engine.
-    Model and Variant selection are normal-build selection coordinates.
-
-    This boundary is entered only after execution has been explicitly
-    requested through one-Variant or all-Variant selection. Unqualified
-    Artifact build requests are handled as discovery before reaching
-    this boundary.
-
-    Artifact Realization selection is reserved for independent Stage
-    execution and is not a normal-build selection coordinate.
-
-    All-Variant selection is accepted at this command boundary. Variant
-    enumeration is delegated to engine planning rather than represented
-    as an Artifact Realization.
-
-    Dry-run uses the same artifact-level plan selection as normal execution,
-    prepares each selected BuildPlan's persistent-state-aware ExecutionPlan,
-    and validates the configuration required by that execution scope before
-    displaying the BuildPlan. No stages are executed during dry-run.
-    """
-
-    project_root = Path.cwd()
-
-    for artifact_id in artifact_ids:
-        try:
-            planning_options = {}
-
-            if model_name is not None:
-                planning_options["model_name"] = model_name
-
-            if variant_name is not None:
-                planning_options["variant_name"] = variant_name
-
-            if dry_run:
-                dry_run_options = dict(
-                    planning_options,
-                )
-
-                if all_variants:
-                    dry_run_options["all_variants"] = True
-
-                plans = create_artifact_build_plans(
-                    artifact_id,
-                    project_root=project_root,
-                    **dry_run_options,
-                )
-
-                for plan in plans:
-                    prepare_incremental_build(
-                        plan,
-                    )
-
-                    display_build_plan(
-                        plan,
-                    )
-
-                continue
-
-            execution_options = dict(
-                planning_options,
-            )
-
-            if all_variants:
-                execution_options["all_variants"] = True
-
-            execute_artifact_build(
-                artifact_id,
-                project_root=project_root,
-                event_sink=_display_execution_event,
-                **execution_options,
-            )
-
-        except (
-            ConfigError,
-            BuildPlanError,
-            BuildError,
-        ) as exc:
-            raise click.ClickException(str(exc)) from exc
 
 
 # =========================================================

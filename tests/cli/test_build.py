@@ -2699,3 +2699,25 @@ def test_build_selected_realization_materializes_artifact_before_execution(
     ]
 
     assert original.read_bytes() == b"dog artwork"
+
+
+def test_build_help_does_not_advertise_variant_selection() -> None:
+    """
+    BUILD does not advertise the historical Variant-oriented
+    manufacturing selection interface.
+    """
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [
+            "build",
+            "--help",
+        ],
+    )
+
+    assert result.exit_code == 0
+
+    assert "--variant" not in result.output
+    assert "--all-variants" not in result.output

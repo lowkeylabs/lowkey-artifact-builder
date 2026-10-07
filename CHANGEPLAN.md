@@ -146,6 +146,7 @@ After the focused command work described elsewhere in this plan, review the
 remaining historical CLI inconsistencies, developer surfaces, help, messaging,
 and end-to-end acceptance coverage without disturbing the established
 manufacturing value chain.
+
 This phase is cleanup and consolidation. It does not justify speculative
 manufacturing capability or architectural simplification.
 
