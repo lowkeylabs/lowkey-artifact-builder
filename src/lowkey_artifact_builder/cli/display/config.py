@@ -13,6 +13,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from lowkey_artifact_builder.application.configuration import (
+    RealizationConfiguration,
+)
 from lowkey_artifact_builder.cli.display.common import (
     console,
     create_table,
@@ -314,6 +317,86 @@ def display_realization_definition(
 
 
 # =========================================================
+# Resolved Realization configuration
+# =========================================================
+
+
+def display_realization_configuration(
+    configuration: RealizationConfiguration,
+) -> None:
+    """
+    Display effective construction configuration for one Realization.
+
+    Resolution and provenance are supplied by the application layer.
+    This function is presentation-only and does not reconstruct
+    configuration or Model semantics.
+    """
+
+    console.print(
+        f"[bold]{configuration.artifact_id} / {configuration.realization} Configuration[/bold]"
+    )
+
+    console.print()
+
+    summary = create_table(
+        show_header=False,
+    )
+
+    summary.add_column(
+        "Field",
+        style="bold",
+    )
+
+    summary.add_column(
+        "Value",
+    )
+
+    summary.add_row(
+        "Artifact ID",
+        configuration.artifact_id,
+    )
+
+    summary.add_row(
+        "Model",
+        configuration.model,
+    )
+
+    summary.add_row(
+        "Realization",
+        configuration.realization,
+    )
+
+    console.print(summary)
+
+    console.print()
+    console.print("[bold]Resolved parameters[/bold]")
+    console.print()
+
+    table = create_table()
+
+    table.add_column(
+        "Parameter",
+    )
+
+    table.add_column(
+        "Value",
+    )
+
+    table.add_column(
+        "Source",
+    )
+
+    for parameter in configuration.parameters:
+        table.add_row(
+            parameter.name,
+            _format_parameter_value(parameter.value),
+            parameter.source,
+        )
+
+    console.print(table)
+
+
+# =========================================================
 # Available Variants
 # =========================================================
 
@@ -351,5 +434,6 @@ __all__ = [
     "display_artifact_config",
     "display_artifact_definition",
     "display_available_variants",
+    "display_realization_configuration",
     "display_realization_definition",
 ]

@@ -7,6 +7,7 @@ primitives used by the command-line interface.
 Display implementation is divided by presentation domain while this
 module preserves a single public import surface for CLI callers.
 """
+
 # File: src/lowkey_artifact_builder/cli/display/__init__.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
@@ -28,6 +29,7 @@ from lowkey_artifact_builder.cli.display.config import (
     display_artifact_config,
     display_artifact_definition,
     display_available_variants,
+    display_realization_configuration,
     display_realization_definition,
 )
 from lowkey_artifact_builder.cli.display.create import (
@@ -45,6 +47,7 @@ __all__ = [
     "create_table",
     "display_artifact_config",
     "display_artifact_definition",
+    "display_available_variants",
     "display_build_plan",
     "display_color_analysis",
     "display_create_status",
@@ -52,7 +55,7 @@ __all__ = [
     "display_model_workplan",
     "display_model_workplans",
     "display_models",
-    "display_available_variants",
+    "display_realization_configuration",
     "display_realization_definition",
     "format_value",
 ]

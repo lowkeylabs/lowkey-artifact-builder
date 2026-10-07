@@ -617,3 +617,58 @@ def test_config_customizes_realization_across_all_artifacts(
             },
         )
     ]
+
+
+def test_config_realization_inspection_uses_application_configuration(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Realization inspection delegates effective configuration resolution
+    to the application layer and passes the structured result to display.
+    """
+
+    configuration = object()
+    inspected: list[tuple[str, str, Path]] = []
+    displayed: list[object] = []
+
+    monkeypatch.setattr(
+        cmd_config,
+        "inspect_realization_configuration",
+        lambda artifact_id, realization, *, project_root: (
+            inspected.append(
+                (
+                    artifact_id,
+                    realization,
+                    project_root,
+                )
+            )
+            or configuration
+        ),
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cmd_config,
+        "display_realization_configuration",
+        lambda result: displayed.append(result),
+        raising=False,
+    )
+
+    cmd_config._display_realization(
+        "skippy",
+        "shape_ornament",
+        project_root=tmp_path,
+    )
+
+    assert inspected == [
+        (
+            "skippy",
+            "shape_ornament",
+            tmp_path,
+        )
+    ]
+
+    assert displayed == [
+        configuration,
+    ]

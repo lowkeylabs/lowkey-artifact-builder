@@ -10,6 +10,7 @@ Positional arguments to this command are reserved for artifact IDs.
 Additional configuration operations are exposed through command-line
 options.
 """
+
 # File: src/lowkey_artifact_builder/cli/cmd_config.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
@@ -17,10 +18,12 @@ options.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import click
 
+from lowkey_artifact_builder.application.configuration import (
+    inspect_realization_configuration,
+)
 from lowkey_artifact_builder.cli.bindings import (
     parse_parameter_bindings,
 )
@@ -28,7 +31,7 @@ from lowkey_artifact_builder.cli.display import (
     display_artifact_definition,
     display_model_workplans,
     display_models,
-    display_realization_definition,
+    display_realization_configuration,
 )
 from lowkey_artifact_builder.config import (
     ConfigError,
@@ -332,46 +335,23 @@ def _display_realization(
     project_root: Path,
 ) -> None:
     """
-    Display Artifact-authored customization for one effective
-    Realization.
+    Display effective construction configuration for one Realization.
 
-    Canonical Realizations need not have an authored configuration
-    entry. In that case the authored customization is empty.
+    Configuration resolution and provenance belong to the application
+    layer. The CLI only delegates inspection and presents the result.
     """
 
-    existing = load_artifact_config(
-        artifact_id,
-        project_root=project_root,
-    )
-
-    if not existing:
-        raise click.ClickException(f"Artifact {artifact_id!r} is not defined.")
-
     try:
-        realizations = get_realization_names(
+        configuration = inspect_realization_configuration(
             artifact_id,
+            realization,
             project_root=project_root,
         )
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    if realization not in realizations:
-        raise click.ClickException(
-            f"Realization {realization!r} is not defined for Artifact {artifact_id!r}."
-        )
-
-    authored_realizations = existing.get("realizations", {})
-
-    authored: dict[str, Any] = {}
-    if isinstance(authored_realizations, dict):
-        candidate = authored_realizations.get(realization, {})
-        if isinstance(candidate, dict):
-            authored = candidate
-
-    display_realization_definition(
-        artifact_id,
-        realization,
-        authored,
+    display_realization_configuration(
+        configuration,
     )
 
 
@@ -433,7 +413,7 @@ def _create_realization(
 
 
 # =========================================================
-# Bulk Realization creation
+# Bulk Realization configuration
 # =========================================================
 
 

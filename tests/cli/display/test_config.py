@@ -12,6 +12,7 @@ from unittest.mock import Mock
 from lowkey_artifact_builder.cli.display.config import (
     display_artifact_config,
     display_artifact_definition,
+    display_realization_configuration,
 )
 from lowkey_artifact_builder.model import ModelSpec, StageSpec
 
@@ -99,59 +100,60 @@ def test_artifact_definition_display_contains_authored_configuration_and_realiza
     assert "shape_ornament" in captured.out
 
 
-def test_realization_definition_display_contains_only_authored_customization(
-    capsys: object,
+def test_realization_configuration_display_shows_effective_parameters_and_sources(
+    capsys,
 ) -> None:
     """
-    Realization configuration display shows only Artifact-authored
-    customization rather than inherited or resolved Model configuration.
+    Realization configuration display presents application-resolved
+    construction parameters without reconstructing configuration semantics.
     """
 
-    from lowkey_artifact_builder.cli.display.config import (
-        display_realization_definition,
+    from lowkey_artifact_builder.application.configuration import (
+        ConfigurationParameter,
+        RealizationConfiguration,
     )
 
-    display_realization_definition(
-        "skippy",
-        "shape_ornament",
-        {
-            "parameters": {
-                "shape_size": 110,
-            },
-        },
+    configuration = RealizationConfiguration(
+        artifact_id="skippy",
+        realization="shape_ornament",
+        model="shape",
+        parameters=(
+            ConfigurationParameter(
+                name="shape_size",
+                value=120.0,
+                source="artifact",
+            ),
+            ConfigurationParameter(
+                name="shape_base_height",
+                value=2.0,
+                source="model",
+            ),
+            ConfigurationParameter(
+                name="shape_outer_ridge_width",
+                value=1.0,
+                source="variant 'ornament'",
+            ),
+        ),
     )
 
-    captured = capsys.readouterr()  # type: ignore[attr-defined]
+    display_realization_configuration(
+        configuration,
+    )
+
+    captured = capsys.readouterr()
 
     assert "skippy" in captured.out
     assert "shape_ornament" in captured.out
+    assert "shape" in captured.out
+
     assert "shape_size" in captured.out
-    assert "110" in captured.out
-    assert "Resolved parameters" not in captured.out
+    assert "120" in captured.out
+    assert "artifact" in captured.out
 
+    assert "shape_base_height" in captured.out
+    assert "2" in captured.out
+    assert "model" in captured.out
 
-def test_realization_definition_display_reports_no_authored_customization(
-    capsys: object,
-) -> None:
-    """
-    An uncustomized canonical Realization is reported as having no
-    Artifact-specific customization rather than displaying inherited
-    Model or Variant defaults.
-    """
-
-    from lowkey_artifact_builder.cli.display.config import (
-        display_realization_definition,
-    )
-
-    display_realization_definition(
-        "skippy",
-        "shape_ornament",
-        {},
-    )
-
-    captured = capsys.readouterr()  # type: ignore[attr-defined]
-
-    assert "skippy" in captured.out
-    assert "shape_ornament" in captured.out
-    assert "no artifact-specific customization" in captured.out.lower()
-    assert "Resolved parameters" not in captured.out
+    assert "shape_outer_ridge_width" in captured.out
+    assert "1" in captured.out
+    assert "variant 'ornament'" in captured.out
