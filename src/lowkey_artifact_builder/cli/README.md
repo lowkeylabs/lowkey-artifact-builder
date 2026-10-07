@@ -629,4 +629,3 @@ operator:
 
 6.  retrieve the resulting 3MF for slicing, sharing, uploading, or
     printing.
-
