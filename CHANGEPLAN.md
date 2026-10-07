@@ -143,118 +143,134 @@ algorithmic or regression risk.
 
 ## Purpose
 
-Make CONFIG the operator/developer inspection surface for understanding how a
-Realization's effective configuration was resolved.
+Make CONFIG the operator/developer inspection surface for understanding the
+construction configuration of a Realization and how its effective values were
+resolved.
+
 For any selected Realization, CONFIG should make it possible to discover the
-effective settings used by the resolver and understand the provenance or owner
-of each setting.
+controlling construction parameters, inspect their effective values, and
+understand the provenance or owner of each value.
+
 This work should build around the existing resolver and configuration
 precedence rather than independently reconstructing effective configuration in
 the CLI.
+
 CONFIG remains distinct from SHOW:
 
 ```text
 SHOW
     manufacturing state and available Products
+
 CONFIG
-    effective settings and where those settings came from
+    construction parameters, effective values, and where those values came from
 ```
 
 CONFIG may also retain explicit configuration mutation where that capability
-is useful, but inspection of effective resolution and provenance is the central
-design concern of this phase.
+is useful, but inspection of construction parameters, effective resolution,
+and provenance is the central design concern of this phase.
+
 
 ## Required behavior to establish
 
 For a selected Artifact/Realization, CONFIG should be able to report the
-effective parameter set and identify the meaningful source/owner of each value.
+controlling construction parameters, their effective values, and the meaningful
+source/owner of each value.
+
 Relevant provenance may include, according to the configuration model actually
 established by HEAD and the permanent specifications:
 
+- system configuration;
 - Model/default parameter definitions such as `parameters.toml`;
+- Variant configuration;
+- workspace configuration;
+- derived values;
 - Artifact-level authored configuration in `artifact.toml`;
 - Realization-level authored configuration in `artifact.toml`; and
 - other resolver-supported configuration layers that materially participate
-
   in the effective value.
+
 Do not invent provenance categories from filesystem location alone. Provenance
 must correspond to the actual resolution model.
+
+Configuration source and operator mutation target are distinct concepts.
+CONFIG may report system, Model, Variant, workspace, derived, Artifact, or
+Realization provenance when those sources participate in effective resolution.
+Reporting an upstream source does not imply that the operator should modify
+that source.
+
+Normal operator mutation should create or update sparse overrides at the
+appropriate Artifact or Realization scope in `artifact.toml`. CONFIG must not
+modify an upstream system, workspace, Model, or Variant source merely because
+that source supplied the previous effective value.
+
 The resolver remains authoritative for precedence and effective values. CONFIG
 should consume resolver results or a reusable resolver-adjacent inspection
 capability rather than duplicate precedence rules.
+
 Sparse authored configuration must remain sparse. Inspecting effective values
 must not cause defaults or inherited values to be written into `artifact.toml`.
+
 The exact terminal layout is not fixed by this plan. The presentation should
-make value and provenance understandable without exposing irrelevant resolver
-internals.
+make construction parameters, effective values, and provenance understandable
+without exposing irrelevant resolver internals.
 
 ## High-level implementation steps
 
 1. Audit current `cmd_config.py`, CONFIG application operations, resolver APIs,
-
    configuration data structures, tests, and relevant permanent
    specifications.
 
 2. Document the actual resolution layers and precedence already established by
-
    HEAD before defining provenance output.
 
 3. Identify whether the resolver already retains enough provenance to support
-
    CONFIG inspection. If not, introduce the smallest reusable structured
    result at the resolver/application boundary that can report effective value
    plus provenance without changing resolution semantics.
 
-4. Establish high-level tests proving that CONFIG reports effective values and
-
-   distinguishes important provenance boundaries, including defaults,
-   Artifact-level overrides, and Realization-level overrides where applicable.
+4. Establish high-level tests proving that CONFIG exposes the controlling
+   construction parameters, reports their effective values, and distinguishes
+   important provenance boundaries, including defaults, Artifact-level
+   overrides, and Realization-level overrides where applicable.
 
 5. Refactor CONFIG inspection to consume the reusable resolution/provenance
-
    capability rather than reconstructing precedence inside Click.
 
-6. Preserve useful CONFIG mutation behavior and sparse authored configuration;
-
+6. Preserve CONFIG parameter mutation as a sparse Artifact/Realization override
+   operation. Verify that mutation writes at the appropriate `artifact.toml`
+   scope rather than modifying the upstream source identified by provenance;
    adjust syntax only when a demonstrated operator/developer need warrants it.
 
 7. Review broad CONFIG scope and developer-oriented flags against the clarified
-
    purpose of CONFIG. Retain, relocate, or simplify them based on actual value,
    without removing reusable engine capabilities merely to simplify the CLI.
 
 8. Reconcile CONFIG documentation and help with the resulting behavior.
-9. Run focused resolver/config/application/CLI tests, then the complete
 
+9. Run focused resolver/config/application/CLI tests, then the complete
    applicable quality suite.
 
 ## Completion criteria
 
 Phase 1 is complete when:
 
-- CONFIG can inspect a selected Realization's effective settings;
-- each reported setting can identify meaningful provenance/ownership according
-
-  to the real resolver model;
-
+- CONFIG can discover a selected Realization's controlling construction
+  parameters and inspect their effective values;
+- each reported parameter can identify meaningful provenance/ownership
+  according to the real resolver model;
 - effective values and provenance come from reusable resolver/application
-
   behavior rather than duplicated CLI precedence logic;
-
 - default, Artifact-level, and Realization-level resolution boundaries are
-
   correctly represented where applicable;
-
 - inspection does not materialize manufacturing work or mutate sparse authored
-
   configuration;
-
-- useful CONFIG mutation behavior remains correct;
+- CONFIG parameter mutation creates or updates the appropriate sparse
+  Artifact/Realization override without modifying the upstream configuration
+  source merely because that source supplied the effective value;
 - CONFIG's public and developer-oriented scopes have intentional purposes;
-- important resolution/provenance seams are protected by focused tests; and
+- important parameter-discovery, resolution, and provenance seams are protected
+  by focused tests; and
 - CONFIG help and CLI documentation agree with resulting HEAD.
-
-**---**
 
 # Phase 2 — Consolidate Remaining CLI Surfaces and Final Acceptance
 
