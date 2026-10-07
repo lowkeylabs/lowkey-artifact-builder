@@ -6,7 +6,7 @@ Continue refining `lowkey-artifact-builder` around the manufacturing value
 chain established by the current repository HEAD.
 The operator's ordinary goal is:
 
-> Move customer artwork to a ****\\*\\*correct, printable 3MF\\*\***** with the fewest
+> Move customer artwork to a *correct, printable 3MF* with the fewest
 > necessary decisions, actions, and computations.
 
 The normal production path is intentionally short:
@@ -96,7 +96,7 @@ behavior belongs below Click and should return structured domain/application
 information rather than Rich objects or presentation-specific strings.
 The CLI operates on the current working directory as project root. A registered
 Artifact may legitimately exist under `originals/` before
-`artifacts/\\<artifact_id>/` exists. Commands must preserve the distinction
+`artifacts/<artifact_id>/` exists. Commands must preserve the distinction
 between registered Artifact identity, materialized Artifact workspace, and
 manufacturing Product state.
 Missing collection directories normally represent empty collections. An
@@ -183,7 +183,7 @@ Review:
 
 ```text
 artifact --help
-artifact \\<command> --help
+artifact <command> --help
 ```
 
 Help should describe operator purpose rather than implementation mechanics.
@@ -302,5 +302,5 @@ Phase 1 is complete when:
 
 The completed CLI should continue to support the central objective:
 
-> Move customer artwork to a ****\\*\\*correct, printable 3MF\\*\***** with the fewest
+> Move customer artwork to a *correct, printable 3MF* with the fewest
 > necessary decisions, actions, and computations.

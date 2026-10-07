@@ -73,7 +73,7 @@ from lowkey_artifact_builder.messaging import (
     "--realization",
     type=str,
     default=None,
-    help="Select one artifact realization for independent stage execution.",
+    help="Select one artifact realization.",
 )
 @click.option(
     "--input",
