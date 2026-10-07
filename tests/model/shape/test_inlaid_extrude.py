@@ -535,6 +535,7 @@ def _make_inlaid_extrude_resolver() -> Mock:
             "shape_hole_diameter": 0.0,
             "shape_hole_position": 0,
             "shape_hole_edge_distance": 0.4,
+            "shape_loop_inner_diameter": 0.0,
         }.__getitem__,
     )
 
@@ -1086,6 +1087,7 @@ def test_inlaid_inner_ridge_partitions_complete_shape_thickness(
             "shape_hole_diameter": 0.0,
             "shape_hole_position": 0,
             "shape_hole_edge_distance": 0.4,
+            "shape_loop_inner_diameter": 0.0,
         }.__getitem__,
     )
 
@@ -1235,6 +1237,7 @@ def test_inlaid_artwork_fill_spans_complete_shape_thickness(
             "shape_outer_ridge_style": "integrated",
             "shape_artwork_fill_raise": 0.6,
             "shape_hole_diameter": 0.0,
+            "shape_loop_inner_diameter": 0.0,
         }.__getitem__,
     )
 
@@ -1365,6 +1368,7 @@ def test_inlaid_border_label_spans_complete_shape_thickness(
                 "shape_outer_ridge_style": "integrated",
                 "shape_top_border_label_raise": 1.0,
                 "shape_hole_diameter": 0.0,
+                "shape_loop_inner_diameter": 0.0,
             }.__getitem__,
         )
 
@@ -1483,6 +1487,7 @@ def test_inlaid_artwork_fill_is_removed_from_base(
             "shape_outer_ridge_style": "integrated",
             "shape_artwork_fill_raise": 0.6,
             "shape_hole_diameter": 0.0,
+            "shape_loop_inner_diameter": 0.0,
         }.__getitem__,
     )
 
@@ -1532,6 +1537,7 @@ def test_inlaid_artwork_fill_is_removed_from_base(
             "shape_outer_ridge_raise": 0.0,
             "shape_outer_ridge_style": "integrated",
             "shape_hole_diameter": 0.0,
+            "shape_loop_inner_diameter": 0.0,
         }.__getitem__,
     )
 
@@ -1638,6 +1644,7 @@ def test_inlaid_border_label_is_removed_from_base(
             "shape_outer_ridge_style": "integrated",
             "shape_top_border_label_raise": 1.0,
             "shape_hole_diameter": 0.0,
+            "shape_loop_inner_diameter": 0.0,
         }.__getitem__,
     )
 
@@ -1687,6 +1694,7 @@ def test_inlaid_border_label_is_removed_from_base(
             "shape_outer_ridge_raise": 0.0,
             "shape_outer_ridge_style": "integrated",
             "shape_hole_diameter": 0.0,
+            "shape_loop_inner_diameter": 0.0,
         }.__getitem__,
     )
 
