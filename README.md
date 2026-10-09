@@ -1,43 +1,36 @@
 # lowkey-artifact-builder
 
-`lowkey-artifact-builder` is a dependency-driven build system for turning
-source artwork into reproducible, multicolor 2.5D manufacturing geometry.
+`lowkey-artifact-builder` is a dependency-driven build system for
+turning source artwork into reproducible, multicolor 2.5D manufacturing
+geometry.
 
-A customer image can be interpreted once as registered Artwork and reused in
-multiple printable objects such as ornaments, coasters, plaques, and other
-Shape variants.
+A customer image can be interpreted once as registered Artwork and
+reused in multiple printable objects such as ornaments, coasters,
+plaques, and other Shape variants. Complete packaged Shapes can then be
+combined into a two-sided Coin.
 
 Conceptually:
 
 ```text
-                         source PNG
-                             │
-                             ▼
-                         Artwork
-                             │
-                    registered geometry
-                             │
-                             ▼
-                          Shape
-                             │
-                 ┌───────────┼───────────┐
-                 │           │           │
-                 ▼           ▼           ▼
-             ornament     coaster     other
-              variant      variant    variants
-                 │           │           │
-                 └───────────┼───────────┘
-                             │
-                             ▼
-                        Realizations
-                             │
-                             ▼
-                  manufacturing Products
+source PNG
+    │
+    ▼
+  Artwork
+    │ registered geometry
+    ▼
+   Shape ──> ornament / coaster / other Shape Realizations
+    │
+    ▼
+packaged Shape Products
+    │
+    ├── Face A ──┐
+    │            ├──> Coin ──> printable 3MF
+    └── Face B ──┘
 ```
 
-The system is designed so that reusable upstream work does not need to be
-repeated merely because the same Artwork is used in another manufactured
-object or configuration.
+The system is designed so that reusable upstream work does not need to
+be repeated merely because the same Artwork is used in another
+manufactured object or configuration.
 
 The project is developed by **lowkeylabs** and distributed under the
 Apache License, Version 2.0.
@@ -48,17 +41,20 @@ Apache License, Version 2.0.
 
 `lowkey-artifact-builder` is under active development.
 
-The current implementation supports two primary Models:
+The current implementation supports three primary Models:
 
-* **Artwork** — interprets raster artwork and produces registered,
-  color-separated geometry;
-* **Shape** — constructs physical objects and can incorporate registered
-  Artwork.
+-   **Artwork** --- interprets raster artwork and produces registered,
+    color-separated geometry;
+-   **Shape** --- constructs physical objects and can incorporate
+    registered Artwork;
+-   **Coin** --- composes two complete packaged Shapes into one
+    two-sided printable object.
 
-The command-line interface and production workflow continue to evolve as the
-project develops.
+The command-line interface and production workflow continue to evolve as
+the project develops.
 
-See [`CHANGEPLAN.md`](CHANGEPLAN.md) for the current implementation plan.
+See [`CHANGEPLAN.md`](CHANGEPLAN.md) for the current implementation
+plan.
 
 ---
 
@@ -66,7 +62,8 @@ See [`CHANGEPLAN.md`](CHANGEPLAN.md) for the current implementation plan.
 
 The intended workflow minimizes per-Artifact configuration.
 
-For routine production, customer PNG files are placed in the project root:
+For routine production, customer PNG files are placed in the project
+root:
 
 ```text
 smith-dog.png
@@ -93,15 +90,15 @@ artifact build --build-all
 ```
 
 Ordinary packaged 3MF Products expose independently printable component
-identity together with the resolved physical printing color, making normal
-build output ready for slicing and printing.
+identity together with the resolved physical printing color, making
+normal build output ready for slicing and printing.
 
 When a particular Artifact requires customization, configure only the
 Realization that differs from its Model-owned Variant:
 
 ```bash
-artifact config smith-dog \
-    --realization shape_ornament \
+artifact config smith-dog \\
+    --realization shape_ornament \\
     --parameters shape_size=110
 ```
 
@@ -111,11 +108,13 @@ Then build that Realization:
 artifact build smith-dog --realization shape_ornament
 ```
 
-The CLI also provides inspection, maintenance, color-analysis, and recoloring
-operations as the workflow requires them.
+The CLI also provides inspection, maintenance, color-analysis, and
+recoloring operations as the workflow requires them.
 
-See [`src/lowkey_artifact_builder/cli/README.md`](src/lowkey_artifact_builder/cli/README.md)
-for the operator workflow, command responsibilities, and common CLI workflows.
+See
+[`src/lowkey_artifact_builder/cli/README.md`](src/lowkey_artifact_builder/cli/README.md)
+for the operator workflow, command responsibilities, and common CLI
+workflows.
 
 Run:
 
@@ -129,7 +128,8 @@ for the command surface available in the installed version.
 
 ## Core Concepts
 
-Only a small amount of architectural vocabulary is necessary for ordinary use.
+Only a small amount of architectural vocabulary is necessary for
+ordinary use.
 
 ### Artifact
 
@@ -143,8 +143,8 @@ jones-cat
 family-2026
 ```
 
-An Artifact commonly begins with source artwork and may participate in multiple
-manufacturing Realizations.
+An Artifact commonly begins with source artwork and may participate in
+multiple manufacturing Realizations.
 
 ### Model
 
@@ -155,6 +155,7 @@ The current primary Models are:
 ```text
 artwork
 shape
+coin
 ```
 
 Models own their parameters, Features, Variants, Stages, Products, and
@@ -170,15 +171,16 @@ Examples include:
 artwork.default
 shape.default
 shape.ornament
+coin.default
 ```
 
-Variants provide shared configuration that can be applied consistently across
-many Artifacts.
+Variants provide shared configuration that can be applied consistently
+across many Artifacts.
 
 ### Realization
 
-A **Realization** is the application of a Variant to an Artifact, optionally
-with Artifact-specific customization.
+A **Realization** is the application of a Variant to an Artifact,
+optionally with Artifact-specific customization.
 
 For example:
 
@@ -188,12 +190,12 @@ Variant:        shape.ornament
 Realization:    shape_ornament
 ```
 
-Realizations are the normal Artifact-scoped execution coordinate used by the
-CLI.
+Realizations are the normal Artifact-scoped execution coordinate used by
+the CLI.
 
-Every registered Model Variant provides a corresponding canonical Realization
-without requiring the Realization to be declared explicitly in
-`artifact.toml`.
+Every registered Model Variant provides a corresponding canonical
+Realization without requiring the Realization to be declared explicitly
+in `artifact.toml`.
 
 ### Product
 
@@ -209,14 +211,14 @@ JSON manifests
 3MF
 ```
 
-Products can be consumed by later Stages, other Realizations, other Models, or
-future builds.
+Products can be consumed by later Stages, other Realizations, other
+Models, or future builds.
 
 A 3MF is therefore one possible manufacturing Product rather than a
 privileged architectural "final product."
 
-For the complete terminology, relationships, contracts, and invariants, see
-[`ARCHITECTURE.md`](ARCHITECTURE.md).
+For the complete terminology, relationships, contracts, and invariants,
+see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ---
 
@@ -224,22 +226,23 @@ For the complete terminology, relationships, contracts, and invariants, see
 
 ### Artwork
 
-The `artwork` Model converts raster source artwork into reusable registered,
-color-separated geometry.
+The `artwork` Model converts raster source artwork into reusable
+registered, color-separated geometry.
 
 Artwork separates:
 
-* interpretation of the source image;
-* discovery of the colors represented by that image;
-* assignment of physical filament colors to those discovered colors;
-* registered raster and vector geometry; and
-* optional physical dimensionalization.
+-   interpretation of the source image;
+-   discovery of the colors represented by that image;
+-   assignment of physical filament colors to those discovered colors;
+-   registered raster and vector geometry; and
+-   optional physical dimensionalization.
 
-The colors discovered in source Artwork are **Artifact colors**. They are
-measured from the interpreted source rather than quantized to the colors
-currently available to the printer.
+The colors discovered in source Artwork are **Artifact colors**. They
+are measured from the interpreted source rather than quantized to the
+colors currently available to the printer.
 
-Artwork can compare those Artifact colors with three physical color scopes:
+Artwork can compare those Artifact colors with three physical color
+scopes:
 
 ```text
 printer colors
@@ -247,12 +250,13 @@ library colors
 color catalog
 ```
 
-The current printer assignment defines the physical semantic colors used to
-manufacture the Artwork.
+The current printer assignment defines the physical semantic colors used
+to manufacture the Artwork.
 
-Registered Artwork remains reusable and nonphysical until a Model introduces
-physical dimensions. It can therefore be packaged as standalone Artwork or
-consumed by another Model without repeating source interpretation.
+Registered Artwork remains reusable and nonphysical until a Model
+introduces physical dimensions. It can therefore be packaged as
+standalone Artwork or consumed by another Model without repeating source
+interpretation.
 
 The normative Artwork specification is:
 
@@ -275,30 +279,63 @@ and other primarily 2.5D manufactured forms.
 
 Shape owns physical properties such as:
 
-* structural geometry;
-* overall physical size;
-* base geometry and thickness;
-* optional structural Features such as an outer ridge;
-* structural component partitioning;
-* structural printing colors; and
-* placement and dimensionalization of incorporated registered Artwork.
+-   structural geometry;
+-   overall physical size;
+-   base geometry and thickness;
+-   optional structural Features such as an outer ridge;
+-   structural component partitioning;
+-   structural printing colors; and
+-   placement and dimensionalization of incorporated registered Artwork.
 
-Shape can consume registered Artwork while preserving the Artwork's registered
-geometry and color semantics.
+Shape can consume registered Artwork while preserving the Artwork's
+registered geometry and color semantics.
 
-Structural Shape geometry and incorporated Artwork remain registered through
-composition. Physical dimensionalization occurs afterward.
+Structural Shape geometry and incorporated Artwork remain registered
+through composition. Physical dimensionalization occurs afterward.
 
 The normative Shape specification is:
 
 [`src/lowkey_artifact_builder/model/models/shape/DEFINITION.md`](src/lowkey_artifact_builder/model/models/shape/DEFINITION.md)
 
+### Coin
+
+The `coin` Model constructs a two-sided physical object from exactly two
+complete packaged Shape Products, called Face A and Face B.
+
+```text
+Shape Face A ──┐
+               ├──> Coin ──> printable 3MF
+Shape Face B ──┘
+```
+
+The Faces may come from the same Shape Realization, different
+Realizations of one Artifact, or different Artifacts. Coin preserves the
+complete source geometry, independently printable components, and
+resolved physical colors, while giving components `faceA-` and `faceB-`
+semantic prefixes.
+
+Coin places the two Faces on opposite sides of their common mating
+plane. Face B must use inlaid Shape dimensionalization. Relative
+orientation is configurable as `aligned` (the default) or `inverted`.
+
+Coin consumes packaged Shape Products through ordinary Product
+dependencies. Requesting a Coin automatically realizes missing or stale
+Shape dependencies; Coin does not reconstruct or re-dimensionalize its
+source Shapes.
+
+The normative Coin specification is:
+
+[`src/lowkey_artifact_builder/model/models/coin/DEFINITION.md`](src/lowkey_artifact_builder/model/models/coin/DEFINITION.md)
+
+For configuring the two Face dependencies and building a Coin, see the
+[CLI operator guide](src/lowkey_artifact_builder/cli/README.md).
+
 ---
 
 ## Dependency-Driven Builds
 
-`lowkey-artifact-builder` is a dependency-driven build system rather than a
-fixed sequential pipeline.
+`lowkey-artifact-builder` is a dependency-driven build system rather
+than a fixed sequential pipeline.
 
 Conceptually:
 
@@ -320,14 +357,17 @@ current manufacturing state
 
 Dependencies determine what must execute.
 
-Successfully generated Products are persistent manufacturing assets and can be
-reused when still current.
+Successfully generated Products are persistent manufacturing assets and
+can be reused when still current.
 
 The planner therefore builds the dependency closure necessary for the
-requested work rather than assuming that every Stage of every Model must run.
+requested work rather than assuming that every Stage of every Model must
+run.
 
-This permits registered Artwork, for example, to be reused by a Shape without
-requiring standalone Artwork extrusion or packaging.
+This permits registered Artwork, for example, to be reused by a Shape
+without requiring standalone Artwork extrusion or packaging. It also
+permits Coin to reuse complete packaged Shape Products from independent
+Realizations.
 
 The complete build-system architecture is documented in
 [`ARCHITECTURE.md`](ARCHITECTURE.md).
@@ -362,11 +402,11 @@ Model defaults define ordinary Model behavior.
 Variants contain reusable overrides rather than complete duplicated
 configurations.
 
-Artifact and Realization configuration should therefore normally contain only
-values that actually differ for that Artifact.
+Artifact and Realization configuration should therefore normally contain
+only values that actually differ for that Artifact.
 
-A newly created Artifact can use canonical Realizations without explicitly
-declaring them in `artifact.toml`.
+A newly created Artifact can use canonical Realizations without
+explicitly declaring them in `artifact.toml`.
 
 For complete configuration semantics and precedence rules, see
 [`ARCHITECTURE.md`](ARCHITECTURE.md) and the applicable Model
@@ -376,8 +416,8 @@ For complete configuration semantics and precedence rules, see
 
 ## Color Workflow
 
-Artwork distinguishes between the colors discovered in source artwork and the
-physical filament colors available to manufacture it.
+Artwork distinguishes between the colors discovered in source artwork
+and the physical filament colors available to manufacture it.
 
 The three physical availability scopes are:
 
@@ -395,21 +435,25 @@ catalog
 Artwork determines globally optimized one-to-one assignments between its
 Artifact colors and the applicable physical palette.
 
-Printer assignments define the physical semantic colors used by the current
-Artwork manufacturing Realization.
+Printer assignments define the physical semantic colors used by the
+current Artwork manufacturing Realization.
 
-Library and catalog assignments permit comparison with alternative palettes
-without changing the current manufacturing configuration.
+Library and catalog assignments permit comparison with alternative
+palettes without changing the current manufacturing configuration.
 
 Shape structural components have their own Model-owned semantic printing
-colors. Incorporated Artwork retains the color semantics supplied by Artwork.
+colors. Incorporated Artwork retains the color semantics supplied by
+Artwork.
 
-Packaged 3MF Products preserve these semantic printing-color identities so
-independently printable components can be identified by both component
-identity and intended physical color.
+Packaged 3MF Products preserve these semantic printing-color identities
+so independently printable components can be identified by both
+component identity and intended physical color.
 
-Detailed color-assignment semantics are defined by the Artwork and Shape Model
-definitions.
+Coin preserves the resolved physical colors of its packaged Shape Faces
+without reassigning them during composition.
+
+Detailed color-assignment and preservation semantics are defined by the
+applicable Artwork, Shape, and Coin Model definitions.
 
 ---
 
@@ -434,7 +478,9 @@ lowkey-artifact-builder/
 │           └── models/
 │               ├── artwork/
 │               │   └── DEFINITION.md
-│               └── shape/
+│               ├── shape/
+│               │   └── DEFINITION.md
+│               └── coin/
 │                   └── DEFINITION.md
 ├── tests/
 ├── site-src/
@@ -443,9 +489,9 @@ lowkey-artifact-builder/
 
 The generic engine is intended to remain Model-independent.
 
-Model-specific manufacturing policy belongs to the applicable Model package,
-while reusable Model-independent mechanics may be implemented as shared
-operations or infrastructure.
+Model-specific manufacturing policy belongs to the applicable Model
+package, while reusable Model-independent mechanics may be implemented
+as shared operations or infrastructure.
 
 ---
 
@@ -475,8 +521,8 @@ make format
 make check
 ```
 
-Contribution guidelines, testing expectations, and pull-request practices are
-documented in:
+Contribution guidelines, testing expectations, and pull-request
+practices are documented in:
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
@@ -486,19 +532,20 @@ documented in:
 
 Project documentation is divided by responsibility.
 
-| Document                                                                                  | Purpose                                                                                   |
-| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| [`README.md`](README.md)                                                                  | Project introduction, normal usage, and documentation entry point                         |
+| Document | Purpose |
+| --- | --- |
+| [`README.md`](README.md) | Project introduction, normal usage, and documentation entry point |
 | [`src/lowkey_artifact_builder/cli/README.md`](src/lowkey_artifact_builder/cli/README.md) | CLI operator workflow, command responsibilities, and usage |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md)                                                      | Normative system-wide terminology, relationships, contracts, and architectural invariants |
-| [Artwork `DEFINITION.md`](src/lowkey_artifact_builder/model/models/artwork/DEFINITION.md) | Normative semantics and invariants of the Artwork Model                                   |
-| [Shape `DEFINITION.md`](src/lowkey_artifact_builder/model/models/shape/DEFINITION.md)     | Normative semantics and invariants of the Shape Model                                     |
-| [`SETUP.md`](SETUP.md)                                                                    | Development environment and tool setup                                                    |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                                      | Contribution, testing, and development practices                                          |
-| [`prompts/`](prompts/)                                                                    | Reusable instructions and workflows for structured and LLM-assisted development           |
-| [`CHANGEPLAN.md`](CHANGEPLAN.md)                                                          | Temporary, non-normative implementation plan for the current change                       |
-| [`site-src/`](site-src/)                                                                  | Authoritative source material for the project website                                     |
-| [`docs/`](docs/)                                                                          | Generated GitHub Pages output                                                             |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Normative system-wide terminology, relationships, contracts, and invariants |
+| [Artwork `DEFINITION.md`](src/lowkey_artifact_builder/model/models/artwork/DEFINITION.md) | Normative Artwork Model semantics and invariants |
+| [Shape `DEFINITION.md`](src/lowkey_artifact_builder/model/models/shape/DEFINITION.md) | Normative Shape Model semantics and invariants |
+| [Coin `DEFINITION.md`](src/lowkey_artifact_builder/model/models/coin/DEFINITION.md) | Normative Coin Model semantics and invariants |
+| [`SETUP.md`](SETUP.md) | Development environment and tool setup |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contribution, testing, and development practices |
+| [`prompts/`](prompts/) | Structured development and LLM-assisted workflows |
+| [`CHANGEPLAN.md`](CHANGEPLAN.md) | Temporary implementation plan for the current change |
+| [`site-src/`](site-src/) | Authoritative project website source |
+| [`docs/`](docs/) | Generated GitHub Pages output |
 
 ### Development Prompts
 
@@ -507,8 +554,8 @@ structured development work, including procedures for starting a new
 development thread and following the project's test-driven development
 process.
 
-These prompts guide the development process. They do not define system or
-Model semantics.
+These prompts guide the development process. They do not define system
+or Model semantics.
 
 When evaluating intended behavior, the authority is:
 
@@ -516,12 +563,13 @@ When evaluating intended behavior, the authority is:
 ARCHITECTURE.md
         │
         ├── artwork/DEFINITION.md
-        └── shape/DEFINITION.md
+        ├── shape/DEFINITION.md
+        └── coin/DEFINITION.md
 ```
 
-`CHANGEPLAN.md` is derived from comparison of those permanent specifications
-with the current repository. It is an implementation plan rather than a
-normative specification.
+`CHANGEPLAN.md` is derived from comparison of those permanent
+specifications with the current repository. It is an implementation plan
+rather than a normative specification.
 
 Tests provide executable evidence of conformance but do not replace the
 permanent specifications.
@@ -555,24 +603,26 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) before submitting changes.
 
 Architectural changes should be evaluated against `ARCHITECTURE.md`.
 Model-specific semantic changes should be evaluated against and, when
-appropriate, accompanied by changes to the applicable Model `DEFINITION.md`.
+appropriate, accompanied by changes to the applicable Model
+`DEFINITION.md`.
 
 ---
 
 ## License
 
-`lowkey-artifact-builder` is licensed under the Apache License, Version 2.0.
+`lowkey-artifact-builder` is licensed under the Apache License, Version
+2.0.
 
 See:
 
-* [`LICENSE`](LICENSE)
-* [`NOTICE`](NOTICE)
-* [`COPYRIGHT`](COPYRIGHT)
+-   [`LICENSE`](LICENSE)
+-   [`NOTICE`](NOTICE)
+-   [`COPYRIGHT`](COPYRIGHT)
 
 for details.
 
-Commercial licensing and related information, when applicable, is documented
-in [`COMMERCIAL.md`](COMMERCIAL.md).
+Commercial licensing and related information, when applicable, is
+documented in [`COMMERCIAL.md`](COMMERCIAL.md).
 
 ---
 
@@ -588,6 +638,7 @@ Citation metadata for the project is provided in:
 
 `lowkey-artifact-builder` is developed by **lowkeylabs**.
 
-The project explores reproducible, dependency-driven workflows for converting
-source artwork into reusable registered geometry and multicolor additive
-manufacturing Products.
+The project explores reproducible, dependency-driven workflows for
+converting source artwork into reusable registered geometry and
+multicolor additive manufacturing Products.
+
