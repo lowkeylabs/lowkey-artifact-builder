@@ -547,35 +547,43 @@ def _transform_face_b_mesh(
 
 
 def _compose_faces(
-    face_a: tuple[Component, ...],
-    face_b: tuple[Component, ...],
+    face_a_components: tuple[Component, ...],
+    face_b_components: tuple[Component, ...],
     *,
     orientation: str,
 ) -> tuple[Component, ...]:
     """
-    Compose two complete packaged Faces around the Z=0 mating plane.
+    Compose complete packaged Shape Faces into Coin coordinates.
 
-    Face A remains in its packaged coordinate system. Every component of
-    Face B receives the same rigid transform. Source component identity and
-    resolved color are retained for later Coin identity composition.
+    Face A retains its packaged placement. Face B receives one common rigid
+    transform that places it on the opposite side of the Z=0 mating plane.
+
+    Source component identity is preserved beneath the semantic Face role.
+    Resolved physical colors are carried through unchanged.
     """
 
-    transformed_face_b = tuple(
+    face_a = tuple(
         Component(
-            name=component.name,
+            name=f"faceA-{component.name}",
+            mesh=component.mesh,
+            color=component.color,
+        )
+        for component in face_a_components
+    )
+
+    face_b = tuple(
+        Component(
+            name=f"faceB-{component.name}",
             mesh=_transform_face_b_mesh(
                 component.mesh,
                 orientation=orientation,
             ),
             color=component.color,
         )
-        for component in face_b
+        for component in face_b_components
     )
 
-    return (
-        *face_a,
-        *transformed_face_b,
-    )
+    return face_a + face_b
 
 
 # =========================================================

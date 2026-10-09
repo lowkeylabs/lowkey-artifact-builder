@@ -763,3 +763,134 @@ def test_coin_compares_polygon_boundary_after_face_orientation(
     )
 
     assert physical.is_file()
+
+
+def test_coin_physical_product_preserves_face_identity_and_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Coin preserves source component identity and resolved physical color.
+
+    Every source component remains independently represented. Coin namespaces
+    semantic identity by Face without reassigning colors or merging components
+    that share names or physical colors.
+    """
+
+    face_a = tmp_path / "face-a.3mf"
+    face_b = tmp_path / "face-b.3mf"
+    physical = tmp_path / "physical.json"
+
+    white = PaletteColor(
+        name="white",
+        rgb=(255, 255, 255),
+    )
+    red = PaletteColor(
+        name="red",
+        rgb=(255, 0, 0),
+    )
+    blue = PaletteColor(
+        name="blue",
+        rgb=(0, 0, 255),
+    )
+
+    face_a_mesh = _asymmetric_mesh(
+        z_top=3.0,
+    )
+    face_b_mesh = _asymmetric_mesh(
+        z_top=2.0,
+    )
+
+    _write_asymmetric_shape(
+        face_a,
+        raise_style="raised",
+        components=(
+            Component(
+                name="base",
+                mesh=face_a_mesh,
+                color=white,
+            ),
+            Component(
+                name="artwork-1",
+                mesh=face_a_mesh,
+                color=red,
+            ),
+        ),
+    )
+
+    _write_asymmetric_shape(
+        face_b,
+        raise_style="inlaid",
+        components=(
+            Component(
+                name="base",
+                mesh=face_b_mesh,
+                color=white,
+            ),
+            Component(
+                name="artwork-1",
+                mesh=face_b_mesh,
+                color=blue,
+            ),
+        ),
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    context.input.side_effect = {
+        "faceA": face_a,
+        "faceB": face_b,
+    }.__getitem__
+
+    context.output.side_effect = {
+        "physical": physical,
+    }.__getitem__
+
+    context.resolver.side_effect = {
+        "coin_orientation": "aligned",
+    }.__getitem__
+
+    compose.execute(
+        context,
+    )
+
+    products = json.loads(
+        physical.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    components = products["components"]
+
+    assert len(components) == 4
+
+    assert {component["name"] for component in components} == {
+        "faceA-base",
+        "faceA-artwork-1",
+        "faceB-base",
+        "faceB-artwork-1",
+    }
+
+    colors = {component["name"]: component["color"] for component in components}
+
+    assert colors == {
+        "faceA-base": {
+            "name": "white",
+            "rgb": [255, 255, 255],
+        },
+        "faceA-artwork-1": {
+            "name": "red",
+            "rgb": [255, 0, 0],
+        },
+        "faceB-base": {
+            "name": "white",
+            "rgb": [255, 255, 255],
+        },
+        "faceB-artwork-1": {
+            "name": "blue",
+            "rgb": [0, 0, 255],
+        },
+    }
+
+    assert all((physical.parent / component["path"]).is_file() for component in components)
