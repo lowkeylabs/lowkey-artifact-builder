@@ -63,13 +63,17 @@ def create_required_product_dependency_build_plans(
     required_product_dependencies are reusable and therefore do not create
     producer work.
 
-    Each required ProductRef is matched to its corresponding planned
-    dependency in the consumer BuildPlan. Producer planning is then
-    delegated to create_product_dependency_build_plan, targeting exactly
-    the required producer product and its prerequisite closure.
+    Consumer dependency roles may independently bind to the same concrete
+    producer Product. Producer work is identified canonically by ProductRef,
+    so such duplicate requirements create only one producer BuildPlan.
 
-    Producer plans preserve the order of required_product_dependencies in
-    the ExecutionPlan.
+    Each distinct required ProductRef is matched to its corresponding planned
+    dependency in the consumer BuildPlan. Producer planning is then delegated
+    to create_product_dependency_build_plan, targeting exactly the required
+    producer product and its prerequisite closure.
+
+    Producer plans preserve first-occurrence order of distinct required
+    ProductRefs in the ExecutionPlan.
 
     A required producer product that cannot be matched to a concrete
     dependency in the BuildPlan indicates inconsistent planning state and
@@ -82,11 +86,15 @@ def create_required_product_dependency_build_plans(
     )
 
     plans: list[BuildPlan] = []
+    planned_product_refs: set[ProductRef] = set()
 
     for required in execution_plan.required_product_dependencies:
         product_ref = _require_product_ref(
             required.product_ref,
         )
+
+        if product_ref in planned_product_refs:
+            continue
 
         dependency = _find_planned_product_dependency(
             build_plan=build_plan,
@@ -98,6 +106,10 @@ def create_required_product_dependency_build_plans(
                 dependency,
                 project_root=build_plan.project_root,
             )
+        )
+
+        planned_product_refs.add(
+            product_ref,
         )
 
     return tuple(

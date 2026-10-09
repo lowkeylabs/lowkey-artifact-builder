@@ -54,12 +54,14 @@ def _planned_product_dependency(
     model: str,
     stage: str,
     product: str,
+    name: str | None = None,
 ) -> PlannedProductDependency:
     """
     Construct one concrete bound producer-product dependency.
     """
 
     dependency = ProductDependencySpec(
+        name=name,
         model=model,
         stage=stage,
         product=product,
@@ -693,3 +695,104 @@ def test_dependency_planning_rejects_non_product_ref_identity(
             build_plan,
             execution_plan,
         )
+
+
+def test_same_required_product_through_two_roles_creates_one_producer_plan(
+    tmp_path: Path,
+    test_resolver: Resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Two consumer roles bound to the same concrete Product require one build.
+
+    Consumer roles remain independent dependency relationships, but producer
+    work is identified canonically by ProductRef and must not be duplicated.
+    """
+
+    face_a = _planned_product_dependency(
+        tmp_path,
+        name="faceA",
+        artifact="producer-artifact",
+        model="producer",
+        stage="transform",
+        product="geometry",
+    )
+
+    face_b = _planned_product_dependency(
+        tmp_path,
+        name="faceB",
+        artifact="producer-artifact",
+        model="producer",
+        stage="transform",
+        product="geometry",
+    )
+
+    assert face_a.binding.dependency != face_b.binding.dependency
+    assert face_a.product_ref == face_b.product_ref
+
+    build_plan = _consumer_build_plan(
+        tmp_path,
+        test_resolver,
+        dependencies=(
+            face_a,
+            face_b,
+        ),
+    )
+
+    execution_plan = _execution_plan(
+        dependencies=(
+            (
+                face_a,
+                ProductState.ABSENT,
+            ),
+            (
+                face_b,
+                ProductState.ABSENT,
+            ),
+        ),
+    )
+
+    requested: list[ProductRef] = []
+
+    producer_plan = BuildPlan(
+        artifact_id="producer-artifact",
+        model=ModelSpec(
+            name="producer",
+            title="Producer",
+        ),
+        realization_name="default",
+        resolver=test_resolver,
+        project_root=tmp_path,
+        artifact_dir=tmp_path / "artifacts" / "producer-artifact",
+        stages=(),
+        targets=(face_a.product_ref,),
+    )
+
+    def fake_create_product_dependency_build_plan(
+        dependency: PlannedProductDependency,
+        *,
+        project_root: Path | None = None,
+    ) -> BuildPlan:
+        requested.append(
+            dependency.product_ref,
+        )
+
+        assert project_root == tmp_path
+
+        return producer_plan
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.dependency_plan.create_product_dependency_build_plan",
+        fake_create_product_dependency_build_plan,
+    )
+
+    plans = create_required_product_dependency_build_plans(
+        build_plan,
+        execution_plan,
+    )
+
+    assert requested == [
+        face_a.product_ref,
+    ]
+
+    assert plans == (producer_plan,)
