@@ -1907,3 +1907,97 @@ def test_write_read_round_trip_preserves_product_metadata(
     assert read_metadata(path) == {
         "raise_style": "inlaid",
     }
+
+
+def test_update_component_colors_supports_namespaced_semantic_identity(
+    tmp_path: Path,
+) -> None:
+    """
+    Recoloring treats namespaced component identity as opaque semantic identity.
+
+    Model-specific prefixes such as Coin Face roles require no format-specific
+    interpretation. Recoloring changes color presentation while preserving
+    component membership and geometry.
+    """
+
+    path = tmp_path / "artifact.3mf"
+
+    white = PaletteColor(
+        name="white",
+        rgb=(255, 255, 255),
+    )
+    red = PaletteColor(
+        name="red",
+        rgb=(255, 0, 0),
+    )
+    blue = PaletteColor(
+        name="blue",
+        rgb=(0, 0, 255),
+    )
+
+    face_a_mesh = Mesh(
+        vertices=(
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 1.0),
+        ),
+        triangles=((0, 1, 2),),
+    )
+
+    face_b_mesh = Mesh(
+        vertices=(
+            (10.0, 0.0, 0.0),
+            (11.0, 0.0, 0.0),
+            (10.0, 1.0, -1.0),
+        ),
+        triangles=((0, 1, 2),),
+    )
+
+    write(
+        (
+            Component(
+                name="faceA-base - white",
+                mesh=face_a_mesh,
+                color=white,
+            ),
+            Component(
+                name="faceB-artwork-1 - red",
+                mesh=face_b_mesh,
+                color=red,
+            ),
+        ),
+        path,
+    )
+
+    update_component_colors(
+        path,
+        artifact_id="example",
+        colors={
+            "faceB-artwork-1": blue,
+        },
+    )
+
+    components = read(
+        path,
+    )
+
+    assert len(components) == 2
+
+    by_name = {component.name: component for component in components}
+
+    assert set(by_name) == {
+        "faceA-base - white",
+        "faceB-artwork-1 - blue",
+    }
+
+    assert by_name["faceA-base - white"] == Component(
+        name="faceA-base - white",
+        mesh=face_a_mesh,
+        color=white,
+    )
+
+    assert by_name["faceB-artwork-1 - blue"] == Component(
+        name="faceB-artwork-1 - blue",
+        mesh=face_b_mesh,
+        color=blue,
+    )
