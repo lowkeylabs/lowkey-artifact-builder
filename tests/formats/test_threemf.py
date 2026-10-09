@@ -27,6 +27,7 @@ from lowkey_artifact_builder.formats.threemf import (
     component_name,
     load_stl,
     read,
+    read_metadata,
     update_component_colors,
     update_component_names,
     write,
@@ -1872,3 +1873,37 @@ def test_write_read_round_trip_preserves_components(
     )
 
     assert read(path) == components
+
+
+def test_write_read_round_trip_preserves_product_metadata(
+    tmp_path: Path,
+) -> None:
+    """
+    A packaged 3MF can carry persistent producer-owned Product metadata.
+
+    Metadata remains opaque to the generic 3MF format layer and does not
+    introduce Model-specific semantics.
+    """
+
+    path = tmp_path / "artifact.3mf"
+
+    write(
+        (
+            Component(
+                name="base - white",
+                mesh=_mesh(),
+                color=PaletteColor(
+                    name="white",
+                    rgb=(255, 255, 255),
+                ),
+            ),
+        ),
+        path,
+        metadata={
+            "raise_style": "inlaid",
+        },
+    )
+
+    assert read_metadata(path) == {
+        "raise_style": "inlaid",
+    }

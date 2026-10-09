@@ -399,12 +399,17 @@ def write(
         ...,
     ],
     path: Path,
+    *,
+    metadata: dict[str, str] | None = None,
 ) -> None:
     """
     Write components to a 3MF package.
 
     Each component becomes an independent 3MF mesh object
     and is added independently to the build section.
+
+    Optional metadata is persisted as format-level 3MF model
+    metadata without Model-specific interpretation.
 
     Namespace registration is deliberately performed at
     serialization time. ElementTree namespace registration
@@ -426,7 +431,10 @@ def write(
 
     _validate_components(components)
 
-    model = _build_model(components)
+    model = _build_model(
+        components,
+        metadata=metadata,
+    )
 
     content_types = _build_content_types()
 
@@ -544,9 +552,13 @@ def _build_model(
         Component,
         ...,
     ],
+    *,
+    metadata: dict[str, str] | None = None,
 ) -> ET.Element:
     """
     Construct the primary 3MF model document.
+
+    Metadata is persisted without Model-specific interpretation.
     """
 
     model = ET.Element(
@@ -555,6 +567,17 @@ def _build_model(
             "unit": "millimeter",
         },
     )
+
+    for name, value in (metadata or {}).items():
+        metadata_element = ET.SubElement(
+            model,
+            f"{{{CORE_NS}}}metadata",
+            {
+                "name": name,
+            },
+        )
+
+        metadata_element.text = value
 
     resources = ET.SubElement(
         model,
@@ -1427,6 +1450,67 @@ def _read_component_color(
     )
 
 
+def read_metadata(
+    path: Path,
+) -> dict[str, str]:
+    """
+    Read Product metadata from a 3MF package.
+
+    Metadata names and values are returned without Model-specific
+    interpretation.
+
+    Raises:
+        ThreeMFError:
+            If the 3MF cannot be read or parsed, or contains invalid
+            Product metadata.
+    """
+
+    path = Path(path)
+
+    try:
+        with zipfile.ZipFile(
+            path,
+            mode="r",
+        ) as package:
+            model_data = package.read(
+                "3D/3dmodel.model",
+            )
+
+    except (
+        OSError,
+        zipfile.BadZipFile,
+        KeyError,
+    ) as exc:
+        raise ThreeMFError(f"Could not read 3MF document {path}: {exc}") from exc
+
+    try:
+        model = ET.fromstring(
+            model_data,
+        )
+
+    except ET.ParseError as exc:
+        raise ThreeMFError(f"Could not parse 3MF model {path}: {exc}") from exc
+
+    metadata: dict[str, str] = {}
+
+    for element in model.findall(
+        f"./{{{CORE_NS}}}metadata",
+    ):
+        name = element.get(
+            "name",
+        )
+
+        if not name:
+            raise ThreeMFError(f"3MF metadata does not have a name: {path}")
+
+        if name in metadata:
+            raise ThreeMFError(f"Duplicate 3MF metadata name {name!r}: {path}")
+
+        metadata[name] = element.text or ""
+
+    return metadata
+
+
 __all__ = [
     "CONTENT_TYPES_NS",
     "CORE_NS",
@@ -1438,6 +1522,7 @@ __all__ = [
     "ThreeMFError",
     "load_stl",
     "read",
+    "read_metadata",
     "write",
     "write_stls",
     "component_name",

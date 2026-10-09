@@ -185,16 +185,22 @@ def execute(
             for physical_component, color in component_colors
         )
 
-        write(components, artifact)
+        raise_style = context.resolver(
+            "shape_raise_style",
+        )
+
+        write(
+            components,
+            artifact,
+            metadata={
+                "raise_style": raise_style,
+            },
+        )
 
         if not artifact.is_file():
             raise PackageError(
                 f"3MF packaging completed without creating the expected artifact: {artifact}"
             )
-
-        raise_style = context.resolver(
-            "shape_raise_style",
-        )
 
         package_manifest.write_text(
             json.dumps(

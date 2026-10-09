@@ -29,6 +29,7 @@ from lowkey_artifact_builder.formats.threemf import (
     CORE_NS,
     component_name,
     load_stl,
+    read_metadata,
 )
 from lowkey_artifact_builder.model.models.shape import stages
 from lowkey_artifact_builder.model.models.shape.stages import compose, extrude, package, structure
@@ -2419,11 +2420,12 @@ def test_package_stage_publishes_reusable_shape_metadata(
     Shape Package publishes persistent metadata required by downstream
     consumers of the packaged Shape Product.
 
-    The packaged 3MF remains authoritative for physical component geometry,
-    identity, and resolved colors. Shape-level compatibility metadata records
-    the resolved dimensionalization without requiring a downstream consumer
-    to reopen source Shape configuration.
+    The packaged 3MF is authoritative for physical component geometry,
+    identity, resolved colors, and producer-owned compatibility metadata.
+    Shape dimensionalization can therefore be consumed without reopening
+    source Shape configuration.
     """
+
     component_directory = tmp_path / "extrude"
     base = component_directory / "base.stl"
     extrude_manifest = component_directory / "products.json"
@@ -2468,6 +2470,12 @@ def test_package_stage_publishes_reusable_shape_metadata(
 
     assert artifact.is_file()
     assert package_manifest.is_file()
+
+    assert read_metadata(
+        artifact,
+    ) == {
+        "raise_style": "inlaid",
+    }
 
     metadata = json.loads(
         package_manifest.read_text(
