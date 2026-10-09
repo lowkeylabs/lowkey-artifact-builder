@@ -76,14 +76,20 @@ def _write_logical_component_manifest(
     ],
 ) -> None:
     """
-    Write a Shape extrusion manifest containing logical component identity.
-    Shape-owned physical components carry no printer-color metadata.
+    Write a representative Shape extrusion manifest.
+
+    Shape-owned physical components carry logical component identity but no
+    printer-color metadata. The manifest also carries the resolved physical
+    compatibility contract established by Extrude.
+
     Physical color assignment belongs to downstream packaging.
     """
+
     path.parent.mkdir(
         parents=True,
         exist_ok=True,
     )
+
     path.write_text(
         json.dumps(
             {
@@ -94,6 +100,18 @@ def _write_logical_component_manifest(
                     }
                     for name, component_path in components
                 ],
+                "compatibility": {
+                    "boundary": {
+                        "kind": "circle",
+                        "center": [
+                            0.0,
+                            0.0,
+                        ],
+                        "radius": 50.0,
+                    },
+                    "hole": None,
+                    "loop": None,
+                },
             }
         ),
         encoding="utf-8",

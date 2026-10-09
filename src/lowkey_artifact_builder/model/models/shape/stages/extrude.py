@@ -185,6 +185,11 @@ def execute(
     A participating Shape Hole is resolved once from the complete physical
     Shape envelope and subtracted from every independently printable physical
     component before STL materialization.
+
+    The resulting component manifest also persists the resolved physical
+    compatibility geometry required by downstream consumers. That contract
+    records physical geometry rather than the configuration from which the
+    geometry was derived.
     """
 
     composition = context.input(
@@ -223,18 +228,20 @@ def execute(
         "shape_hole_diameter",
     )
 
+    half_size = shape_size / 2.0
+
+    envelope_bounds = Bounds(
+        min_x=-half_size,
+        min_y=-half_size,
+        max_x=half_size,
+        max_y=half_size,
+    )
+
     hole: HoleGeometry | None = None
 
     if shape_hole_diameter > 0.0:
-        half_size = shape_size / 2.0
-
         hole = create_hole_geometry(
-            envelope_bounds=Bounds(
-                min_x=-half_size,
-                min_y=-half_size,
-                max_x=half_size,
-                max_y=half_size,
-            ),
+            envelope_bounds=envelope_bounds,
             diameter=shape_hole_diameter,
             edge_distance=context.resolver(
                 "shape_hole_edge_distance",
@@ -251,15 +258,8 @@ def execute(
     loop: LoopGeometry | None = None
 
     if shape_loop_inner_diameter > 0.0:
-        half_size = shape_size / 2.0
-
         loop = create_loop_geometry(
-            envelope_bounds=Bounds(
-                min_x=-half_size,
-                min_y=-half_size,
-                max_x=half_size,
-                max_y=half_size,
-            ),
+            envelope_bounds=envelope_bounds,
             inner_diameter=shape_loop_inner_diameter,
             width=context.resolver(
                 "shape_loop_width",
@@ -308,6 +308,10 @@ def execute(
             shape_artwork_fill_raise = context.resolver(
                 "shape_artwork_fill_raise",
             )
+
+        boundary = _load_shape_boundary(
+            composition,
+        )
 
         ridge = _load_ridge(
             composition,
@@ -579,9 +583,17 @@ def execute(
                 hole=hole,
             )
 
+        compatibility = _build_shape_compatibility(
+            boundary=boundary,
+            shape_size=shape_size,
+            hole=hole,
+            loop=loop,
+        )
+
         _write_component_manifest(
             manifest,
             components,
+            compatibility=compatibility,
             artwork_components=artwork_components,
             artwork_fill_components=artwork_fill_components,
         )
@@ -2159,6 +2171,140 @@ def _require_component(
         )
 
 
+def _build_shape_compatibility(
+    *,
+    boundary: RegisteredCircle | RegisteredRectangle | RegisteredPolygon,
+    shape_size: float,
+    hole: HoleGeometry | None,
+    loop: LoopGeometry | None,
+) -> dict[str, object]:
+    """
+    Build the resolved physical Shape compatibility contract.
+
+    Compatibility contains only physical facts required by downstream
+    consumers. It does not persist the configuration values from which those
+    facts were derived.
+    """
+
+    return {
+        "boundary": _serialize_shape_boundary(
+            boundary,
+            shape_size=shape_size,
+        ),
+        "hole": _serialize_hole_compatibility(
+            hole,
+        ),
+        "loop": _serialize_loop_compatibility(
+            loop,
+        ),
+    }
+
+
+def _serialize_shape_boundary(
+    boundary: RegisteredCircle | RegisteredRectangle | RegisteredPolygon,
+    *,
+    shape_size: float,
+) -> dict[str, object]:
+    """
+    Serialize the resolved physical structural Shape boundary.
+    """
+
+    if isinstance(
+        boundary,
+        RegisteredCircle,
+    ):
+        return {
+            "kind": "circle",
+            "center": [
+                boundary.cx * shape_size,
+                boundary.cy * shape_size,
+            ],
+            "radius": boundary.radius * shape_size,
+        }
+
+    if isinstance(
+        boundary,
+        RegisteredRectangle,
+    ):
+        return {
+            "kind": "polygon",
+            "vertices": [
+                [
+                    boundary.x * shape_size,
+                    boundary.y * shape_size,
+                ],
+                [
+                    (boundary.x + boundary.width) * shape_size,
+                    boundary.y * shape_size,
+                ],
+                [
+                    (boundary.x + boundary.width) * shape_size,
+                    (boundary.y + boundary.height) * shape_size,
+                ],
+                [
+                    boundary.x * shape_size,
+                    (boundary.y + boundary.height) * shape_size,
+                ],
+            ],
+        }
+
+    if isinstance(
+        boundary,
+        RegisteredPolygon,
+    ):
+        return {
+            "kind": "polygon",
+            "vertices": [
+                [
+                    x * shape_size,
+                    y * shape_size,
+                ]
+                for x, y in boundary.vertices
+            ],
+        }
+
+    raise ValueError(f"Unsupported registered Shape boundary geometry: {type(boundary).__name__}.")
+
+
+def _serialize_hole_compatibility(
+    hole: HoleGeometry | None,
+) -> dict[str, object] | None:
+    """
+    Serialize resolved physical Hole geometry required for compatibility.
+    """
+
+    if hole is None:
+        return None
+
+    return {
+        "center": [
+            hole.center_x,
+            hole.center_y,
+        ],
+        "radius": hole.radius,
+    }
+
+
+def _serialize_loop_compatibility(
+    loop: LoopGeometry | None,
+) -> dict[str, object] | None:
+    """
+    Serialize resolved physical Loop geometry required for compatibility.
+    """
+
+    if loop is None:
+        return None
+
+    return {
+        "center": [
+            loop.center_x,
+            loop.center_y,
+        ],
+        "inner_radius": loop.inner_radius,
+        "outer_radius": loop.outer_radius,
+    }
+
+
 def _write_component_manifest(
     path: Path,
     components: tuple[
@@ -2169,6 +2315,7 @@ def _write_component_manifest(
         ...,
     ],
     *,
+    compatibility: dict[str, object],
     artwork_components: tuple[
         tuple[
             str,
@@ -2193,6 +2340,9 @@ def _write_component_manifest(
 
     Incorporated Artwork components retain persistent Artifact-color identity
     so downstream packaging can resolve their physical printer assignments.
+
+    Compatibility records the resolved Shape physical semantics required by
+    downstream consumers without requiring them to reopen Shape configuration.
     """
 
     manifest_components: list[dict[str, object]] = [
@@ -2231,6 +2381,7 @@ def _write_component_manifest(
         json.dumps(
             {
                 "components": manifest_components,
+                "compatibility": compatibility,
             },
             indent=2,
         )
@@ -4573,6 +4724,63 @@ def _load_inner_ridge(
         )
 
     raise ValueError(f"Unsupported registered Inner Ridge boundary geometry: {outer_kind!r}.")
+
+
+def _load_shape_boundary(
+    composition: Path,
+) -> RegisteredCircle | RegisteredRectangle | RegisteredPolygon:
+    """
+    Load the authoritative registered outer Shape boundary.
+
+    Shape Compose establishes this semantic boundary independently of whether
+    an outer Ridge participates. Extrusion consumes that registered geometry
+    and dimensionalizes it into the physical mating boundary.
+    """
+
+    tree = ET.parse(
+        composition,
+    )
+
+    root = tree.getroot()
+
+    boundary_element: ET.Element | None = None
+
+    for element in root.iter():
+        if element.get("id") == SHAPE_BOUNDARY_ID:
+            boundary_element = element
+            break
+
+    if boundary_element is None:
+        raise ValueError("Registered Shape composition is missing the Shape outer boundary.")
+
+    boundary_kind = _local_name(
+        boundary_element.tag,
+    )
+
+    if boundary_kind == "circle":
+        return _load_registered_circle(
+            boundary_element,
+            boundary_name=SHAPE_BOUNDARY_ID,
+        )
+
+    if boundary_kind == "rect":
+        boundary = _load_registered_rectangle(
+            boundary_element,
+            boundary_name=SHAPE_BOUNDARY_ID,
+        )
+
+        if boundary.width != boundary.height:
+            raise ValueError("Registered Shape square boundary must have equal width and height.")
+
+        return boundary
+
+    if boundary_kind == "polygon":
+        return _load_registered_polygon(
+            boundary_element,
+            boundary_name=SHAPE_BOUNDARY_ID,
+        )
+
+    raise ValueError(f"Unsupported registered Shape boundary geometry: {boundary_kind!r}.")
 
 
 def _load_ridge(

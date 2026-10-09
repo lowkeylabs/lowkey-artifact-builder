@@ -412,8 +412,22 @@ def _write_component_manifest(
                 },
             }
         manifest_components.append(component)
+
     path.write_text(
-        json.dumps({"components": manifest_components}),
+        json.dumps(
+            {
+                "components": manifest_components,
+                "compatibility": {
+                    "boundary": {
+                        "kind": "circle",
+                        "center": [0.0, 0.0],
+                        "radius": 50.0,
+                    },
+                    "hole": None,
+                    "loop": None,
+                },
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -1678,10 +1692,20 @@ def test_package_stage_rejects_invalid_component_color_metadata(
                         "color": color,
                     },
                 ],
+                "compatibility": {
+                    "boundary": {
+                        "kind": "circle",
+                        "center": [0.0, 0.0],
+                        "radius": 50.0,
+                    },
+                    "hole": None,
+                    "loop": None,
+                },
             }
         ),
         encoding="utf-8",
     )
+
     resolver = Mock()
     context = Mock(
         spec=StageContext,
@@ -2343,6 +2367,15 @@ def test_package_stage_assigns_incorporated_artwork_to_printer_color(
                         },
                     },
                 ],
+                "compatibility": {
+                    "boundary": {
+                        "kind": "circle",
+                        "center": [0.0, 0.0],
+                        "radius": 50.0,
+                    },
+                    "hole": None,
+                    "loop": None,
+                },
             }
         ),
         encoding="utf-8",
@@ -2431,23 +2464,46 @@ def test_package_stage_publishes_reusable_shape_metadata(
         base,
         solid_name="shape-base",
     )
-    _write_component_manifest(
-        extrude_manifest,
-        (
-            (
-                "base",
-                "base.stl",
-                "test-white",
-                (255, 255, 255),
-            ),
+
+    compatibility = {
+        "boundary": {
+            "kind": "circle",
+            "center": [0.0, 0.0],
+            "radius": 50.0,
+        },
+        "hole": {
+            "center": [47.1, 0.0],
+            "radius": 2.5,
+        },
+        "loop": {
+            "center": [52.0, 0.0],
+            "inner_radius": 2.0,
+            "outer_radius": 3.5,
+        },
+    }
+
+    extrude_manifest.write_text(
+        json.dumps(
+            {
+                "components": [
+                    {
+                        "name": "base",
+                        "path": "base.stl",
+                    },
+                ],
+                "compatibility": compatibility,
+            }
         ),
+        encoding="utf-8",
     )
 
     context = Mock(
         spec=StageContext,
     )
+
     context.artifact_id = "example"
     context.input.return_value = extrude_manifest
+
     _configure_package_outputs(
         context,
         artifact,
@@ -2469,4 +2525,9 @@ def test_package_stage_publishes_reusable_shape_metadata(
         artifact,
     ) == {
         "raise_style": "inlaid",
+        "shape_compatibility": json.dumps(
+            compatibility,
+            separators=(",", ":"),
+            sort_keys=True,
+        ),
     }

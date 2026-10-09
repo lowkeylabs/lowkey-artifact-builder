@@ -29,6 +29,9 @@ def _write_composition(
 ) -> None:
     """
     Write representative registered Shape composition geometry without a ridge.
+
+    The complete Shape boundary carries the semantic identity established
+    by Shape Compose for downstream physical dimensionalization.
     """
 
     path.parent.mkdir(
@@ -43,6 +46,7 @@ def _write_composition(
     viewBox="-0.5 -0.5 1.0 1.0"
 >
     <circle
+        id="shape-boundary"
         cx="0.0"
         cy="0.0"
         r="0.5"
@@ -4651,3 +4655,78 @@ def test_shape_loop_is_distinct_tangent_additive_component(
     assert base_bounds[1] == pytest.approx(50.0)
     assert base_bounds[2] == pytest.approx(-50.0)
     assert base_bounds[3] == pytest.approx(50.0)
+
+
+def test_extrude_manifest_persists_shape_compatibility(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape extrusion persists producer-owned compatibility information.
+
+    Downstream consumers of the packaged Shape must be able to determine
+    mating-boundary, Hole, and Loop compatibility without reopening Shape
+    configuration or inferring semantic structure from physical components.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    manifest = tmp_path / "products.json"
+
+    _write_composition(
+        composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
+    )
+
+    resolver = _make_extrude_resolver(
+        shape_size=100.0,
+        shape_hole_diameter=5.0,
+        shape_hole_position=90,
+        shape_hole_edge_distance=0.4,
+        shape_loop_inner_diameter=4.0,
+        shape_loop_width=1.5,
+        shape_loop_position=90,
+        shape_loop_raise=2.0,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.resolver = resolver
+
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
+
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    products = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert products["compatibility"] == {
+        "boundary": {
+            "kind": "circle",
+            "center": [0.0, 0.0],
+            "radius": 50.0,
+        },
+        "hole": {
+            "center": [47.1, 0.0],
+            "radius": 2.5,
+        },
+        "loop": {
+            "center": [52.0, 0.0],
+            "inner_radius": 2.0,
+            "outer_radius": 3.5,
+        },
+    }

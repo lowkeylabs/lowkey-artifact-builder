@@ -109,8 +109,9 @@ def execute(
         raise PackageError(f"Shape component manifest does not exist: {manifest}")
 
     try:
-        physical_components = _load_components(manifest)
-
+        physical_components, compatibility = _load_manifest(
+            manifest,
+        )
         shape_components = tuple(
             component for component in physical_components if component.artifact_color_index is None
         )
@@ -193,6 +194,11 @@ def execute(
             artifact,
             metadata={
                 "raise_style": raise_style,
+                "shape_compatibility": json.dumps(
+                    compatibility,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
             },
         )
 
@@ -419,34 +425,70 @@ def _resolve_component_color(
 # =========================================================
 # Component manifest
 # =========================================================
-def _load_components(
+
+
+def _load_manifest(
     manifest: Path,
-) -> tuple[PhysicalComponent, ...]:
+) -> tuple[
+    tuple[PhysicalComponent, ...],
+    dict[str, object],
+]:
     """
-    Load physical Shape components from an extrusion manifest.
+    Load the physical Shape Product manifest.
 
-    Shape-owned components carry logical component identity only. Incorporated
-    Artwork components additionally carry persistent Artifact-color identity.
+    Extrude establishes physical component membership and resolved Shape
+    compatibility. Package validates and preserves both without reconstructing
+    either from Shape configuration or physical geometry.
     """
-    data = json.loads(manifest.read_text(encoding="utf-8"))
 
-    if not isinstance(data, dict):
+    data = json.loads(
+        manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    if not isinstance(
+        data,
+        dict,
+    ):
         raise PackageError(f"Shape component manifest must contain a JSON object: {manifest}")
 
-    raw_components = data.get("components")
+    raw_components = data.get(
+        "components",
+    )
 
-    if not isinstance(raw_components, list):
+    if not isinstance(
+        raw_components,
+        list,
+    ):
         raise PackageError(f"Shape component manifest must contain a components list: {manifest}")
 
     if not raw_components:
         raise PackageError(f"Shape component manifest contains no components: {manifest}")
 
-    return tuple(
+    compatibility = data.get(
+        "compatibility",
+    )
+
+    if not isinstance(
+        compatibility,
+        dict,
+    ):
+        raise PackageError(
+            f"Shape component manifest must contain compatibility metadata: {manifest}"
+        )
+
+    components = tuple(
         _load_component(
             raw_component,
             manifest=manifest,
         )
         for raw_component in raw_components
+    )
+
+    return (
+        components,
+        compatibility,
     )
 
 
