@@ -26,6 +26,7 @@ from lowkey_artifact_builder.formats.threemf import (
     ThreeMFError,
     component_name,
     load_stl,
+    read,
     update_component_colors,
     update_component_names,
     write,
@@ -1814,3 +1815,60 @@ def test_update_component_colors_preserves_manufacturing_structure(
     assert after_geometry == before_geometry
     assert after_build == before_build
     assert after_other_members == before_other_members
+
+
+def test_write_read_round_trip_preserves_components(
+    tmp_path: Path,
+) -> None:
+    """
+    Packaged 3MF components can be recovered for downstream composition.
+
+    Reading preserves independent component identity, mesh geometry, and
+    resolved physical color without introducing Model-specific semantics.
+    """
+
+    path = tmp_path / "artifact.3mf"
+
+    components = (
+        Component(
+            name="base - white",
+            mesh=Mesh(
+                vertices=(
+                    (0.0, 0.0, 0.0),
+                    (10.0, 0.0, 0.0),
+                    (0.0, 10.0, 0.0),
+                ),
+                triangles=((0, 1, 2),),
+            ),
+            color=PaletteColor(
+                name="white",
+                rgb=(255, 255, 255),
+            ),
+        ),
+        Component(
+            name="artwork-1 - red",
+            mesh=Mesh(
+                vertices=(
+                    (1.0, 2.0, 3.0),
+                    (4.0, 2.0, 3.0),
+                    (1.0, 5.0, 3.0),
+                    (4.0, 5.0, 3.0),
+                ),
+                triangles=(
+                    (0, 1, 2),
+                    (1, 3, 2),
+                ),
+            ),
+            color=PaletteColor(
+                name="red",
+                rgb=(255, 0, 0),
+            ),
+        ),
+    )
+
+    write(
+        components,
+        path,
+    )
+
+    assert read(path) == components

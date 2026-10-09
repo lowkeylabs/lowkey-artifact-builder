@@ -1156,6 +1156,277 @@ def component_name(
     return f"{semantic_name} - {color_name}"
 
 
+# =========================================================
+# Read
+# =========================================================
+
+
+def read(
+    path: Path,
+) -> tuple[Component, ...]:
+    """
+    Read independently built mesh components from a 3MF package.
+
+    Component names, mesh geometry, and resolved base-material colors are
+    recovered from the primary model document.
+
+    Raises:
+        ThreeMFError:
+            If the 3MF cannot be read or parsed, or a built component cannot
+            be represented by the shared Component abstraction.
+    """
+
+    path = Path(path)
+
+    try:
+        with zipfile.ZipFile(
+            path,
+            mode="r",
+        ) as package:
+            model_data = package.read(
+                "3D/3dmodel.model",
+            )
+
+    except (
+        OSError,
+        zipfile.BadZipFile,
+        KeyError,
+    ) as exc:
+        raise ThreeMFError(f"Could not read 3MF document {path}: {exc}") from exc
+
+    try:
+        model = ET.fromstring(
+            model_data,
+        )
+
+    except ET.ParseError as exc:
+        raise ThreeMFError(f"Could not parse 3MF model {path}: {exc}") from exc
+
+    objects = {
+        object_element.get("id"): object_element
+        for object_element in model.findall(
+            f".//{{{CORE_NS}}}resources/{{{CORE_NS}}}object",
+        )
+        if object_element.get("id") is not None
+    }
+
+    materials = {
+        material.get("id"): material
+        for material in model.findall(
+            f".//{{{CORE_NS}}}resources/{{{CORE_NS}}}basematerials",
+        )
+        if material.get("id") is not None
+    }
+
+    components: list[Component] = []
+
+    for item in model.findall(
+        f".//{{{CORE_NS}}}build/{{{CORE_NS}}}item",
+    ):
+        object_id = item.get(
+            "objectid",
+        )
+
+        object_element = objects.get(
+            object_id,
+        )
+
+        if object_element is None:
+            raise ThreeMFError(f"3MF build item references missing object {object_id!r}: {path}")
+
+        components.append(
+            _read_component(
+                object_element,
+                materials=materials,
+                source=path,
+            )
+        )
+
+    if not components:
+        raise ThreeMFError(f"3MF document contains no built components: {path}")
+
+    return tuple(
+        components,
+    )
+
+
+def _read_component(
+    object_element: ET.Element,
+    *,
+    materials: dict[str | None, ET.Element],
+    source: Path,
+) -> Component:
+    """
+    Read one independently built mesh component.
+    """
+
+    name = object_element.get(
+        "name",
+    )
+
+    if not name:
+        raise ThreeMFError(f"3MF component does not have a name: {source}")
+
+    mesh_element = object_element.find(
+        f"{{{CORE_NS}}}mesh",
+    )
+
+    if mesh_element is None:
+        raise ThreeMFError(f"3MF component {name!r} does not contain mesh geometry: {source}")
+
+    return Component(
+        name=name,
+        mesh=_read_mesh(
+            mesh_element,
+            source=source,
+        ),
+        color=_read_component_color(
+            object_element,
+            materials=materials,
+            source=source,
+        ),
+    )
+
+
+def _read_mesh(
+    mesh_element: ET.Element,
+    *,
+    source: Path,
+) -> Mesh:
+    """
+    Read triangle mesh geometry from a 3MF mesh element.
+    """
+
+    try:
+        vertices = tuple(
+            (
+                float(vertex["x"]),
+                float(vertex["y"]),
+                float(vertex["z"]),
+            )
+            for element in mesh_element.findall(
+                f"./{{{CORE_NS}}}vertices/{{{CORE_NS}}}vertex",
+            )
+            for vertex in (element.attrib,)
+        )
+
+        triangles = tuple(
+            (
+                int(triangle["v1"]),
+                int(triangle["v2"]),
+                int(triangle["v3"]),
+            )
+            for element in mesh_element.findall(
+                f"./{{{CORE_NS}}}triangles/{{{CORE_NS}}}triangle",
+            )
+            for triangle in (element.attrib,)
+        )
+
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise ThreeMFError(f"Invalid 3MF mesh geometry in {source}: {exc}") from exc
+
+    return _validate_mesh(
+        Mesh(
+            vertices=vertices,
+            triangles=triangles,
+        ),
+        source=source,
+    )
+
+
+def _read_component_color(
+    object_element: ET.Element,
+    *,
+    materials: dict[str | None, ET.Element],
+    source: Path,
+) -> PaletteColor | None:
+    """
+    Read the resolved base-material color associated with a component.
+    """
+
+    material_id = object_element.get(
+        "pid",
+    )
+
+    if material_id is None:
+        return None
+
+    material = materials.get(
+        material_id,
+    )
+
+    if material is None:
+        raise ThreeMFError(f"3MF component references missing material {material_id!r}: {source}")
+
+    material_index = object_element.get(
+        "pindex",
+    )
+
+    try:
+        index = int(material_index if material_index is not None else "0")
+
+    except ValueError as exc:
+        raise ThreeMFError(
+            f"3MF component has invalid material index {material_index!r}: {source}"
+        ) from exc
+
+    bases = material.findall(
+        f"{{{CORE_NS}}}base",
+    )
+
+    try:
+        base = bases[index]
+
+    except IndexError as exc:
+        raise ThreeMFError(
+            f"3MF component references missing material index {index}: {source}"
+        ) from exc
+
+    name = base.get(
+        "name",
+    )
+
+    display_color = base.get(
+        "displaycolor",
+    )
+
+    if not name or display_color is None:
+        raise ThreeMFError(f"3MF base material is incomplete: {source}")
+
+    value = display_color.removeprefix(
+        "#",
+    )
+
+    if len(value) not in {
+        6,
+        8,
+    }:
+        raise ThreeMFError(
+            f"3MF base material has invalid display color {display_color!r}: {source}"
+        )
+
+    try:
+        rgb = (
+            int(value[0:2], 16),
+            int(value[2:4], 16),
+            int(value[4:6], 16),
+        )
+
+    except ValueError as exc:
+        raise ThreeMFError(
+            f"3MF base material has invalid display color {display_color!r}: {source}"
+        ) from exc
+
+    return PaletteColor(
+        name=name,
+        rgb=rgb,
+    )
+
+
 __all__ = [
     "CONTENT_TYPES_NS",
     "CORE_NS",
@@ -1166,6 +1437,7 @@ __all__ = [
     "RELATIONSHIPS_NS",
     "ThreeMFError",
     "load_stl",
+    "read",
     "write",
     "write_stls",
     "component_name",
