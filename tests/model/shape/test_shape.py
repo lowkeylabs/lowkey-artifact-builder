@@ -432,18 +432,22 @@ def test_shape_extrude_does_not_consume_physical_color_parameters() -> None:
 
 def test_shape_package_consumes_only_packaging_parameters() -> None:
     """
-    Shape packaging owns the complete physical color-assignment partition.
+    Shape packaging owns physical color assignment and persistent Shape metadata.
 
     printer_colors resolves incorporated Artwork Artifact-color identities.
-    Shape-owned base, outer-ridge, inner-ridge, Top and Bottom Border Label,
-    Artwork-fill, and Loop colors are physical packaging policy rather than
-    geometry or component-participation policy.
+    Shape-owned colors are physical packaging policy rather than geometry or
+    component-participation policy.
+
+    Raise style is also consumed by Package so the packaged Shape Product can
+    persist the Shape-level compatibility metadata required by downstream
+    consumers without reopening source configuration.
     """
 
     package_stage = _package_stage()
 
     assert package_stage.parameters == (
         "printer_colors",
+        "shape_raise_style",
         "shape_base_color",
         "shape_outer_ridge_color",
         "shape_inner_ridge_color",
@@ -454,18 +458,28 @@ def test_shape_package_consumes_only_packaging_parameters() -> None:
     )
 
 
-def test_shape_package_produces_final_artifact() -> None:
+def test_shape_package_produces_reusable_packaged_products() -> None:
     """
-    Shape packaging produces the canonical final 3MF artifact.
+    Shape packaging produces the canonical 3MF and persistent Shape metadata.
+
+    The packaged 3MF carries physical component geometry, identity, and resolved
+    colors. The manifest carries Shape-level metadata required by downstream
+    consumers when that information cannot safely be recovered from the 3MF.
     """
 
     package_stage = _package_stage()
 
-    assert tuple(product.name for product in package_stage.products) == ("artifact",)
+    assert tuple(product.name for product in package_stage.products) == (
+        "artifact",
+        "manifest",
+    )
 
-    product = package_stage.products[0]
+    paths = {product.name: product.path for product in package_stage.products}
 
-    assert product.path == "artifact.3mf"
+    assert paths == {
+        "artifact": "artifact.3mf",
+        "manifest": "products.json",
+    }
 
 
 def test_shape_final_artifact_has_single_package_producer() -> None:

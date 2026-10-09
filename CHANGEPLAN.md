@@ -123,7 +123,7 @@ Preserve the architectural Product graph:
     Artifact, or previous build.
 -   A 3MF is not a privileged Product.
 -   Dynamic component collections are consumed through persistent Product
-    representations rather than directory scanning.    
+    representations rather than directory scanning.
 -   Stage implementations execute from complete `StageContext` values
     and do not traverse other Models.
 -   Generic configuration, planning, dependency, and execution
@@ -814,4 +814,3 @@ Operator-facing failures for incompatible Faces should be concise consequences o
 Coin implementation is complete when repository HEAD conforms to `ARCHITECTURE.md`, Artwork `DEFINITION.md`, Shape `DEFINITION.md`, and Coin `DEFINITION.md`; all requirements above are either satisfied by HEAD or removed from this plan as obsolete; and the complete quality suite is green.
 
 At that point, reevaluate `CHANGEPLAN.md` against HEAD rather than preserving it as implementation history. Once no remaining implementation work is described, the temporary plan may be removed or replaced for the next body of work.
-

@@ -33,10 +33,25 @@ from lowkey_artifact_builder.formats.threemf import (
 from lowkey_artifact_builder.model.models.shape import stages
 from lowkey_artifact_builder.model.models.shape.stages import compose, extrude, package, structure
 
-
 # =========================================================
 # Helpers
 # =========================================================
+
+
+def _configure_package_outputs(
+    context: Mock,
+    artifact: Path,
+) -> Path:
+    package_manifest = artifact.with_name("products.json")
+
+    context.output.side_effect = {
+        "artifact": artifact,
+        "manifest": package_manifest,
+    }.__getitem__
+
+    return package_manifest
+
+
 def _build_clean_bg_house_registered_artwork(
     project_root: Path,
 ) -> Path:
@@ -424,6 +439,7 @@ def _configure_package_resolver(
     base_color: str = "white",
     ridge_color: str | None = None,
     artwork_fill_color: str | None = None,
+    raise_style: str = "raised",
     printer_colors: tuple[str, ...] = (
         "test-white",
         "test-red",
@@ -435,10 +451,11 @@ def _configure_package_resolver(
         "cold-white",
     ),
 ) -> Mock:
-    """Configure Package-time physical-color policy for a test context."""
+    """Configure Package-time physical-color and Shape metadata policy for a test context."""
     resolver = Mock()
     values: dict[str, object] = {
         "shape_base_color": base_color,
+        "shape_raise_style": raise_style,
         "printer_colors": list(printer_colors),
     }
     if ridge_color is not None:
@@ -590,7 +607,10 @@ def test_package_stage_preserves_artwork_fill_component(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context, base_color="test-white", artwork_fill_color="test-blue")
     package.execute(
         context,
@@ -681,7 +701,10 @@ def test_package_stage_preserves_component_mesh_geometry(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context)
     package.execute(
         context,
@@ -770,7 +793,10 @@ def test_package_stage_preserves_relative_component_registration(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context)
     package.execute(
         context,
@@ -892,7 +918,10 @@ def test_package_stage_packages_incorporated_artwork_components(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context, base_color="test-white")
     package.execute(
         context,
@@ -964,7 +993,10 @@ def test_package_stage_preserves_incorporated_artwork_colors(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context, base_color="test-white")
     package.execute(
         context,
@@ -1030,7 +1062,10 @@ def test_package_stage_materializes_declared_artifact(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context)
     package.execute(
         context,
@@ -1038,9 +1073,10 @@ def test_package_stage_materializes_declared_artifact(
     context.input.assert_called_once_with(
         "extrude.manifest",
     )
-    context.output.assert_called_once_with(
-        "artifact",
-    )
+    assert context.output.call_args_list == [
+        call("artifact"),
+        call("manifest"),
+    ]
     assert artifact.is_file()
 
 
@@ -1059,7 +1095,10 @@ def test_package_stage_produces_valid_3mf_container(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context)
     package.execute(
         context,
@@ -1095,7 +1134,10 @@ def test_package_stage_packages_single_base_component(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context)
     package.execute(
         context,
@@ -1131,7 +1173,10 @@ def test_package_stage_packages_all_manifest_components(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context)
     package.execute(
         context,
@@ -1192,7 +1237,10 @@ def test_package_stage_names_components_with_semantic_color_identity(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context, base_color="test-white", ridge_color="test-red")
     package.execute(
         context,
@@ -1243,7 +1291,10 @@ def test_package_stage_preserves_base_component_color(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context, base_color="test-red")
     package.execute(
         context,
@@ -1314,7 +1365,10 @@ def test_package_stage_preserves_distinct_component_colors(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context, base_color="test-white", ridge_color="test-red")
     package.execute(
         context,
@@ -1366,12 +1420,18 @@ def test_package_stage_does_not_resolve_geometry_parameters(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     resolver = _configure_package_resolver(context)
     package.execute(
         context,
     )
-    assert resolver.call_args_list == [call("shape_base_color")]
+    assert resolver.call_args_list == [
+        call("shape_base_color"),
+        call("shape_raise_style"),
+    ]
 
 
 def test_package_stage_rejects_missing_component_manifest(
@@ -1387,7 +1447,10 @@ def test_package_stage_rejects_missing_component_manifest(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context)
     with pytest.raises(
         package.PackageError,
@@ -1440,7 +1503,10 @@ def test_package_stage_rejects_missing_manifest_component(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context)
     with pytest.raises(
         package.PackageError,
@@ -1532,7 +1598,10 @@ def test_package_stage_preserves_shared_component_color(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context, base_color="test-red")
     package.execute(
         context,
@@ -1623,7 +1692,10 @@ def test_package_stage_rejects_invalid_component_color_metadata(
     context.artifact_id = "example"
     context.resolver = resolver
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     with pytest.raises(
         package.PackageError,
         match="color",
@@ -1701,7 +1773,10 @@ def test_package_stage_preserves_mixed_structural_and_artwork_components(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context, base_color="test-white", ridge_color="test-red")
     package.execute(
         context,
@@ -1807,7 +1882,10 @@ def test_real_clean_bg_house_package_preserves_artwork_physical_geometry(
     )
     context.artifact_id = "clean_bg_house_shape"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     _configure_package_resolver(context)
     package.execute(
         context,
@@ -2102,7 +2180,10 @@ def test_package_stage_does_not_invent_disabled_artwork_fill(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     resolver = _configure_package_resolver(context, base_color="test-white")
     package.execute(
         context,
@@ -2120,6 +2201,7 @@ def test_package_stage_does_not_invent_disabled_artwork_fill(
     assert resolver.call_args_list == [
         call("shape_base_color"),
         call("printer_colors"),
+        call("shape_raise_style"),
     ]
 
 
@@ -2178,7 +2260,10 @@ def test_package_stage_preserves_same_color_artwork_fill_identity(
     )
     context.artifact_id = "example"
     context.input.return_value = manifest
-    context.output.return_value = artifact
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
     resolver = _configure_package_resolver(
         context,
         base_color="test-blue",
@@ -2220,6 +2305,7 @@ def test_package_stage_preserves_same_color_artwork_fill_identity(
     assert resolver.call_args_list == [
         call("shape_base_color"),
         call("printer_colors"),
+        call("shape_raise_style"),
     ]
 
 
@@ -2228,6 +2314,7 @@ def test_package_stage_assigns_incorporated_artwork_to_printer_color(
 ) -> None:
     """
     Shape packaging assigns incorporated Artwork to a physical printer color.
+
     Shape Extrude supplies persistent Artifact-color identity for incorporated
     Artwork. Package is the physical color boundary and resolves that measured
     Artifact color against the configured printer-color selection.
@@ -2236,10 +2323,12 @@ def test_package_stage_assigns_incorporated_artwork_to_printer_color(
     artwork = component_directory / "artwork-1.stl"
     manifest = component_directory / "products.json"
     artifact = tmp_path / "artifact.3mf"
+
     _write_component_stl(
         artwork,
         solid_name="artwork-1",
     )
+
     manifest.write_text(
         json.dumps(
             {
@@ -2261,10 +2350,21 @@ def test_package_stage_assigns_incorporated_artwork_to_printer_color(
         ),
         encoding="utf-8",
     )
-    resolver = Mock()
-    resolver.return_value = [
-        "physical-blue",
-    ]
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "example"
+    context.input.return_value = manifest
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
+
+    resolver = _configure_package_resolver(
+        context,
+        printer_colors=("physical-blue",),
+    )
     resolver.colors = {
         "physical-blue": {
             "rgb": [
@@ -2274,28 +2374,27 @@ def test_package_stage_assigns_incorporated_artwork_to_printer_color(
             ],
         },
     }
-    context = Mock(
-        spec=StageContext,
-    )
-    context.artifact_id = "example"
-    context.resolver = resolver
-    context.input.return_value = manifest
-    context.output.return_value = artifact
+
     package.execute(
         context,
     )
-    resolver.assert_called_once_with(
-        "printer_colors",
-    )
+
+    assert resolver.call_args_list == [
+        call("printer_colors"),
+        call("shape_raise_style"),
+    ]
+
     model = _read_model(
         artifact,
     )
+
     objects = model.findall(
         f".//{{{CORE_NS}}}object",
     )
     materials = model.findall(
         f".//{{{CORE_NS}}}basematerials",
     )
+
     assert len(objects) == 1
     assert objects[0].get("name") == component_name(
         "example",
@@ -2303,9 +2402,77 @@ def test_package_stage_assigns_incorporated_artwork_to_printer_color(
         "physical-blue",
     )
     assert len(materials) == 1
+
     color = materials[0].find(
         f"{{{CORE_NS}}}base",
     )
+
     assert color is not None
     assert color.get("name") == "physical-blue"
     assert color.get("displaycolor") == "#14285A"
+
+
+def test_package_stage_publishes_reusable_shape_metadata(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape Package publishes persistent metadata required by downstream
+    consumers of the packaged Shape Product.
+
+    The packaged 3MF remains authoritative for physical component geometry,
+    identity, and resolved colors. Shape-level compatibility metadata records
+    the resolved dimensionalization without requiring a downstream consumer
+    to reopen source Shape configuration.
+    """
+    component_directory = tmp_path / "extrude"
+    base = component_directory / "base.stl"
+    extrude_manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+    package_manifest = tmp_path / "products.json"
+
+    _write_component_stl(
+        base,
+        solid_name="shape-base",
+    )
+    _write_component_manifest(
+        extrude_manifest,
+        (
+            (
+                "base",
+                "base.stl",
+                "test-white",
+                (255, 255, 255),
+            ),
+        ),
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+    context.artifact_id = "example"
+    context.input.return_value = extrude_manifest
+    context.output.side_effect = {
+        "artifact": artifact,
+        "manifest": package_manifest,
+    }.__getitem__
+
+    _configure_package_resolver(
+        context,
+        base_color="test-white",
+        raise_style="inlaid",
+    )
+
+    package.execute(
+        context,
+    )
+
+    assert artifact.is_file()
+    assert package_manifest.is_file()
+
+    metadata = json.loads(
+        package_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    assert metadata["raise_style"] == "inlaid"

@@ -156,6 +156,7 @@ MODEL = ModelSpec(
             dependencies=("extrude",),
             parameters=(
                 "printer_colors",
+                "shape_raise_style",
                 "shape_base_color",
                 "shape_outer_ridge_color",
                 "shape_inner_ridge_color",
@@ -169,6 +170,11 @@ MODEL = ModelSpec(
                     name="artifact",
                     path="artifact.3mf",
                     description=("Final packaged Shape artifact."),
+                ),
+                ProductSpec(
+                    name="manifest",
+                    path="products.json",
+                    description=("Metadata describing the packaged Shape Product."),
                 ),
             ),
         ),

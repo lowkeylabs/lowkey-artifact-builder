@@ -922,6 +922,7 @@ def test_invalid_shape_base_color_fails_when_package_requires_execution() -> Non
 
     resolver = StubResolver(
         {
+            "shape_raise_style": "raised",
             "shape_base_color": "",
         }
     )
@@ -1010,9 +1011,9 @@ def test_invalid_shape_ridge_color_fails_when_package_requires_execution() -> No
     """
     Invalid outer-ridge color is validated when packaging must execute.
     """
-
     resolver = StubResolver(
         {
+            "shape_raise_style": "raised",
             "shape_base_color": "white",
             "shape_outer_ridge_color": "",
         }
