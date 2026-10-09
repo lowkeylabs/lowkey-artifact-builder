@@ -458,28 +458,23 @@ def test_shape_package_consumes_only_packaging_parameters() -> None:
     )
 
 
-def test_shape_package_produces_reusable_packaged_products() -> None:
+def test_shape_package_produces_complete_reusable_artifact() -> None:
     """
-    Shape packaging produces the canonical 3MF and persistent Shape metadata.
+    Shape packaging produces one complete reusable packaged Shape Product.
 
-    The packaged 3MF carries physical component geometry, identity, and resolved
-    colors. The manifest carries Shape-level metadata required by downstream
-    consumers when that information cannot safely be recovered from the 3MF.
+    The packaged 3MF carries physical component geometry, semantic component
+    identity, resolved physical colors, and persistent Shape-level compatibility
+    metadata required by downstream consumers. No companion Package Product is
+    required to consume the packaged Shape.
     """
 
     package_stage = _package_stage()
 
-    assert tuple(product.name for product in package_stage.products) == (
-        "artifact",
-        "manifest",
-    )
+    assert tuple(product.name for product in package_stage.products) == ("artifact",)
 
-    paths = {product.name: product.path for product in package_stage.products}
+    artifact = package_stage.products[0]
 
-    assert paths == {
-        "artifact": "artifact.3mf",
-        "manifest": "products.json",
-    }
+    assert artifact.path == "artifact.3mf"
 
 
 def test_shape_final_artifact_has_single_package_producer() -> None:

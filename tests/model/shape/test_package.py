@@ -42,15 +42,12 @@ from lowkey_artifact_builder.model.models.shape.stages import compose, extrude, 
 def _configure_package_outputs(
     context: Mock,
     artifact: Path,
-) -> Path:
-    package_manifest = artifact.with_name("products.json")
+) -> None:
+    """
+    Configure the packaged Shape artifact output.
+    """
 
-    context.output.side_effect = {
-        "artifact": artifact,
-        "manifest": package_manifest,
-    }.__getitem__
-
-    return package_manifest
+    context.output.return_value = artifact
 
 
 def _build_clean_bg_house_registered_artwork(
@@ -1074,10 +1071,9 @@ def test_package_stage_materializes_declared_artifact(
     context.input.assert_called_once_with(
         "extrude.manifest",
     )
-    assert context.output.call_args_list == [
-        call("artifact"),
-        call("manifest"),
-    ]
+    context.output.assert_called_once_with(
+        "artifact",
+    )
     assert artifact.is_file()
 
 
@@ -2418,7 +2414,7 @@ def test_package_stage_publishes_reusable_shape_metadata(
 ) -> None:
     """
     Shape Package publishes persistent metadata required by downstream
-    consumers of the packaged Shape Product.
+    consumers in the complete packaged Shape Product.
 
     The packaged 3MF is authoritative for physical component geometry,
     identity, resolved colors, and producer-owned compatibility metadata.
@@ -2430,7 +2426,6 @@ def test_package_stage_publishes_reusable_shape_metadata(
     base = component_directory / "base.stl"
     extrude_manifest = component_directory / "products.json"
     artifact = tmp_path / "artifact.3mf"
-    package_manifest = tmp_path / "products.json"
 
     _write_component_stl(
         base,
@@ -2453,10 +2448,10 @@ def test_package_stage_publishes_reusable_shape_metadata(
     )
     context.artifact_id = "example"
     context.input.return_value = extrude_manifest
-    context.output.side_effect = {
-        "artifact": artifact,
-        "manifest": package_manifest,
-    }.__getitem__
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
 
     _configure_package_resolver(
         context,
@@ -2469,18 +2464,9 @@ def test_package_stage_publishes_reusable_shape_metadata(
     )
 
     assert artifact.is_file()
-    assert package_manifest.is_file()
 
     assert read_metadata(
         artifact,
     ) == {
         "raise_style": "inlaid",
     }
-
-    metadata = json.loads(
-        package_manifest.read_text(
-            encoding="utf-8",
-        )
-    )
-
-    assert metadata["raise_style"] == "inlaid"

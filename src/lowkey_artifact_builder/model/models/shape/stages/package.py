@@ -104,7 +104,6 @@ def execute(
     """
     manifest = context.input("extrude.manifest")
     artifact = context.output("artifact")
-    package_manifest = context.output("manifest")
 
     if not manifest.is_file():
         raise PackageError(f"Shape component manifest does not exist: {manifest}")
@@ -200,23 +199,6 @@ def execute(
         if not artifact.is_file():
             raise PackageError(
                 f"3MF packaging completed without creating the expected artifact: {artifact}"
-            )
-
-        package_manifest.write_text(
-            json.dumps(
-                {
-                    "raise_style": raise_style,
-                },
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-
-        if not package_manifest.is_file():
-            raise PackageError(
-                "Shape packaging completed without creating the expected "
-                f"metadata manifest: {package_manifest}"
             )
 
     except PackageError:

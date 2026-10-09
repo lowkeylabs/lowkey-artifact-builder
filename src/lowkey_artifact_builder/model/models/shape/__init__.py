@@ -169,12 +169,7 @@ MODEL = ModelSpec(
                 ProductSpec(
                     name="artifact",
                     path="artifact.3mf",
-                    description=("Final packaged Shape artifact."),
-                ),
-                ProductSpec(
-                    name="manifest",
-                    path="products.json",
-                    description=("Metadata describing the packaged Shape Product."),
+                    description=("Complete reusable packaged Shape Product."),
                 ),
             ),
         ),
