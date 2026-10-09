@@ -340,7 +340,9 @@ def _resolve_product_dependency_fingerprints(
         if planned_dependency is None:
             continue
 
-        identity = f"{dependency.model}.{dependency.stage}.{dependency.product}"
+        identity = dependency.name or (
+            f"{dependency.model}.{dependency.stage}.{dependency.product}"
+        )
 
         binding = planned_dependency.binding
 

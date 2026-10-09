@@ -852,3 +852,123 @@ def test_in_plan_product_dependency_uses_producer_required_fingerprint(
 
     assert "vector" in fingerprints
     assert "extrude" in fingerprints
+
+
+def test_stage_fingerprint_distinguishes_named_product_dependency_roles(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    Independent consumer dependency roles contribute independent provenance.
+
+    Two named roles may require the same producer Model, Stage, and Product
+    definition. Changing the Product bound to either role must therefore
+    change the consumer stage fingerprint rather than allowing one role's
+    provenance to overwrite the other.
+    """
+
+    face_a = ProductDependencySpec(
+        name="faceA",
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    face_b = ProductDependencySpec(
+        name="faceB",
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    face_a_path = tmp_path / "face-a" / "geometry.dat"
+    face_b_path = tmp_path / "face-b" / "geometry.dat"
+
+    face_a_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    face_b_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    face_a_path.write_bytes(
+        b"face-a-first",
+    )
+
+    face_b_path.write_bytes(
+        b"face-b-stable",
+    )
+
+    face_a_binding = ProductDependencyBinding(
+        dependency=face_a,
+        artifact="front",
+        realization="default",
+    )
+
+    face_b_binding = ProductDependencyBinding(
+        dependency=face_b,
+        artifact="back",
+        realization="default",
+    )
+
+    stage_spec = StageSpec(
+        id=10,
+        name="consume",
+        product_dependencies=(
+            face_a,
+            face_b,
+        ),
+    )
+
+    stage = PlannedStage(
+        spec=stage_spec,
+    )
+
+    build_plan = BuildPlan(
+        artifact_id="consumer-artifact",
+        model=ModelSpec(
+            name="consumer",
+            title="Consumer",
+            stages=(stage_spec,),
+        ),
+        realization_name="default",
+        resolver=test_resolver,
+        project_root=tmp_path,
+        artifact_dir=tmp_path / "artifacts" / "consumer-artifact",
+        stages=(stage,),
+        product_dependencies=(
+            face_a,
+            face_b,
+        ),
+        product_dependency_bindings=(
+            face_a_binding,
+            face_b_binding,
+        ),
+        planned_product_dependencies=(
+            PlannedProductDependency(
+                binding=face_a_binding,
+                path=face_a_path,
+            ),
+            PlannedProductDependency(
+                binding=face_b_binding,
+                path=face_b_path,
+            ),
+        ),
+    )
+
+    first = create_required_fingerprints(
+        build_plan,
+    )
+
+    face_a_path.write_bytes(
+        b"face-a-second",
+    )
+
+    second = create_required_fingerprints(
+        build_plan,
+    )
+
+    assert first["consume"] != second["consume"]
