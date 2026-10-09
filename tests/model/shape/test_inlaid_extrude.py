@@ -2037,3 +2037,143 @@ def test_inlaid_separate_ridge_geometry_partitions_complete_shape(
             expected_complete_area,
             rel=0.001,
         )
+
+
+@pytest.mark.slow
+def test_inlaid_integrated_outer_ridge_is_full_depth_partition(
+    tmp_path: Path,
+) -> None:
+    """
+    An integrated Outer Ridge remains a full-depth inlaid partition.
+
+    Outer-Ridge structural style affects raised construction, but under
+    inlaid dimensionalization a participating ridge must remain an
+    independently printable component spanning the complete Base thickness.
+
+    Base and Ridge therefore occupy complementary X/Y regions whose union
+    reconstructs exactly one complete Shape face at both physical surfaces.
+    """
+
+    composition = tmp_path / "composition.svg"
+    composition_manifest = tmp_path / "composition-products.json"
+    manifest = tmp_path / "products.json"
+
+    _write_ridge_composition(
+        composition,
+    )
+
+    _write_composition_manifest(
+        composition_manifest,
+    )
+
+    context = Mock(
+        spec=StageContext,
+    )
+
+    context.resolver = Mock(
+        side_effect={
+            "shape_size": 100.0,
+            "shape_base_raise": 2.0,
+            "shape_raise_style": "inlaid",
+            "shape_outer_ridge_raise": 1.0,
+            "shape_outer_ridge_style": "integrated",
+            "shape_hole_diameter": 0.0,
+            "shape_loop_inner_diameter": 0.0,
+        }.__getitem__,
+    )
+
+    _configure_extrude_context_inputs(
+        context,
+        composition=composition,
+        composition_manifest=composition_manifest,
+    )
+
+    context.output.return_value = manifest
+
+    extrude.execute(
+        context,
+    )
+
+    data = _read_manifest(
+        manifest,
+    )
+
+    assert data["components"] == [
+        {
+            "name": "base",
+            "path": "base.stl",
+        },
+        {
+            "name": "ridge",
+            "path": "ridge.stl",
+        },
+    ]
+
+    base = manifest.parent / "base.stl"
+    ridge = manifest.parent / "ridge.stl"
+
+    assert base.is_file()
+    assert ridge.is_file()
+
+    #
+    # Integrated style must not retain its raised-style Z construction
+    # when the Shape itself is inlaid.
+    #
+
+    assert _stl_bounds(
+        base,
+    ) == pytest.approx(
+        (
+            -45.0,
+            45.0,
+            -45.0,
+            45.0,
+            0.0,
+            2.0,
+        ),
+        abs=0.002,
+    )
+
+    assert _stl_bounds(
+        ridge,
+    ) == pytest.approx(
+        (
+            -50.0,
+            50.0,
+            -50.0,
+            50.0,
+            0.0,
+            2.0,
+        ),
+        abs=0.002,
+    )
+
+    #
+    # Base and Ridge must be complementary rather than overlapping.
+    # Their union reconstructs one complete 100 mm circular Shape at
+    # both exposed faces.
+    #
+
+    expected_complete_area = pytest.approx(
+        3.141592653589793 * 50.0**2,
+        rel=0.001,
+    )
+
+    for z in (
+        0.0,
+        2.0,
+    ):
+        base_area = _stl_face_area(
+            base,
+            z=z,
+        )
+
+        ridge_area = _stl_face_area(
+            ridge,
+            z=z,
+        )
+
+        assert base_area > 0.0
+        assert ridge_area > 0.0
+
+        assert base_area + ridge_area == expected_complete_area

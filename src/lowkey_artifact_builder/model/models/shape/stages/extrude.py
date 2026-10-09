@@ -1379,20 +1379,22 @@ def _render_circle_ridge_components(
     ...,
 ]:
     """
-    Dispatch physical circle ridge component production by ridge style.
+    Dispatch physical circle ridge component production.
+
+    Outer-Ridge structural style distinguishes raised construction.
+
+    Under inlaid dimensionalization, every participating Outer Ridge is a
+    full-depth partition of the Shape base regardless of whether its resolved
+    structural style is integrated or separate.
     """
 
-    if shape_outer_ridge_style == "integrated":
-        return _render_integrated_circle_ridge_components(
-            ridge,
-            output_directory,
-            shape_size=shape_size,
-            shape_base_raise=shape_base_raise,
-            shape_outer_ridge_raise=shape_outer_ridge_raise,
-            hole=hole,
-        )
+    if shape_outer_ridge_style not in {
+        "integrated",
+        "separate",
+    }:
+        raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
 
-    if shape_outer_ridge_style == "separate":
+    if shape_raise_style == "inlaid":
         return _render_separate_circle_ridge_components(
             ridge,
             output_directory,
@@ -1404,7 +1406,31 @@ def _render_circle_ridge_components(
             planar_subtraction=planar_subtraction,
         )
 
-    raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
+    if shape_raise_style != "raised":
+        raise ValueError(
+            f"Unsupported Shape raise style: {shape_raise_style!r}",
+        )
+
+    if shape_outer_ridge_style == "integrated":
+        return _render_integrated_circle_ridge_components(
+            ridge,
+            output_directory,
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+            shape_outer_ridge_raise=shape_outer_ridge_raise,
+            hole=hole,
+        )
+
+    return _render_separate_circle_ridge_components(
+        ridge,
+        output_directory,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+        shape_raise_style=shape_raise_style,
+        shape_outer_ridge_raise=shape_outer_ridge_raise,
+        hole=hole,
+        planar_subtraction=planar_subtraction,
+    )
 
 
 def _render_square_ridge_components(
@@ -1423,20 +1449,22 @@ def _render_square_ridge_components(
     ...,
 ]:
     """
-    Dispatch physical square ridge component production by ridge style.
+    Dispatch physical square ridge component production.
+
+    Outer-Ridge structural style distinguishes raised construction.
+
+    Under inlaid dimensionalization, every participating Outer Ridge is a
+    full-depth partition of the Shape base regardless of whether its resolved
+    structural style is integrated or separate.
     """
 
-    if shape_outer_ridge_style == "integrated":
-        return _render_integrated_square_ridge_components(
-            ridge,
-            output_directory,
-            shape_size=shape_size,
-            shape_base_raise=shape_base_raise,
-            shape_outer_ridge_raise=shape_outer_ridge_raise,
-            hole=hole,
-        )
+    if shape_outer_ridge_style not in {
+        "integrated",
+        "separate",
+    }:
+        raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
 
-    if shape_outer_ridge_style == "separate":
+    if shape_raise_style == "inlaid":
         return _render_separate_square_ridge_components(
             ridge,
             output_directory,
@@ -1448,7 +1476,31 @@ def _render_square_ridge_components(
             planar_subtraction=planar_subtraction,
         )
 
-    raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
+    if shape_raise_style != "raised":
+        raise ValueError(
+            f"Unsupported Shape raise style: {shape_raise_style!r}",
+        )
+
+    if shape_outer_ridge_style == "integrated":
+        return _render_integrated_square_ridge_components(
+            ridge,
+            output_directory,
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+            shape_outer_ridge_raise=shape_outer_ridge_raise,
+            hole=hole,
+        )
+
+    return _render_separate_square_ridge_components(
+        ridge,
+        output_directory,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+        shape_raise_style=shape_raise_style,
+        shape_outer_ridge_raise=shape_outer_ridge_raise,
+        hole=hole,
+        planar_subtraction=planar_subtraction,
+    )
 
 
 def _render_polygon_ridge_components(
@@ -1467,20 +1519,22 @@ def _render_polygon_ridge_components(
     ...,
 ]:
     """
-    Dispatch physical polygon ridge component production by ridge style.
+    Dispatch physical polygon ridge component production.
+
+    Outer-Ridge structural style distinguishes raised construction.
+
+    Under inlaid dimensionalization, every participating Outer Ridge is a
+    full-depth partition of the Shape base regardless of whether its resolved
+    structural style is integrated or separate.
     """
 
-    if shape_outer_ridge_style == "integrated":
-        return _render_integrated_polygon_ridge_components(
-            ridge,
-            output_directory,
-            shape_size=shape_size,
-            shape_base_raise=shape_base_raise,
-            shape_outer_ridge_raise=shape_outer_ridge_raise,
-            hole=hole,
-        )
+    if shape_outer_ridge_style not in {
+        "integrated",
+        "separate",
+    }:
+        raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
 
-    if shape_outer_ridge_style == "separate":
+    if shape_raise_style == "inlaid":
         return _render_separate_polygon_ridge_components(
             ridge,
             output_directory,
@@ -1492,7 +1546,31 @@ def _render_polygon_ridge_components(
             planar_subtraction=planar_subtraction,
         )
 
-    raise ValueError(f"Unsupported Shape outer ridge style: {shape_outer_ridge_style!r}")
+    if shape_raise_style != "raised":
+        raise ValueError(
+            f"Unsupported Shape raise style: {shape_raise_style!r}",
+        )
+
+    if shape_outer_ridge_style == "integrated":
+        return _render_integrated_polygon_ridge_components(
+            ridge,
+            output_directory,
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+            shape_outer_ridge_raise=shape_outer_ridge_raise,
+            hole=hole,
+        )
+
+    return _render_separate_polygon_ridge_components(
+        ridge,
+        output_directory,
+        shape_size=shape_size,
+        shape_base_raise=shape_base_raise,
+        shape_raise_style=shape_raise_style,
+        shape_outer_ridge_raise=shape_outer_ridge_raise,
+        hole=hole,
+        planar_subtraction=planar_subtraction,
+    )
 
 
 def _render_integrated_polygon_ridge_components(
