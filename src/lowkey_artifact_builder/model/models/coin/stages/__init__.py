@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from lowkey_artifact_builder.engine.registry import StageRegistry
 
-from . import compose
+from . import compose, package
 
 
 def register_stage_implementations(
@@ -25,8 +25,15 @@ def register_stage_implementations(
         compose.execute,
     )
 
+    registry.register(
+        "coin",
+        "package",
+        package.execute,
+    )
+
 
 __all__ = [
     "compose",
+    "package",
     "register_stage_implementations",
 ]
