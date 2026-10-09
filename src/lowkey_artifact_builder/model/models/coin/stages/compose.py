@@ -18,7 +18,17 @@ from lowkey_artifact_builder.formats.threemf import (
     Mesh,
     read,
     read_metadata,
+    semantic_component_name,
 )
+
+# =========================================================
+# Compose errors
+# =========================================================
+
+
+class CoinComposeError(ValueError):
+    """Raised when packaged Shape Products cannot form a valid Coin."""
+
 
 # =========================================================
 # Face orientation
@@ -555,35 +565,66 @@ def _compose_faces(
     """
     Compose complete packaged Shape Faces into Coin coordinates.
 
-    Face A retains its packaged placement. Face B receives one common rigid
-    transform that places it on the opposite side of the Z=0 mating plane.
+    Packaged Shape component names include operator-facing physical-color
+    presentation. Coin recovers the source semantic identity before applying
+    its Face namespace while preserving the independently represented resolved
+    physical color.
 
-    Source component identity is preserved beneath the semantic Face role.
-    Resolved physical colors are carried through unchanged.
+    Face A remains in source coordinates. Face B receives the rigid Coin
+    orientation transform that places it on the opposite side of the mating
+    plane.
     """
 
-    face_a = tuple(
-        Component(
-            name=f"faceA-{component.name}",
-            mesh=component.mesh,
-            color=component.color,
-        )
-        for component in face_a_components
-    )
+    composed: list[Component] = []
 
-    face_b = tuple(
-        Component(
-            name=f"faceB-{component.name}",
-            mesh=_transform_face_b_mesh(
-                component.mesh,
-                orientation=orientation,
-            ),
-            color=component.color,
-        )
-        for component in face_b_components
-    )
+    for component in face_a_components:
+        color = component.color
 
-    return face_a + face_b
+        if color is None:
+            raise CoinComposeError(
+                f"Face A component {component.name!r} does not have a resolved physical color."
+            )
+
+        source_name = semantic_component_name(
+            component.name,
+            color.name,
+        )
+
+        composed.append(
+            Component(
+                name=f"faceA-{source_name}",
+                mesh=component.mesh,
+                color=color,
+            )
+        )
+
+    for component in face_b_components:
+        color = component.color
+
+        if color is None:
+            raise CoinComposeError(
+                f"Face B component {component.name!r} does not have a resolved physical color."
+            )
+
+        source_name = semantic_component_name(
+            component.name,
+            color.name,
+        )
+
+        composed.append(
+            Component(
+                name=f"faceB-{source_name}",
+                mesh=_transform_face_b_mesh(
+                    component.mesh,
+                    orientation=orientation,
+                ),
+                color=color,
+            )
+        )
+
+    return tuple(
+        composed,
+    )
 
 
 # =========================================================

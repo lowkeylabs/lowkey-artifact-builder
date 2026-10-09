@@ -1179,6 +1179,43 @@ def component_name(
     return f"{semantic_name} - {color_name}"
 
 
+def semantic_component_name(
+    name: str,
+    color_name: str,
+) -> str:
+    """
+    Recover stable semantic component identity from its 3MF presentation name.
+
+    Shared 3MF component presentation appends the resolved physical color name
+    to semantic identity. Downstream consumers that compose packaged Products
+    may recover that semantic identity when the independently represented
+    physical color is known.
+
+    Raises:
+        ThreeMFError:
+            If the component name does not carry the expected color
+            presentation suffix.
+    """
+
+    suffix = f" - {color_name}"
+
+    if not name.endswith(
+        suffix,
+    ):
+        raise ThreeMFError(
+            f"3MF component name {name!r} does not match resolved color {color_name!r}."
+        )
+
+    semantic_name = name.removesuffix(
+        suffix,
+    )
+
+    if not semantic_name:
+        raise ThreeMFError(f"3MF component name {name!r} does not contain semantic identity.")
+
+    return semantic_name
+
+
 # =========================================================
 # Read
 # =========================================================
@@ -1526,6 +1563,7 @@ __all__ = [
     "write",
     "write_stls",
     "component_name",
+    "semantic_component_name",
     "update_component_colors",
     "update_component_names",
 ]

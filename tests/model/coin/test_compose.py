@@ -14,6 +14,7 @@ from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.formats.threemf import (
     Component,
     Mesh,
+    component_name,
     load_stl,
     write,
 )
@@ -80,8 +81,26 @@ def _write_asymmetric_shape(
         "loop": None,
     }
 
+    default_color = PaletteColor(
+        name="white",
+        rgb=(255, 255, 255),
+    )
+
+    packaged_components = tuple(
+        Component(
+            name=component_name(
+                "test-shape",
+                component.name,
+                (component.color or default_color).name,
+            ),
+            mesh=component.mesh,
+            color=component.color or default_color,
+        )
+        for component in components
+    )
+
     write(
-        components,
+        packaged_components,
         path,
         metadata={
             "raise_style": raise_style,
@@ -151,15 +170,21 @@ def _write_shape(
         "loop": loop,
     }
 
+    color = PaletteColor(
+        name="white",
+        rgb=(255, 255, 255),
+    )
+
     write(
         (
             Component(
-                name="base",
-                mesh=_mesh(),
-                color=PaletteColor(
-                    name="white",
-                    rgb=(255, 255, 255),
+                name=component_name(
+                    "test-shape",
+                    "base",
+                    color.name,
                 ),
+                mesh=_mesh(),
+                color=color,
             ),
         ),
         path,
