@@ -285,14 +285,14 @@ def _planned_stage_inputs(
     Persistent products from direct dependency stages use qualified
     semantic names. Transitive dependencies are intentionally excluded.
 
-    Bound cross-artifact product dependencies declared by the stage use
-    fully qualified definition-level names of the form
-    '<model>.<stage>.<product>' and their already-materialized planned
-    product dependency paths.
+    Bound Product dependencies declared by the stage use their
+    consumer-semantic names when provided. Legacy unnamed dependencies
+    retain their fully qualified definition-level names.
     """
 
     inputs: dict[str, Path] = {}
 
+    # Explicit external inputs.
     for planned_input in stage.inputs:
         _add_planned_input(
             build_plan=build_plan,
@@ -302,11 +302,12 @@ def _planned_stage_inputs(
             path=planned_input.path,
         )
 
+    # Direct same-model stage dependencies.
     stages = {candidate.name: candidate for candidate in build_plan.stages}
 
     for dependency_name in stage.dependencies:
         try:
-            dependency = stages[dependency_name]
+            dependency_stage = stages[dependency_name]
 
         except KeyError as exc:
             raise StageContextError(
@@ -317,32 +318,34 @@ def _planned_stage_inputs(
                 "is not present in the build plan."
             ) from exc
 
-        for product in dependency.products:
+        for product in dependency_stage.products:
             _add_planned_input(
                 build_plan=build_plan,
                 stage=stage,
                 inputs=inputs,
-                name=f"{dependency.name}.{product.name}",
+                name=f"{dependency_stage.name}.{product.name}",
                 path=product.path,
             )
 
-    stage_product_dependencies = set(
-        stage.spec.product_dependencies,
-    )
+    # Bound cross-Product dependencies.
+    for dependency in stage.spec.product_dependencies:
+        for planned_dependency in build_plan.planned_product_dependencies:
+            if planned_dependency.binding.dependency != dependency:
+                continue
 
-    for planned_dependency in build_plan.planned_product_dependencies:
-        dependency = planned_dependency.binding.dependency
+            input_name = dependency.name or (
+                f"{dependency.model}.{dependency.stage}.{dependency.product}"
+            )
 
-        if dependency not in stage_product_dependencies:
-            continue
+            _add_planned_input(
+                build_plan=build_plan,
+                stage=stage,
+                inputs=inputs,
+                name=input_name,
+                path=planned_dependency.path,
+            )
 
-        _add_planned_input(
-            build_plan=build_plan,
-            stage=stage,
-            inputs=inputs,
-            name=(f"{dependency.model}.{dependency.stage}.{dependency.product}"),
-            path=planned_dependency.path,
-        )
+            break
 
     return inputs
 

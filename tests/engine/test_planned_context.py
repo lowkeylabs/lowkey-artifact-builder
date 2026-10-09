@@ -936,3 +936,113 @@ def test_shape_registered_artwork_is_exposed_only_to_compose(
         )
 
         assert "artwork.vector.manifest" not in context.inputs
+
+
+def test_create_planned_stage_context_exposes_independent_product_dependency_roles(
+    tmp_path: Path,
+    test_resolver,
+) -> None:
+    """
+    Two consumer roles may bind independently to the same producer Product.
+
+    Execution-facing StageContext input identity belongs to the consumer role,
+    not to producer Product identity. Binding both roles to the exact same
+    Product must therefore preserve both semantic inputs.
+    """
+
+    face_a = ProductDependencySpec(
+        name="faceA",
+        model="shape",
+        stage="extrude",
+        product="manifest",
+    )
+
+    face_b = ProductDependencySpec(
+        name="faceB",
+        model="shape",
+        stage="extrude",
+        product="manifest",
+    )
+
+    face_a_binding = ProductDependencyBinding(
+        dependency=face_a,
+        artifact="source-shape",
+        realization="shape_default",
+    )
+
+    face_b_binding = ProductDependencyBinding(
+        dependency=face_b,
+        artifact="source-shape",
+        realization="shape_default",
+    )
+
+    dependency_path = (
+        tmp_path
+        / "artifacts"
+        / "source-shape"
+        / "shape"
+        / "shape_default"
+        / "30-extrude"
+        / "products.json"
+    )
+
+    face_a_product = PlannedProductDependency(
+        binding=face_a_binding,
+        path=dependency_path,
+    )
+
+    face_b_product = PlannedProductDependency(
+        binding=face_b_binding,
+        path=dependency_path,
+    )
+
+    stage_spec = StageSpec(
+        id=10,
+        name="compose",
+        product_dependencies=(
+            face_a,
+            face_b,
+        ),
+    )
+
+    stage = PlannedStage(
+        spec=stage_spec,
+    )
+
+    plan = BuildPlan(
+        artifact_id="coin-example",
+        model=ModelSpec(
+            name="consumer",
+            title="Consumer",
+            stages=(stage_spec,),
+        ),
+        realization_name="default",
+        resolver=test_resolver,
+        project_root=tmp_path,
+        artifact_dir=tmp_path / "artifacts" / "coin-example",
+        stages=(stage,),
+        product_dependencies=(
+            face_a,
+            face_b,
+        ),
+        product_dependency_bindings=(
+            face_a_binding,
+            face_b_binding,
+        ),
+        planned_product_dependencies=(
+            face_a_product,
+            face_b_product,
+        ),
+    )
+
+    context = create_planned_stage_context(
+        plan,
+        stage,
+    )
+
+    assert face_a_product.product_ref == face_b_product.product_ref
+
+    assert context.inputs == {
+        "faceA": dependency_path,
+        "faceB": dependency_path,
+    }

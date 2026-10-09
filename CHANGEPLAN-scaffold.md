@@ -139,6 +139,5 @@ algorithmic or regression risk.
 
 
 (THIS IS A SCAFFOLD DOCUMENT and contains good boilderplate.
-TO USE: copy this to CHANGEPLAN.md, then add phases here, 
+TO USE: copy this to CHANGEPLAN.md, then add phases here,
 including purpose, acceptance criteria and completion)
-

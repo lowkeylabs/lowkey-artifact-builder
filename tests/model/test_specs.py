@@ -871,3 +871,61 @@ def test_product_dependency_binding_is_immutable() -> None:
         FrozenInstanceError,
     ):
         binding.artifact = "other"  # type: ignore[misc]
+
+
+def test_product_dependencies_distinguish_consumer_role_from_producer_identity() -> None:
+    """
+    Consumer dependency roles are independent of producer Product identity.
+
+    Two semantic consumer roles may require the same producer Model, Stage,
+    and Product without changing or duplicating producer ProductRef identity.
+    """
+
+    face_a = ProductDependencySpec(
+        name="faceA",
+        model="shape",
+        stage="extrude",
+        product="manifest",
+    )
+
+    face_b = ProductDependencySpec(
+        name="faceB",
+        model="shape",
+        stage="extrude",
+        product="manifest",
+    )
+
+    assert face_a.name == "faceA"
+    assert face_b.name == "faceB"
+
+    assert (
+        face_a.model,
+        face_a.stage,
+        face_a.product,
+    ) == (
+        face_b.model,
+        face_b.stage,
+        face_b.product,
+    )
+
+    face_a_binding = ProductDependencyBinding(
+        dependency=face_a,
+        artifact="source",
+        realization="shape_default",
+    )
+
+    face_b_binding = ProductDependencyBinding(
+        dependency=face_b,
+        artifact="source",
+        realization="shape_default",
+    )
+
+    assert face_a_binding.product_ref == face_b_binding.product_ref
+
+    assert face_a_binding.product_ref == ProductRef(
+        artifact="source",
+        model="shape",
+        realization="shape_default",
+        stage="extrude",
+        product="manifest",
+    )

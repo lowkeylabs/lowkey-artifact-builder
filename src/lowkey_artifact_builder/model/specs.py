@@ -297,34 +297,20 @@ class ProductSpec:
 )
 class ProductDependencySpec:
     """
-    `ProductDependencySpec` declares a product dependency that a consuming stage
-    knows how to consume.
+    Declare a persistent Product dependency consumed by a Stage.
 
-    A product dependency identifies the model, stage, and product that provide a
-    persistent product compatible with the consuming stage.
+    model, stage, and product identify the producer Product definition.
 
-    `ProductDependencySpec` belongs to the declarative model definition. It
-    therefore identifies a producer independently of any particular artifact or
-    realization.
+    name optionally identifies the dependency's semantic role from the
+    consumer's perspective. Distinct consumer roles may therefore require
+    the same producer Product definition without changing producer identity.
 
-    Declaring a product dependency describes a potential dependency relationship.
-    It does not by itself require every realization of the consuming model to use
-    that dependency.
+    When name is omitted, existing producer-qualified dependency semantics
+    are preserved.
 
-    A dependency participates in a particular artifact realization when artifact
-    configuration binds it to a concrete producer artifact and realization through
-    `ProductDependencyBinding`.
-
-    An unbound product dependency does not participate in that realization's
-    dependency closure.
-
-    Artifact and realization identity are runtime concerns represented by
-    `ProductDependencyBinding` and `ProductRef` after the declarative dependency
-    has been bound to a configured producer.
-
-    `ProductDependencySpec` contains no filesystem information. Resolving a bound
-    dependency to a concrete product location belongs to planning and product
-    resolution.
+    ProductDependencySpec belongs to the declarative Model definition and
+    contains no Artifact, Realization, or filesystem identity. Those runtime
+    concerns belong to ProductDependencyBinding, ProductRef, and planning.
     """
 
     model: str
@@ -332,6 +318,8 @@ class ProductDependencySpec:
     stage: str
 
     product: str
+
+    name: str | None = None
 
 
 @dataclass(
