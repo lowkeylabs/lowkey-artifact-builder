@@ -50,7 +50,8 @@ A packaged Shape provides:
 - resolved component colors; and
 - Shape-level physical metadata required for downstream compatibility.
 
-The packaged 3MF is authoritative for component geometry, component identity, and resolved component colors. Shape-level metadata is carried separately by the packaged Shape Product when that information cannot be recovered safely from the 3MF.
+The packaged 3MF is authoritative for component geometry, component identity,
+resolved component colors, and persistent Shape-level compatibility metadata.
 
 Coin does not reopen source Shape configuration or regenerate a different Shape realization on behalf of a Face.
 
@@ -268,7 +269,7 @@ Coin packaging does not require access to either source Shape's configuration.
 
 Coin consumes two complete packaged Shape Products, one for each Face.
 
-A packaged Shape Product provides the packaged 3MF together with persistent Shape-level metadata required for downstream compatibility. The 3MF is authoritative for physical component geometry, component identity, and resolved component colors.
+A packaged Shape Product provides the packaged 3MF including embedded Shape-level metadata required for downstream compatibility. The 3MF is authoritative for physical component geometry, component identity, and resolved component colors.
 
 The dependency system must permit the two Face roles to refer independently to the same or different packaged Shape Products.
 
@@ -296,7 +297,7 @@ The packaged 3MF is one Product of the Coin model. It is not architecturally pri
 3. A Face may originate from the same or a different Artifact or Realization as the other Face.
 4. Coin consumes Shape Products by logical Product identity rather than generated filesystem path.
 5. A packaged Shape 3MF is authoritative for its physical component geometry, component identity, and resolved component colors.
-6. Persistent Shape-level metadata provides compatibility information that cannot be recovered safely from the packaged 3MF.
+6. Persistent Shape-level metadata embedded in the packaged Shape 3MF provides compatibility information that cannot be recovered safely from component geometry, identity, or resolved colors.
 7. Face B must use `inlaid` Shape dimensionalization.
 8. Coin rejects a non-inlaid Face B rather than regenerating or re-dimensionalizing it.
 9. Coin does not reopen source Shape configuration.

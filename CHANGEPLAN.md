@@ -25,12 +25,12 @@ packaged Shape Face B ──┘
 ```
 
 The implementation must preserve packaged Shape as the reusable physical
-Product boundary consumed by Coin. Each Face is a complete packaged Shape
-Product containing a 3MF authoritative for component geometry, component
-identity, and resolved physical colors, together with persistent Shape-level
-metadata required for downstream compatibility. Coin does not reconstruct
-registered Shape geometry, invoke Shape stage implementations, reopen source
-Shape configuration, or regenerate an incompatible Shape on behalf of a Face.
+Product boundary consumed by Coin. Each Face is one complete packaged Shape
+Product whose 3MF is authoritative for component geometry, component identity,
+resolved physical colors, and embedded persistent Shape-level compatibility
+metadata. Coin does not reconstruct registered Shape geometry, invoke Shape
+stage implementations, reopen source Shape configuration, or regenerate an
+incompatible Shape on behalf of a Face.
 
 The ordinary value chain remains:
 
@@ -138,9 +138,10 @@ For Coin specifically:
 -   `faceA` and `faceB` are independent semantic dependency roles.
 -   Each Face is a complete packaged Shape Product.
 -   The packaged Shape 3MF is authoritative for component geometry,
-    component identity, and resolved physical colors.
--   Persistent Shape-level metadata supplies compatibility information that
-    cannot safely be recovered from the packaged 3MF.
+    component identity, resolved physical colors, and embedded persistent
+    Shape-level compatibility metadata.
+-   Shape-level compatibility metadata must not be inferred from component
+    geometry, identity, or resolved colors.
 -   Face B must use `inlaid` Shape dimensionalization.
 -   Coin rejects an incompatible Face rather than regenerating or
     re-dimensionalizing it.
@@ -195,174 +196,7 @@ protect an independently meaningful contract, reproduce a defect, or
 address a specific algorithmic or regression risk.
 
 ------------------------------------------------------------------------
-
-# Phase 1 --- Establish reusable packaged Shape inputs
-
-## Purpose
-
-Establish the reusable Shape Product boundary required by Coin.
-
-Coin consumes complete packaged Shape Products rather than Shape extrusion Products. A packaged Shape provides:
-
-- the complete physical Shape geometry;
-- independently identifiable physical components;
-- resolved physical component colors; and
-- persistent Shape-level metadata required for downstream compatibility.
-
-The packaged 3MF is authoritative for component geometry, component identity, and resolved component colors. Shape-level metadata accompanies the packaged Shape Product when required compatibility information cannot safely be recovered from the 3MF.
-
-These changes are prerequisites to Coin but should remain generally useful Product and format capabilities rather than Coin-specific infrastructure.
-
-Current HEAD already supports:
-
-- logical cross-Artifact and cross-Realization `ProductRef` identity;
-- targeted producer builds and transitive dependency closure;
-- independent Stage execution through `StageContext`;
-- independently named consumer dependency roles;
-- multiple consumer roles bound to the same concrete producer Product;
-- correct full-depth inlaid Shape dimensionalization;
-- Shape Package ownership of physical printer-color resolution;
-- independently identifiable colored components in packaged Shape 3MF files; and
-- format-level 3MF writing and component recoloring.
-
-Current HEAD does not yet provide all reusable packaged-Shape semantics required by Coin:
-
-1. Shape Package does not persist the Shape-level metadata required to determine whether a packaged Shape is compatible with a Coin Face role; and
-2. the generic 3MF format layer can write packaged components but cannot yet read an existing packaged 3MF back into the reusable component representation required for downstream physical composition.
-
-These are independent behavioral seams and should be developed separately.
-
-## 1.1 Independent consumer dependency roles
-
-### Status
-
-Complete in current HEAD.
-
-The generic dependency system permits independently named consumer roles to bind to the same or different concrete producer Products without changing producer `ProductRef` identity.
-
-This behavior supports the future Coin `faceA` and `faceB` dependency roles and requires no Coin-specific engine behavior.
-
-No further implementation work is required in this slice unless later development exposes a genuine defect in the established generic contract.
-
-## 1.2 Correct integrated inlaid Outer Ridge dimensionalization
-
-### Status
-
-Complete in current HEAD.
-
-For `shape_raise_style = "inlaid"`, participating Outer Ridge geometry follows the normative full-depth nonoverlapping partition contract regardless of whether the Outer Ridge structural style is `integrated` or `separate`.
-
-No further implementation work is required in this slice unless later manufacturing acceptance exposes a genuine dimensionalization defect.
-
-## 1.3 Publish reusable packaged Shape metadata
-
-### Behavioral boundary
-
-Shape Package must publish a reusable packaged Shape Product containing the packaged 3MF together with persistent Shape-level metadata required by downstream consumers.
-
-The packaged 3MF remains authoritative for:
-
-- physical component geometry;
-- physical component membership;
-- semantic component identity; and
-- resolved physical component colors.
-
-Compatibility information that cannot safely be recovered from the 3MF must be represented as persistent Shape-level metadata rather than inferred from mesh geometry or recovered by reopening source Shape configuration.
-
-At minimum, the packaged Shape Product must identify the resolved Shape raise style:
-
-```text
-raised
-inlaid
-```
-
-so a downstream consumer can determine whether the packaged Shape satisfies a Face compatibility requirement.
-
-This metadata describes the packaged Shape that was actually produced. It does not authorize downstream consumers to reinterpret or regenerate Shape dimensionalization.
-
-The exact metadata filename and serialization schema are implementation details unless promoted into a permanent Product contract.
-
-### TDD seam
-
-Drive this change from the Shape Package Product boundary.
-
-Begin with one high-value Shape Package test establishing that packaging an inlaid Shape produces both:
-
-- the expected packaged 3MF; and
-- persistent packaged-Shape metadata identifying its resolved raise style as `inlaid`.
-
-The test should protect the semantic Product contract rather than incidental JSON formatting or private writer helpers.
-
-Do not add equivalent tests for every possible raise style merely to inventory serialization. The materially different `raised` value should be exercised when Coin compatibility depends upon that distinction.
-
-### Completion criteria
-
-- Shape Package declares and produces persistent Shape-level compatibility metadata.
-- The metadata identifies the resolved `shape_raise_style`.
-- The packaged 3MF remains authoritative for component geometry, identity, membership, and resolved colors.
-- Shape Extrude remains responsible only for physical dimensionalization and does not acquire Package metadata or physical color responsibilities.
-- A downstream consumer can determine the packaged Shape's raise style without reopening source Shape configuration.
-- Package metadata participates correctly in Product state and dependency behavior.
-- Existing standalone Shape packaging behavior remains unchanged.
-- Focused Shape Package tests, the broader non-slow suite, pyright, and ruff pass.
-
-## 1.4 Read packaged 3MF components through the format layer
-
-### Behavioral boundary
-
-The generic 3MF format layer must support reading a packaged 3MF into the reusable component representation needed by downstream physical composition.
-
-Reading a 3MF must recover, for each independently packaged component:
-
-- its component identity;
-- its mesh geometry; and
-- its resolved physical color.
-
-This is format-level behavior. It must not contain Shape, Coin, Artwork, Feature, Face, or other Model-specific semantics.
-
-The read representation should compose naturally with the existing generic `Component` and `Mesh` abstractions so downstream Models can transform and repackage components without reconstructing them from source Model configuration.
-
-Reading must not mutate the source 3MF.
-
-### TDD seam
-
-Protect the format boundary with a compact round-trip test.
-
-Create representative independently identifiable components with distinguishable geometry and resolved colors, write them through the existing 3MF writer, read the resulting 3MF through the new reader, and establish semantic equivalence of:
-
-- component membership;
-- component identity;
-- mesh geometry; and
-- resolved physical color.
-
-Use enough components to prove independent membership and differing colors without inventorying the complete 3MF XML representation.
-
-Do not introduce Coin semantics into this test.
-
-### Completion criteria
-
-- Existing packaged 3MF files can be read through a reusable format-level operation.
-- Independent component identity is preserved.
-- Mesh geometry is recovered without Model-specific reconstruction.
-- Resolved physical color is recovered.
-- Multiple components remain independent even when they share physical properties.
-- The reader contains no Shape- or Coin-specific policy.
-- Existing 3MF writing, recoloring, and naming behavior remains compatible.
-- Focused format tests, the broader non-slow suite, pyright, and ruff pass.
-
-## Phase 1 completion
-
-Phase 1 is complete when a downstream Model can independently consume two complete packaged Shape Products, including the same Product twice, and obtain from each:
-
-- its packaged physical components;
-- resolved component colors; and
-- persistent Shape-level compatibility metadata.
-
-Neither Shape source configuration nor Shape geometry-stage execution should be required to interpret an already-current packaged Shape Product.
-
-Before closing the phase, reevaluate HEAD against `ARCHITECTURE.md`, Shape `DEFINITION.md`, Coin `DEFINITION.md`, and this plan. Run the complete slow suite at the phase boundary when appropriate in addition to the routine non-slow, pyright, and ruff quality gates.
-
-------------------------------------------------------------------------
+(we'll start with Phase 2)
 
 # Phase 2 --- Introduce the Coin physical composition model
 
@@ -404,7 +238,9 @@ faceA
 faceB
 ```
 
-Each role consumes a complete packaged Shape Product, including the packaged 3MF and its associated persistent Shape-level metadata.
+Each role consumes one complete packaged Shape Product: the Shape Package
+`artifact` Product. Its 3MF contains the physical components, resolved colors,
+and embedded persistent Shape-level compatibility metadata required by Coin.
 
 The roles may independently bind to:
 
@@ -425,11 +261,24 @@ The physical Coin component collection is a persistent Product independent of th
 
 ### TDD seam
 
-Add only the Coin-specific declarative/configuration coverage not already guaranteed by generic Model and dependency tests.
+Begin at the Coin Model declaration boundary.
 
-A small coherent Coin Model test should establish the two packaged-Shape dependency roles, orientation contract, and independently declared physical and packaged Coin Products.
+Use a small coherent Coin Model test to establish:
 
-Do not repeat the generic dependency-role tests completed in Phase 1.1 and do not create brittle registry-inventory tests.
+- registration of `coin`;
+- the ordinary `default` Variant;
+- exactly two independent packaged-Shape dependency roles, `faceA` and
+  `faceB`;
+- `aligned` / `inverted` orientation with `aligned` as the default; and
+- a persistent physical Coin Product distinct from the final packaged Coin
+  Product.
+
+Allow this test to expose the smallest Stage/Product graph that fits existing
+repository conventions. Do not prescribe additional Stages or intermediate
+Products merely to mirror Shape.
+
+Do not repeat generic dependency-role behavior already established by HEAD,
+and do not create registry-inventory tests.
 
 ### Completion criteria
 
