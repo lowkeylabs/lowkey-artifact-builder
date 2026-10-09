@@ -3122,3 +3122,193 @@ def test_same_realization_product_dependency_binds_local_product(
         / "30-vector"
         / "products.json"
     )
+
+
+def test_planning_preserves_independent_named_product_dependency_roles(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Planning preserves independent consumer roles for the same Product definition.
+
+    Two named dependencies may target the same producer Model, Stage, and
+    Product while binding to different concrete producer Artifacts and
+    Realizations. Planning must retain both bindings without changing
+    canonical producer Product identity.
+    """
+
+    face_a = ProductDependencySpec(
+        name="faceA",
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    face_b = ProductDependencySpec(
+        name="faceB",
+        model="producer",
+        stage="prepare",
+        product="geometry",
+    )
+
+    producer = ModelSpec(
+        name="producer",
+        title="Producer",
+        stages=(
+            StageSpec(
+                id=10,
+                name="prepare",
+                products=(
+                    ProductSpec(
+                        name="geometry",
+                        path="geometry.dat",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    consumer = ModelSpec(
+        name="consumer",
+        title="Consumer",
+        stages=(
+            StageSpec(
+                id=10,
+                name="compose",
+                product_dependencies=(
+                    face_a,
+                    face_b,
+                ),
+            ),
+        ),
+    )
+
+    class StubRegistry:
+        def get_model(
+            self,
+            name: str,
+        ) -> ModelSpec:
+            models = {
+                "producer": producer,
+                "consumer": consumer,
+            }
+
+            return models[name]
+
+        def all_models(
+            self,
+        ) -> tuple[ModelSpec, ...]:
+            return (
+                producer,
+                consumer,
+            )
+
+    class Resolver:
+        def __call__(
+            self,
+            name: str,
+        ):
+            values = {
+                "model": "consumer",
+                "variant": "default",
+                "realization": "consumer_default",
+            }
+
+            return values[name]
+
+        def source(
+            self,
+            name: str,
+        ) -> str:
+            return "test"
+
+    write_artifact_config(
+        "consumer-artifact",
+        {
+            "model": "consumer",
+            "product_dependencies": {
+                "faceA": {
+                    "model": "producer",
+                    "stage": "prepare",
+                    "product": "geometry",
+                    "artifact": "front",
+                    "realization": "default",
+                },
+                "faceB": {
+                    "model": "producer",
+                    "stage": "prepare",
+                    "product": "geometry",
+                    "artifact": "back",
+                    "realization": "default",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_realization_names",
+        lambda artifact_id, *, project_root: ("consumer_default",),
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_resolver",
+        lambda artifact_id, *, model=None, realization=None, project_root: Resolver(),
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.build_model_registry",
+        lambda: StubRegistry(),
+    )
+
+    plan = create_build_plan(
+        "consumer-artifact",
+        project_root=tmp_path,
+    )
+
+    assert plan.product_dependencies == (
+        face_a,
+        face_b,
+    )
+
+    assert plan.product_dependency_bindings == (
+        ProductDependencyBinding(
+            dependency=face_a,
+            artifact="front",
+            realization="default",
+        ),
+        ProductDependencyBinding(
+            dependency=face_b,
+            artifact="back",
+            realization="default",
+        ),
+    )
+
+    assert tuple(
+        planned.binding.dependency.name for planned in plan.planned_product_dependencies
+    ) == (
+        "faceA",
+        "faceB",
+    )
+
+    assert tuple(planned.product_ref for planned in plan.planned_product_dependencies) == (
+        ProductRef(
+            artifact="front",
+            model="producer",
+            realization="default",
+            stage="prepare",
+            product="geometry",
+        ),
+        ProductRef(
+            artifact="back",
+            model="producer",
+            realization="default",
+            stage="prepare",
+            product="geometry",
+        ),
+    )
+
+    assert tuple(planned.path for planned in plan.planned_product_dependencies) == (
+        tmp_path / "artifacts" / "front" / "producer" / "default" / "10-prepare" / "geometry.dat",
+        tmp_path / "artifacts" / "back" / "producer" / "default" / "10-prepare" / "geometry.dat",
+    )
