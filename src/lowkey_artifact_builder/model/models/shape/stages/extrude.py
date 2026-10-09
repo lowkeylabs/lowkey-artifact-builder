@@ -2162,60 +2162,46 @@ def _require_component(
 def _write_component_manifest(
     path: Path,
     components: tuple[
-        tuple[str, str],
+        tuple[
+            str,
+            str,
+        ],
         ...,
     ],
     *,
-    shape_component_colors: dict[str, str] | None = None,
     artwork_components: tuple[
-        tuple[str, str, dict[str, object]],
+        tuple[
+            str,
+            str,
+            dict[str, object],
+        ],
         ...,
     ] = (),
     artwork_fill_components: tuple[
-        tuple[str, str],
+        tuple[
+            str,
+            str,
+        ],
         ...,
     ] = (),
 ) -> None:
     """
-    Write the persistent physical-component manifest for Shape extrusion.
+    Write the physical-component manifest for Shape extrusion.
 
-    Shape-owned physical components retain their logical Shape color
-    requirements so downstream consumers can preserve Shape color semantics
-    without reopening source Shape configuration.
+    Shape-owned components are identified by component name and path only.
+    Their physical printer-color assignment belongs to downstream packaging.
 
-    Logical Shape colors are not physical printer assignments. Physical
-    printer-color resolution remains the responsibility of downstream
-    packaging.
-
-    Incorporated Artwork components retain their distinct persistent
-    Artifact-color identity.
+    Incorporated Artwork components retain persistent Artifact-color identity
+    so downstream packaging can resolve their physical printer assignments.
     """
 
-    logical_colors = shape_component_colors if shape_component_colors is not None else {}
-
-    manifest_components: list[dict[str, object]] = []
-
-    for (
-        name,
-        component_path,
-    ) in components:
-        component: dict[str, object] = {
+    manifest_components: list[dict[str, object]] = [
+        {
             "name": name,
             "path": component_path,
         }
-
-        color = logical_colors.get(
-            name,
-        )
-
-        if color is not None:
-            component["color"] = {
-                "name": color,
-            }
-
-        manifest_components.append(
-            component,
-        )
+        for name, component_path in components
+    ]
 
     for (
         name,
@@ -2234,22 +2220,11 @@ def _write_component_manifest(
         name,
         component_path,
     ) in artwork_fill_components:
-        component = {
-            "name": name,
-            "path": component_path,
-        }
-
-        color = logical_colors.get(
-            name,
-        )
-
-        if color is not None:
-            component["color"] = {
-                "name": color,
-            }
-
         manifest_components.append(
-            component,
+            {
+                "name": name,
+                "path": component_path,
+            }
         )
 
     path.write_text(

@@ -6,7 +6,7 @@ Each side of a Coin is a **Face**.
 
 A Face is a complete physical Shape as established by Shape physical dimensionalization. It includes the Shape Base and every participating physical component and Feature produced by that Shape realization.
 
-Coin does not reconstruct either Face from registered Shape geometry and does not reinterpret Shape Feature semantics. It consumes reusable physical Shape Products, establishes their relative orientation, preserves their component identity and logical color requirements, and packages the resulting two-sided object.
+Coin does not reconstruct either Face from registered Shape geometry and does not reinterpret Shape Feature semantics. It consumes packaged Shape Products containing complete physical geometry, component identity, resolved component colors, and the Shape-level metadata required for Face compatibility. Coin establishes the relative orientation of those Faces, preserves their component identity and resolved colors, and produces the resulting two-sided object.
 
 Conceptually:
 
@@ -37,20 +37,22 @@ faceA
 faceB
 ```
 
-`faceA` and `faceB` are Coin-owned semantic roles. They identify how two source Shape Products participate in the Coin; they do not alter the logical identity of either source Product.
+faceA and faceB are Coin-owned semantic roles. They identify how two source Shape Products participate in the Coin; they do not alter the logical identity of either source Product.
 
-Each Face consumes the complete physical component collection established by Shape physical dimensionalization.
+Each Face consumes a complete packaged Shape Product.
 
-A Face retains:
-
-- its source Shape's physical geometry;
-- its physical component partition;
+A packaged Shape provides:
+- the complete physical Shape geometry;
+- the physical component partition;
 - participating Shape Features;
 - incorporated Artwork;
-- component semantic identity; and
-- logical color requirements.
+- component semantic identity;
+- resolved component colors; and
+- Shape-level physical metadata required for downstream compatibility.
 
-Coin must not require either source Shape to be packaged before it can participate as a Face.
+The packaged 3MF is authoritative for component geometry, component identity, and resolved component colors. Shape-level metadata is carried separately by the packaged Shape Product when that information cannot be recovered safely from the 3MF.
+
+Coin does not reopen source Shape configuration or regenerate a different Shape realization on behalf of a Face.
 
 ## Physical Composition
 
@@ -93,15 +95,18 @@ The default Coin orientation is `aligned`.
 
 ## Compatibility
 
-Coin composes already-dimensionalized Shapes and does not repair incompatible Face geometry.
+Coin composes already-dimensionalized, packaged Shapes and does not repair or regenerate incompatible Face geometry.
+
+Face B must use `inlaid` Shape dimensionalization. A packaged Shape used as Face B must therefore identify its Shape raise style as `inlaid`. A non-inlaid Face B is incompatible and must not produce a Coin manufacturing Product.
+
+Coin validates this requirement from persistent Shape-level metadata rather than by reopening source Shape configuration or inferring dimensionalization from mesh geometry.
 
 The transformed outer structural boundaries of the two Faces must coincide at the mating plane.
 
-Compatibility is determined by physical geometry rather than by requiring identical source Variant names, Artifact identities, Realization names, or configuration histories.
+Compatibility is otherwise determined by physical geometry rather than by requiring identical source Variant names, Artifact identities, Realization names, or configuration histories.
 
-Face-local surface geometry may differ. The Faces may independently differ in:
+Subject to the Face B inlaid requirement, Face-local surface geometry may differ. The Faces may independently differ in:
 
-- raised or inlaid dimensionalization;
 - Base thickness;
 - incorporated Artwork;
 - Artwork fill;
@@ -133,7 +138,8 @@ The Faces need not use identical ridge participation, width, raise, raise style,
 
 Border Labels, incorporated Artwork, and Artwork Fill remain Face-local physical components.
 
-Coin preserves their geometry, dimensionalization, component identity, and logical color requirements as established by the source Shape.
+Coin preserves their geometry, dimensionalization, component identity, and resolved component colors as established by the packaged source Shape.
+
 
 No correspondence is required between the Face A and Face B surface-component collections.
 
@@ -193,27 +199,38 @@ loop                  -> faceB-loop
 artwork-1             -> faceB-artwork-1
 ```
 
-Coin does not merge components merely because they touch, share a logical color, or form two halves of one apparent manufactured feature.
+Coin does not merge components merely because they touch, share a resolved physical color, or form two halves of one apparent manufactured feature.
 
 Face identity remains observable through physical composition and packaging.
 
 ## Color
 
-Coin preserves the logical color requirements associated with every source Shape component.
+Each packaged Shape provides the resolved physical color associated with every physical component.
 
-Coin does not require source Shapes to have resolved physical printer assignments before composition.
+Coin preserves those resolved component colors when composing its Faces. Face prefixing changes component semantic identity but does not change the component's resolved color.
 
-Logical color identity must remain sufficient to preserve the intended color semantics of each Face even when the Faces originate from different Artifacts or Realizations.
+For example:
 
-Physical Coin composition does not assign physical printer colors.
+```text
+base - white
+```
 
-Coin packaging resolves the complete Coin's logical color requirements against the Coin Realization's `printer_colors`.
+from Face A becomes conceptually:
 
-Final printer-color assignment therefore considers both Faces as one manufactured object.
+```text
+faceA-base - white
+```
 
-Components are not merged merely because they resolve to the same physical printing color.
+with the same physical color.
 
-Changing only Coin printer-color configuration does not change Coin physical geometry.
+Coin physical composition does not reinterpret Shape color policy, reopen source Shape color configuration, or independently assign source Shape component colors.
+
+The packaged Shape 3MF is authoritative for the resolved colors of its components.
+
+Components are not merged merely because they share a physical printing color.
+
+Recoloring a packaged Coin is a format-level operation over its semantic component identities and does not alter Coin geometry, Face compatibility, or component membership.
+
 
 ## Physical Transformation
 
@@ -229,35 +246,40 @@ Coin must not independently transform individual Face components in a way that c
 
 Coin preserves the physical dimensions of each source component.
 
+
 ## Packaging
 
 Packaging occurs after physical Coin composition.
 
-Coin packaging consumes the complete Coin physical component collection.
+Coin packaging consumes the complete transformed component collections of both Faces.
 
 Packaging:
 
 - preserves `faceA-` and `faceB-` component identity;
-- resolves logical color requirements against `printer_colors`;
-- assigns physical printer colors;
+- preserves each source component's resolved physical color;
 - preserves independently printable component membership; and
 - produces a printable Coin 3MF.
 
-Packaging does not determine Face geometry, Face orientation, component participation, or Shape Feature geometry.
+Packaging does not determine Face geometry, Face orientation, component participation, Shape Feature geometry, or source Shape color policy.
+
+Coin packaging does not require access to either source Shape's configuration.
 
 ## Products and Dependencies
 
-Coin consumes two complete physical Shape Products, one for each Face.
+Coin consumes two complete packaged Shape Products, one for each Face.
 
-The dependency system must permit the two Face roles to refer independently to the same or different Shape Products.
+A packaged Shape Product provides the packaged 3MF together with persistent Shape-level metadata required for downstream compatibility. The 3MF is authoritative for physical component geometry, component identity, and resolved component colors.
+
+The dependency system must permit the two Face roles to refer independently to the same or different packaged Shape Products.
 
 The physical Coin component collection is itself a persistent Product and may be consumed independently of the packaged Coin.
 
 Coin's packaged 3MF is a Product produced from that physical component collection.
 
-Dependencies determine required execution. Consuming physical Shape Products for Coin must not require downstream Shape Products that Coin does not consume.
+Dependencies determine required execution. Requiring a packaged Shape Product causes the dependency closure to realize the Shape stages necessary to produce that Product.
 
 Coin Products may themselves be consumed by later Realizations, Models, Artifacts, or builds.
+
 
 ## Final Product
 
@@ -270,63 +292,67 @@ The packaged 3MF is one Product of the Coin model. It is not architecturally pri
 ## Model Invariants
 
 1. A Coin consists of exactly two Faces, identified as `faceA` and `faceB`.
-2. Each Face is a complete physical Shape produced after Shape physical dimensionalization.
+2. Each Face is a complete packaged Shape Product.
 3. A Face may originate from the same or a different Artifact or Realization as the other Face.
 4. Coin consumes Shape Products by logical Product identity rather than generated filesystem path.
-5. Coin does not require packaged source Shape Products.
-6. Coin does not reconstruct Faces from registered Shape geometry.
-7. Coin does not reinterpret Shape Feature participation or dimensionalization.
-8. The source Shape `Z = 0` planes establish the Coin mating plane.
-9. The two Faces occupy opposite sides of the mating plane with their visible surfaces facing outward.
-10. Every physical component of a Face receives the same rigid Face transformation.
-11. Coin transformation preserves source component dimensions and intra-Face registration.
-12. The transformed outer structural boundaries of the two Faces coincide at the mating plane.
-13. Compatible Faces need not originate from identical Variants, Realizations, Artifacts, or configuration histories.
-14. Face-local geometry may differ when the difference does not prevent valid physical mating.
-15. Outer Ridge and Inner Ridge remain Face-local components and are not regenerated by Coin.
-16. Border Labels, Artwork, and Artwork Fill remain Face-local components and are not regenerated by Coin.
-17. When Loop participates, both Faces provide compatible transformed Loop geometry.
-18. Face A and Face B Loop components remain distinct and meet at the mating plane to form the complete Loop.
-19. Coin does not generate a replacement Loop.
-20. When Hole participates, both Faces provide compatible transformed Hole geometry.
-21. Compatible source Shape holes form one continuous Coin Hole.
-22. Coin does not perform a replacement Hole subtraction.
-23. A one-sided or geometrically incompatible Loop or Hole makes the Face pair invalid.
-24. Every source physical component remains independently identifiable after Coin composition.
-25. Face A component identities are prefixed with `faceA-`.
-26. Face B component identities are prefixed with `faceB-`.
-27. Prefixing Face identity does not otherwise reinterpret the source component's semantic role.
-28. Coin does not merge components merely because they touch or share a printing color.
-29. Coin preserves the logical color requirements of source Shape components.
-30. Physical Coin composition does not assign physical printer colors.
-31. Coin packaging resolves physical printer colors for the complete two-Face object using the Coin Realization's `printer_colors`.
-32. Physical printer-color assignment does not determine component participation or geometry.
-33. Coin supports `aligned` and `inverted` Face orientation, with `aligned` as the default.
-34. Face orientation changes only the relative physical orientation of the complete Faces.
-35. Coin has no independent structural Base between its Faces.
-36. Coin does not repeat registered Shape composition or Shape physical dimensionalization.
-37. Physical Coin composition precedes packaging.
-38. An incompatible Face pair must not produce a Coin manufacturing Product.
-39. The physical Coin component collection remains a reusable Product independently of the packaged Coin.
-40. Coin remains dependency-driven and realizes only Products required by the requested dependency closure.
+5. A packaged Shape 3MF is authoritative for its physical component geometry, component identity, and resolved component colors.
+6. Persistent Shape-level metadata provides compatibility information that cannot be recovered safely from the packaged 3MF.
+7. Face B must use `inlaid` Shape dimensionalization.
+8. Coin rejects a non-inlaid Face B rather than regenerating or re-dimensionalizing it.
+9. Coin does not reopen source Shape configuration.
+10. Coin does not reconstruct Faces from registered Shape geometry.
+11. Coin does not reinterpret Shape Feature participation or dimensionalization.
+12. The source Shape `Z = 0` planes establish the Coin mating plane.
+13. The two Faces occupy opposite sides of the mating plane with their visible surfaces facing outward.
+14. Every physical component of a Face receives the same rigid Face transformation.
+15. Coin transformation preserves source component dimensions and intra-Face registration.
+16. The transformed outer structural boundaries of the two Faces coincide at the mating plane.
+17. Compatible Faces need not originate from identical Variants, Realizations, Artifacts, or configuration histories.
+18. Subject to the Face B inlaid requirement, Face-local geometry may differ when the difference does not prevent valid physical mating.
+19. Outer Ridge and Inner Ridge remain Face-local components and are not regenerated by Coin.
+20. Border Labels, Artwork, and Artwork Fill remain Face-local components and are not regenerated by Coin.
+21. When Loop participates, both Faces provide compatible transformed Loop geometry.
+22. Face A and Face B Loop components remain distinct and meet at the mating plane to form the complete Loop.
+23. Coin does not generate a replacement Loop.
+24. When Hole participates, both Faces provide compatible transformed Hole geometry.
+25. Compatible source Shape holes form one continuous Coin Hole.
+26. Coin does not perform a replacement Hole subtraction.
+27. A one-sided or geometrically incompatible Loop or Hole makes the Face pair invalid.
+28. Every source physical component remains independently identifiable after Coin composition.
+29. Face A component identities are prefixed with `faceA-`.
+30. Face B component identities are prefixed with `faceB-`.
+31. Prefixing Face identity does not otherwise reinterpret the source component's semantic role.
+32. Coin does not merge components merely because they touch or share a printing color.
+33. Coin preserves the resolved physical color of every source Shape component.
+34. Coin physical composition does not reinterpret Shape color policy or independently reassign source Shape component colors.
+35. Recoloring changes component color presentation without changing Coin geometry, compatibility, or component membership.
+36. Coin supports `aligned` and `inverted` Face orientation, with `aligned` as the default.
+37. Face orientation changes only the relative physical orientation of the complete Faces.
+38. Coin has no independent structural Base between its Faces.
+39. Coin does not repeat registered Shape composition or Shape physical dimensionalization.
+40. Physical Coin composition precedes Coin packaging.
+41. An incompatible Face pair must not produce a Coin manufacturing Product.
+42. The physical Coin component collection remains a reusable Product independently of the packaged Coin.
+43. Coin remains dependency-driven and realizes only Products required by the requested dependency closure.
 
 ## Scope
 
-The Coin model defines two-sided manufactured objects composed from exactly two complete physical Shape Products.
+The Coin model defines two-sided manufactured objects composed from exactly two complete packaged Shape Products.
 
 Coin owns:
 
 - the semantic roles Face A and Face B;
 - compatibility requirements between the two Faces;
+- the requirement that Face B use inlaid Shape dimensionalization;
 - relative Face orientation;
 - physical composition of the Faces around their common mating plane;
 - preservation and namespacing of Face component identity;
-- preservation of logical color requirements; and
+- preservation of resolved source component colors; and
 - packaging of the composed physical components into a printable artifact.
 
-Shape continues to own the geometry, dimensionalization, Feature semantics, and component partition of each source Face.
+Shape continues to own the geometry, dimensionalization, Feature semantics, component partition, and physical color resolution of each source Face.
 
-Coin does not provide arbitrary multi-object assembly, free-form placement, source Shape modification, Feature reconstruction, or general-purpose mesh editing.
+Coin does not provide arbitrary multi-object assembly, free-form placement, source Shape modification, Shape re-dimensionalization, Feature reconstruction, or general-purpose mesh editing.
 
 Capabilities outside the two-Face physical-composition and packaging contract defined by this document require an explicit extension of the Coin model or a different Model.
 
