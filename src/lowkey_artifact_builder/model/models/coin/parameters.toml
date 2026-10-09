@@ -1,0 +1,25 @@
+# File: src/lowkey_artifact_builder/model/models/coin/parameters.toml
+# Copyright 2026 LowKeyLabs LLC
+# SPDX-License-Identifier: Apache-2.0
+
+[parameters]
+
+# =========================================================
+# Face orientation
+# =========================================================
+
+#
+# Relative physical orientation of the two Coin Faces.
+#
+# Supported values:
+#
+#     aligned
+#     inverted
+#
+# "aligned" preserves the source top direction of the Faces.
+#
+# "inverted" rotates one Face 180 degrees in its plane relative to the
+# other Face.
+#
+
+coin_orientation = "aligned"
