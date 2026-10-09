@@ -1230,3 +1230,98 @@ original = "originals/customer-final.png"
         match="Unknown configuration value 'original'",
     ):
         resolver("original")
+
+
+def test_named_product_dependency_roles_bind_independently(
+    tmp_path: Path,
+) -> None:
+    """
+    Named consumer dependency roles bind independently of producer identity.
+
+    Two roles may require the same producer Model, Stage, and Product while
+    selecting different concrete producer Artifacts and Realizations.
+    """
+
+    face_a = ProductDependencySpec(
+        name="faceA",
+        model="shape",
+        stage="extrude",
+        product="manifest",
+    )
+
+    face_b = ProductDependencySpec(
+        name="faceB",
+        model="shape",
+        stage="extrude",
+        product="manifest",
+    )
+
+    write_artifact_config(
+        "consumer",
+        {
+            "model": "consumer",
+            "product_dependencies": {
+                "faceA": {
+                    "model": "shape",
+                    "stage": "extrude",
+                    "product": "manifest",
+                    "artifact": "front",
+                    "realization": "ornament",
+                },
+                "faceB": {
+                    "model": "shape",
+                    "stage": "extrude",
+                    "product": "manifest",
+                    "artifact": "back",
+                    "realization": "coaster",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    assert has_product_dependency_binding(
+        "consumer",
+        face_a,
+        project_root=tmp_path,
+    )
+
+    assert has_product_dependency_binding(
+        "consumer",
+        face_b,
+        project_root=tmp_path,
+    )
+
+    face_a_binding = get_product_dependency_binding(
+        "consumer",
+        face_a,
+        project_root=tmp_path,
+    )
+
+    face_b_binding = get_product_dependency_binding(
+        "consumer",
+        face_b,
+        project_root=tmp_path,
+    )
+
+    assert face_a_binding == ProductDependencyBinding(
+        dependency=face_a,
+        artifact="front",
+        realization="ornament",
+    )
+
+    assert face_b_binding == ProductDependencyBinding(
+        dependency=face_b,
+        artifact="back",
+        realization="coaster",
+    )
+
+    assert face_a_binding.product_ref.model == face_b_binding.product_ref.model
+    assert face_a_binding.product_ref.stage == face_b_binding.product_ref.stage
+    assert face_a_binding.product_ref.product == face_b_binding.product_ref.product
+
+    assert face_a_binding.product_ref.artifact == "front"
+    assert face_b_binding.product_ref.artifact == "back"
+
+    assert face_a_binding.product_ref.realization == "ornament"
+    assert face_b_binding.product_ref.realization == "coaster"

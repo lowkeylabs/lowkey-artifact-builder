@@ -814,6 +814,19 @@ def get_realization_names(
     return default_names + additional_names
 
 
+def _product_dependency_binding_name(
+    dependency: ProductDependencySpec,
+) -> str:
+    """
+    Return the artifact-configuration key for one Product dependency.
+
+    Named dependencies use their consumer-semantic role. Legacy unnamed
+    dependencies retain their producer Product name as the configuration key.
+    """
+
+    return dependency.name or dependency.product
+
+
 def has_product_dependency_binding(
     artifact_id: str,
     dependency: ProductDependencySpec,
@@ -860,7 +873,7 @@ def has_product_dependency_binding(
             "The [product_dependencies] section in artifact.toml must be a TOML table."
         )
 
-    return dependency.product in product_dependencies
+    return _product_dependency_binding_name(dependency) in product_dependencies
 
 
 def get_product_dependency_binding(
@@ -877,8 +890,9 @@ def get_product_dependency_binding(
     that dependency to the concrete producer artifact and realization
     that will supply the product.
 
-    Product dependency bindings are keyed by the required product name
-    in the artifact's [product_dependencies] table.
+    Named Product dependencies are keyed by their consumer-semantic role
+    in the artifact's [product_dependencies] table. Legacy unnamed
+    dependencies are keyed by the required producer Product name.
 
     The configured model, stage, and product must exactly match the
     supplied declarative dependency.
@@ -901,10 +915,13 @@ def get_product_dependency_binding(
         "product_dependencies",
     )
 
+    dependency_name = _product_dependency_binding_name(
+        dependency,
+    )
+
     if product_dependencies is None:
         raise ConfigError(
-            f"Artifact {artifact_id!r} does not configure "
-            f"product dependency {dependency.product!r}."
+            f"Artifact {artifact_id!r} does not configure product dependency {dependency_name!r}."
         )
 
     if not isinstance(
@@ -916,20 +933,19 @@ def get_product_dependency_binding(
         )
 
     configured = product_dependencies.get(
-        dependency.product,
+        dependency_name,
     )
 
     if configured is None:
         raise ConfigError(
-            f"Artifact {artifact_id!r} does not configure "
-            f"product dependency {dependency.product!r}."
+            f"Artifact {artifact_id!r} does not configure product dependency {dependency_name!r}."
         )
 
     if not isinstance(
         configured,
         Mapping,
     ):
-        raise ConfigError(f"Product dependency {dependency.product!r} must be a TOML table.")
+        raise ConfigError(f"Product dependency {dependency_name!r} must be a TOML table.")
 
     configured_model = configured.get(
         "model",
@@ -949,7 +965,7 @@ def get_product_dependency_binding(
         or configured_product != dependency.product
     ):
         raise ConfigError(
-            f"Configured product dependency {dependency.product!r} "
+            f"Configured product dependency {dependency_name!r} "
             "does not match its declarative dependency."
         )
 
@@ -965,7 +981,7 @@ def get_product_dependency_binding(
         or not producer_artifact.strip()
     ):
         raise ConfigError(
-            f"Product dependency {dependency.product!r} must define a non-empty artifact."
+            f"Product dependency {dependency_name!r} must define a non-empty artifact."
         )
 
     producer_realization = configured.get(
@@ -980,7 +996,7 @@ def get_product_dependency_binding(
         or not producer_realization.strip()
     ):
         raise ConfigError(
-            f"Product dependency {dependency.product!r} must define a non-empty realization."
+            f"Product dependency {dependency_name!r} must define a non-empty realization."
         )
 
     return ProductDependencyBinding(
