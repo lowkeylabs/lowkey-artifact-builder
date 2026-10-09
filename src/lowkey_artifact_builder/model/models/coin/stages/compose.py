@@ -655,7 +655,6 @@ def _write_physical_product(
     Persist the physical Coin component collection.
 
     Component files are deliberately assigned neutral positional filenames.
-    Final Coin semantic namespacing belongs to the subsequent identity slice.
     """
 
     manifest.parent.mkdir(
