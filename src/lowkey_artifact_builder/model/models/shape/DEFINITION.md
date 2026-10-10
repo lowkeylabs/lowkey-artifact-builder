@@ -3218,6 +3218,354 @@ A conforming Hole Feature satisfies the following:
 17. A Hole does not produce an independent Extrude or Package component.
 18. A participating Hole removes any Loop material intersecting the Hole.
 
+### QR Code
+
+The QR Code Feature provides an optional Shape-owned machine-readable code generated from a configured payload.
+
+A QR Code is generated directly as registered Shape geometry. It is not incorporated Artwork and does not require an Artwork source, Artwork dependency, or standalone QR artifact.
+
+A QR Code may participate with or without incorporated Artwork.
+
+#### Parameters and Participation
+
+The QR Code is controlled by:
+
+```text
+shape_qr_payload
+shape_qr_size
+shape_qr_alignment
+shape_qr_position
+shape_qr_raise
+shape_qr_dark_color
+shape_qr_light_color
+```
+
+QR Code participation is determined solely by:
+
+```text
+shape_qr_payload
+```
+
+A QR Code participates when `shape_qr_payload` contains a nonempty payload.
+
+The default payload is empty.
+
+The QR Code therefore does not participate by default.
+
+When the QR Code does not participate, its size, alignment, position, raise, and colors do not cause QR geometry to be produced.
+
+#### QR Encoding
+
+`shape_qr_payload` is encoded as a QR Code according to the QR encoding policy implemented by the Shape model.
+
+Encoding produces a two-dimensional matrix of dark and light modules.
+
+The generated QR Code includes the quiet zone required by the QR encoding policy.
+
+The QR module matrix and its quiet zone together define the complete QR footprint.
+
+The QR footprint is square.
+
+QR encoding is Shape-owned source geometry generation. It does not require a raster image and does not pass through the Artwork model.
+
+#### Size
+
+`shape_qr_size` determines the physical width and height of the complete QR footprint, including its quiet zone.
+
+`shape_qr_size` is a physical dimension measured in millimeters.
+
+When QR geometry participates in registered composition, its physical size is converted to a relative registered-space size using the relationship between:
+
+```text
+shape_qr_size
+shape_size
+```
+
+This conversion does not assign physical dimensions to registered Shape space. It expresses physical Shape policy as a relative relationship within registered Shape space.
+
+Every QR module is uniformly scaled by the same amount.
+
+QR scaling preserves the square module grid and does not independently stretch, shrink, round, simplify, or otherwise distort individual modules.
+
+#### Alignment
+
+QR placement is controlled by:
+
+```text
+shape_qr_alignment
+```
+
+The supported alignments are:
+
+```text
+centered
+inner-aligned
+outer-aligned
+```
+
+`centered` places the center of the QR footprint at the center of the available registered Shape interior region.
+
+`inner-aligned` places the QR footprint along the radial direction selected by `shape_qr_position`, with the inward-facing edge of the QR footprint aligned through the center of the available registered Shape interior region.
+
+`outer-aligned` translates the QR footprint outward along the radial direction selected by `shape_qr_position` to the outermost position at which the complete QR footprint remains contained within the available registered Shape interior region.
+
+The complete QR footprint, including its quiet zone, is used when determining containment and alignment.
+
+The QR module grid remains registered with the Shape coordinate system. Changing QR position does not rotate or otherwise reorient the QR module grid.
+
+#### Position
+
+For `inner-aligned` and `outer-aligned` placement, radial position is controlled by:
+
+```text
+shape_qr_position
+```
+
+`shape_qr_position` is an angular position about the center of the available registered Shape interior region.
+
+Its angular convention is consistent with other angular Shape Feature positioning:
+
+```text
+0 degrees      -> top
+90 degrees     -> right
+180 degrees    -> bottom
+-90 degrees    -> left
+```
+
+Intermediate angular positions are permitted.
+
+`shape_qr_position` determines the direction in which the QR footprint is positioned. It does not rotate the QR Code itself.
+
+For `shape_qr_alignment = "centered"`, `shape_qr_position` has no effect on QR geometry.
+
+#### Registered Composition
+
+QR generation, placement, and interaction with incorporated Artwork occur during registered Shape composition before physical dimensionalization.
+
+The generated dark and light QR regions remain registered with one another and with the Shape.
+
+The complete QR footprint is occupied by complementary QR dark and light geometry.
+
+The light geometry includes the QR quiet zone.
+
+Together, the dark and light QR regions cover the complete QR footprint without gaps or overlap.
+
+When incorporated Artwork intersects the QR footprint, the QR Code takes geometric precedence within that footprint.
+
+Only the portions of incorporated Artwork geometrically covered by the QR footprint are removed.
+
+All portions of incorporated Artwork outside the QR footprint are preserved with their existing registration and logical Artifact-color identity.
+
+Conceptually:
+
+```text
+remaining Artwork
+    =
+incorporated Artwork
+    minus
+QR footprint
+```
+
+The QR dark and light geometry then occupy the reserved QR footprint.
+
+QR composition does not alter incorporated Artwork outside the QR footprint.
+
+A QR Code may therefore overlay a portion of incorporated Artwork without discarding the uncovered portions of the Artwork.
+
+#### Quiet Zone
+
+The QR quiet zone is part of the QR Code geometry rather than empty or transparent space.
+
+The quiet zone is represented by QR light geometry.
+
+Underlying Artwork does not remain visible through the quiet zone.
+
+The quiet zone is included in `shape_qr_size`, placement, alignment, containment, and Artwork-overlay calculations.
+
+The quiet zone uses the same light-color component as the light modules within the encoded QR matrix.
+
+#### Raise-Style Dimensionalization
+
+The physical raise of the QR Code is controlled by:
+
+```text
+shape_qr_raise
+```
+
+`shape_qr_raise` is a physical dimension measured in millimeters.
+
+The same resolved QR raise applies to every dark and light region of the QR Code.
+
+Dark and light QR regions cannot have independent raises.
+
+With:
+
+```text
+shape_raise_style = "raised"
+```
+
+the complete QR surface is dimensionalized at one common physical height above the Base.
+
+Both dark and light QR components occupy their respective registered X/Y regions from:
+
+```text
+Z = shape_base_raise
+```
+
+through:
+
+```text
+Z = shape_base_raise + shape_qr_raise
+```
+
+The resulting QR surface is therefore physically level across both dark and light regions.
+
+With:
+
+```text
+shape_raise_style = "inlaid"
+```
+
+both QR components instead span:
+
+```text
+Z = 0 through shape_base_raise
+```
+
+The corresponding QR regions are removed from the Base so that QR material and Base material do not overlap.
+
+`shape_qr_raise` retains its resolved value and raised-style meaning under the inlaid policy but does not determine the manufactured Z extent of the inlaid QR Code.
+
+Raise style does not change QR encoding, registered X/Y geometry, alignment, position, dark/light partitioning, or Package color policy.
+
+#### QR Colors
+
+The QR Code has two independently configurable logical printing colors:
+
+```text
+shape_qr_dark_color
+shape_qr_light_color
+```
+
+`shape_qr_dark_color` applies to the dark modules of the encoded QR matrix.
+
+`shape_qr_light_color` applies to the complementary light modules and the complete quiet zone.
+
+Dark and light QR geometry remain distinct semantic components through Shape Extrude and Package.
+
+QR color is packaging policy.
+
+Shape Compose and Shape Extrude preserve the semantic component identity required for downstream dark/light color assignment but do not assign physical printing colors.
+
+Shape Package applies the resolved QR dark and light physical colors.
+
+Changing only either QR color does not by itself change QR encoding, registered geometry, placement, or extrusion geometry.
+
+The QR Feature requires distinct light and dark semantic color roles. The configured colors are responsible for providing sufficient physical contrast for the intended QR Code use.
+
+#### Interaction With Artwork
+
+QR Code participation is independent of incorporated Artwork.
+
+A QR Code may participate when no Artwork is incorporated.
+
+When both participate, QR geometry takes precedence over Artwork only within the complete QR footprint.
+
+Artwork intersecting the QR footprint is geometrically clipped to the QR footprint boundary during registered composition.
+
+The remaining Artwork outside the QR footprint is preserved.
+
+The QR dark and light regions replace the removed Artwork geometry within the footprint.
+
+QR composition does not change Artwork fitting or the transformation used to register Artwork within Shape. Artwork is first registered according to the existing Shape Artwork-placement contract; QR precedence is then resolved within the common registered Shape coordinate space.
+
+QR clipping preserves the semantic and logical color identity of every remaining Artwork region.
+
+#### Interaction With Other Features
+
+QR Code participation does not cause another optional Shape Feature to participate.
+
+The QR Code is positioned within the available registered Shape interior region established by the participating perimeter Features.
+
+QR Code participation does not itself change that interior region.
+
+The QR Code does not alter Outer-Ridge, Inner-Ridge, Border-Label, Loop, or Hole participation.
+
+A participating Hole remains subtractive through every physical component it intersects, including QR dark and light components.
+
+#### Component Identity
+
+A participating QR Code contributes two Shape-owned semantic components:
+
+```text
+qr-dark
+qr-light
+```
+
+The two components together represent one QR Code Feature.
+
+They share encoding, size, alignment, position, quiet-zone policy, and physical raise.
+
+Their distinct component identities exist to preserve the required dark/light physical color distinction.
+
+Shape Extrude establishes their physical geometry and Z dimensionalization but does not assign their physical printing colors.
+
+Shape Package applies their respective QR color policies.
+
+#### Product Participation
+
+QR geometry is generated and composed within the Shape model.
+
+The QR Code does not produce an independently materialized QR product and does not define a standalone QR artifact.
+
+A Shape containing a QR Code may be produced without incorporated Artwork.
+
+A participating QR Code contributes its dark and light physical components to the final packaged Shape 3MF.
+
+#### QR Code Invariants
+
+A conforming QR Code Feature satisfies the following:
+
+1. QR Code is an optional Shape-owned Feature.
+2. QR Code participation is determined solely by nonempty `shape_qr_payload`.
+3. QR Code participation does not require Artwork.
+4. QR Code generation does not require a raster source or the Artwork model.
+5. The configured payload determines the encoded QR module matrix.
+6. The QR Code includes its required quiet zone.
+7. The module matrix and quiet zone together define the complete square QR footprint.
+8. `shape_qr_size` defines the physical width and height of the complete QR footprint, including its quiet zone.
+9. QR scaling preserves a uniform square module grid.
+10. QR modules are not independently stretched, rounded, simplified, or otherwise distorted.
+11. QR alignment is `centered`, `inner-aligned`, or `outer-aligned`.
+12. `centered` places the QR footprint at the center of the available registered Shape interior region.
+13. `inner-aligned` and `outer-aligned` use `shape_qr_position` as a radial clock-angle position.
+14. Zero degrees is the top of the Shape, 90 degrees is right, 180 degrees is bottom, and -90 degrees is left.
+15. Intermediate QR positions are permitted.
+16. QR position changes placement but does not rotate the QR module grid.
+17. `outer-aligned` places the complete QR footprint as far outward as possible along the selected radial direction while keeping it contained within the available registered Shape interior region.
+18. QR generation and Artwork precedence are resolved in registered Shape space before physical dimensionalization.
+19. The QR dark and light regions are complementary and together occupy the complete QR footprint.
+20. The QR quiet zone is light QR geometry rather than transparent space.
+21. Underlying Artwork is removed wherever it intersects the complete QR footprint.
+22. Incorporated Artwork outside the QR footprint is preserved.
+23. QR clipping preserves the registration and logical Artifact-color identity of remaining Artwork.
+24. QR Code participation does not change the existing Artwork fitting transformation.
+25. All QR dark and light regions share one resolved `shape_qr_raise`.
+26. Dark and light QR regions cannot have independent physical raises.
+27. With `shape_raise_style = "raised"`, the complete QR surface is level and both QR components extend from `Z = shape_base_raise` through `Z = shape_base_raise + shape_qr_raise`.
+28. With `shape_raise_style = "inlaid"`, both QR components span `Z = 0` through `Z = shape_base_raise` as nonoverlapping physical partitions.
+29. `shape_qr_raise` retains its resolved value but does not determine the physical Z extent of an inlaid QR Code.
+30. QR dark and light geometry retain distinct semantic component identities through Extrude and Package.
+31. `shape_qr_dark_color` determines the packaged physical color of dark QR geometry.
+32. `shape_qr_light_color` determines the packaged physical color of light QR geometry, including the quiet zone.
+33. QR colors are Package policy and do not determine QR geometry.
+34. Changing only QR colors does not require recomputing QR encoding, composition, or extrusion geometry.
+35. QR Code participation does not cause another optional Shape Feature to participate.
+36. QR Code participation does not change the registered Shape interior region.
+37. A participating Hole removes any QR material intersecting the Hole.
+38. QR Code does not produce an independently materialized QR product or standalone QR artifact.
+39. A Shape containing a QR Code remains valid without incorporated Artwork.
+
 
 ## Final Product
 
