@@ -138,6 +138,367 @@ independently meaningful contract, reproduce a defect, or address a specific
 algorithmic or regression risk.
 
 
-(THIS IS A SCAFFOLD DOCUMENT and contains good boilderplate.
-TO USE: copy this to CHANGEPLAN.md, then add phases here,
-including purpose, acceptance criteria and completion)
+-------------------------------------
+
+## Phase 1 — QR Code Registered Geometry
+
+### Purpose
+
+Establish QR Code as a participating Shape Feature and produce its complete
+registered geometry during Shape Compose.
+
+This phase establishes the boundary from configured QR payload to registered
+Shape geometry. It does not yet require interaction with incorporated Artwork
+or physical extrusion and packaging.
+
+QR Code is Shape-owned source geometry generation. It does not introduce a new
+Model, standalone QR Product, raster source, or Artwork dependency.
+
+The implementation must preserve the existing Shape stage boundary:
+
+```text
+configured QR payload
+        ↓
+QR encoding
+        ↓
+registered dark/light geometry
+        ↓
+Shape Compose
+```
+
+QR encoding and placement occur in registered Shape space. Physical Z
+dimensionalization remains downstream.
+
+### Acceptance criteria
+
+Phase 1 is complete when:
+
+1. the Shape model defines the QR Feature parameters required by
+   `shape/DEFINITION.md`;
+2. an empty QR payload leaves the Feature nonparticipating;
+3. a nonempty QR payload causes the QR Feature to participate without requiring
+   Artwork or a source PNG;
+4. the payload is encoded into a deterministic QR module matrix with its
+   required quiet zone;
+5. the complete QR footprint consists of complementary registered `qr-dark`
+   and `qr-light` geometry;
+6. `qr-light` includes the required quiet zone;
+7. the dark and light regions together cover the complete QR footprint without
+   overlap or gaps;
+8. `shape_qr_size` determines the physical size represented by the registered
+   QR footprint without introducing physical dimensionalization into Compose;
+9. QR scaling preserves uniform square modules;
+10. `centered`, `inner-aligned`, and `outer-aligned` placement conform to the
+    Shape definition;
+11. `shape_qr_position` uses the defined Shape clock-angle convention for
+    non-centered placement, including intermediate angles;
+12. changing QR position translates the QR footprint without rotating the QR
+    module grid;
+13. the complete footprint, including the quiet zone, remains contained within
+    the available registered Shape interior region;
+14. QR-specific validation rejects invalid participating configurations at the
+    Shape validation boundary;
+15. QR color parameters remain packaging policy and do not alter registered QR
+    geometry; and
+16. existing Shape behavior remains unchanged when QR does not participate.
+
+### TDD slices
+
+#### Slice 1.1 — Feature configuration and encoding
+
+Establish the Shape-owned QR configuration and encoding seam.
+
+Use focused tests to prove:
+
+- participation from nonempty `shape_qr_payload`;
+- nonparticipation from an empty payload;
+- QR-only Shape operation without Artwork;
+- deterministic dark/light module geometry for a representative known payload;
+- inclusion of the quiet zone in the complete footprint; and
+- complementary dark/light registered geometry.
+
+The test should protect QR semantics rather than the internal API of the chosen
+QR encoding library.
+
+Add only the validation tests needed to protect QR-specific configuration
+requirements discovered or specified at this seam.
+
+#### Slice 1.2 — Registered sizing and placement
+
+Establish QR placement within the available registered Shape interior.
+
+Use a coherent placement test set covering representative cases for:
+
+- centered;
+- inner-aligned; and
+- outer-aligned.
+
+Include enough clock positions to establish the angular convention and at least
+one non-cardinal position to protect arbitrary-angle placement.
+
+Protect the relationships defined by the QR Feature rather than enumerating
+every angle or Shape geometry.
+
+Verify that placement translates the QR footprint without rotating its module
+grid and that containment is determined from the complete footprint including
+the quiet zone.
+
+### Completion
+
+Before closing Phase 1:
+
+1. compare the implementation against the QR Feature contract in
+   `shape/DEFINITION.md`;
+2. confirm that QR generation remains Shape-owned and does not introduce an
+   unnecessary Model or Product;
+3. confirm that Compose produces registered rather than physical QR geometry;
+4. run the focused QR configuration, validation, encoding, and Compose tests;
+5. run the appropriate complete quality suite; and
+6. reevaluate HEAD before beginning Phase 2.
+
+---
+
+## Phase 2 — QR Code and Artwork Composition
+
+### Purpose
+
+Establish the registered-composition precedence between QR Code and incorporated
+Artwork.
+
+QR Code owns its complete footprint, including its quiet zone. When QR and
+Artwork overlap, QR replaces only the Artwork geometry geometrically covered
+by that footprint. Artwork outside the footprint must remain intact.
+
+The intended registered composition is:
+
+```text
+transformed Artwork
+        │
+        ├── subtract complete QR footprint
+        │
+        ▼
+remaining Artwork
+        │
+        ├──────────────┐
+        │              │
+        ▼              ▼
+     qr-dark        qr-light
+        │              │
+        └──────┬───────┘
+               ▼
+      registered composition
+```
+
+This phase owns two-dimensional registered geometry only. It must not move QR
+precedence into Extrude or rely on overlapping physical solids to produce the
+intended result.
+
+### Acceptance criteria
+
+Phase 2 is complete when:
+
+1. QR Code may participate with or without incorporated Artwork;
+2. existing Artwork fitting and transformation occur according to the existing
+   Shape Artwork-placement contract;
+3. QR precedence is resolved after Artwork has been transformed into common
+   registered Shape space;
+4. the complete QR footprint, including the quiet zone, removes intersecting
+   Artwork geometry;
+5. only Artwork inside the QR footprint is removed;
+6. uncovered portions of partially intersected Artwork components survive;
+7. remaining Artwork preserves its registration and logical Artifact-color
+   identity;
+8. `qr-dark` and `qr-light` occupy the reserved QR footprint;
+9. no incorporated Artwork remains beneath the QR quiet zone;
+10. QR participation does not change the registered Shape interior region or
+    the Artwork fitting transformation;
+11. QR composition works when the footprint overlaps multiple Artwork color
+    components; and
+12. QR composition does not alter unrelated Shape Feature participation.
+
+### TDD slices
+
+#### Slice 2.1 — QR footprint precedence over Artwork
+
+Establish one major registered-composition seam using representative Artwork
+that crosses the QR footprint.
+
+The focused tests should demonstrate that:
+
+- intersecting Artwork is clipped at the QR footprint;
+- uncovered portions of the same Artwork component remain;
+- the quiet zone clears underlying Artwork;
+- multiple affected Artwork color components retain their individual logical
+  identities outside the footprint; and
+- Artwork wholly outside the footprint is unchanged.
+
+Do not test this as deletion of whole Artwork components. The protected
+behavior is geometric clipping.
+
+If HEAD already contains a reusable registered-geometry subtraction operation
+that cleanly expresses this behavior, reuse it. Otherwise implement the
+behavior at the Shape-owned composition boundary. Do not create a generalized
+abstraction solely because Hole also performs subtraction: Hole currently owns
+physical subtraction during dimensionalization, while QR owns registered
+composition precedence.
+
+### Completion
+
+Before closing Phase 2:
+
+1. compare the resulting behavior against both the QR Feature and existing
+   Artwork contracts;
+2. confirm that QR clipping occurs before extrusion;
+3. confirm that Artwork outside the QR footprint is preserved rather than
+   discarded by component;
+4. confirm that quiet-zone geometry prevents underlying Artwork from remaining
+   in the footprint;
+5. run the focused QR/Artwork composition tests;
+6. run the appropriate complete quality suite; and
+7. reevaluate HEAD before beginning Phase 3.
+
+---
+
+## Phase 3 — QR Code Physical Dimensionalization and Packaging
+
+### Purpose
+
+Carry the registered QR composition through Shape Extrude and Package so that
+QR Code becomes a complete printable Shape Feature.
+
+Extrude owns physical QR Z geometry. Package owns physical dark/light color
+assignment.
+
+The stage responsibilities remain:
+
+```text
+Shape Compose
+    │
+    │ registered qr-dark / qr-light
+    ▼
+Shape Extrude
+    │
+    │ physical QR components
+    ▼
+Shape Package
+    │
+    │ physical dark/light colors
+    ▼
+printable Shape 3MF
+```
+
+The two QR color regions are partitions of one QR Feature. They share one
+physical raise and must form one level QR surface.
+
+### Acceptance criteria
+
+Phase 3 is complete when:
+
+1. Shape Extrude consumes the registered `qr-dark` and `qr-light` geometry
+   produced by Compose;
+2. both QR components use the same resolved `shape_qr_raise`;
+3. with `shape_raise_style = "raised"`, both components extend from
+   `Z = shape_base_raise` through
+   `Z = shape_base_raise + shape_qr_raise`;
+4. the complete raised QR surface is level across dark and light regions;
+5. with `shape_raise_style = "inlaid"`, both QR components span
+   `Z = 0` through `Z = shape_base_raise`;
+6. inlaid QR regions are removed from Base so QR and Base material do not
+   overlap;
+7. the inlaid Base and QR partitions preserve the existing complete-volume
+   Shape invariant;
+8. Extrude preserves distinct `qr-dark` and `qr-light` semantic component
+   identities without assigning physical colors;
+9. Shape Package applies `shape_qr_dark_color` and `shape_qr_light_color` to
+   the corresponding components;
+10. changing only either QR color does not require recomputing Compose or
+    Extrude geometry;
+11. a participating Hole removes intersecting QR material according to the
+    existing Hole contract;
+12. the packaged 3MF preserves independently printable dark and light QR
+    components;
+13. a QR-only Shape with no Artwork can be built through Package into a valid
+    printable 3MF;
+14. a Shape containing both Artwork and QR can be built through Package while
+    preserving the registered clipping established in Phase 2; and
+15. packaged Shape Products containing QR remain ordinary Shape Products and
+    require no QR-specific behavior from downstream consumers such as Coin.
+
+### TDD slices
+
+#### Slice 3.1 — Raised and inlaid QR dimensionalization
+
+Establish the Extrude boundary with a small coherent test set covering both
+Shape raise styles.
+
+Protect:
+
+- common dark/light raise;
+- level raised QR surface;
+- full-depth inlaid dark/light partitions;
+- nonoverlap with inlaid Base; and
+- preservation of `qr-dark` and `qr-light` component identity.
+
+Reuse the existing Shape raised/inlaid dimensionalization machinery where its
+semantics already match the QR contract rather than introducing a parallel QR
+extrusion pipeline.
+
+#### Slice 3.2 — Packaging and color
+
+Establish Package as the QR physical-color boundary.
+
+Protect:
+
+- independent dark and light packaged colors;
+- preservation of QR semantic component identity;
+- absence of physical color assignment in Compose and Extrude; and
+- color-only changes invalidating Package rather than upstream QR geometry
+  Products.
+
+Do not add QR-specific color assignment to Coin or the generic engine.
+
+#### Slice 3.3 — Complete QR Shape capability
+
+Add a small acceptance boundary proving the useful manufactured result.
+
+At minimum establish that:
+
+- an Artifact with QR configuration and no Artwork can build a packaged Shape
+  3MF; and
+- an Artifact with both incorporated Artwork and QR can build a packaged Shape
+  3MF in which QR and preserved Artwork components coexist.
+
+The acceptance test should establish the end-to-end capability without
+duplicating the detailed geometry assertions already protected by focused
+Model tests.
+
+If practical at this boundary, inspect the packaged component identities and
+physical metadata rather than depending on slicer-specific behavior.
+
+### Completion
+
+Phase 3 and the QR Code implementation are complete when:
+
+1. all QR Feature requirements in `shape/DEFINITION.md` are represented by
+   implementation or deliberately justified existing behavior;
+2. QR remains an optional Shape Feature rather than a standalone Model;
+3. QR-only Shapes do not require Artwork source material or an Artwork
+   dependency;
+4. QR generation and Artwork precedence remain in registered Compose;
+5. physical QR Z construction remains in Extrude;
+6. physical QR color assignment remains in Package;
+7. raised and inlaid Shapes both satisfy the QR dimensionalization contract;
+8. the complete QR footprint, including quiet zone, remains protected from
+   underlying Artwork;
+9. dark and light QR components share one raise while retaining independent
+   packaged colors;
+10. Hole subtraction continues to apply uniformly to QR and other physical
+    Shape material;
+11. downstream consumers can consume the resulting packaged Shape without
+    QR-specific knowledge;
+12. focused QR tests pass;
+13. the complete slow and non-slow test suite passes;
+14. pyright passes;
+15. ruff passes; and
+16. CHANGEPLAN is reevaluated against the resulting HEAD and the permanent
+    specifications.

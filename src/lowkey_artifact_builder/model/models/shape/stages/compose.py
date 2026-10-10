@@ -29,6 +29,10 @@ from lowkey_artifact_builder.model.models.shape.border_labels import (
     top_label_path,
     write_registered_circular_label_svg,
 )
+from lowkey_artifact_builder.model.models.shape.qr import (
+    RegisteredQR,
+    compose_qr,
+)
 
 SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 SVG_CIRCLE = f"{{{SVG_NAMESPACE}}}circle"
@@ -247,96 +251,36 @@ def execute(
     """
     Execute registered Shape composition.
 
-    Composition consumes registered Shape structure and establishes structural
-    partition geometry in the same registered coordinate system.
+    Structural geometry and optional Artwork are composed in registered
+    space. A participating QR Code is generated as separate registered
+    dark/light geometry without requiring Artwork.
 
-    Outer Ridge, Border Labels, and Inner Ridge are composed in perimeter-to-
-    interior order so each participating feature can establish the positioning
-    reference for the next feature.
-
-    When registered Artwork participates, its declared component membership,
-    one common placement transformation, and registered Artwork-fill geometry
-    are retained by the persistent composition manifest.
-
-    Physical widths, fitting dimensions, and positioning distances are
-    interpreted relative to physical Shape size so the resulting partition
-    boundaries can be represented in registered space.
-
-    Physical Z dimensions and physical color assignment remain downstream.
+    Physical dimensionalization and color assignment remain downstream.
     """
+    structure_input = context.input("structure.structure")
+    composition_output = context.output("composition")
+    manifest_output = context.output("manifest")
 
-    structure_input = context.input(
-        "structure.structure",
-    )
+    shape_size = float(context.resolver("shape_size"))
+    ridge_width = float(context.resolver("shape_outer_ridge_width"))
+    ridge_style = str(context.resolver("shape_outer_ridge_style"))
+    inner_ridge_width = float(context.resolver("shape_inner_ridge_width"))
+    inner_to_outer_ridge_dist = float(context.resolver("shape_inner_to_outer_ridge_dist"))
 
-    composition_output = context.output(
-        "composition",
-    )
+    border_label_width = float(context.resolver("shape_border_label_width"))
+    border_label_max_glyph_height = float(context.resolver("shape_border_label_max_glyph_height"))
+    border_label_arc_degrees = float(context.resolver("shape_border_label_arc_degrees"))
+    border_label_end_margin = float(context.resolver("shape_border_label_end_margin"))
+    border_label_font_family = str(context.resolver("shape_border_label_font_family"))
+    top_border_label_text = str(context.resolver("shape_top_border_label_text"))
+    bottom_border_label_text = str(context.resolver("shape_bottom_border_label_text"))
 
-    manifest_output = context.output(
-        "manifest",
-    )
-
-    shape_size = float(
-        context.resolver("shape_size"),
-    )
-
-    ridge_width = float(
-        context.resolver("shape_outer_ridge_width"),
-    )
-
-    ridge_style = str(
-        context.resolver("shape_outer_ridge_style"),
-    )
-
-    inner_ridge_width = float(
-        context.resolver("shape_inner_ridge_width"),
-    )
-
-    inner_to_outer_ridge_dist = float(
-        context.resolver("shape_inner_to_outer_ridge_dist"),
-    )
-
-    border_label_width = float(
-        context.resolver("shape_border_label_width"),
-    )
-
-    border_label_max_glyph_height = float(
-        context.resolver("shape_border_label_max_glyph_height"),
-    )
-
-    border_label_arc_degrees = float(
-        context.resolver("shape_border_label_arc_degrees"),
-    )
-
-    border_label_end_margin = float(
-        context.resolver("shape_border_label_end_margin"),
-    )
-
-    border_label_font_family = str(
-        context.resolver("shape_border_label_font_family"),
-    )
-
-    top_border_label_text = str(
-        context.resolver("shape_top_border_label_text"),
-    )
-
-    bottom_border_label_text = str(
-        context.resolver("shape_bottom_border_label_text"),
-    )
-
-    border_labels: dict[
-        str,
-        dict[str, object] | None,
-    ] = {
+    border_labels: dict[str, dict[str, object] | None] = {
         "top": None,
         "bottom": None,
     }
 
-    if ridge_style in {
-        "integrated",
-        "separate",
-    }:
+    if ridge_style in {"integrated", "separate"}:
         border_labels = _compose_ridge(
             structure_input,
             composition_output,
@@ -353,7 +297,6 @@ def execute(
             bottom_border_label_text=bottom_border_label_text,
             border_label_output_directory=manifest_output.parent,
         )
-
     else:
         shutil.copyfile(
             structure_input,
@@ -364,16 +307,9 @@ def execute(
     artwork_transform: RegisteredArtworkTransform | None = None
     artwork_fill: RegisteredArtworkFillRegion | None = None
 
-    if context.has_input(
-        "artwork.vector.manifest",
-    ):
-        artwork_manifest = context.input(
-            "artwork.vector.manifest",
-        )
-
-        artwork = load_registered_artwork(
-            artwork_manifest,
-        )
+    if context.has_input("artwork.vector.manifest"):
+        artwork_manifest = context.input("artwork.vector.manifest")
+        artwork = load_registered_artwork(artwork_manifest)
 
         artwork_transform = fit_registered_artwork_to_shape(
             artwork,
@@ -381,11 +317,23 @@ def execute(
         )
 
         artwork_fill = registered_artwork_fill_region(
-            registered_interior_region(
-                composition_output,
-            ),
+            registered_interior_region(composition_output),
             artwork,
             transform=artwork_transform,
+        )
+
+    # QR participation is controlled solely by its payload.
+    qr: RegisteredQR | None = None
+    qr_payload = str(context.resolver("shape_qr_payload"))
+
+    if qr_payload:
+        qr = compose_qr(
+            manifest_output.parent,
+            payload=qr_payload,
+            qr_size=float(context.resolver("shape_qr_size")),
+            shape_size=shape_size,
+            alignment=str(context.resolver("shape_qr_alignment")),
+            position=float(context.resolver("shape_qr_position")),
         )
 
     _write_composition_manifest(
@@ -395,6 +343,7 @@ def execute(
         artwork=artwork,
         artwork_transform=artwork_transform,
         artwork_fill=artwork_fill,
+        qr=qr,
     )
 
 
@@ -406,21 +355,14 @@ def _write_composition_manifest(
     artwork: RegisteredArtwork | None = None,
     artwork_transform: RegisteredArtworkTransform | None = None,
     artwork_fill: RegisteredArtworkFillRegion | None = None,
+    qr: RegisteredQR | None = None,
 ) -> None:
     """
     Write the persistent registered Shape composition manifest.
 
-    Structural composition, optional registered Border Label geometry,
-    optional registered Artwork membership, and optional registered
-    Artwork-fill geometry are declared explicitly so downstream stages do not
-    rediscover composition from producer geometry.
-
-    Incorporated Artwork components and participating Border Label components
-    are materialized beside the persistent composition manifest so every
-    declared relative component path resolves from the manifest's persistence
-    boundary.
+    Registered Artwork and QR geometry retain independent component
+    identities. Physical dimensions and printer colors remain downstream.
     """
-
     artwork_manifest: dict[str, Any] | None = None
 
     if artwork is not None:
@@ -447,24 +389,32 @@ def _write_composition_manifest(
             "bottom": None,
         }
 
-    manifest = {
+    manifest: dict[str, Any] = {
         "composition": composition.name,
         "border_labels": border_labels,
         "artwork": artwork_manifest,
         "artwork_fill": (
-            _registered_artwork_fill_manifest(
-                artwork_fill,
-            )
-            if artwork_fill is not None
-            else None
+            _registered_artwork_fill_manifest(artwork_fill) if artwork_fill is not None else None
         ),
     }
 
+    if qr is not None:
+        manifest["qr"] = {
+            "footprint": {
+                "x": qr.footprint.x,
+                "y": qr.footprint.y,
+                "width": qr.footprint.width,
+                "height": qr.footprint.height,
+            },
+            "quiet_zone_modules": qr.quiet_zone_modules,
+            "components": {
+                name: {"path": component_path.name}
+                for name, component_path in qr.components.items()
+            },
+        }
+
     path.write_text(
-        json.dumps(
-            manifest,
-            indent=2,
-        ),
+        json.dumps(manifest, indent=2),
         encoding="utf-8",
     )
 

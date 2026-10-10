@@ -632,6 +632,75 @@ def _validate_loop_raise(
         )
 
 
+def _validate_qr_configuration(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Validate QR configuration only when the QR payload participates.
+    """
+    import math
+
+    payload = resolver("shape_qr_payload")
+
+    if not isinstance(payload, str):
+        raise ConfigError("shape_qr_payload must be a string.")
+
+    if not payload:
+        return
+
+    size = resolver("shape_qr_size")
+    shape_size = resolver("shape_size")
+
+    if (
+        isinstance(shape_size, bool)
+        or not isinstance(shape_size, int | float)
+        or not math.isfinite(shape_size)
+        or shape_size <= 0
+    ):
+        raise ConfigError("shape_size must be a positive finite number.")
+
+    if (
+        isinstance(size, bool)
+        or not isinstance(size, int | float)
+        or not math.isfinite(size)
+        or size <= 0
+    ):
+        raise ConfigError("shape_qr_size must be a positive finite number.")
+
+    if size > shape_size:
+        raise ConfigError("shape_qr_size must not exceed shape_size.")
+
+    alignment = resolver("shape_qr_alignment")
+    if alignment not in (
+        "centered",
+        "inner-aligned",
+        "outer-aligned",
+    ):
+        raise ConfigError("shape_qr_alignment must be centered, inner-aligned, or outer-aligned.")
+
+    position = resolver("shape_qr_position")
+    if (
+        isinstance(position, bool)
+        or not isinstance(position, int | float)
+        or not math.isfinite(position)
+    ):
+        raise ConfigError("shape_qr_position must be a finite number.")
+
+    raise_value = resolver("shape_qr_raise")
+    if (
+        isinstance(raise_value, bool)
+        or not isinstance(raise_value, int | float)
+        or not math.isfinite(raise_value)
+        or raise_value <= 0
+    ):
+        raise ConfigError("shape_qr_raise must be positive.")
+
+    for parameter in ("shape_qr_dark_color", "shape_qr_light_color"):
+        color = resolver(parameter)
+        if not isinstance(color, str) or not color.strip():
+            raise ConfigError(f"{parameter} must be a nonempty color name.")
+
+
 VALIDATORS = (
     ConfigurationValidator(
         parameters=("shape_geometry",),
@@ -752,6 +821,19 @@ VALIDATORS = (
             "shape_loop_raise",
         ),
         validate=_validate_loop_raise,
+    ),
+    ConfigurationValidator(
+        parameters=(
+            "shape_qr_payload",
+            "shape_qr_size",
+            "shape_size",
+            "shape_qr_alignment",
+            "shape_qr_position",
+            "shape_qr_raise",
+            "shape_qr_dark_color",
+            "shape_qr_light_color",
+        ),
+        validate=_validate_qr_configuration,
     ),
 )
 

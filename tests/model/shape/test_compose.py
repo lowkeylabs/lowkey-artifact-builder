@@ -305,6 +305,7 @@ def _configure_shape_resolver(
         "shape_border_label_font_family": "DejaVu Sans",
         "shape_top_border_label_text": "",
         "shape_bottom_border_label_text": "",
+        "shape_qr_payload": "",
     }
 
     resolver = Mock(
@@ -2077,6 +2078,7 @@ def test_compose_stage_resolves_only_registered_partition_parameters(
         call("shape_border_label_font_family"),
         call("shape_top_border_label_text"),
         call("shape_bottom_border_label_text"),
+        call("shape_qr_payload"),
     ]
 
 

@@ -263,6 +263,10 @@ def test_shape_compose_consumes_structural_partition_parameters() -> None:
         "shape_border_label_font_family",
         "shape_top_border_label_text",
         "shape_bottom_border_label_text",
+        "shape_qr_payload",
+        "shape_qr_size",
+        "shape_qr_alignment",
+        "shape_qr_position",
     )
 
 
@@ -342,6 +346,7 @@ def test_shape_extrude_consumes_physical_dimensionalization_parameters() -> None
         "shape_loop_width",
         "shape_loop_position",
         "shape_loop_raise",
+        "shape_qr_raise",
     )
 
 
@@ -455,6 +460,8 @@ def test_shape_package_consumes_only_packaging_parameters() -> None:
         "shape_bottom_border_label_color",
         "shape_artwork_fill_color",
         "shape_loop_color",
+        "shape_qr_dark_color",
+        "shape_qr_light_color",
     )
 
 

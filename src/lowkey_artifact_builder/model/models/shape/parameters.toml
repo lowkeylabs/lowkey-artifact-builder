@@ -479,3 +479,26 @@ shape_loop_position = 0
 #
 
 ## shape_loop_color = "white"
+
+# =========================================================
+# QR Code
+# =========================================================
+
+# Empty payload disables QR participation.
+shape_qr_payload = ""
+
+# Complete QR footprint, including quiet zone, in millimeters.
+shape_qr_size = 30.0
+
+# centered | inner-aligned | outer-aligned
+shape_qr_alignment = "centered"
+
+# Clockwise angle from top, in degrees.
+shape_qr_position = 0.0
+
+# Common QR surface height above the Shape base in raised mode.
+shape_qr_raise = 1.0
+
+# Semantic printing colors; resolved during packaging.
+shape_qr_dark_color = "black"
+shape_qr_light_color = "white"

@@ -86,6 +86,7 @@ def _compose_inner_ridge(
         "shape_border_label_font_family": "DejaVu Sans",
         "shape_top_border_label_text": "",
         "shape_bottom_border_label_text": "",
+        "shape_qr_payload": "",
     }
 
     context.input.side_effect = inputs.__getitem__
