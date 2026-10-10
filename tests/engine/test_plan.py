@@ -3312,3 +3312,151 @@ def test_planning_preserves_independent_named_product_dependency_roles(
         tmp_path / "artifacts" / "front" / "producer" / "default" / "10-prepare" / "geometry.dat",
         tmp_path / "artifacts" / "back" / "producer" / "default" / "10-prepare" / "geometry.dat",
     )
+
+
+def test_explicit_product_dependency_binding_overrides_declarative_variant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    An explicit Artifact Product-dependency binding overrides the producer
+    Variant selected by the declarative dependency.
+
+    The declarative Variant selects the canonical producer Realization only
+    when the Artifact does not explicitly bind that dependency.
+    """
+
+    dependency = ProductDependencySpec(
+        name="faceA",
+        model="producer",
+        stage="package",
+        product="artifact",
+        variant="default",
+    )
+
+    producer = ModelSpec(
+        name="producer",
+        title="Producer",
+        variants=(
+            VariantSpec(
+                name="default",
+            ),
+            VariantSpec(
+                name="alternate",
+            ),
+        ),
+        stages=(
+            StageSpec(
+                id=10,
+                name="package",
+                products=(
+                    ProductSpec(
+                        name="artifact",
+                        path="artifact.dat",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    consumer = ModelSpec(
+        name="consumer",
+        title="Consumer",
+        stages=(
+            StageSpec(
+                id=10,
+                name="compose",
+                product_dependencies=(dependency,),
+            ),
+        ),
+    )
+
+    class StubRegistry:
+        def get_model(
+            self,
+            name: str,
+        ) -> ModelSpec:
+            models = {
+                "producer": producer,
+                "consumer": consumer,
+            }
+
+            return models[name]
+
+        def all_models(
+            self,
+        ) -> tuple[ModelSpec, ...]:
+            return (
+                producer,
+                consumer,
+            )
+
+    class Resolver:
+        def __call__(
+            self,
+            name: str,
+        ):
+            values = {
+                "model": "consumer",
+                "variant": "default",
+                "realization": "consumer_default",
+            }
+
+            return values[name]
+
+        def source(
+            self,
+            name: str,
+        ) -> str:
+            return "test"
+
+    write_artifact_config(
+        "consumer-artifact",
+        {
+            "model": "consumer",
+            "product_dependencies": {
+                "faceA": {
+                    "model": "producer",
+                    "stage": "package",
+                    "product": "artifact",
+                    "artifact": "consumer-artifact",
+                    "realization": "producer_alternate",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_resolver",
+        lambda artifact_id, *, model=None, realization=None, project_root: Resolver(),
+    )
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.build_model_registry",
+        lambda: StubRegistry(),
+    )
+
+    plan = create_build_plan(
+        "consumer-artifact",
+        realization="consumer_default",
+        project_root=tmp_path,
+    )
+
+    assert plan.product_dependencies == (dependency,)
+
+    assert plan.product_dependency_bindings == (
+        ProductDependencyBinding(
+            dependency=dependency,
+            artifact="consumer-artifact",
+            realization="producer_alternate",
+        ),
+    )
+
+    assert plan.planned_product_dependencies[0].product_ref == ProductRef(
+        artifact="consumer-artifact",
+        model="producer",
+        realization="producer_alternate",
+        stage="package",
+        product="artifact",
+    )

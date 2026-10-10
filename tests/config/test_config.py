@@ -1325,3 +1325,98 @@ def test_named_product_dependency_roles_bind_independently(
 
     assert face_a_binding.product_ref.realization == "ornament"
     assert face_b_binding.product_ref.realization == "coaster"
+
+
+def test_get_product_dependency_binding_ignores_declarative_variant(
+    tmp_path: Path,
+) -> None:
+    """
+    A declarative producer Variant selects the implicit canonical producer
+    Realization but is not part of an explicit Artifact binding's identity.
+
+    An explicit binding may therefore select a different producer
+    Realization while still binding the same declarative dependency.
+    """
+
+    dependency = ProductDependencySpec(
+        name="faceA",
+        model="shape",
+        stage="package",
+        product="artifact",
+        variant="default",
+    )
+
+    write_artifact_config(
+        "consumer",
+        {
+            "model": "coin",
+            "product_dependencies": {
+                "faceA": {
+                    "model": "shape",
+                    "stage": "package",
+                    "product": "artifact",
+                    "artifact": "consumer",
+                    "realization": "shape_coaster",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    binding = get_product_dependency_binding(
+        "consumer",
+        dependency,
+        project_root=tmp_path,
+    )
+
+    assert binding == ProductDependencyBinding(
+        dependency=dependency,
+        artifact="consumer",
+        realization="shape_coaster",
+    )
+
+
+def test_get_product_dependency_binding_accepts_sparse_named_binding(
+    tmp_path: Path,
+) -> None:
+    """
+    A named Artifact Product-dependency binding may specify only its concrete
+    producer identity.
+
+    Model, Stage, and Product belong to the declarative dependency and need
+    not be repeated in artifact.toml.
+    """
+
+    dependency = ProductDependencySpec(
+        name="faceA",
+        model="shape",
+        stage="package",
+        product="artifact",
+        variant="default",
+    )
+
+    write_artifact_config(
+        "consumer",
+        {
+            "model": "coin",
+            "product_dependencies": {
+                "faceA": {
+                    "artifact": "consumer",
+                    "realization": "shape_coaster",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    binding = get_product_dependency_binding(
+        "consumer",
+        dependency,
+        project_root=tmp_path,
+    )
+
+    assert binding == ProductDependencyBinding(
+        dependency=dependency,
+        artifact="consumer",
+        realization="shape_coaster",
+    )

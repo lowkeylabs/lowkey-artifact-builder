@@ -894,8 +894,15 @@ def get_product_dependency_binding(
     in the artifact's [product_dependencies] table. Legacy unnamed
     dependencies are keyed by the required producer Product name.
 
-    The configured model, stage, and product must exactly match the
-    supplied declarative dependency.
+    Model, stage, and product belong to the declarative dependency and do
+    not need to be repeated in artifact configuration. When explicitly
+    configured, however, they must exactly match the supplied declarative
+    dependency.
+
+    The declarative producer Variant is not part of the explicit binding's
+    identity. An explicit Artifact binding may therefore select a concrete
+    producer Realization different from the canonical Realization implied
+    by the declarative Variant.
     """
 
     _validate_artifact_id(
@@ -949,14 +956,17 @@ def get_product_dependency_binding(
 
     configured_model = configured.get(
         "model",
+        dependency.model,
     )
 
     configured_stage = configured.get(
         "stage",
+        dependency.stage,
     )
 
     configured_product = configured.get(
         "product",
+        dependency.product,
     )
 
     if (
