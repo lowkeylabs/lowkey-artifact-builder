@@ -543,23 +543,24 @@ def _resolve_product_dependency_bindings(
 
     An explicit Artifact Product-dependency binding is authoritative.
 
-    Otherwise, when the consuming Realization is itself the canonical default
-    Realization for the dependency's producer Model, the dependency binds to
-    that same Artifact and Realization. Its canonical producer identity is
-    already known and does not require Artifact-level source inference.
+    A dependency that explicitly selects a producer Variant binds to the
+    canonical same-Artifact Realization for that Model Variant.
 
-    For other Realizations, an Artifact that owns a source may satisfy a
-    declarative dependency from the same Artifact's canonical default
-    Realization for the dependency's producer Model.
+    Otherwise, existing implicit dependency semantics are preserved:
 
-    Artifact-level source ownership is the boundary for this implicit
-    cross-Realization canonical binding. A source configured only on a named
-    Realization does not establish a canonical producer for other Realizations.
+    - when the consuming Realization is itself the canonical default
+      Realization for the producer Model, the dependency binds locally to
+      that same Realization;
+    - otherwise, Artifact-level source ownership permits the dependency to
+      bind to the producer Model's canonical default Realization; and
+    - without an explicit binding, an explicit producer Variant, a local
+      canonical producer Realization, or Artifact-owned source, the
+      dependency remains unbound.
 
-    A dependency having neither an explicit binding, a canonical consuming
-    Realization, nor an Artifact-owned source remains unbound. This permits
-    Models to declare optional Product dependencies without making those
-    Products mandatory.
+    Artifact-level source ownership is the boundary for implicit
+    cross-Realization default binding. A source configured only on a named
+    Realization does not establish an implicit producer for other
+    Realizations.
 
     Configuration failures encountered while inspecting or resolving
     bindings are translated to BuildPlanError so callers of the planning
@@ -589,6 +590,18 @@ def _resolve_product_dependency_bindings(
                         artifact_id,
                         dependency,
                         project_root=project_root,
+                    )
+                )
+                continue
+
+            if dependency.variant is not None:
+                producer_realization = f"{dependency.model}_{dependency.variant}"
+
+                bindings.append(
+                    ProductDependencyBinding(
+                        dependency=dependency,
+                        artifact=artifact_id,
+                        realization=producer_realization,
                     )
                 )
                 continue

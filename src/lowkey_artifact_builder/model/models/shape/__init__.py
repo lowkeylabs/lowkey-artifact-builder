@@ -41,14 +41,21 @@ MODEL = ModelSpec(
             name="ornament",
             description=("Shape with an enabled outer ridge suitable for an ornament."),
             parameters={
-                "shape_outer_ridge_width": 2.0,
+                "shape_outer_ridge_width": 1.5,
             },
         ),
         VariantSpec(
             name="coaster",
             description=("Shape with an enabled outer ridge suitable for an ornament."),
             parameters={
-                "shape_outer_ridge_width": 2.0,
+                "shape_outer_ridge_width": 1.5,
+            },
+        ),
+        VariantSpec(
+            name="inlaid",
+            description=("Shape using full-depth inlaid physical component dimensionalization."),
+            parameters={
+                "shape_raise_style": "inlaid",
             },
         ),
     ),

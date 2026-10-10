@@ -301,9 +301,15 @@ class ProductDependencySpec:
 
     model, stage, and product identify the producer Product definition.
 
+    variant identifies the producer Model Variant used when planning
+    supplies an implicit same-Artifact binding. Variant is Model-scoped
+    declarative configuration rather than Artifact-specific producer
+    identity.
+
     name optionally identifies the dependency's semantic role from the
     consumer's perspective. Distinct consumer roles may therefore require
-    the same producer Product definition without changing producer identity.
+    the same producer Product definition, including different producer
+    Variants, without changing producer Product identity.
 
     When name is omitted, existing producer-qualified dependency semantics
     are preserved.
@@ -320,6 +326,8 @@ class ProductDependencySpec:
     product: str
 
     name: str | None = None
+
+    variant: str | None = None
 
 
 @dataclass(

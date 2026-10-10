@@ -44,12 +44,14 @@ MODEL = ModelSpec(
                 ProductDependencySpec(
                     name="faceA",
                     model="shape",
+                    variant="default",
                     stage="package",
                     product="artifact",
                 ),
                 ProductDependencySpec(
                     name="faceB",
                     model="shape",
+                    variant="inlaid",
                     stage="package",
                     product="artifact",
                 ),

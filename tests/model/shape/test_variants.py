@@ -47,7 +47,7 @@ def test_shape_ornament_variant_is_sparse() -> None:
     assert default.parameters == {}
 
     assert ornament.parameters == {
-        "shape_outer_ridge_width": 2.0,
+        "shape_outer_ridge_width": 1.5,
     }
 
 
@@ -111,7 +111,7 @@ def test_shape_ornament_resolves_sparse_override_over_model_defaults(
     assert resolver("variant") == "ornament"
 
     assert resolver("shape_size") == 100.0
-    assert resolver("shape_outer_ridge_width") == 2.0
+    assert resolver("shape_outer_ridge_width") == 1.5
     assert resolver("shape_outer_ridge_raise") == 1.0
     assert resolver("shape_outer_ridge_style") == "integrated"
 

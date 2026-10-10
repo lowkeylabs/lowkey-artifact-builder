@@ -532,7 +532,7 @@ def test_resolver_may_select_variant_through_realization_local_name(
     assert resolver("variant") == "ornament"
     assert resolver("realization") == "ornament"
 
-    assert resolver("shape_outer_ridge_width") == 2.0
+    assert resolver("shape_outer_ridge_width") == 1.5
     assert resolver.source("shape_outer_ridge_width") == "variant 'ornament'"
 
 
