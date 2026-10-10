@@ -118,30 +118,26 @@ specifications before proceeding.
 
 TDD remains test-first. Before implementing a meaningful new behavior, write a
 test that exercises the behavioral seam or boundary being established.
-
 The purpose of the initial failing test is not only verification. A test may
 also be used to discover or clarify the appropriate seam, ownership boundary,
 or contract before implementation. If the test exposes a better boundary than
 the one initially assumed, refine the design and test before committing to the
 implementation.
-
 TDD cycles should normally correspond to substantial behavioral seams or
 boundaries rather than individual implementation changes. Once a failing test
 establishes the intended seam, implement the coherent behavior necessary to
 make that seam work. Do not begin a new RED/GREEN cycle merely because that
 implementation requires another helper, parameter, branch, component, or
 internal refactoring.
-
 One test may be sufficient to establish a seam. A small coherent group of tests
 is appropriate when materially different cases are necessary to define the
 same boundary. Prefer these high-value behavioral tests over many narrow tests
 that separately inventory implementation details.
-
 Add narrower tests when they help discover an uncertain boundary, protect an
 independently meaningful contract, reproduce a defect, or address a specific
 algorithmic or regression risk.
 
 
----------------------------
-
-add phases and slices here
+(THIS IS A SCAFFOLD DOCUMENT and contains good boilderplate.
+TO USE: copy this to CHANGEPLAN.md, then add phases here,
+including purpose, acceptance criteria and completion)
