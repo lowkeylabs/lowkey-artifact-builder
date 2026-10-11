@@ -235,12 +235,15 @@ def _resolve_shape_component_colors(
     """
     Resolve physical printer colors for Shape-owned components.
 
-    The structural base establishes the inherited Shape color. Outer Ridge,
+    The structural Base establishes the inherited Shape color. Outer Ridge,
     Inner Ridge, Border Labels, Artwork Fill, and Loop inherit that color
-    unless an explicit Package-time override is configured. Physical color
-    policy does not determine participation.
-    """
+    unless an explicit Package-time override is configured.
 
+    QR dark and light resolve their own configured physical colors.
+    Neither inherits the Base color.
+
+    Physical color policy does not determine component participation.
+    """
     component_names = {component.name for component in components}
 
     if not component_names:
@@ -254,17 +257,14 @@ def _resolve_shape_component_colors(
         "bottom-border-label",
         "artwork-fill",
         "loop",
+        "qr-dark",
+        "qr-light",
     }
 
     unsupported_names = component_names - supported_names
 
     if unsupported_names:
-        unsupported = ", ".join(
-            sorted(
-                unsupported_names,
-            )
-        )
-
+        unsupported = ", ".join(sorted(unsupported_names))
         raise PackageError(
             "Shape extrusion manifest contains unsupported Shape-owned "
             f"component(s): {unsupported}."
@@ -295,7 +295,6 @@ def _resolve_shape_component_colors(
             ridge_color_name = context.resolver(
                 "shape_outer_ridge_color",
             )
-
             ridge_color = resolve_palette(
                 (ridge_color_name,),
                 context.resolver.colors,
@@ -312,7 +311,6 @@ def _resolve_shape_component_colors(
             inner_ridge_color_name = context.resolver(
                 "shape_inner_ridge_color",
             )
-
             inner_ridge_color = resolve_palette(
                 (inner_ridge_color_name,),
                 context.resolver.colors,
@@ -329,7 +327,6 @@ def _resolve_shape_component_colors(
             top_border_label_color_name = context.resolver(
                 "shape_top_border_label_color",
             )
-
             top_border_label_color = resolve_palette(
                 (top_border_label_color_name,),
                 context.resolver.colors,
@@ -346,7 +343,6 @@ def _resolve_shape_component_colors(
             bottom_border_label_color_name = context.resolver(
                 "shape_bottom_border_label_color",
             )
-
             bottom_border_label_color = resolve_palette(
                 (bottom_border_label_color_name,),
                 context.resolver.colors,
@@ -363,7 +359,6 @@ def _resolve_shape_component_colors(
             artwork_fill_color_name = context.resolver(
                 "shape_artwork_fill_color",
             )
-
             artwork_fill_color = resolve_palette(
                 (artwork_fill_color_name,),
                 context.resolver.colors,
@@ -380,16 +375,32 @@ def _resolve_shape_component_colors(
             loop_color_name = context.resolver(
                 "shape_loop_color",
             )
-
             loop_color = resolve_palette(
                 (loop_color_name,),
                 context.resolver.colors,
             )[0]
-
         else:
             loop_color = base_color
 
         colors["loop"] = loop_color
+
+    if "qr-dark" in component_names:
+        qr_dark_color_name = context.resolver(
+            "shape_qr_dark_color",
+        )
+        colors["qr-dark"] = resolve_palette(
+            (qr_dark_color_name,),
+            context.resolver.colors,
+        )[0]
+
+    if "qr-light" in component_names:
+        qr_light_color_name = context.resolver(
+            "shape_qr_light_color",
+        )
+        colors["qr-light"] = resolve_palette(
+            (qr_light_color_name,),
+            context.resolver.colors,
+        )[0]
 
     return colors
 

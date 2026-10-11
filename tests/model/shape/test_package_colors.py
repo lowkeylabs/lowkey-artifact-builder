@@ -917,3 +917,120 @@ def test_package_stage_loop_uses_explicit_color_override(
             "test-red",
         ),
     }
+
+
+# =========================================================
+# QR color policy
+# =========================================================
+
+
+def test_package_stage_resolves_independent_qr_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    QR dark and light are independent Shape-owned physical components.
+
+    Extrude supplies semantic identity and geometry without physical
+    printer colors. Package resolves each QR color independently and
+    preserves both identities in the packaged 3MF.
+    """
+    component_directory = tmp_path / "extrude"
+    manifest = component_directory / "products.json"
+    artifact = tmp_path / "artifact.3mf"
+
+    for name in ("base", "qr-dark", "qr-light"):
+        _write_component_stl(
+            component_directory / f"{name}.stl",
+            solid_name=name,
+        )
+
+    _write_logical_component_manifest(
+        manifest,
+        (
+            ("base", "base.stl"),
+            ("qr-dark", "qr-dark.stl"),
+            ("qr-light", "qr-light.stl"),
+        ),
+    )
+
+    values = {
+        "shape_base_color": "test-white",
+        "shape_qr_dark_color": "test-blue",
+        "shape_qr_light_color": "test-red",
+        "shape_raise_style": "raised",
+    }
+
+    resolver = Mock()
+    resolver.side_effect = values.__getitem__
+    resolver.has.side_effect = values.__contains__
+    resolver.colors = {
+        "test-white": {"rgb": [255, 255, 255]},
+        "test-blue": {"rgb": [0, 0, 255]},
+        "test-red": {"rgb": [255, 0, 0]},
+    }
+
+    context = Mock(spec=StageContext)
+    context.artifact_id = "example"
+    context.resolver = resolver
+    context.input.return_value = manifest
+
+    _configure_package_outputs(
+        context,
+        artifact,
+    )
+
+    package.execute(context)
+
+    model = _read_model(artifact)
+
+    objects = model.findall(
+        f".//{{{CORE_NS}}}object",
+    )
+
+    expected = {
+        component_name("example", "base", "test-white"): ("test-white", "#FFFFFF"),
+        component_name("example", "qr-dark", "test-blue"): ("test-blue", "#0000FF"),
+        component_name("example", "qr-light", "test-red"): ("test-red", "#FF0000"),
+    }
+
+    assert {obj.get("name") for obj in objects} == set(expected)
+
+    materials = model.findall(
+        f".//{{{CORE_NS}}}basematerials",
+    )
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    for obj in objects:
+        name = obj.get("name")
+        assert name is not None
+
+        material_id = obj.get("pid")
+        assert material_id is not None
+
+        color = materials_by_id[material_id].find(
+            f"{{{CORE_NS}}}base",
+        )
+        assert color is not None
+
+        expected_name, expected_rgb = expected[name]
+        assert color.get("name") == expected_name
+        assert color.get("displaycolor") == expected_rgb
+
+    assert resolver.call_args_list == [
+        call("shape_base_color"),
+        call("shape_qr_dark_color"),
+        call("shape_qr_light_color"),
+        call("shape_raise_style"),
+    ]
+
+    # Package must not modify the Extrude Product or introduce
+    # physical color metadata into its component declarations.
+    extrusion_data = json.loads(
+        manifest.read_text(encoding="utf-8"),
+    )
+
+    assert extrusion_data["components"] == [
+        {"name": "base", "path": "base.stl"},
+        {"name": "qr-dark", "path": "qr-dark.stl"},
+        {"name": "qr-light", "path": "qr-light.stl"},
+    ]
