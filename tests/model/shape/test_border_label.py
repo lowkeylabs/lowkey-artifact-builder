@@ -276,22 +276,39 @@ def _configure_compose_context(
     """
     Configure the minimum Shape Compose stage boundary for this feature test.
 
-    The resolver remains strict: if Compose begins resolving an undeclared
-    parameter, the test fails rather than silently manufacturing a value.
+    Parameters material to Border Label behavior are supplied explicitly.
+    Unrelated optional QR behavior uses its nonparticipating default.
+
+    The resolver remains strict: unexpected parameter requests fail rather
+    than silently manufacturing values.
     """
 
     inputs = {
         "structure.structure": structure,
     }
+
     outputs = {
         "composition": composition,
         "manifest": manifest,
     }
 
+    defaults: dict[str, object] = {
+        "shape_qr_payload": "",
+    }
+
+    def resolver(name: str) -> object:
+        if name in values:
+            return values[name]
+
+        if name in defaults:
+            return defaults[name]
+
+        raise KeyError(name)
+
     context.input.side_effect = inputs.__getitem__
     context.output.side_effect = outputs.__getitem__
     context.has_input.return_value = False
-    context.resolver.side_effect = values.__getitem__
+    context.resolver.side_effect = resolver
 
 
 @pytest.mark.slow

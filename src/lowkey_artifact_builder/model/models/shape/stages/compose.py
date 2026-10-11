@@ -30,6 +30,7 @@ from lowkey_artifact_builder.model.models.shape.border_labels import (
     write_registered_circular_label_svg,
 )
 from lowkey_artifact_builder.model.models.shape.qr import (
+    QR_CORNER_RADIUS_MM,
     QRInterior,
     RegisteredQR,
     compose_qr,
@@ -292,6 +293,46 @@ def _qr_registered_interior(
     )
 
 
+def _registered_qr_footprint(
+    qr: RegisteredQR,
+    *,
+    shape_size: float,
+) -> dict[str, float | str]:
+    """
+    Resolve the QR exclusion footprint in registered Shape coordinates.
+
+    The footprint includes the QR quiet zone and has a fixed 1 mm
+    corner radius. It is the authoritative geometry shared by the
+    QR background and Artwork subtraction.
+
+    Physical dimensionalization remains downstream.
+    """
+    if shape_size <= 0.0:
+        raise ValueError("Shape size must be positive.")
+
+    footprint = qr.footprint
+
+    if footprint.width <= 0.0 or footprint.height <= 0.0:
+        raise ValueError("QR footprint must have positive dimensions.")
+
+    corner_radius = QR_CORNER_RADIUS_MM / shape_size
+
+    if 2.0 * corner_radius > min(
+        footprint.width,
+        footprint.height,
+    ):
+        raise ValueError("QR footprint is too small for the fixed 1 mm corner radius.")
+
+    return {
+        "type": "rounded_rect",
+        "x": footprint.x,
+        "y": footprint.y,
+        "width": footprint.width,
+        "height": footprint.height,
+        "corner_radius": corner_radius,
+    }
+
+
 def execute(
     context: StageContext,
 ) -> None:
@@ -303,7 +344,10 @@ def execute(
     dark/light geometry without requiring Artwork.
 
     QR placement uses the available registered Shape interior.
-    Physical dimensionalization and color assignment remain downstream.
+    Its rounded exclusion footprint is persisted for downstream
+    physical dimensionalization.
+
+    Color assignment remains downstream.
     """
     structure_input = context.input("structure.structure")
     composition_output = context.output("composition")
@@ -370,7 +414,6 @@ def execute(
             transform=artwork_transform,
         )
 
-    # QR participation is controlled solely by its payload.
     qr: RegisteredQR | None = None
     qr_payload = str(context.resolver("shape_qr_payload"))
 
@@ -393,6 +436,7 @@ def execute(
         artwork_transform=artwork_transform,
         artwork_fill=artwork_fill,
         qr=qr,
+        shape_size=shape_size,
     )
 
 
@@ -405,12 +449,19 @@ def _write_composition_manifest(
     artwork_transform: RegisteredArtworkTransform | None = None,
     artwork_fill: RegisteredArtworkFillRegion | None = None,
     qr: RegisteredQR | None = None,
+    shape_size: float | None = None,
 ) -> None:
     """
     Write the persistent registered Shape composition manifest.
 
-    Registered Artwork and QR geometry retain independent component
-    identities. Physical dimensions and printer colors remain downstream.
+    Registered Artwork and QR retain independent component identities.
+
+    When QR participates, its rounded footprint establishes the
+    authoritative registered exclusion geometry. Artwork remains
+    unmodified in its original registered coordinate system.
+
+    Downstream dimensionalization applies the persisted exclusion
+    after Artwork placement, before physical extrusion.
     """
     artwork_manifest: dict[str, Any] | None = None
 
@@ -448,19 +499,27 @@ def _write_composition_manifest(
     }
 
     if qr is not None:
+        if shape_size is None:
+            raise ValueError("Participating QR requires Shape size.")
+
+        footprint = _registered_qr_footprint(
+            qr,
+            shape_size=shape_size,
+        )
+
         manifest["qr"] = {
-            "footprint": {
-                "x": qr.footprint.x,
-                "y": qr.footprint.y,
-                "width": qr.footprint.width,
-                "height": qr.footprint.height,
-            },
+            "footprint": footprint,
             "quiet_zone_modules": qr.quiet_zone_modules,
             "components": {
                 name: {"path": component_path.name}
                 for name, component_path in qr.components.items()
             },
         }
+
+        if artwork_manifest is not None:
+            artwork_manifest["exclusions"] = [
+                footprint.copy(),
+            ]
 
     path.write_text(
         json.dumps(manifest, indent=2),

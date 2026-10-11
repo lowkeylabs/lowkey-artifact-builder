@@ -922,6 +922,7 @@ def _render_artwork_components(
     components = artwork.get(
         "components",
     )
+    exclusions = artwork.get("exclusions", [])
 
     if not isinstance(
         registered_extent,
@@ -1079,6 +1080,7 @@ def _render_artwork_components(
             artwork_translate_x=translate_x,
             artwork_translate_y=translate_y,
             hole=hole,
+            exclusions=exclusions,
         )
 
         render_stl_source(
@@ -3418,7 +3420,7 @@ def _build_artwork_planar_union_scad(
             )
         )
 
-    return (
+    union_geometry = (
         "union() {\n"
         + "".join(
             _indent_scad(
@@ -3428,6 +3430,11 @@ def _build_artwork_planar_union_scad(
             for geometry in geometries
         )
         + "}\n"
+    )
+    return _subtract_artwork_exclusions_scad(
+        union_geometry,
+        artwork.get("exclusions", []),
+        shape_size=shape_size,
     )
 
 
@@ -3468,6 +3475,7 @@ def _build_artwork_component_scad(
     artwork_translate_x: float,
     artwork_translate_y: float,
     hole: HoleGeometry | None = None,
+    exclusions: object = None,
     shape_raise_style: str = "raised",
 ) -> str:
     """
@@ -3507,6 +3515,12 @@ def _build_artwork_component_scad(
         artwork_scale=artwork_scale,
         artwork_translate_x=artwork_translate_x,
         artwork_translate_y=artwork_translate_y,
+    )
+
+    planar_geometry = _subtract_artwork_exclusions_scad(
+        planar_geometry,
+        exclusions,
+        shape_size=shape_size,
     )
 
     if hole is not None:
@@ -5196,3 +5210,65 @@ __all__ = [
     "ExtrudeError",
     "execute",
 ]
+
+
+def _subtract_artwork_exclusions_scad(
+    planar_geometry: str,
+    exclusions: object,
+    *,
+    shape_size: float,
+) -> str:
+    """Subtract registered Artwork exclusions in physical XY coordinates.
+
+    Registered coordinates are normalized to shape_size. Rounded corners
+    use 12 segments per quarter circle, matching the QR SVG contract.
+    """
+    import math
+
+    if exclusions is None:
+        return planar_geometry
+    if not isinstance(exclusions, list):
+        raise ValueError("Artwork exclusions must be a list.")
+
+    cutters: list[str] = []
+    for exclusion in exclusions:
+        if not isinstance(exclusion, dict):
+            raise ValueError("Artwork exclusion must be an object.")
+        if exclusion.get("type") != "rounded_rect":
+            raise ValueError(f"Unsupported Artwork exclusion: {exclusion.get('type')!r}")
+
+        x = float(exclusion["x"]) * shape_size
+        y = float(exclusion["y"]) * shape_size
+        width = float(exclusion["width"]) * shape_size
+        height = float(exclusion["height"]) * shape_size
+        radius = float(exclusion["corner_radius"]) * shape_size
+        if not all(math.isfinite(v) for v in (x, y, width, height, radius)):
+            raise ValueError("Artwork exclusion dimensions must be finite.")
+        if width <= 0 or height <= 0 or radius < 0 or radius > min(width, height) / 2:
+            raise ValueError("Invalid rounded Artwork exclusion dimensions.")
+
+        # x/y are the registered center of the rounded footprint.
+        corners = (
+            (x + width / 2 - radius, y + height / 2 - radius, 0),
+            (x - width / 2 + radius, y + height / 2 - radius, 90),
+            (x - width / 2 + radius, y - height / 2 + radius, 180),
+            (x + width / 2 - radius, y - height / 2 + radius, 270),
+        )
+        points: list[str] = []
+        for cx, cy, start_angle in corners:
+            for segment in range(13):
+                angle = math.radians(start_angle + segment * 90 / 12)
+                points.append(
+                    f"[{cx + radius * math.cos(angle):.12g}, {cy + radius * math.sin(angle):.12g}]"
+                )
+        cutters.append("polygon(points=[" + ", ".join(points) + "]);\n")
+
+    if not cutters:
+        return planar_geometry
+
+    return (
+        "difference() {\n"
+        + _indent_scad(planar_geometry, 4)
+        + "".join(_indent_scad(cutter, 4) for cutter in cutters)
+        + "}\n"
+    )

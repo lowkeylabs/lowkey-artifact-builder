@@ -24,6 +24,8 @@ SVG_NS = "http://www.w3.org/2000/svg"
 ET.register_namespace("", SVG_NS)
 
 QUIET_ZONE_MODULES = 4
+QR_CORNER_RADIUS_MM = 1.0
+QR_CORNER_ARC_SEGMENTS = 12
 
 
 @dataclass(frozen=True)
@@ -80,21 +82,106 @@ def encode_qr(payload: str) -> list[list[bool]]:
     return [[bool(module) for module in row] for row in encoder.get_matrix()]
 
 
+def _rounded_qr_corner_points(
+    *,
+    x: float,
+    y: float,
+    size: float,
+    radius: float,
+    corner: str,
+) -> tuple[tuple[float, float], ...]:
+    """
+    Return a filled polygon for one rounded corner of a square QR footprint.
+
+    Coordinates remain in registered Shape space. The polygon occupies
+    the corner's radius-by-radius square, excluding the area outside
+    the rounded outer boundary.
+
+    The resulting geometry uses ordinary SVG polygons and is suitable
+    for downstream OpenSCAD import.
+    """
+    if radius <= 0.0 or radius > size:
+        raise ValueError("Invalid QR corner radius.")
+
+    centers = {
+        "top-left": (x + radius, y + radius),
+        "top-right": (x + size - radius, y + radius),
+        "bottom-right": (x + size - radius, y + size - radius),
+        "bottom-left": (x + radius, y + size - radius),
+    }
+
+    angles = {
+        "top-left": (180.0, 270.0),
+        "top-right": (270.0, 360.0),
+        "bottom-right": (0.0, 90.0),
+        "bottom-left": (90.0, 180.0),
+    }
+
+    if corner not in centers:
+        raise ValueError(f"Unsupported QR corner: {corner}")
+
+    center_x, center_y = centers[corner]
+    start_degrees, end_degrees = angles[corner]
+
+    points: list[tuple[float, float]] = [
+        (center_x, center_y),
+    ]
+
+    for index in range(QR_CORNER_ARC_SEGMENTS + 1):
+        fraction = index / QR_CORNER_ARC_SEGMENTS
+
+        angle = math.radians(start_degrees + (end_degrees - start_degrees) * fraction)
+
+        points.append(
+            (
+                center_x + radius * math.cos(angle),
+                center_y + radius * math.sin(angle),
+            )
+        )
+
+    return tuple(points)
+
+
 def _write_component(
     path: Path,
     matrix: list[list[bool]],
     *,
     dark: bool,
     footprint: QRFootprint,
+    corner_radius: float = 0.0,
 ) -> None:
     """
-    Write one semantic QR region as registered rectangles.
+    Write one semantic QR region as registered SVG geometry.
 
-    Light rectangles include the complete quiet zone. Dark and light
-    components partition the footprint without overlap or gaps.
+    Dark modules remain square.
+
+    The light component includes the complete quiet zone and may
+    have rounded outer corners. Rounded corners are represented by
+    ordinary filled SVG polygons rather than SVG clipping or masks.
+
+    The corner radius must fit entirely within the quiet zone so
+    the QR data matrix remains unchanged.
     """
     count = len(matrix)
+
+    if count == 0 or any(len(row) != count for row in matrix):
+        raise ValueError("QR matrix must be nonempty and square.")
+
     pitch = footprint.width / count
+
+    if not math.isclose(
+        footprint.width,
+        footprint.height,
+        rel_tol=1.0e-12,
+        abs_tol=1.0e-12,
+    ):
+        raise ValueError("QR footprint must be square.")
+
+    if corner_radius < 0.0:
+        raise ValueError("QR corner radius must be nonnegative.")
+
+    if corner_radius > QUIET_ZONE_MODULES * pitch:
+        raise ValueError("QR corner radius exceeds the four-module quiet zone.")
 
     root = ET.Element(
         f"{{{SVG_NS}}}svg",
@@ -103,19 +190,134 @@ def _write_component(
         },
     )
 
-    for row_index, row in enumerate(matrix):
-        for column_index, module in enumerate(row):
-            if module is not dark:
-                continue
+    def add_rect(
+        x: float,
+        y: float,
+        width: float,
+        height: float,
+    ) -> None:
+        if width <= 0.0 or height <= 0.0:
+            return
+
+        ET.SubElement(
+            root,
+            f"{{{SVG_NS}}}rect",
+            {
+                "x": str(x),
+                "y": str(y),
+                "width": str(width),
+                "height": str(height),
+            },
+        )
+
+    if dark or corner_radius == 0.0:
+        for row_index, row in enumerate(matrix):
+            for column_index, module in enumerate(row):
+                if module is not dark:
+                    continue
+
+                add_rect(
+                    footprint.x + column_index * pitch,
+                    footprint.y + row_index * pitch,
+                    pitch,
+                    pitch,
+                )
+
+    else:
+        # The light component is the complete footprint minus dark
+        # modules and the four rounded outer-corner cutouts.
+        #
+        # Partition each module cell at the boundaries of the four
+        # corner-radius squares. Cells outside these squares retain
+        # their original rectangular geometry.
+
+        x_min = footprint.x
+        y_min = footprint.y
+        x_max = footprint.x + footprint.width
+        y_max = footprint.y + footprint.height
+
+        radius = corner_radius
+
+        corner_regions = (
+            (x_min, y_min, x_min + radius, y_min + radius),
+            (x_max - radius, y_min, x_max, y_min + radius),
+            (x_max - radius, y_max - radius, x_max, y_max),
+            (x_min, y_max - radius, x_min + radius, y_max),
+        )
+
+        for row_index, row in enumerate(matrix):
+            for column_index, module in enumerate(row):
+                if module:
+                    continue
+
+                cell_x0 = x_min + column_index * pitch
+                cell_y0 = y_min + row_index * pitch
+                cell_x1 = cell_x0 + pitch
+                cell_y1 = cell_y0 + pitch
+
+                x_breaks = {cell_x0, cell_x1}
+                y_breaks = {cell_y0, cell_y1}
+
+                for rx0, ry0, rx1, ry1 in corner_regions:
+                    if cell_x0 < rx0 < cell_x1:
+                        x_breaks.add(rx0)
+
+                    if cell_x0 < rx1 < cell_x1:
+                        x_breaks.add(rx1)
+
+                    if cell_y0 < ry0 < cell_y1:
+                        y_breaks.add(ry0)
+
+                    if cell_y0 < ry1 < cell_y1:
+                        y_breaks.add(ry1)
+
+                xs = sorted(x_breaks)
+                ys = sorted(y_breaks)
+
+                for yi in range(len(ys) - 1):
+                    for xi in range(len(xs) - 1):
+                        px0 = xs[xi]
+                        py0 = ys[yi]
+                        px1 = xs[xi + 1]
+                        py1 = ys[yi + 1]
+
+                        mid_x = (px0 + px1) / 2.0
+                        mid_y = (py0 + py1) / 2.0
+
+                        in_corner = any(
+                            rx0 <= mid_x <= rx1 and ry0 <= mid_y <= ry1
+                            for rx0, ry0, rx1, ry1 in corner_regions
+                        )
+
+                        if not in_corner:
+                            add_rect(
+                                px0,
+                                py0,
+                                px1 - px0,
+                                py1 - py0,
+                            )
+
+        corners = (
+            "top-left",
+            "top-right",
+            "bottom-right",
+            "bottom-left",
+        )
+
+        for corner in corners:
+            points = _rounded_qr_corner_points(
+                x=footprint.x,
+                y=footprint.y,
+                size=footprint.width,
+                radius=corner_radius,
+                corner=corner,
+            )
 
             ET.SubElement(
                 root,
-                f"{{{SVG_NS}}}rect",
+                f"{{{SVG_NS}}}polygon",
                 {
-                    "x": str(footprint.x + column_index * pitch),
-                    "y": str(footprint.y + row_index * pitch),
-                    "width": str(pitch),
-                    "height": str(pitch),
+                    "points": " ".join(f"{x},{y}" for x, y in points),
                 },
             )
 
@@ -351,13 +553,11 @@ def compose_qr(
     """
     Generate registered QR dark/light geometry.
 
-    The complete footprint includes the quiet zone. Placement uses
-    the available registered Shape interior and preserves the
-    axis-aligned QR module grid.
+    The complete footprint includes the four-module quiet zone.
+    The light background has a fixed 1 mm outer corner radius.
 
-    Shape Compose supplies its authoritative interior explicitly.
-    The default square interior preserves compatibility with existing
-    direct callers of this function.
+    The corner radius must fit entirely within the quiet zone,
+    preserving the QR encoding and square module geometry.
 
     Physical dimensionalization and color assignment remain downstream.
     """
@@ -397,6 +597,15 @@ def compose_qr(
 
     matrix = encode_qr(payload)
 
+    registered_corner_radius = QR_CORNER_RADIUS_MM / shape_size
+
+    module_pitch = footprint.width / len(matrix)
+
+    if registered_corner_radius > QUIET_ZONE_MODULES * module_pitch:
+        raise ValueError(
+            "QR size is too small to preserve the quiet zone with a 1 mm corner radius."
+        )
+
     output_directory.mkdir(
         parents=True,
         exist_ok=True,
@@ -419,6 +628,7 @@ def compose_qr(
         matrix,
         dark=False,
         footprint=footprint,
+        corner_radius=registered_corner_radius,
     )
 
     return RegisteredQR(

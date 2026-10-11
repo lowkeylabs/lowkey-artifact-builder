@@ -211,3 +211,19 @@ def test_square_interior_allows_corner_safe_outer_placement(
 
     assert footprint["x"] + footprint["width"] == pytest.approx(0.5)
     assert _center(footprint)[1] == pytest.approx(0.0)
+
+
+def test_qr_footprint_has_fixed_one_mm_corner_radius(
+    tmp_path: Path,
+) -> None:
+    """QR footprint records a 1 mm radius in registered Shape space."""
+    footprint = _compose_qr(
+        tmp_path,
+        alignment="centered",
+        qr_size=30.0,
+    )
+
+    assert footprint["type"] == "rounded_rect"
+    assert footprint["width"] == pytest.approx(0.3)
+    assert footprint["height"] == pytest.approx(0.3)
+    assert footprint["corner_radius"] == pytest.approx(0.01)
