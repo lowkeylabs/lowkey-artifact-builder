@@ -144,7 +144,7 @@ def test_qr_reserves_full_footprint_and_preserves_uncovered_artwork(
     assert footprint["height"] == pytest.approx(0.3)
     assert footprint["corner_radius"] == pytest.approx(0.01)
 
-    assert with_qr["qr"]["quiet_zone_modules"] == 4
+    assert with_qr["qr"]["quiet_zone_modules"] == 2
     assert set(with_qr["qr"]["components"]) == {
         "qr-dark",
         "qr-light",

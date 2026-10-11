@@ -5378,8 +5378,15 @@ def _subtract_artwork_exclusions_scad(
 ) -> str:
     """Subtract registered Artwork exclusions in physical XY coordinates.
 
-    Registered coordinates are normalized to shape_size. Rounded corners
-    use 12 segments per quarter circle, matching the QR SVG contract.
+    Registered coordinates are normalized to shape_size and use SVG
+    coordinates (Y increases downward).
+
+    OpenSCAD uses Cartesian coordinates (Y increases upward), so the
+    exclusion's Y coordinate must be inverted and translated from its
+    SVG top-left origin to its OpenSCAD bottom-left origin.
+
+    Rounded corners use 12 segments per quarter circle, matching the
+    QR SVG contract.
     """
     import math
 
@@ -5389,36 +5396,47 @@ def _subtract_artwork_exclusions_scad(
         raise ValueError("Artwork exclusions must be a list.")
 
     cutters: list[str] = []
+
     for exclusion in exclusions:
         if not isinstance(exclusion, dict):
             raise ValueError("Artwork exclusion must be an object.")
         if exclusion.get("type") != "rounded_rect":
             raise ValueError(f"Unsupported Artwork exclusion: {exclusion.get('type')!r}")
 
+        # Convert normalized SVG coordinates to physical OpenSCAD XY.
+        # SVG x/y identifies the rectangle's upper-left corner.
+        # OpenSCAD x/y identifies its lower-left corner.
         x = float(exclusion["x"]) * shape_size
-        y = float(exclusion["y"]) * shape_size
+        y = -(float(exclusion["y"]) + float(exclusion["height"])) * shape_size
+
         width = float(exclusion["width"]) * shape_size
         height = float(exclusion["height"]) * shape_size
         radius = float(exclusion["corner_radius"]) * shape_size
+
         if not all(math.isfinite(v) for v in (x, y, width, height, radius)):
             raise ValueError("Artwork exclusion dimensions must be finite.")
+
         if width <= 0 or height <= 0 or radius < 0 or radius > min(width, height) / 2:
             raise ValueError("Invalid rounded Artwork exclusion dimensions.")
 
-        # x/y are the registered center of the rounded footprint.
+        # Traverse the rounded rectangle counterclockwise.
+        # x/y are now its physical lower-left coordinates.
         corners = (
-            (x + width / 2 - radius, y + height / 2 - radius, 0),
-            (x - width / 2 + radius, y + height / 2 - radius, 90),
-            (x - width / 2 + radius, y - height / 2 + radius, 180),
-            (x + width / 2 - radius, y - height / 2 + radius, 270),
+            (x + width - radius, y + height - radius, 0),
+            (x + radius, y + height - radius, 90),
+            (x + radius, y + radius, 180),
+            (x + width - radius, y + radius, 270),
         )
+
         points: list[str] = []
+
         for cx, cy, start_angle in corners:
             for segment in range(13):
                 angle = math.radians(start_angle + segment * 90 / 12)
                 points.append(
                     f"[{cx + radius * math.cos(angle):.12g}, {cy + radius * math.sin(angle):.12g}]"
                 )
+
         cutters.append("polygon(points=[" + ", ".join(points) + "]);\n")
 
     if not cutters:

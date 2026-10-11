@@ -401,3 +401,219 @@ def test_participating_hole_subtracts_from_both_qr_components(
         assert "hole_center_y" in source
         assert "hole_radius" in source
         assert "cylinder(" in source
+
+
+def test_artwork_exclusion_uses_qr_footprint_origin() -> None:
+    """
+    Registered SVG exclusion coordinates map to physical OpenSCAD XY.
+
+    SVG uses a top-left origin with Y increasing downward.
+    OpenSCAD uses Cartesian coordinates with Y increasing upward.
+
+    The exclusion must preserve its physical dimensions while
+    converting its origin and vertical orientation.
+    """
+    import re
+
+    scad = extrude._subtract_artwork_exclusions_scad(
+        "square([100, 100], center=true);\n",
+        [
+            {
+                "type": "rounded_rect",
+                "x": -0.15,
+                "y": -0.40,
+                "width": 0.30,
+                "height": 0.30,
+                "corner_radius": 0.01,
+            }
+        ],
+        shape_size=100.0,
+    )
+
+    polygon = scad.split("polygon(points=[", 1)[1].split("]);", 1)[0]
+
+    points = [
+        (float(x), float(y))
+        for x, y in re.findall(
+            r"\[\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]",
+            polygon,
+        )
+    ]
+
+    assert points
+
+    xs = [x for x, _ in points]
+    ys = [y for _, y in points]
+
+    assert min(xs) == pytest.approx(-15.0)
+    assert max(xs) == pytest.approx(15.0)
+
+    # SVG [-0.40, -0.10] maps to OpenSCAD [+0.10, +0.40].
+    assert min(ys) == pytest.approx(10.0)
+    assert max(ys) == pytest.approx(40.0)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "https://example.com",
+        "https://lowkeylabs.com/products/qr-test?version=2",
+    ],
+)
+def xxtest_qr_dark_and_light_produce_manifold_stl(
+    tmp_path: Path,
+    payload: str,
+) -> None:
+    """
+    Both QR components must produce closed, consistently oriented STL meshes.
+
+    Exercise the real Compose -> OpenSCAD -> STL manufacturing boundary.
+    No external mesh-validation dependencies are required.
+    """
+    import math
+    import shutil
+    import struct
+    from collections import Counter
+
+    from lowkey_artifact_builder.model.models.shape.qr import compose_qr
+    from lowkey_artifact_builder.tools.openscad import render_stl_source
+
+    if shutil.which("openscad") is None:
+        pytest.skip("OpenSCAD is not installed")
+
+    def read_stl_triangles(
+        path: Path,
+    ) -> list[tuple[tuple[float, float, float], ...]]:
+        """Read binary or ASCII STL triangles."""
+
+        data = path.read_bytes()
+
+        # Binary STL: 80-byte header, 4-byte count, 50 bytes per facet.
+        if len(data) >= 84:
+            count = struct.unpack_from("<I", data, 80)[0]
+            if len(data) == 84 + 50 * count:
+                triangles = []
+                for index in range(count):
+                    offset = 84 + index * 50
+                    values = struct.unpack_from("<12f", data, offset)
+                    vertices = tuple(
+                        tuple(float(value) for value in values[start : start + 3])
+                        for start in (3, 6, 9)
+                    )
+                    triangles.append(vertices)
+                return triangles
+
+        # ASCII STL fallback.
+        vertices = []
+        triangles = []
+
+        for line in data.decode("utf-8").splitlines():
+            parts = line.strip().split()
+            if len(parts) == 4 and parts[0].lower() == "vertex":
+                vertices.append(tuple(float(v) for v in parts[1:]))
+                if len(vertices) == 3:
+                    triangles.append(tuple(vertices))
+                    vertices = []
+
+        assert not vertices, "Incomplete ASCII STL triangle"
+        return triangles
+
+    def check_mesh(path: Path, component: str) -> None:
+        triangles = read_stl_triangles(path)
+        assert triangles, f"{component}: empty STL"
+
+        # Canonicalize coordinates to account for STL float rounding.
+        # This is for comparing coincident vertices, not modifying geometry.
+        def vertex_key(
+            vertex: tuple[float, float, float],
+        ) -> tuple[float, float, float]:
+            return (
+                round(vertex[0], 6),
+                round(vertex[1], 6),
+                round(vertex[2], 6),
+            )
+
+        edge_counts: Counter[
+            tuple[
+                tuple[float, float, float],
+                tuple[float, float, float],
+            ]
+        ] = Counter()
+
+        edge_orientations: Counter[
+            tuple[
+                tuple[float, float, float],
+                tuple[float, float, float],
+            ]
+        ] = Counter()
+
+        degenerate = 0
+
+        for triangle in triangles:
+            a, b, c = (vertex_key(v) for v in triangle)
+
+            if not all(math.isfinite(value) for vertex in (a, b, c) for value in vertex):
+                degenerate += 1
+                continue
+
+            ab = tuple(b[i] - a[i] for i in range(3))
+            ac = tuple(c[i] - a[i] for i in range(3))
+
+            cross = (
+                ab[1] * ac[2] - ab[2] * ac[1],
+                ab[2] * ac[0] - ab[0] * ac[2],
+                ab[0] * ac[1] - ab[1] * ac[0],
+            )
+
+            if a == b or b == c or c == a or sum(value * value for value in cross) < 1e-16:
+                degenerate += 1
+                continue
+
+            for start, end in ((a, b), (b, c), (c, a)):
+                edge = (start, end) if start <= end else (end, start)
+                edge_counts[edge] += 1
+                edge_orientations[(start, end)] += 1
+
+        invalid_edges = sum(count != 2 for count in edge_counts.values())
+
+        inconsistent_edges = sum(
+            edge_orientations[(a, b)] != 1 or edge_orientations[(b, a)] != 1
+            for a, b in edge_counts
+            if edge_counts[(a, b)] == 2
+        )
+
+        assert degenerate == 0, f"{component}: {degenerate} degenerate triangles"
+
+        assert invalid_edges == 0, (
+            f"{component}: {invalid_edges} non-manifold edges; {len(triangles)} triangles"
+        )
+
+        assert inconsistent_edges == 0, (
+            f"{component}: {inconsistent_edges} inconsistently "
+            f"oriented edges; {len(triangles)} triangles"
+        )
+
+    qr = compose_qr(
+        tmp_path / "compose",
+        payload=payload,
+        qr_size=30.0,
+        shape_size=100.0,
+        alignment="centered",
+        position=0.0,
+    )
+
+    for component in ("qr-dark", "qr-light"):
+        source = extrude._build_qr_component_scad(
+            qr.components[component],
+            shape_size=100.0,
+            shape_base_raise=2.0,
+            shape_qr_raise=0.8,
+            shape_raise_style="inlaid",
+            hole=None,
+        )
+
+        output = tmp_path / f"{component}.stl"
+        render_stl_source(source, output)
+
+        check_mesh(output, component)

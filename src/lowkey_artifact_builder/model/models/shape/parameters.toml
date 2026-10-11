@@ -488,7 +488,7 @@ shape_loop_position = 0
 shape_qr_payload = ""
 
 # Complete QR footprint, including quiet zone, in millimeters.
-shape_qr_size = 30.0
+shape_qr_size = 25.0
 
 # centered | inner-aligned | outer-aligned
 shape_qr_alignment = "centered"

@@ -23,9 +23,12 @@ from qrcode.exceptions import DataOverflowError
 SVG_NS = "http://www.w3.org/2000/svg"
 ET.register_namespace("", SVG_NS)
 
-QUIET_ZONE_MODULES = 4
+QUIET_ZONE_MODULES = 2
 QR_CORNER_RADIUS_MM = 1.0
 QR_CORNER_ARC_SEGMENTS = 12
+
+_Point = tuple[int, int]
+_Edge = tuple[_Point, _Point]
 
 
 @dataclass(frozen=True)
@@ -151,23 +154,20 @@ def _write_component(
     corner_radius: float = 0.0,
 ) -> None:
     """
-    Write one semantic QR region as registered SVG geometry.
+    Write one QR color partition as boundary-traced SVG paths.
 
-    Dark modules remain square.
+    Internal edges between adjacent same-color modules are removed.
+    Separate regions and holes are represented by closed contours.
 
-    The light component includes the complete quiet zone and may
-    have rounded outer corners. Rounded corners are represented by
-    ordinary filled SVG polygons rather than SVG clipping or masks.
+    Diagonal module contacts remain geometrically exact. The light
+    partition includes the quiet zone and rounded outer corners.
 
-    The corner radius must fit entirely within the quiet zone so
-    the QR data matrix remains unchanged.
+    All coordinates remain registered and nonphysical.
     """
     count = len(matrix)
 
     if count == 0 or any(len(row) != count for row in matrix):
         raise ValueError("QR matrix must be nonempty and square.")
-
-    pitch = footprint.width / count
 
     if not math.isclose(
         footprint.width,
@@ -177,149 +177,198 @@ def _write_component(
     ):
         raise ValueError("QR footprint must be square.")
 
-    if corner_radius < 0.0:
-        raise ValueError("QR corner radius must be nonnegative.")
+    if not math.isfinite(footprint.width) or footprint.width <= 0.0:
+        raise ValueError("QR footprint must have positive dimensions.")
 
-    if corner_radius > QUIET_ZONE_MODULES * pitch:
+    if not math.isfinite(corner_radius) or corner_radius < 0.0:
+        raise ValueError("QR corner radius must be finite and nonnegative.")
+
+    pitch = footprint.width / count
+    radius = 0.0 if dark else corner_radius
+
+    if radius > QUIET_ZONE_MODULES * pitch:
         raise ValueError("QR corner radius exceeds the four-module quiet zone.")
 
     root = ET.Element(
         f"{{{SVG_NS}}}svg",
-        {
-            "viewBox": "-0.5 -0.5 1 1",
-        },
+        {"viewBox": "-0.5 -0.5 1 1"},
     )
 
-    def add_rect(
-        x: float,
-        y: float,
-        width: float,
-        height: float,
-    ) -> None:
-        if width <= 0.0 or height <= 0.0:
-            return
+    def occupied(row: int, column: int) -> bool:
+        return 0 <= row < count and 0 <= column < count and matrix[row][column] is dark
 
-        ET.SubElement(
-            root,
-            f"{{{SVG_NS}}}rect",
-            {
-                "x": str(x),
-                "y": str(y),
-                "width": str(width),
-                "height": str(height),
-            },
+    # Orient boundary edges with occupied material on the right.
+    # SVG coordinates increase downward.
+    edges: set[_Edge] = set()
+
+    for row in range(count):
+        for column in range(count):
+            if not occupied(row, column):
+                continue
+
+            x = column
+            y = row
+
+            if not occupied(row - 1, column):
+                edges.add(((x, y), (x + 1, y)))
+
+            if not occupied(row, column + 1):
+                edges.add(((x + 1, y), (x + 1, y + 1)))
+
+            if not occupied(row + 1, column):
+                edges.add(((x + 1, y + 1), (x, y + 1)))
+
+            if not occupied(row, column - 1):
+                edges.add(((x, y + 1), (x, y)))
+
+    outgoing: dict[_Point, set[_Point]] = {}
+
+    for start, end in edges:
+        outgoing.setdefault(start, set()).add(end)
+
+    # Direction indices follow clockwise screen-coordinate order:
+    # right, down, left, up.
+    directions: tuple[_Point, ...] = (
+        (1, 0),
+        (0, 1),
+        (-1, 0),
+        (0, -1),
+    )
+
+    def direction_index(start: _Point, end: _Point) -> int:
+        delta = (end[0] - start[0], end[1] - start[1])
+        return directions.index(delta)
+
+    # At a diagonal contact, prefer the rightmost continuation.
+    # This keeps corner-touching regions as distinct contours.
+    def next_edge(previous: _Point, current: _Point) -> _Point:
+        candidates = outgoing.get(current, set())
+
+        if not candidates:
+            raise ValueError("QR boundary contains an open contour.")
+
+        incoming = direction_index(previous, current)
+
+        def priority(candidate: _Point) -> int:
+            outgoing_direction = direction_index(current, candidate)
+            turn = (outgoing_direction - incoming) % 4
+
+            return {
+                1: 0,  # Right turn
+                0: 1,  # Straight
+                3: 2,  # Left turn
+                2: 3,  # Reverse
+            }[turn]
+
+        return min(candidates, key=priority)
+
+    remaining = set(edges)
+    contours: list[list[_Point]] = []
+
+    while remaining:
+        start, first = min(remaining)
+        remaining.remove((start, first))
+
+        contour = [start]
+        previous = start
+        current = first
+
+        while current != start:
+            contour.append(current)
+
+            following = next_edge(previous, current)
+            edge = (current, following)
+
+            if edge not in remaining:
+                raise ValueError("QR boundary contains a repeated or missing edge.")
+
+            remaining.remove(edge)
+            previous, current = current, following
+
+        if len(contour) < 4:
+            raise ValueError("QR boundary contains a degenerate contour.")
+
+        contours.append(contour)
+
+    def physical_point(point: _Point) -> tuple[float, float]:
+        return (
+            footprint.x + point[0] * pitch,
+            footprint.y + point[1] * pitch,
         )
 
-    if dark or corner_radius == 0.0:
-        for row_index, row in enumerate(matrix):
-            for column_index, module in enumerate(row):
-                if module is not dark:
-                    continue
+    def corner_points(
+        point: _Point,
+    ) -> list[tuple[float, float]] | None:
+        if radius == 0.0:
+            return None
 
-                add_rect(
-                    footprint.x + column_index * pitch,
-                    footprint.y + row_index * pitch,
-                    pitch,
-                    pitch,
-                )
+        corners: dict[_Point, str] = {
+            (0, 0): "top-left",
+            (count, 0): "top-right",
+            (count, count): "bottom-right",
+            (0, count): "bottom-left",
+        }
 
-    else:
-        # The light component is the complete footprint minus dark
-        # modules and the four rounded outer-corner cutouts.
-        #
-        # Partition each module cell at the boundaries of the four
-        # corner-radius squares. Cells outside these squares retain
-        # their original rectangular geometry.
+        corner = corners.get(point)
 
-        x_min = footprint.x
-        y_min = footprint.y
-        x_max = footprint.x + footprint.width
-        y_max = footprint.y + footprint.height
+        if corner is None:
+            return None
 
-        radius = corner_radius
-
-        corner_regions = (
-            (x_min, y_min, x_min + radius, y_min + radius),
-            (x_max - radius, y_min, x_max, y_min + radius),
-            (x_max - radius, y_max - radius, x_max, y_max),
-            (x_min, y_max - radius, x_min + radius, y_max),
-        )
-
-        for row_index, row in enumerate(matrix):
-            for column_index, module in enumerate(row):
-                if module:
-                    continue
-
-                cell_x0 = x_min + column_index * pitch
-                cell_y0 = y_min + row_index * pitch
-                cell_x1 = cell_x0 + pitch
-                cell_y1 = cell_y0 + pitch
-
-                x_breaks = {cell_x0, cell_x1}
-                y_breaks = {cell_y0, cell_y1}
-
-                for rx0, ry0, rx1, ry1 in corner_regions:
-                    if cell_x0 < rx0 < cell_x1:
-                        x_breaks.add(rx0)
-
-                    if cell_x0 < rx1 < cell_x1:
-                        x_breaks.add(rx1)
-
-                    if cell_y0 < ry0 < cell_y1:
-                        y_breaks.add(ry0)
-
-                    if cell_y0 < ry1 < cell_y1:
-                        y_breaks.add(ry1)
-
-                xs = sorted(x_breaks)
-                ys = sorted(y_breaks)
-
-                for yi in range(len(ys) - 1):
-                    for xi in range(len(xs) - 1):
-                        px0 = xs[xi]
-                        py0 = ys[yi]
-                        px1 = xs[xi + 1]
-                        py1 = ys[yi + 1]
-
-                        mid_x = (px0 + px1) / 2.0
-                        mid_y = (py0 + py1) / 2.0
-
-                        in_corner = any(
-                            rx0 <= mid_x <= rx1 and ry0 <= mid_y <= ry1
-                            for rx0, ry0, rx1, ry1 in corner_regions
-                        )
-
-                        if not in_corner:
-                            add_rect(
-                                px0,
-                                py0,
-                                px1 - px0,
-                                py1 - py0,
-                            )
-
-        corners = (
-            "top-left",
-            "top-right",
-            "bottom-right",
-            "bottom-left",
-        )
-
-        for corner in corners:
-            points = _rounded_qr_corner_points(
+        # The helper returns a center point followed by the arc.
+        # Only the arc belongs to the exterior boundary.
+        return list(
+            _rounded_qr_corner_points(
                 x=footprint.x,
                 y=footprint.y,
                 size=footprint.width,
-                radius=corner_radius,
+                radius=radius,
                 corner=corner,
-            )
+            )[1:]
+        )
 
-            ET.SubElement(
-                root,
-                f"{{{SVG_NS}}}polygon",
-                {
-                    "points": " ".join(f"{x},{y}" for x, y in points),
-                },
-            )
+    def contour_points(
+        contour: list[_Point],
+    ) -> list[tuple[float, float]]:
+        result: list[tuple[float, float]] = []
+
+        for point in contour:
+            arc = corner_points(point)
+
+            if arc is None:
+                result.append(physical_point(point))
+            else:
+                result.extend(arc)
+
+        return result
+
+    # A single compound path represents disconnected regions and
+    # interior holes. The boundary orientations are preserved.
+    commands: list[str] = []
+
+    for contour in contours:
+        points = contour_points(contour)
+
+        if len(points) < 3:
+            raise ValueError("QR contour has insufficient vertices.")
+
+        first_x, first_y = points[0]
+        commands.append(f"M {first_x:.12g},{first_y:.12g}")
+
+        for x, y in points[1:]:
+            commands.append(f"L {x:.12g},{y:.12g}")
+
+        commands.append("Z")
+
+    if commands:
+        ET.SubElement(
+            root,
+            f"{{{SVG_NS}}}path",
+            {
+                "d": " ".join(commands),
+                "fill": "black",
+                "fill-rule": "evenodd",
+            },
+        )
 
     ET.ElementTree(root).write(
         path,
