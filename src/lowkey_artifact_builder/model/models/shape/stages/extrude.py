@@ -290,6 +290,9 @@ def execute(
             composition_manifest,
         )
 
+        qr = _load_composed_qr(composition_manifest)
+        shape_qr_raise = context.resolver("shape_qr_raise") if qr is not None else 0.0
+
         shape_artwork_raise = 0.0
 
         if artwork is not None:
@@ -383,6 +386,7 @@ def execute(
                     _build_artwork_fill_planar_geometry_scad(
                         artwork_fill,
                         shape_size=shape_size,
+                        exclusions=artwork.get("exclusions", []) if artwork is not None else [],
                     )
                 )
 
@@ -428,6 +432,15 @@ def execute(
                 inlaid_planar_geometries.append(
                     _build_border_label_planar_geometry_scad(
                         composition_manifest.parent / raw_path,
+                        shape_size=shape_size,
+                    )
+                )
+
+        if shape_raise_style == "inlaid" and qr is not None:
+            for qr_name in ("qr-dark", "qr-light"):
+                inlaid_planar_geometries.append(
+                    _build_qr_planar_scad(
+                        composition_manifest.parent / qr[qr_name],
                         shape_size=shape_size,
                     )
                 )
@@ -580,6 +593,19 @@ def execute(
                 shape_base_raise=shape_base_raise,
                 shape_raise_style=shape_raise_style,
                 shape_artwork_fill_raise=shape_artwork_fill_raise,
+                hole=hole,
+                exclusions=artwork.get("exclusions", []) if artwork is not None else [],
+            )
+
+        if qr is not None:
+            components += _render_qr_components(
+                qr,
+                composition_manifest.parent,
+                manifest.parent,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+                shape_raise_style=shape_raise_style,
+                shape_qr_raise=shape_qr_raise,
                 hole=hole,
             )
 
@@ -831,6 +857,7 @@ def _render_artwork_fill_component(
     shape_artwork_fill_raise: float,
     hole: HoleGeometry | None = None,
     shape_raise_style: str = "raised",
+    exclusions: object = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -838,14 +865,14 @@ def _render_artwork_fill_component(
     """
     Render the independently printable Shape-owned Artwork Fill component.
 
-    Registered Artwork Fill geometry is established by Compose and consumed
-    here directly.
+    Compose establishes the registered fill geometry. Extrude applies
+    physical dimensionalization and registered feature exclusions.
 
-    Raised dimensionalization begins at the top of the Shape base and uses
-    shape_artwork_fill_raise as the component height.
+    Raised fill begins at the top of the Shape base.
 
-    Inlaid dimensionalization preserves the same registered X/Y partition while
-    spanning the component through the complete Shape base thickness.
+    Inlaid fill spans the complete Shape thickness.
+
+    A participating Shape Hole is subtracted from the physical geometry.
     """
 
     if shape_artwork_fill_raise <= 0.0:
@@ -860,6 +887,7 @@ def _render_artwork_fill_component(
         shape_raise_style=shape_raise_style,
         shape_artwork_fill_raise=shape_artwork_fill_raise,
         hole=hole,
+        exclusions=exclusions,
     )
 
     render_stl_source(
@@ -2422,6 +2450,27 @@ def _validate_inner_ridge_height(
         )
 
 
+def _load_composed_qr(manifest: Path) -> dict[str, str] | None:
+    """Read optional registered QR component paths from Compose."""
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    qr = data.get("qr")
+    if qr is None:
+        return None
+    if not isinstance(qr, dict):
+        raise ExtrudeError("Registered QR must be an object.")
+    raw_components = qr.get("components")
+    if not isinstance(raw_components, dict):
+        raise ExtrudeError("Registered QR is missing components.")
+    result: dict[str, str] = {}
+    for name in ("qr-dark", "qr-light"):
+        entry = raw_components.get(name)
+        path = entry.get("path") if isinstance(entry, dict) else entry
+        if not isinstance(path, str) or not path:
+            raise ExtrudeError(f"Registered {name} is missing its path.")
+        result[name] = path
+    return result
+
+
 def _load_border_labels(
     composition_manifest: Path,
 ) -> dict[str, dict[str, object] | None]:
@@ -2505,6 +2554,99 @@ def _load_border_labels(
 # =========================================================
 # OpenSCAD construction
 # =========================================================
+
+
+def _build_qr_planar_scad(source: Path, *, shape_size: float) -> str:
+    """Map a registered QR SVG into physical Shape XY coordinates."""
+    return _build_border_label_planar_geometry_scad(source, shape_size=shape_size)
+
+
+def _build_qr_component_scad(
+    source: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_qr_raise: float,
+    shape_raise_style: str,
+    hole: HoleGeometry | None,
+) -> str:
+    """
+    Extrude one registered QR partition at the shared QR Z interval.
+
+    Raised QR geometry begins at the top of the Shape base and extends
+    by shape_qr_raise.
+
+    Inlaid QR geometry spans the complete Shape base thickness.
+
+    A participating Shape Hole is subtracted from the physical QR
+    geometry before STL materialization.
+    """
+
+    z_offset, height = _surface_component_interval(
+        shape_base_raise=shape_base_raise,
+        component_raise=shape_qr_raise,
+        shape_raise_style=shape_raise_style,
+    )
+
+    planar = _build_qr_planar_scad(
+        source,
+        shape_size=shape_size,
+    )
+
+    geometry = (
+        f"translate([0, 0, {z_offset:g}])\n"
+        f"    linear_extrude(height = {height:g}, center = false)\n"
+        f"{_indent_scad(planar, 8)}"
+    )
+
+    geometry = _build_hole_subtracted_geometry_scad(
+        geometry,
+        hole=hole,
+    )
+
+    return (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"shape_qr_raise = {shape_qr_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"{geometry}"
+    )
+
+
+def _render_qr_components(
+    qr: dict[str, str],
+    source_directory: Path,
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    shape_raise_style: str,
+    shape_qr_raise: float,
+    hole: HoleGeometry | None,
+) -> tuple[tuple[str, str], ...]:
+    """Materialize both semantic QR partitions without assigning colors."""
+    if shape_qr_raise <= 0:
+        raise ExtrudeError("shape_qr_raise must be positive when QR participates.")
+    components: list[tuple[str, str]] = []
+    for name in ("qr-dark", "qr-light"):
+        source_path = source_directory / qr[name]
+        if not source_path.is_file():
+            raise ExtrudeError(f"Registered QR component does not exist: {source_path}")
+        component_path = f"{name}.stl"
+        output_path = output_directory / component_path
+        source = _build_qr_component_scad(
+            source_path,
+            shape_size=shape_size,
+            shape_base_raise=shape_base_raise,
+            shape_qr_raise=shape_qr_raise,
+            shape_raise_style=shape_raise_style,
+            hole=hole,
+        )
+        render_stl_source(source, output_path)
+        _require_component(output_path, component_name=name)
+        components.append((name, component_path))
+    return tuple(components)
 
 
 def _build_scad(
@@ -2873,14 +3015,19 @@ def _build_artwork_fill_planar_geometry_scad(
     fill: RegisteredArtworkFill,
     *,
     shape_size: float,
+    exclusions: object = None,
 ) -> str:
     """
     Build the physical planar footprint of registered Shape Artwork Fill.
 
-    Compose owns the registered Artwork Fill partition. This helper applies
-    only Shape's physical X/Y dimensionalization so the resulting planar
-    geometry can be shared by component extrusion and inlaid Base
-    partitioning.
+    Compose owns the registered Artwork Fill partition. Extrude applies
+    physical X/Y dimensionalization.
+
+    Registered exclusions remove regions reserved for higher-precedence
+    features, including QR codes.
+
+    The resulting planar geometry is shared by physical component
+    extrusion and inlaid Base partitioning.
     """
 
     outer_boundary = _build_registered_fill_boundary_scad(
@@ -2893,8 +3040,14 @@ def _build_artwork_fill_planar_geometry_scad(
         shape_size=shape_size,
     )
 
-    return (
+    planar_geometry = (
         f"difference() {{\n{_indent_scad(outer_boundary, 4)}{_indent_scad(inner_boundary, 4)}}}\n"
+    )
+
+    return _subtract_artwork_exclusions_scad(
+        planar_geometry,
+        exclusions,
+        shape_size=shape_size,
     )
 
 
@@ -2906,18 +3059,22 @@ def _build_artwork_fill_scad(
     shape_artwork_fill_raise: float,
     hole: HoleGeometry | None,
     shape_raise_style: str = "raised",
+    exclusions: object = None,
 ) -> str:
     """
     Build OpenSCAD for the physical Shape-owned Artwork Fill component.
 
     Registered X/Y fill geometry is preserved from Compose.
 
-    Raised dimensionalization begins at the top of the structural base and
-    extends by shape_artwork_fill_raise.
+    Registered exclusions remove higher-precedence feature footprints
+    before physical dimensionalization.
 
-    Inlaid dimensionalization spans the complete Shape thickness. The resolved
-    fill raise remains configuration with its raised-style meaning but does not
-    determine the inlaid physical Z interval.
+    Raised dimensionalization begins at the top of the structural base
+    and extends by shape_artwork_fill_raise.
+
+    Inlaid dimensionalization spans the complete Shape thickness.
+
+    A participating Shape Hole is subtracted before STL materialization.
     """
 
     fill_z_offset, fill_height = _surface_component_interval(
@@ -2929,6 +3086,7 @@ def _build_artwork_fill_scad(
     planar_geometry = _build_artwork_fill_planar_geometry_scad(
         fill,
         shape_size=shape_size,
+        exclusions=exclusions,
     )
 
     geometry = (
@@ -2940,16 +3098,16 @@ def _build_artwork_fill_scad(
         f"{_indent_scad(planar_geometry, 8)}"
     )
 
-    if hole is not None:
-        geometry = _build_hole_subtracted_geometry_scad(
-            geometry,
-            hole=hole,
-        )
+    geometry = _build_hole_subtracted_geometry_scad(
+        geometry,
+        hole=hole,
+    )
 
     return (
         f"shape_size = {shape_size:g};\n"
         f"shape_base_raise = {shape_base_raise:g};\n"
         f"shape_artwork_fill_raise = {shape_artwork_fill_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
         "\n"
         f"{geometry}"
     )
