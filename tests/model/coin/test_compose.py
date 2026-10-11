@@ -919,3 +919,121 @@ def test_coin_physical_product_preserves_face_identity_and_colors(
     }
 
     assert all((physical.parent / component["path"]).is_file() for component in components)
+
+
+def test_coin_preserves_qr_components_and_colors_from_both_faces(
+    tmp_path: Path,
+) -> None:
+    """
+    Coin consumes QR-bearing packaged Shape Products without
+    QR-specific handling.
+
+    QR dark/light component identities are preserved independently
+    for both Faces, and physical colors are inherited from each
+    source Shape.
+    """
+    face_a = tmp_path / "face-a.3mf"
+    face_b = tmp_path / "face-b.3mf"
+    physical = tmp_path / "physical.json"
+
+    white = PaletteColor(
+        name="white",
+        rgb=(255, 255, 255),
+    )
+    black = PaletteColor(
+        name="black",
+        rgb=(0, 0, 0),
+    )
+    blue = PaletteColor(
+        name="blue",
+        rgb=(0, 0, 255),
+    )
+
+    face_a_mesh = _asymmetric_mesh(z_top=3.0)
+    face_b_mesh = _asymmetric_mesh(z_top=2.0)
+
+    _write_asymmetric_shape(
+        face_a,
+        raise_style="raised",
+        components=(
+            Component(
+                name="base",
+                mesh=face_a_mesh,
+                color=white,
+            ),
+            Component(
+                name="qr-dark",
+                mesh=face_a_mesh,
+                color=black,
+            ),
+            Component(
+                name="qr-light",
+                mesh=face_a_mesh,
+                color=white,
+            ),
+        ),
+    )
+
+    _write_asymmetric_shape(
+        face_b,
+        raise_style="inlaid",
+        components=(
+            Component(
+                name="base",
+                mesh=face_b_mesh,
+                color=white,
+            ),
+            Component(
+                name="qr-dark",
+                mesh=face_b_mesh,
+                color=blue,
+            ),
+            Component(
+                name="qr-light",
+                mesh=face_b_mesh,
+                color=white,
+            ),
+        ),
+    )
+
+    context = Mock(spec=StageContext)
+    context.input.side_effect = {
+        "faceA": face_a,
+        "faceB": face_b,
+    }.__getitem__
+    context.output.side_effect = {
+        "physical": physical,
+    }.__getitem__
+    context.resolver.side_effect = {
+        "coin_orientation": "aligned",
+    }.__getitem__
+
+    compose.execute(context)
+
+    products = json.loads(physical.read_text(encoding="utf-8"))
+
+    components = {component["name"]: component for component in products["components"]}
+
+    assert set(components) == {
+        "faceA-base",
+        "faceA-qr-dark",
+        "faceA-qr-light",
+        "faceB-base",
+        "faceB-qr-dark",
+        "faceB-qr-light",
+    }
+
+    expected_colors = {
+        "faceA-base": "white",
+        "faceA-qr-dark": "black",
+        "faceA-qr-light": "white",
+        "faceB-base": "white",
+        "faceB-qr-dark": "blue",
+        "faceB-qr-light": "white",
+    }
+
+    for name, expected_color in expected_colors.items():
+        component = components[name]
+
+        assert component["color"]["name"] == expected_color
+        assert (physical.parent / component["path"]).is_file()

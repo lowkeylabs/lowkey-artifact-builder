@@ -322,3 +322,82 @@ def test_qr_extrusion_preserves_semantic_identity_without_colors(
         assert component["path"].endswith(".stl")
         assert "printer_color" not in component
         assert "color" not in component
+
+
+@pytest.mark.parametrize("raise_style", ["raised", "inlaid"])
+def test_participating_hole_subtracts_from_both_qr_components(
+    tmp_path: Path,
+    raise_style: str,
+) -> None:
+    """
+    A participating Hole subtracts through both QR physical
+    components, independently of Shape raise style.
+
+    The test uses the real Shape Extrude stage and examines the
+    generated manufacturing geometry without running OpenSCAD.
+    """
+    composition, composition_manifest = _registered_qr_fixture(
+        tmp_path,
+    )
+    manifest = tmp_path / "extrude" / "products.json"
+
+    values: dict[str, object] = {
+        "shape_size": 100.0,
+        "shape_base_raise": 2.0,
+        "shape_raise_style": raise_style,
+        "shape_outer_ridge_raise": 0.0,
+        "shape_outer_ridge_style": "integrated",
+        "shape_hole_diameter": 8.0,
+        "shape_hole_edge_distance": 0.0,
+        "shape_hole_position": 0.0,
+        "shape_loop_inner_diameter": 0.0,
+        "shape_qr_raise": 0.8,
+    }
+
+    context = Mock(spec=StageContext)
+    context.input.side_effect = {
+        "compose.composition": composition,
+        "compose.manifest": composition_manifest,
+    }.__getitem__
+    context.output.side_effect = {
+        "manifest": manifest,
+    }.__getitem__
+    context.resolver.side_effect = values.__getitem__
+
+    rendered: dict[str, str] = {}
+
+    def capture_render(
+        source: str,
+        output_path: Path,
+    ) -> None:
+        output_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        rendered[output_path.name] = source
+        output_path.write_text(
+            source,
+            encoding="utf-8",
+        )
+
+    with patch.object(
+        extrude,
+        "render_stl_source",
+        side_effect=capture_render,
+    ):
+        extrude.execute(context)
+
+    products = json.loads(manifest.read_text(encoding="utf-8"))
+
+    component_names = {component["name"] for component in products["components"]}
+
+    assert {"qr-dark", "qr-light"} <= component_names
+
+    for name in ("qr-dark", "qr-light"):
+        source = rendered[f"{name}.stl"]
+
+        assert "difference()" in source
+        assert "hole_center_x" in source
+        assert "hole_center_y" in source
+        assert "hole_radius" in source
+        assert "cylinder(" in source
