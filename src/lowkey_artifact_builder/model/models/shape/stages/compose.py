@@ -30,6 +30,7 @@ from lowkey_artifact_builder.model.models.shape.border_labels import (
     write_registered_circular_label_svg,
 )
 from lowkey_artifact_builder.model.models.shape.qr import (
+    QRInterior,
     RegisteredQR,
     compose_qr,
 )
@@ -245,6 +246,52 @@ def registered_interior_region(
     return shape_boundary
 
 
+def _qr_registered_interior(
+    composition: Path,
+) -> QRInterior:
+    """
+    Resolve the available registered Shape interior for QR placement.
+
+    Reuse the existing Shape interior selection policy. Preserve the
+    actual circle, rectangle, or polygon boundary so QR containment
+    considers the complete square footprint, including its corners.
+    """
+    boundary = registered_interior_region(composition)
+
+    if boundary.tag == SVG_CIRCLE:
+        return QRInterior(
+            circle=(
+                float(boundary.get("cx", "0.0")),
+                float(boundary.get("cy", "0.0")),
+                float(boundary.get("r", "0.0")),
+            ),
+        )
+
+    if boundary.tag == SVG_RECT:
+        x = float(boundary.get("x", "0.0"))
+        y = float(boundary.get("y", "0.0"))
+        width = float(boundary.get("width", "0.0"))
+        height = float(boundary.get("height", "0.0"))
+
+        return QRInterior(
+            vertices=(
+                (x, y),
+                (x + width, y),
+                (x + width, y + height),
+                (x, y + height),
+            ),
+        )
+
+    if boundary.tag == SVG_POLYGON:
+        return QRInterior(
+            vertices=_read_polygon_points(boundary),
+        )
+
+    raise ValueError(
+        "QR placement requires a circular, rectangular, or polygonal registered Shape interior."
+    )
+
+
 def execute(
     context: StageContext,
 ) -> None:
@@ -255,6 +302,7 @@ def execute(
     space. A participating QR Code is generated as separate registered
     dark/light geometry without requiring Artwork.
 
+    QR placement uses the available registered Shape interior.
     Physical dimensionalization and color assignment remain downstream.
     """
     structure_input = context.input("structure.structure")
@@ -334,6 +382,7 @@ def execute(
             shape_size=shape_size,
             alignment=str(context.resolver("shape_qr_alignment")),
             position=float(context.resolver("shape_qr_position")),
+            interior=_qr_registered_interior(composition_output),
         )
 
     _write_composition_manifest(
