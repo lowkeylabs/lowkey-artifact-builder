@@ -24,11 +24,15 @@ from pathlib import Path
 
 import pytest
 
+from lowkey_artifact_builder.config import (
+    write_artifact_config,
+)
 from lowkey_artifact_builder.engine import (
     BuildPlan,
     PlannedProductDependency,
     PlannedStage,
     ProductFingerprint,
+    create_build_plans,
     create_required_fingerprints,
 )
 from lowkey_artifact_builder.model import (
@@ -972,3 +976,85 @@ def test_stage_fingerprint_distinguishes_named_product_dependency_roles(
     )
 
     assert first["consume"] != second["consume"]
+
+
+# =========================================================
+# Shape QR packaging-only provenance
+# =========================================================
+
+
+@pytest.mark.parametrize(
+    ("parameter", "changed_color"),
+    [
+        ("shape_qr_dark_color", "red"),
+        ("shape_qr_light_color", "blue"),
+    ],
+)
+def test_shape_qr_color_change_invalidates_only_package(
+    tmp_path: Path,
+    parameter: str,
+    changed_color: str,
+) -> None:
+    """
+    Changing either QR printing color affects Package provenance
+    without invalidating registered or physical Shape geometry.
+
+    This protects the Shape Feature's stage ownership boundary
+    using the real Shape model declaration and generic fingerprint
+    machinery, without executing external modeling tools.
+    """
+    artifact_id = "qr_color_provenance"
+
+    write_artifact_config(
+        artifact_id,
+        {
+            "realizations": {
+                "shape_default": {
+                    "shape_geometry": "circle",
+                    "shape_qr_payload": "https://example.com",
+                    "shape_qr_size": 30.0,
+                    "shape_qr_dark_color": "black",
+                    "shape_qr_light_color": "white",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plans = create_build_plans(
+        artifact_id,
+        model_name="shape",
+        variant_name="default",
+        project_root=tmp_path,
+    )
+
+    assert len(plans) == 1
+    plan = plans[0]
+
+    assert {stage.name for stage in plan.stages} == {
+        "structure",
+        "compose",
+        "extrude",
+        "package",
+    }
+
+    original = create_required_fingerprints(plan)
+    original_resolver = plan.resolver
+
+    object.__setattr__(
+        plan,
+        "resolver",
+        _ChangedResolver(
+            original_resolver,
+            parameter=parameter,
+            value=changed_color,
+        ),
+    )
+
+    changed = create_required_fingerprints(plan)
+
+    assert changed["structure"] == original["structure"]
+    assert changed["compose"] == original["compose"]
+    assert changed["extrude"] == original["extrude"]
+
+    assert changed["package"] != original["package"]
