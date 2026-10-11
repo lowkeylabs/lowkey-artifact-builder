@@ -739,39 +739,39 @@ def _add_product_dependency_inputs(
     inputs: dict[str, Path],
 ) -> None:
     """
-    Add bound external product dependencies consumed by the stage.
+    Add active external Product dependencies consumed by the stage.
 
-    A stage declares semantic product dependencies independently of
-    their concrete producer artifact and realization. BuildPlan retains
-    the resolved producer bindings and product paths.
+    Declarative dependencies participate only when bound to a concrete
+    producer in the build plan. Unbound dependencies are absent from
+    StageContext, allowing the consuming Model to handle optional
+    Product participation through context.has_input().
 
-    Execution exposes each required product using its qualified semantic
-    identity:
-
-        model.stage.product
+    Bound dependencies retain their qualified semantic input names.
     """
-
     planned_dependencies = {
         planned_dependency.binding.dependency: planned_dependency
         for planned_dependency in plan.planned_product_dependencies
     }
 
+    active_dependencies = set(plan.product_dependency_bindings)
+
     for dependency in stage.spec.product_dependencies:
+        if dependency not in {binding.dependency for binding in active_dependencies}:
+            continue
+
         try:
             planned_dependency = planned_dependencies[dependency]
-
         except KeyError as exc:
             raise BuildError(
                 f"Cannot execute stage "
                 f"{stage.name!r} "
                 f"for artifact "
                 f"{plan.artifact_id!r}: "
-                f"product dependency "
+                f"bound product dependency "
                 f"{dependency.model}."
                 f"{dependency.stage}."
                 f"{dependency.product} "
-                "is not present in the "
-                "build plan."
+                "is not present in the build plan."
             ) from exc
 
         name = f"{dependency.model}.{dependency.stage}.{dependency.product}"

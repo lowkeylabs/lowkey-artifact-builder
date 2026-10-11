@@ -2531,3 +2531,179 @@ def test_package_stage_publishes_reusable_shape_metadata(
             sort_keys=True,
         ),
     }
+
+
+# =========================================================
+# QR complete Shape manufacturing acceptance
+# =========================================================
+
+
+@pytest.mark.slow
+def test_qr_only_shape_builds_packaged_3mf(
+    tmp_path: Path,
+) -> None:
+    """
+    A source-less Artifact can manufacture a complete QR Shape.
+
+    QR participation must not introduce an Artwork dependency.
+    The packaged 3MF must retain both QR component identities.
+    """
+    artifact_id = "qr_only"
+
+    write_artifact_config(
+        artifact_id,
+        {
+            "realizations": {
+                "shape_default": {
+                    "shape_geometry": "circle",
+                    "shape_size": 100.0,
+                    "shape_qr_payload": "https://example.com",
+                    "shape_qr_size": 30.0,
+                    "shape_qr_alignment": "centered",
+                    "shape_qr_dark_color": "black",
+                    "shape_qr_light_color": "white",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plans = create_build_plans(
+        artifact_id,
+        model_name="shape",
+        variant_name="default",
+        project_root=tmp_path,
+    )
+    execute_builds(plans)
+
+    realization = tmp_path / "artifacts" / artifact_id / "shape" / "shape_default"
+
+    extrude_manifest = realization / "30-extrude" / "products.json"
+    assert extrude_manifest.is_file()
+
+    data = json.loads(
+        extrude_manifest.read_text(encoding="utf-8"),
+    )
+
+    names = {component["name"] for component in data["components"]}
+
+    assert {"base", "qr-dark", "qr-light"} <= names
+    assert not any(name.startswith("artwork-") for name in names)
+
+    package_directory = realization / "40-package"
+    packaged = tuple(package_directory.glob("*.3mf"))
+    assert len(packaged) == 1
+
+    with zipfile.ZipFile(packaged[0]) as archive:
+        model = ET.fromstring(archive.read("3D/3dmodel.model"))
+
+    objects = model.findall(f".//{{{CORE_NS}}}object")
+    object_names = {obj.get("name") for obj in objects}
+
+    assert component_name(artifact_id, "qr-dark", "black") in object_names
+    assert component_name(artifact_id, "qr-light", "white") in object_names
+
+
+@pytest.mark.slow
+def test_qr_and_artwork_build_packaged_shape_together(
+    tmp_path: Path,
+) -> None:
+    """
+    A Shape with incorporated Artwork and QR manufactures one 3MF.
+
+    QR and surviving Artwork retain separate physical component
+    identities. Detailed footprint clipping is tested at Compose.
+    """
+    fixture = Path(__file__).parents[2] / "assets" / "clean_bg_house.png"
+    assert fixture.is_file()
+
+    source = tmp_path / "clean_bg_house.png"
+    shutil.copyfile(fixture, source)
+
+    (tmp_path / "workspace.toml").write_text(
+        """
+[parameters]
+printer_colors = ["black", "brown", "gold", "silver", "cold-white"]
+artwork_pixels = 973
+artwork_min_island_area = 1
+artwork_island_connectivity = 8
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    write_artifact_config(
+        "qr_artwork_source",
+        {
+            "source": "clean_bg_house.png",
+            "realizations": {
+                "artwork_default": {
+                    "artwork_size": 200.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    artifact_id = "qr_artwork_shape"
+
+    write_artifact_config(
+        artifact_id,
+        {
+            "product_dependencies": {
+                "manifest": {
+                    "artifact": "qr_artwork_source",
+                    "model": "artwork",
+                    "realization": "artwork_default",
+                    "stage": "vector",
+                    "product": "manifest",
+                },
+            },
+            "realizations": {
+                "shape_default": {
+                    "shape_geometry": "circle",
+                    "shape_size": 120.0,
+                    "shape_qr_payload": "https://example.com",
+                    "shape_qr_size": 20.0,
+                    "shape_qr_alignment": "centered",
+                    "shape_qr_dark_color": "black",
+                    "shape_qr_light_color": "white",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plans = create_build_plans(
+        artifact_id,
+        model_name="shape",
+        variant_name="default",
+        project_root=tmp_path,
+    )
+    execute_builds(plans)
+
+    realization = tmp_path / "artifacts" / artifact_id / "shape" / "shape_default"
+
+    extrude_manifest = realization / "30-extrude" / "products.json"
+    assert extrude_manifest.is_file()
+
+    data = json.loads(
+        extrude_manifest.read_text(encoding="utf-8"),
+    )
+    names = {component["name"] for component in data["components"]}
+
+    assert {"qr-dark", "qr-light"} <= names
+    assert any(name.startswith("artwork-") for name in names)
+
+    package_directory = realization / "40-package"
+    packaged = tuple(package_directory.glob("*.3mf"))
+    assert len(packaged) == 1
+
+    with zipfile.ZipFile(packaged[0]) as archive:
+        model = ET.fromstring(archive.read("3D/3dmodel.model"))
+
+    objects = model.findall(f".//{{{CORE_NS}}}object")
+    object_names = {obj.get("name") for obj in objects}
+
+    assert component_name(artifact_id, "qr-dark", "black") in object_names
+    assert component_name(artifact_id, "qr-light", "white") in object_names
+    assert any(name is not None and name.startswith("artwork-") for name in object_names)
