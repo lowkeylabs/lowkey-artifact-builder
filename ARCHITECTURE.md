@@ -32,7 +32,7 @@ When evaluating architectural completeness, compare the current repository again
 
 # 1. Purpose
 
-`lowkey-artifact-builder` is a dependency-driven build system for producing 2.5D manufacturing geometry from source material with minimal manual intervention.
+lowkey-artifact-builder is a dependency-driven build system for producing reusable manufacturing geometry and Products from source material with minimal manual intervention. Supported Products may represent two-dimensional or three-dimensional manufacturing workflows.
 
 A common use case begins with a customer image:
 
@@ -316,6 +316,9 @@ Examples include:
 ```text
 artwork
 shape
+coin
+laser
+(others)
 ```
 
 A Model declares:
@@ -1650,7 +1653,7 @@ Warning signs include designs that:
 
 # 38. Summary
 
-`lowkey-artifact-builder` is a dependency-driven 2.5D manufacturing system.
+`lowkey-artifact-builder` is a dependency-driven manufacturing system supporting reusable geometry, composition, and multiple manufacturing output formats.
 
 Its core product-definition relationship is:
 
