@@ -27,6 +27,9 @@ def _number(value: float) -> str:
 
 
 def _load_svg(path: Path) -> ET.Element:
+    """
+    Load a registered SVG document.
+    """
     root = ET.parse(path).getroot()
 
     if root.tag != f"{SVG}svg":
@@ -40,10 +43,15 @@ def _add_structure(
     composition_path: Path,
 ) -> None:
     """
-    Preserve registered structural boundaries as unfilled paths.
+    Export registered structural boundaries as unfilled outlines.
 
-    The source composition is used for its geometry, not as a
-    filled engraving surface.
+    Shape Compose owns structural geometry. Laser reuses that
+    geometry without converting the complete structural Base
+    into an implicitly filled engraving region.
+
+    Border-label baselines are construction geometry, not
+    manufacturing objects. Their corresponding glyph geometry
+    is exported separately from the registered label Products.
     """
     source = _load_svg(composition_path)
 
@@ -53,15 +61,54 @@ def _add_structure(
         {"id": "structure"},
     )
 
+    construction_ids = {
+        "top-border-label-path",
+        "bottom-border-label-path",
+    }
+
     for element in source:
+        if element.get("id") in construction_ids:
+            continue
+
         component = copy.deepcopy(element)
 
-        # The initial SVG contract exports structural outlines.
-        # Do not allow a source fill to engrave the entire Base.
         component.set("fill", "none")
         component.set("stroke", "black")
 
         structure.append(component)
+
+
+def _add_border_labels(
+    output: ET.Element,
+    directory: Path,
+    border_labels: dict[str, Any],
+) -> None:
+    """
+    Export participating registered border-label geometry.
+
+    Each label is an independently identifiable SVG object.
+
+    Shape Compose has already resolved text layout, font
+    metrics, glyph geometry, and placement. Laser must not
+    reconstruct typography or depend on installed fonts.
+    """
+    for position in ("top", "bottom"):
+        entry = border_labels.get(position)
+
+        if entry is None:
+            continue
+
+        source_path = directory / str(entry["path"])
+        source = _load_svg(source_path)
+
+        component = ET.SubElement(
+            output,
+            f"{SVG}g",
+            {"id": f"{position}-border-label"},
+        )
+
+        for element in source:
+            component.append(copy.deepcopy(element))
 
 
 def _add_artwork(
@@ -74,6 +121,8 @@ def _add_artwork(
 
     The transform maps source Artwork coordinates into registered
     Shape coordinates. Physical sizing is applied by the outer SVG.
+
+    Each Artwork color region remains independently identifiable.
     """
     transform = artwork["transform"]
 
@@ -114,6 +163,10 @@ def _add_artwork(
 def execute(context: StageContext) -> None:
     """
     Produce one physically dimensioned SVG from Shape Compose Products.
+
+    The output contains participating registered geometry in a
+    common coordinate system, without Shape extrusion or 3MF
+    packaging.
     """
     manifest_path = context.input("shape.compose.manifest")
     output_path = context.output("artifact")
@@ -137,14 +190,33 @@ def execute(context: StageContext) -> None:
         },
     )
 
-    _add_structure(output, composition_path)
+    _add_structure(
+        output,
+        composition_path,
+    )
+
+    border_labels = manifest.get("border_labels")
+
+    if border_labels is not None:
+        _add_border_labels(
+            output,
+            directory,
+            border_labels,
+        )
 
     artwork = manifest.get("artwork")
 
     if artwork is not None:
-        _add_artwork(output, directory, artwork)
+        _add_artwork(
+            output,
+            directory,
+            artwork,
+        )
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
     ET.ElementTree(output).write(
         output_path,
