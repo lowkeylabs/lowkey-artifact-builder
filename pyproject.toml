@@ -52,6 +52,8 @@ dependencies = [
     "qrcode>=8.2",
     "rich>=14.0",
     "scipy>=1.18.0",
+    "shapely>=2.2.0",
+    "svgpathtools>=1.8.0",
     "tomlkit>=0.14",
 ]
 

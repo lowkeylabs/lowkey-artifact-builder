@@ -101,6 +101,43 @@ def _resolver() -> StubResolver:
     )
 
 
+def _execute_native_svg(
+    tmp_path: Path,
+    paths: str,
+) -> Path:
+    """
+    Execute Raster against authored native SVG paths.
+
+    Return the declared Raster manifest path.
+    """
+
+    trace = tmp_path / "prepare" / "trace.svg"
+    trace.parent.mkdir(parents=True, exist_ok=True)
+
+    trace.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'width="100" height="100" '
+            'viewBox="0 0 100 100">'
+            f"{paths}"
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    manifest = tmp_path / "raster" / "products.json"
+
+    context = StubContext(
+        inputs={"prepare.trace": trace},
+        outputs={"manifest": manifest},
+        resolver=_resolver(),
+    )
+
+    raster.execute(context)  # type: ignore[arg-type]
+
+    return manifest
+
+
 def _write_layer(
     path: Path,
 ) -> None:
@@ -1112,3 +1149,143 @@ def test_raster_native_svg_groups_objects_by_authored_color(
     assert {color["index"] for color in by_object.values()} == {1, 2}
 
     assert not list(manifest.parent.glob("color-*.png"))
+
+
+def test_raster_native_svg_rejects_overlapping_color_regions(
+    tmp_path: Path,
+) -> None:
+    """
+    Filled regions of different Artifact colors must not overlap.
+
+    Raster must reject the source without publishing a manifest.
+    """
+
+    paths = (
+        '<path id="red" '
+        'd="M 0 0 H 80 V 80 H 0 Z" '
+        'fill="#ff0000"/>'
+        '<path id="blue" '
+        'd="M 40 40 H 100 V 100 H 40 Z" '
+        'fill="#0000ff"/>'
+    )
+
+    with pytest.raises(
+        raster.RasterError,
+        match=r"(?i)overlap",
+    ):
+        _execute_native_svg(tmp_path, paths)
+
+    assert not (tmp_path / "raster" / "products.json").exists()
+
+
+def test_raster_native_svg_accepts_shared_color_boundaries(
+    tmp_path: Path,
+) -> None:
+    """
+    Different Artifact colors may share boundaries without
+    overlapping filled interiors.
+    """
+
+    paths = (
+        '<path id="red" '
+        'd="M 0 0 H 50 V 100 H 0 Z" '
+        'fill="#ff0000"/>'
+        '<path id="blue" '
+        'd="M 50 0 H 100 V 100 H 50 Z" '
+        'fill="#0000ff"/>'
+    )
+
+    manifest = _execute_native_svg(tmp_path, paths)
+
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+
+    assert data["representation"] == "native-svg"
+    assert len(data["products"]) == 2
+
+    assert {product["object_id"] for product in data["products"]} == {"red", "blue"}
+
+
+def test_raster_native_svg_excludes_holes_from_overlap(
+    tmp_path: Path,
+) -> None:
+    """
+    A different-color region entirely inside an evenodd hole
+    does not overlap the surrounding filled region.
+    """
+
+    paths = (
+        '<path id="red-ring" '
+        'd="M 0 0 H 100 V 100 H 0 Z '
+        'M 30 30 H 70 V 70 H 30 Z" '
+        'fill="#ff0000" '
+        'fill-rule="evenodd"/>'
+        '<path id="blue-center" '
+        'd="M 40 40 H 60 V 60 H 40 Z" '
+        'fill="#0000ff"/>'
+    )
+
+    manifest = _execute_native_svg(tmp_path, paths)
+
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+
+    assert len(data["products"]) == 2
+
+    assert {product["object_id"] for product in data["products"]} == {"red-ring", "blue-center"}
+
+
+def test_raster_native_svg_rejects_overlap_after_transform(
+    tmp_path: Path,
+) -> None:
+    """
+    Overlap validation must evaluate transformed geometry
+    in common document coordinates.
+    """
+
+    paths = (
+        '<path id="red" '
+        'd="M 0 0 H 40 V 40 H 0 Z" '
+        'fill="#ff0000"/>'
+        '<g transform="translate(20, 20)">'
+        '<path id="blue" '
+        'd="M 0 0 H 40 V 40 H 0 Z" '
+        'fill="#0000ff"/>'
+        "</g>"
+    )
+
+    with pytest.raises(
+        raster.RasterError,
+        match=r"(?i)overlap",
+    ):
+        _execute_native_svg(tmp_path, paths)
+
+    assert not (tmp_path / "raster" / "products.json").exists()
+
+
+def test_raster_native_svg_accepts_same_color_overlap(
+    tmp_path: Path,
+) -> None:
+    """
+    Overlapping SVG objects with the same authored RGB
+    share one Artifact-color identity and are permitted.
+    """
+
+    paths = (
+        '<path id="red-left" '
+        'd="M 0 0 H 60 V 60 H 0 Z" '
+        'fill="#ff0000"/>'
+        '<path id="red-right" '
+        'd="M 40 40 H 100 V 100 H 40 Z" '
+        'fill="#ff0000"/>'
+    )
+
+    manifest = _execute_native_svg(tmp_path, paths)
+
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+
+    products = data["products"]
+
+    assert len(products) == 2
+
+    assert {product["object_id"] for product in products} == {"red-left", "red-right"}
+
+    assert products[0]["artifact_color"] == products[1]["artifact_color"]

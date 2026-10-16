@@ -36,6 +36,7 @@ only the paths and values supplied through StageContext.
 from __future__ import annotations
 
 import json
+import math
 import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -183,34 +184,16 @@ def execute(
     """
     Execute the artwork vector stage.
 
-    The stage consumes:
+    PNG-derived Raster products are cropped and traced into registered
+    SVG layers.
 
-        raster.manifest
-            Manifest describing registered raster color layers and the
-            source-to-raster registration used to produce them.
-
-        prepare.envelope
-            Prepared Artwork envelope in source coordinates.
-
-    The stage produces:
-
-        manifest
-            Manifest describing the reusable Registered Artwork,
-            including its registered envelope and dynamically generated
-            vector color layers.
+    Native SVG products preserve authored vector geometry and are
+    registered directly without bitmap tracing.
     """
 
-    raster_manifest = context.input(
-        "raster.manifest",
-    )
-
-    prepared_envelope = context.input(
-        "prepare.envelope",
-    )
-
-    vector_manifest = context.output(
-        "manifest",
-    )
+    raster_manifest = context.input("raster.manifest")
+    prepared_envelope = context.input("prepare.envelope")
+    vector_manifest = context.output("manifest")
 
     if not raster_manifest.is_file():
         raise VectorError(f"Raster product manifest does not exist: {raster_manifest}")
@@ -224,13 +207,27 @@ def execute(
     )
 
     try:
+        data = json.loads(raster_manifest.read_text(encoding="utf-8"))
+
+        if not isinstance(data, dict):
+            raise VectorError("Raster manifest must be an object.")
+
+        if data.get("representation") == "native-svg":
+            _execute_native_svg(
+                raster_manifest,
+                prepared_envelope,
+                vector_manifest,
+                data,
+            )
+            return
+
+        # Existing PNG-derived Raster workflow.
+
         registration, layers = _load_raster_manifest(
             raster_manifest,
         )
 
-        crop = _common_crop(
-            layers,
-        )
+        crop = _common_crop(layers)
 
         registered_envelope = vector_manifest.parent / "envelope.svg"
 
@@ -241,12 +238,7 @@ def execute(
             crop=crop,
         )
 
-        vector_layers: list[
-            tuple[
-                RasterLayer,
-                Path,
-            ]
-        ] = []
+        vector_layers: list[tuple[RasterLayer, Path]] = []
 
         for layer in layers:
             output = vector_manifest.parent / f"color-{layer.index}.svg"
@@ -257,12 +249,7 @@ def execute(
                 crop=crop,
             )
 
-            vector_layers.append(
-                (
-                    layer,
-                    output,
-                )
-            )
+            vector_layers.append((layer, output))
 
         _write_manifest(
             vector_manifest,
@@ -557,6 +544,356 @@ def _color_component(
         raise VectorError(f"Raster product {index} has invalid {name} color component.")
 
     return value
+
+
+def _native_registration(
+    tree: ET.ElementTree[ET.Element[str]],
+) -> tuple[RasterRegistration, RasterCrop]:
+    """
+    Establish a square registration from the native SVG viewBox.
+
+    Native artwork retains source-coordinate geometry. The common
+    registration translates that geometry into a zero-origin square
+    coordinate system without rasterization.
+    """
+
+    root = tree.getroot()
+
+    if root.tag != f"{{{SVG_NS}}}svg":
+        raise VectorError("Native artwork source is not an SVG document.")
+
+    view_box = root.get("viewBox")
+
+    if not view_box:
+        raise VectorError("Native SVG must declare a viewBox.")
+
+    try:
+        values = [float(value) for value in view_box.replace(",", " ").split()]
+    except ValueError as exc:
+        raise VectorError("Native SVG has an invalid viewBox.") from exc
+
+    if len(values) != 4:
+        raise VectorError("Native SVG viewBox must contain four numbers.")
+
+    x, y, width, height = values
+
+    if not all(math.isfinite(value) for value in values) or width <= 0 or height <= 0:
+        raise VectorError("Native SVG viewBox must have finite, positive dimensions.")
+
+    extent = max(1, math.ceil(max(width, height)))
+
+    square_x = x + (width - extent) / 2.0
+    square_y = y + (height - extent) / 2.0
+
+    registration = RasterRegistration(
+        x=square_x,
+        y=square_y,
+        size=float(extent),
+        pixels=extent,
+    )
+
+    crop = RasterCrop(
+        x=0,
+        y=0,
+        size=extent,
+    )
+
+    return registration, crop
+
+
+def _native_color_layers(
+    manifest: Path,
+    data: dict[str, Any],
+) -> tuple[
+    Path,
+    list[tuple[RasterLayer, tuple[str, ...]]],
+]:
+    """
+    Load native SVG source and group authored objects by Artifact color.
+
+    Repeated Artifact-color indexes share one Vector product.
+    """
+
+    source_name = data.get("source")
+
+    if not isinstance(source_name, str) or not source_name:
+        raise VectorError("Native SVG manifest has no valid source.")
+
+    source = (manifest.parent / source_name).resolve()
+
+    if not source.is_file():
+        raise VectorError(f"Native SVG source does not exist: {source}")
+
+    products = data.get("products")
+
+    if not isinstance(products, list) or not products:
+        raise VectorError("Native SVG manifest contains no products.")
+
+    grouped: dict[
+        int,
+        tuple[tuple[int, int, int], list[str]],
+    ] = {}
+
+    used_ids: set[str] = set()
+
+    for product in products:
+        if not isinstance(product, dict):
+            raise VectorError("Native SVG manifest contains an invalid product.")
+
+        object_id = product.get("object_id")
+
+        if not isinstance(object_id, str) or not object_id:
+            raise VectorError("Native SVG product has no valid object ID.")
+
+        if object_id in used_ids:
+            raise VectorError(f"Duplicate native SVG object ID: {object_id}")
+
+        used_ids.add(object_id)
+
+        artifact_color = product.get("artifact_color")
+
+        if not isinstance(artifact_color, dict):
+            raise VectorError(f"Native SVG object {object_id} has no Artifact color.")
+
+        index = artifact_color.get("index")
+
+        if isinstance(index, bool) or not isinstance(index, int) or index < 1:
+            raise VectorError(f"Native SVG object {object_id} has an invalid Artifact color index.")
+
+        rgb_data = artifact_color.get("rgb")
+
+        if not isinstance(rgb_data, dict):
+            raise VectorError(f"Native SVG object {object_id} has invalid RGB.")
+
+        rgb = (
+            _color_component(rgb_data, "red", index),
+            _color_component(rgb_data, "green", index),
+            _color_component(rgb_data, "blue", index),
+        )
+
+        if index not in grouped:
+            grouped[index] = (rgb, [])
+
+        group_rgb, object_ids = grouped[index]
+
+        if group_rgb != rgb:
+            raise VectorError(f"Artifact color {index} has inconsistent RGB values.")
+
+        object_ids.append(object_id)
+
+    result: list[tuple[RasterLayer, tuple[str, ...]]] = []
+
+    for index, (rgb, object_ids) in sorted(grouped.items()):
+        result.append(
+            (
+                RasterLayer(
+                    index=index,
+                    path=source,
+                    artifact_color_index=index,
+                    artifact_color=rgb,
+                ),
+                tuple(object_ids),
+            )
+        )
+
+    return source, result
+
+
+def _write_native_color_layer(
+    source: Path,
+    output: Path,
+    *,
+    object_ids: tuple[str, ...],
+    registration: RasterRegistration,
+    extent: int,
+) -> None:
+    """
+    Register selected native SVG objects without retracing.
+
+    Original paths, fill rules, styles, and group transforms are
+    preserved. Only unselected geometry is removed.
+    """
+
+    tree = load(source)
+    root = tree.getroot()
+
+    path_tag = f"{{{SVG_NS}}}path"
+    group_tag = f"{{{SVG_NS}}}g"
+
+    selected = set(object_ids)
+    found: set[str] = set()
+
+    def retain(
+        parent: ET.Element[str],
+    ) -> None:
+        for child in list(parent):
+            if child.tag == path_tag:
+                object_id = child.get("id")
+
+                if object_id not in selected:
+                    parent.remove(child)
+                else:
+                    if object_id in found:
+                        raise VectorError(f"Duplicate native SVG object ID: {object_id}")
+
+                    if object_id is not None:
+                        found.add(object_id)
+
+            elif child.tag == group_tag:
+                retain(child)
+
+                if not len(child):
+                    parent.remove(child)
+
+            elif child.tag in {
+                f"{{{SVG_NS}}}defs",
+                f"{{{SVG_NS}}}metadata",
+                f"{{{SVG_NS}}}title",
+                f"{{{SVG_NS}}}desc",
+            }:
+                continue
+
+            else:
+                parent.remove(child)
+
+    retain(root)
+
+    missing = selected - found
+
+    if missing:
+        raise VectorError("Native SVG source is missing objects: " + ", ".join(sorted(missing)))
+
+    # Preserve the source SVG's geometry-bearing hierarchy.
+    # An outer group applies the common source-to-registered mapping.
+
+    wrapper = ET.Element(group_tag)
+
+    translate_x = -registration.x
+    translate_y = -registration.y
+
+    wrapper.set(
+        "transform",
+        f"translate({translate_x},{translate_y})",
+    )
+
+    for child in list(root):
+        if child.tag == group_tag or child.tag == path_tag:
+            root.remove(child)
+            wrapper.append(child)
+
+    root.append(wrapper)
+
+    root.set(
+        "viewBox",
+        f"0 0 {extent} {extent}",
+    )
+
+    root.set("width", str(extent))
+    root.set("height", str(extent))
+
+    output.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    save(tree, output)
+
+
+def _execute_native_svg(
+    raster_manifest: Path,
+    prepared_envelope: Path,
+    vector_manifest: Path,
+    data: dict[str, Any],
+) -> None:
+    """
+    Produce Registered Artwork directly from native SVG geometry.
+
+    Native paths and envelope geometry are registered through SVG
+    transforms rather than path rewriting or bitmap tracing.
+    """
+
+    source, layers = _native_color_layers(
+        raster_manifest,
+        data,
+    )
+
+    tree = load(source)
+
+    registration, crop = _native_registration(tree)
+
+    registered_envelope = vector_manifest.parent / "envelope.svg"
+
+    _register_native_envelope(
+        prepared_envelope,
+        registered_envelope,
+        registration=registration,
+        extent=crop.size,
+    )
+
+    vector_layers: list[tuple[RasterLayer, Path]] = []
+
+    for layer, object_ids in layers:
+        output = vector_manifest.parent / f"color-{layer.index}.svg"
+
+        _write_native_color_layer(
+            source,
+            output,
+            object_ids=object_ids,
+            registration=registration,
+            extent=crop.size,
+        )
+
+        vector_layers.append((layer, output))
+
+    _write_manifest(
+        vector_manifest,
+        vector_layers,
+        registered_extent=crop.size,
+        envelope=registered_envelope,
+    )
+
+
+def _register_native_envelope(
+    source: Path,
+    output: Path,
+    *,
+    registration: RasterRegistration,
+    extent: int,
+) -> None:
+    """
+    Register a native SVG envelope without rewriting its path data.
+
+    Apply the source-to-registered translation through an outer
+    SVG group, preserving authored path commands and transforms.
+    """
+
+    tree = load(source)
+    root = tree.getroot()
+
+    group_tag = f"{{{SVG_NS}}}g"
+
+    wrapper = ET.Element(group_tag)
+    wrapper.set(
+        "transform",
+        f"translate({-registration.x},{-registration.y})",
+    )
+
+    for child in list(root):
+        root.remove(child)
+        wrapper.append(child)
+
+    root.append(wrapper)
+
+    root.set("viewBox", f"0 0 {extent} {extent}")
+    root.set("width", str(extent))
+    root.set("height", str(extent))
+
+    output.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    save(tree, output)
 
 
 # =========================================================

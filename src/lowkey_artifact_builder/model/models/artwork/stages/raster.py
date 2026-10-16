@@ -49,6 +49,10 @@ from lowkey_artifact_builder.formats.svg import (
     require_ids,
     save,
 )
+from lowkey_artifact_builder.model.models.artwork.svg_geometry import (
+    SVGGeometryError,
+    validate_nonoverlapping_colors,
+)
 from lowkey_artifact_builder.tools.inkscape import (
     InkscapeError,
     run,
@@ -1294,7 +1298,10 @@ def _write_native_svg_manifest(
     tree: ET.ElementTree[ET.Element[str]],
 ) -> None:
     """
-    Publish native SVG object and Artifact-color identities.
+    Validate and publish native SVG object and Artifact-color identities.
+
+    Filled regions of different Artifact colors must not overlap.
+    Shared boundaries, holes, and same-color overlaps are permitted.
 
     The source SVG is referenced, not copied or rasterized.
 
@@ -1305,6 +1312,11 @@ def _write_native_svg_manifest(
     """
 
     objects = _native_svg_objects(tree)
+
+    try:
+        validate_nonoverlapping_colors(tree, objects)
+    except SVGGeometryError as exc:
+        raise RasterError(f"Invalid native SVG geometry: {exc}") from exc
 
     color_indices: dict[
         tuple[int, int, int],

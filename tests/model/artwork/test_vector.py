@@ -1003,3 +1003,141 @@ def test_vector_manifest_excludes_physical_printer_assignment(
 
     assert "printer_color" not in product
     assert "distance" not in product
+
+
+def test_vector_native_svg_preserves_registered_authored_geometry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Native SVG produces registered, color-separated vector products
+    without bitmap tracing, preserving authored paths and holes.
+    """
+    import xml.etree.ElementTree as ET
+
+    svg_ns = "http://www.w3.org/2000/svg"
+    ns = {"svg": svg_ns}
+
+    source = tmp_path / "prepare" / "trace.svg"
+    source.parent.mkdir(parents=True)
+
+    source.write_text(
+        (
+            f'<svg xmlns="{svg_ns}" width="100" height="100" '
+            'viewBox="0 0 100 100">'
+            '<g transform="translate(10,5)">'
+            '<path id="red-left" '
+            'd="M 0 0 H 30 V 30 H 0 Z '
+            'M 10 10 H 20 V 20 H 10 Z" '
+            'fill="#ff0000" fill-rule="evenodd"/>'
+            "</g>"
+            '<path id="blue" '
+            'd="M 60 60 H 90 V 90 H 60 Z" '
+            'fill="#0000ff"/>'
+            '<path id="red-right" '
+            'd="M 70 10 H 90 V 30 H 70 Z" '
+            'fill="#ff0000"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    raster_manifest = tmp_path / "raster" / "products.json"
+    raster_manifest.parent.mkdir(parents=True)
+
+    raster_manifest.write_text(
+        json.dumps(
+            {
+                "representation": "native-svg",
+                "source": "../prepare/trace.svg",
+                "products": [
+                    {
+                        "object_id": "red-left",
+                        "artifact_color": {
+                            "index": 1,
+                            "rgb": _color(255, 0, 0),
+                        },
+                    },
+                    {
+                        "object_id": "blue",
+                        "artifact_color": {
+                            "index": 2,
+                            "rgb": _color(0, 0, 255),
+                        },
+                    },
+                    {
+                        "object_id": "red-right",
+                        "artifact_color": {
+                            "index": 1,
+                            "rgb": _color(255, 0, 0),
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    envelope = tmp_path / "prepare" / "envelope.svg"
+    envelope.write_text(
+        (
+            f'<svg xmlns="{svg_ns}" width="100" height="100" '
+            'viewBox="0 0 100 100">'
+            '<path d="M 10 5 H 90 V 90 H 10 Z"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    output_manifest = tmp_path / "vector" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "raster.manifest": raster_manifest,
+            "prepare.envelope": envelope,
+        },
+        outputs={"manifest": output_manifest},
+        resolver=_resolver(),
+    )
+
+    def forbidden_trace(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Native SVG must not invoke bitmap tracing.")
+
+    monkeypatch.setattr(vector, "_trace_mask", forbidden_trace)
+
+    vector.execute(context)  # type: ignore[arg-type]
+
+    data = json.loads(output_manifest.read_text(encoding="utf-8"))
+
+    assert data["registered_extent"] > 0
+    assert len(data["products"]) == 2
+
+    by_color = {product["artifact_color"]["index"]: product for product in data["products"]}
+
+    assert set(by_color) == {1, 2}
+    assert by_color[1]["artifact_color"]["rgb"] == _color(255, 0, 0)
+    assert by_color[2]["artifact_color"]["rgb"] == _color(0, 0, 255)
+
+    registered_envelope = output_manifest.parent / data["envelope"]
+    assert registered_envelope.is_file()
+
+    extent = float(data["registered_extent"])
+
+    for product in data["products"]:
+        layer = output_manifest.parent / product["path"]
+        assert layer.is_file()
+
+        root = ET.parse(layer).getroot()
+        bounds = [float(value) for value in root.attrib["viewBox"].split()]
+
+        assert bounds == pytest.approx([0, 0, extent, extent])
+
+    red_root = ET.parse(output_manifest.parent / by_color[1]["path"]).getroot()
+
+    red_paths = red_root.findall(".//svg:path", ns)
+
+    assert any("M 10 10 H 20 V 20 H 10 Z" in path.get("d", "") for path in red_paths)
+
+    assert any(path.get("fill-rule") == "evenodd" for path in red_paths)
+
+    assert len(red_paths) >= 2

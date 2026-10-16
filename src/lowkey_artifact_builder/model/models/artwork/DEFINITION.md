@@ -345,6 +345,15 @@ For SVG sources, envelope derivation operates on the supported interpreted vecto
 
 SVG interpretation supports document dimensions, `viewBox`, transforms, paths, fills, and transparency where these can be normalized into the registered Artwork contract.
 
+For SVG sources, filled regions assigned to different Artifact colors must
+not overlap in their interiors. Shared boundaries are permitted, and holes
+are excluded from the occupied regions when evaluating overlap. Overlapping
+regions of the same Artifact color are permitted.
+
+SVG interpretation must reject overlapping regions of different Artifact
+colors with an actionable error rather than applying painting-order
+subtraction or silently modifying authored geometry.
+
 Unsupported SVG constructs must be rejected with actionable errors rather than silently rasterized or interpreted incorrectly. General mixed raster/vector SVG composition is not required.
 
 Preparation preserves source color information belonging to the Artwork rather than quantizing it to configured physical filament colors.
