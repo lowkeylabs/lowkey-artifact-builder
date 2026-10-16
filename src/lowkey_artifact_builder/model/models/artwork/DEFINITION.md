@@ -76,16 +76,6 @@ artifact_color_count = 3
 
 even when five printer colors are available.
 
-Artwork preparation supplies the source's color information to multicolor tracing. It does not first quantize the source to printer, library, or catalog filament colors.
-
-Multicolor tracing produces `artifact_color_count` traced color regions and assigns an RGB representation to each region.
-
-Deriving `artifact_color_count` from the number of configured `printer_colors` does not make `printer_colors` a material input to registered Artwork geometry.
-
-Once `artifact_color_count` has been resolved, registered Artwork processing depends on that requested Artifact-color count rather than on the identities of the configured physical printer colors.
-
-Changing physical printer-color selection without changing the effective `artifact_color_count` therefore does not change the Artifact colors or registered Artwork geometry.
-
 Those measured RGB representations are the:
 
 ``` text

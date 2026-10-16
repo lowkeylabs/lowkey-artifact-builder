@@ -3122,3 +3122,61 @@ def test_native_svg_source_change_invalidates_dependent_shape_products(
     # The consumer still requires only registered Artwork.
     assert not (artwork_root / "40-extrude" / "products.json").exists()
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+
+@pytest.mark.slow
+def test_shape_rejects_overlapping_native_svg_artwork_colors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Invalid native SVG Artwork must fail before dependent SHAPE
+    manufacturing.
+
+    Overlapping interiors of differently colored SVG regions are
+    prohibited. The build must not silently apply SVG painting order,
+    subtract overlapping geometry, or produce a final 3MF.
+    """
+    monkeypatch.chdir(tmp_path)
+
+    artwork_root, shape_root = _native_svg_acceptance_project(tmp_path)
+
+    from lowkey_artifact_builder.config import get_resolver
+
+    artwork_resolver = get_resolver(
+        "svg-source",
+        realization="artwork_default",
+        project_root=tmp_path,
+    )
+
+    configured_source = Path(artwork_resolver("source"))
+    managed_source = (
+        configured_source if configured_source.is_absolute() else tmp_path / configured_source
+    )
+
+    assert managed_source.is_file()
+    assert managed_source.suffix.lower() == ".svg"
+
+    managed_source.write_text(
+        """\
+    <svg xmlns="http://www.w3.org/2000/svg"
+        width="100" height="100" viewBox="0 0 100 100">
+    <path id="red-region"
+            fill="#FF0000"
+            d="M 10 10 H 70 V 70 H 10 Z"/>
+    <path id="blue-region"
+            fill="#0000FF"
+            d="M 40 40 H 90 V 90 H 40 Z"/>
+    </svg>
+    """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(Exception, match="(?i)overlap"):
+        execute_dependency_build(
+            _native_svg_shape_plan(tmp_path),
+        )
+
+    assert not (shape_root / "40-package" / "artifact.3mf").exists()
+
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
