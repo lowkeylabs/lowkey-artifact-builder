@@ -21,6 +21,11 @@ SVG = f"{{{SVG_NS}}}"
 
 ET.register_namespace("", SVG_NS)
 
+SHAPE_BOUNDARY_ID = "shape-boundary"
+RIDGE_INNER_BOUNDARY_ID = "ridge-inner-boundary"
+INNER_RIDGE_OUTER_BOUNDARY_ID = "inner-ridge-outer-boundary"
+INNER_RIDGE_INNER_BOUNDARY_ID = "inner-ridge-inner-boundary"
+
 
 def _number(value: float) -> str:
     return format(value, ".12g")
@@ -38,22 +43,187 @@ def _load_svg(path: Path) -> ET.Element:
     return root
 
 
+def _registered_boundaries(
+    composition_path: Path,
+) -> dict[str, ET.Element]:
+    """
+    Load registered structural boundaries by semantic identity.
+
+    Shape Compose owns geometry and placement. Laser interprets
+    the same boundary identities used by Shape Extrude.
+    """
+    source = _load_svg(composition_path)
+
+    recognized = {
+        SHAPE_BOUNDARY_ID,
+        RIDGE_INNER_BOUNDARY_ID,
+        INNER_RIDGE_OUTER_BOUNDARY_ID,
+        INNER_RIDGE_INNER_BOUNDARY_ID,
+    }
+
+    boundaries: dict[str, ET.Element] = {}
+
+    for element in source:
+        identifier = element.get("id")
+
+        if identifier not in recognized:
+            continue
+
+        if identifier in boundaries:
+            raise ValueError(f"Duplicate registered Shape boundary: {identifier}")
+
+        boundaries[identifier] = element
+
+    if SHAPE_BOUNDARY_ID not in boundaries:
+        raise ValueError("Registered Shape composition requires shape-boundary.")
+
+    return boundaries
+
+
+def _boundary_path(
+    element: ET.Element,
+) -> str:
+    """
+    Express one registered structural boundary as SVG path data.
+
+    Shape Compose currently registers circular, rectangular, and
+    polygonal boundaries. Conversion preserves their coordinates
+    without independently scaling or centering them.
+    """
+    if element.tag == f"{SVG}circle":
+        cx = float(element.get("cx", "0"))
+        cy = float(element.get("cy", "0"))
+        radius = float(element.attrib["r"])
+
+        if not all(math.isfinite(v) for v in (cx, cy, radius)):
+            raise ValueError("Circle boundary must be finite.")
+
+        if radius <= 0:
+            raise ValueError("Circle boundary radius must be positive.")
+
+        left = _number(cx - radius)
+        right = _number(cx + radius)
+        center_y = _number(cy)
+        r = _number(radius)
+
+        return (
+            f"M {left} {center_y} "
+            f"A {r} {r} 0 1 0 {right} {center_y} "
+            f"A {r} {r} 0 1 0 {left} {center_y} Z"
+        )
+
+    if element.tag == f"{SVG}rect":
+        x = float(element.get("x", "0"))
+        y = float(element.get("y", "0"))
+        width = float(element.attrib["width"])
+        height = float(element.attrib["height"])
+
+        if not all(math.isfinite(v) for v in (x, y, width, height)):
+            raise ValueError("Rectangle boundary must be finite.")
+
+        if width <= 0 or height <= 0:
+            raise ValueError("Rectangle boundary dimensions must be positive.")
+
+        x2 = x + width
+        y2 = y + height
+
+        return (
+            f"M {_number(x)} {_number(y)} "
+            f"L {_number(x2)} {_number(y)} "
+            f"L {_number(x2)} {_number(y2)} "
+            f"L {_number(x)} {_number(y2)} Z"
+        )
+
+    if element.tag == f"{SVG}polygon":
+        raw_points = element.attrib["points"]
+        coordinates = raw_points.replace(",", " ").split()
+
+        if len(coordinates) < 6 or len(coordinates) % 2:
+            raise ValueError("Polygon boundary requires at least three vertices.")
+
+        values = [float(value) for value in coordinates]
+
+        if not all(math.isfinite(value) for value in values):
+            raise ValueError("Polygon boundary must be finite.")
+
+        points = [(_number(values[i]), _number(values[i + 1])) for i in range(0, len(values), 2)]
+
+        first_x, first_y = points[0]
+
+        segments = [f"M {first_x} {first_y}"]
+
+        for x, y in points[1:]:
+            segments.append(f"L {x} {y}")
+
+        segments.append("Z")
+
+        return " ".join(segments)
+
+    raise ValueError(f"Unsupported registered Shape boundary: {element.tag}")
+
+
+def _add_outline(
+    parent: ET.Element,
+    identifier: str,
+    boundary: ET.Element,
+) -> None:
+    """
+    Export a structural perimeter as an unfilled outline.
+    """
+    ET.SubElement(
+        parent,
+        f"{SVG}path",
+        {
+            "id": identifier,
+            "d": _boundary_path(boundary),
+            "fill": "none",
+            "stroke": "black",
+        },
+    )
+
+
+def _add_region(
+    parent: ET.Element,
+    identifier: str,
+    outer: ET.Element,
+    inner: ET.Element,
+) -> None:
+    """
+    Export the planar region between two registered boundaries.
+
+    Even-odd filling preserves the interior opening independently
+    of path winding direction.
+    """
+    outer_path = _boundary_path(outer)
+    inner_path = _boundary_path(inner)
+
+    ET.SubElement(
+        parent,
+        f"{SVG}path",
+        {
+            "id": identifier,
+            "d": f"{outer_path} {inner_path}",
+            "fill": "black",
+            "fill-rule": "evenodd",
+            "stroke": "none",
+        },
+    )
+
+
 def _add_structure(
     output: ET.Element,
     composition_path: Path,
 ) -> None:
     """
-    Export registered structural boundaries as unfilled outlines.
+    Export Shape structural geometry using Shape Extrude semantics.
 
-    Shape Compose owns structural geometry. Laser reuses that
-    geometry without converting the complete structural Base
-    into an implicitly filled engraving region.
+    Registered boundaries describe physical regions. The perimeter
+    is an outline; participating ridges are filled planar regions.
 
-    Border-label baselines are construction geometry, not
-    manufacturing objects. Their corresponding glyph geometry
-    is exported separately from the registered label Products.
+    Construction geometry, including border-label baselines,
+    is not exported.
     """
-    source = _load_svg(composition_path)
+    boundaries = _registered_boundaries(composition_path)
 
     structure = ET.SubElement(
         output,
@@ -61,21 +231,37 @@ def _add_structure(
         {"id": "structure"},
     )
 
-    construction_ids = {
-        "top-border-label-path",
-        "bottom-border-label-path",
-    }
+    shape_boundary = boundaries[SHAPE_BOUNDARY_ID]
 
-    for element in source:
-        if element.get("id") in construction_ids:
-            continue
+    _add_outline(
+        structure,
+        SHAPE_BOUNDARY_ID,
+        shape_boundary,
+    )
 
-        component = copy.deepcopy(element)
+    ridge_inner = boundaries.get(RIDGE_INNER_BOUNDARY_ID)
 
-        component.set("fill", "none")
-        component.set("stroke", "black")
+    if ridge_inner is not None:
+        _add_region(
+            structure,
+            "ridge",
+            shape_boundary,
+            ridge_inner,
+        )
 
-        structure.append(component)
+    inner_ridge_outer = boundaries.get(INNER_RIDGE_OUTER_BOUNDARY_ID)
+    inner_ridge_inner = boundaries.get(INNER_RIDGE_INNER_BOUNDARY_ID)
+
+    if (inner_ridge_outer is None) != (inner_ridge_inner is None):
+        raise ValueError("Registered inner ridge requires both boundaries.")
+
+    if inner_ridge_outer is not None and inner_ridge_inner is not None:
+        _add_region(
+            structure,
+            "inner-ridge",
+            inner_ridge_outer,
+            inner_ridge_inner,
+        )
 
 
 def _add_border_labels(
@@ -86,11 +272,9 @@ def _add_border_labels(
     """
     Export participating registered border-label geometry.
 
-    Each label is an independently identifiable SVG object.
-
-    Shape Compose has already resolved text layout, font
-    metrics, glyph geometry, and placement. Laser must not
-    reconstruct typography or depend on installed fonts.
+    Shape Compose has already resolved typography, glyph outlines,
+    font metrics, and placement. Laser must not reconstruct text
+    or depend on installed fonts.
     """
     for position in ("top", "bottom"):
         entry = border_labels.get(position)
@@ -167,6 +351,9 @@ def execute(context: StageContext) -> None:
     The output contains participating registered geometry in a
     common coordinate system, without Shape extrusion or 3MF
     packaging.
+
+    Shape Compose owns registration and placement. Laser owns
+    the two-dimensional manufacturing representation.
     """
     manifest_path = context.input("shape.compose.manifest")
     output_path = context.output("artifact")

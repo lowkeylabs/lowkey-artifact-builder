@@ -11,7 +11,6 @@ a single physically dimensioned SVG without Shape extrusion or packaging.
 from __future__ import annotations
 
 import json
-import math
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import Mock
@@ -144,30 +143,25 @@ def test_laser_package_combines_registered_shape_and_artwork(
     tmp_path: Path,
 ) -> None:
     """
-    Laser packages Shape's existing registered composition.
+    Laser packages registered Shape geometry as planar manufacturing
+    objects, preserving Artwork identity and registration.
 
-    The output preserves physical size, structural outlines, distinct
-    Artwork identities, and the common Artwork placement transform.
-    The structural Base must not become an implicit filled region.
+    The perimeter is an outline, the outer ridge is a filled
+    annular region, and the complete Shape Base is not filled.
     """
-
     composition_manifest = _write_shape_composition(
         tmp_path / "shape" / "compose",
     )
 
     artifact = tmp_path / "laser" / "package" / "artifact.svg"
-    artifact.parent.mkdir(parents=True, exist_ok=True)
 
     context = Mock(spec=StageContext)
-
     context.input.side_effect = {
         "shape.compose.manifest": composition_manifest,
     }.__getitem__
-
     context.output.side_effect = {
         "artifact": artifact,
     }.__getitem__
-
     context.resolver.side_effect = {
         "shape_size": 100.0,
     }.__getitem__
@@ -179,32 +173,42 @@ def test_laser_package_combines_registered_shape_and_artwork(
     root = ET.parse(artifact).getroot()
 
     assert root.tag == f"{SVG}svg"
+    assert _millimeters(root.attrib["width"]) == pytest.approx(100.0)
+    assert _millimeters(root.attrib["height"]) == pytest.approx(100.0)
 
-    assert math.isclose(
-        _millimeters(root.attrib["width"]),
-        100.0,
-    )
-    assert math.isclose(
-        _millimeters(root.attrib["height"]),
-        100.0,
+    assert tuple(float(value) for value in root.attrib["viewBox"].split()) == pytest.approx(
+        (-0.5, -0.5, 1.0, 1.0)
     )
 
-    view_box = tuple(float(value) for value in root.attrib["viewBox"].replace(",", " ").split())
-    assert len(view_box) == 4
-    assert view_box[2] > 0
-    assert view_box[3] > 0
-
-    # Structural geometry remains available as outlines.
     boundary = _svg_id(root, "shape-boundary")
     assert boundary is not None
-    assert boundary.tag == f"{SVG}circle"
+    assert boundary.tag == f"{SVG}path"
     assert boundary.get("fill") == "none"
+    assert boundary.get("stroke") == "black"
 
-    ridge = _svg_id(root, "ridge-inner-boundary")
+    ridge = _svg_id(root, "ridge")
     assert ridge is not None
-    assert ridge.tag == f"{SVG}circle"
+    assert ridge.tag == f"{SVG}path"
+    assert ridge.get("fill") == "black"
+    assert ridge.get("fill-rule") == "evenodd"
+    assert ridge.get("stroke") == "none"
 
-    # Each Artwork color region remains independently identifiable.
+    # The compound ridge path contains both registered circles.
+    assert ridge.attrib["d"].count("M ") == 2
+    assert "0.5 0.5" in ridge.attrib["d"]
+    assert "0.45 0.45" in ridge.attrib["d"]
+
+    # Structural construction boundaries are not separate
+    # manufacturing objects.
+    assert _svg_id(root, "ridge-inner-boundary") is None
+
+    # No opaque Shape Base or document background is exported.
+    assert _svg_id(root, "base") is None
+    assert not any(
+        element.tag == f"{SVG}rect" and element.get("id") in {"background", "base"}
+        for element in root.iter()
+    )
+
     artwork_1 = _svg_id(root, "artwork-1")
     artwork_2 = _svg_id(root, "artwork-2")
 
@@ -212,9 +216,6 @@ def test_laser_package_combines_registered_shape_and_artwork(
     assert artwork_2 is not None
     assert artwork_1 is not artwork_2
 
-    # Both regions retain their original geometry and share the
-    # authoritative Shape Compose placement, rather than being
-    # independently fitted into the laser document.
     rectangles = _svg_elements(root, "rect")
     assert len(rectangles) == 2
 
@@ -231,7 +232,6 @@ def test_laser_package_combines_registered_shape_and_artwork(
         (8.0, 3.0, 6.0, 10.0),
     }
 
-    # The result is a self-contained SVG with no linked image assets.
     assert not _svg_elements(root, "image")
 
     for element in root.iter():
@@ -445,20 +445,15 @@ def test_laser_package_exports_participating_shape_components(
     tmp_path: Path,
 ) -> None:
     """
-    Participating Shape components must appear as independent
-    manufacturing objects.
+    Laser exports registered manufacturing components independently.
 
-    Structural boundaries are outlines; registered border-label
-    glyphs remain filled vector geometry rather than construction
-    paths or text requiring font resolution.
+    Ridge geometry is a filled planar region. Border-label glyphs
+    remain registered filled vectors, not construction baselines
+    or font-dependent text.
     """
-
     directory = tmp_path / "shape" / "compose"
-
     manifest_path = _write_shape_composition(directory)
 
-    # A registered label Product generated by Shape Compose.
-    # It deliberately contains a filled path rather than <text>.
     (directory / "top-border-label.svg").write_text(
         f"""
         <svg xmlns="{SVG_NS}" viewBox="-0.5 -0.5 1 1">
@@ -466,8 +461,7 @@ def test_laser_package_exports_participating_shape_components(
               id="glyph-A"
               d="M -0.10 -0.30
                  L 0.00 -0.40
-                 L 0.10 -0.30
-                 Z"
+                 L 0.10 -0.30 Z"
               fill="black"/>
         </svg>
         """,
@@ -475,13 +469,138 @@ def test_laser_package_exports_participating_shape_components(
     )
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-
     manifest["border_labels"] = {
-        "top": {
-            "path": "top-border-label.svg",
-        },
+        "top": {"path": "top-border-label.svg"},
         "bottom": None,
     }
+    manifest_path.write_text(
+        json.dumps(manifest),
+        encoding="utf-8",
+    )
+
+    output_path = tmp_path / "laser" / "package" / "artifact.svg"
+
+    context = Mock(spec=StageContext)
+    context.input.side_effect = {
+        "shape.compose.manifest": manifest_path,
+    }.__getitem__
+    context.output.side_effect = {
+        "artifact": output_path,
+    }.__getitem__
+    context.resolver.side_effect = {
+        "shape_size": 100.0,
+    }.__getitem__
+
+    package.execute(context)
+
+    root = ET.parse(output_path).getroot()
+
+    boundary = _svg_id(root, "shape-boundary")
+    assert boundary is not None
+    assert boundary.get("fill") == "none"
+
+    ridge = _svg_id(root, "ridge")
+    assert ridge is not None
+    assert ridge.get("fill") == "black"
+    assert ridge.get("fill-rule") == "evenodd"
+
+    label = _svg_id(root, "top-border-label")
+    assert label is not None
+
+    glyphs = [element for element in label.iter(f"{SVG}path") if element.get("id") == "glyph-A"]
+
+    assert len(glyphs) == 1
+    assert glyphs[0].get("fill") == "black"
+
+    assert not list(root.iter(f"{SVG}text"))
+
+    for identifier in (
+        "top-border-label-path",
+        "bottom-border-label-path",
+        "border-label-top-baseline",
+        "border-label-bottom-baseline",
+    ):
+        assert _svg_id(root, identifier) is None
+
+    assert _svg_id(root, "artwork-1") is not None
+    assert _svg_id(root, "artwork-2") is not None
+
+
+def test_laser_package_preserves_centered_shape_layout(
+    tmp_path: Path,
+) -> None:
+    """
+    All registered Shape components share one centered coordinate system.
+
+    Outer and inner ridges retain their registered geometry.
+    Border labels retain their positions, and Artwork retains its
+    intentional offset rather than being independently centered.
+    """
+    directory = tmp_path / "shape" / "compose"
+    manifest_path = _write_shape_composition(directory)
+
+    composition_path = directory / "composition.svg"
+    composition = ET.parse(composition_path)
+
+    for identifier, radius in (
+        ("inner-ridge-outer-boundary", 0.35),
+        ("inner-ridge-inner-boundary", 0.33),
+    ):
+        ET.SubElement(
+            composition.getroot(),
+            f"{SVG}circle",
+            {
+                "id": identifier,
+                "cx": "0",
+                "cy": "0",
+                "r": str(radius),
+                "fill": "none",
+            },
+        )
+
+    composition.write(
+        composition_path,
+        encoding="utf-8",
+        xml_declaration=True,
+    )
+
+    labels = {
+        "top": (-0.10, -0.40, 0.10, -0.30),
+        "bottom": (-0.10, 0.30, 0.10, 0.40),
+    }
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    for position, (x1, y1, x2, y2) in labels.items():
+        filename = f"{position}-border-label.svg"
+
+        label = ET.Element(
+            f"{SVG}svg",
+            {"viewBox": "-0.5 -0.5 1 1"},
+        )
+
+        ET.SubElement(
+            label,
+            f"{SVG}rect",
+            {
+                "id": f"{position}-glyph",
+                "x": str(x1),
+                "y": str(y1),
+                "width": str(x2 - x1),
+                "height": str(y2 - y1),
+                "fill": "black",
+            },
+        )
+
+        ET.ElementTree(label).write(
+            directory / filename,
+            encoding="utf-8",
+            xml_declaration=True,
+        )
+
+        manifest["border_labels"][position] = {
+            "path": filename,
+        }
 
     manifest_path.write_text(
         json.dumps(manifest),
@@ -505,33 +624,55 @@ def test_laser_package_exports_participating_shape_components(
 
     root = ET.parse(output_path).getroot()
 
-    # The Shape perimeter is an outline, not a filled engraving.
-    boundary = _svg_id(root, "shape-boundary")
-    assert boundary is not None
-    assert boundary.get("fill") == "none"
-
-    # The label is an independent semantic component.
-    label = _svg_id(root, "top-border-label")
-    assert label is not None
-
-    # Registered glyph geometry must be included without text
-    # reconstruction or dependence on an installed font.
-    glyphs = [element for element in label.iter(f"{SVG}path") if element.get("id") == "glyph-A"]
-
-    assert len(glyphs) == 1
-    assert glyphs[0].get("fill") == "black"
-
-    assert not list(root.iter(f"{SVG}text"))
-
-    # The semantic label object must not be replaced by the
-    # construction baseline used during Shape composition.
-    construction_baseline = _svg_id(
-        root,
-        "top-border-label-path",
+    assert tuple(float(value) for value in root.attrib["viewBox"].split()) == pytest.approx(
+        (-0.5, -0.5, 1.0, 1.0)
     )
 
-    assert construction_baseline is None
+    assert _millimeters(root.attrib["width"]) == pytest.approx(100.0)
+    assert _millimeters(root.attrib["height"]) == pytest.approx(100.0)
 
-    # Existing registered Artwork remains independently present.
-    assert _svg_id(root, "artwork-1") is not None
-    assert _svg_id(root, "artwork-2") is not None
+    boundary = _svg_id(root, "shape-boundary")
+    assert boundary is not None
+    assert boundary.tag == f"{SVG}path"
+    assert "0.5 0.5" in boundary.attrib["d"]
+
+    outer_ridge = _svg_id(root, "ridge")
+    assert outer_ridge is not None
+    assert outer_ridge.get("fill-rule") == "evenodd"
+    assert outer_ridge.attrib["d"].count("M ") == 2
+    assert "0.5 0.5" in outer_ridge.attrib["d"]
+    assert "0.45 0.45" in outer_ridge.attrib["d"]
+
+    inner_ridge = _svg_id(root, "inner-ridge")
+    assert inner_ridge is not None
+    assert inner_ridge.get("fill-rule") == "evenodd"
+    assert inner_ridge.attrib["d"].count("M ") == 2
+    assert "0.35 0.35" in inner_ridge.attrib["d"]
+    assert "0.33 0.33" in inner_ridge.attrib["d"]
+
+    for identifier in (
+        "ridge-inner-boundary",
+        "inner-ridge-outer-boundary",
+        "inner-ridge-inner-boundary",
+    ):
+        assert _svg_id(root, identifier) is None
+
+    for position, (x1, y1, x2, y2) in labels.items():
+        group = _svg_id(root, f"{position}-border-label")
+        assert group is not None
+
+        glyph = _svg_id(group, f"{position}-glyph")
+        assert glyph is not None
+
+        assert float(glyph.attrib["x"]) == pytest.approx(x1)
+        assert float(glyph.attrib["y"]) == pytest.approx(y1)
+        assert float(glyph.attrib["width"]) == pytest.approx(x2 - x1)
+        assert float(glyph.attrib["height"]) == pytest.approx(y2 - y1)
+
+    artwork = _svg_id(root, "artwork")
+    assert artwork is not None
+
+    assert artwork.attrib["transform"] == ("translate(-0.4 -0.4) scale(0.05)")
+
+    assert _svg_id(artwork, "artwork-1") is not None
+    assert _svg_id(artwork, "artwork-2") is not None
