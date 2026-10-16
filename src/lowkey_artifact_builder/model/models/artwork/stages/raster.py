@@ -23,6 +23,7 @@ Small disconnected islands are removed using a raster pixel-area threshold.
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
@@ -154,60 +155,15 @@ def execute(
     """
     Execute the artwork raster stage.
 
-    Inputs:
+    PNG-derived Inkscape traces produce registered raster color layers.
 
-        prepare.trace
-            Multicolor SVG trace produced by prepare.
-
-    Parameters:
-
-        artwork_pixels
-            Width and height of every registered raster layer.
-
-        artwork_min_island_area
-            Minimum disconnected island area in square pixels.
-
-        artwork_island_connectivity
-            Pixel connectivity used for island detection.
-
-    Outputs:
-
-        manifest
-            JSON manifest describing generated raster layers and their
-            stable Artifact-color identities.
-
-    Physical printer-color assignment is not a raster concern. Raster
-    preserves the Artifact colors discovered by multicolor tracing and
-    produces registered geometry for downstream stages.
+    Native SVG sources bypass rasterization. Their authored vector
+    objects and Artifact-color identities are recorded for Vector
+    to register without retracing.
     """
 
-    trace = context.input(
-        "prepare.trace",
-    )
-
-    manifest = context.output(
-        "manifest",
-    )
-
-    pixels = _positive_integer(
-        "artwork_pixels",
-        context.resolver(
-            "artwork_pixels",
-        ),
-    )
-
-    minimum_area = _positive_integer(
-        "artwork_min_island_area",
-        context.resolver(
-            "artwork_min_island_area",
-        ),
-    )
-
-    connectivity = _connectivity(
-        context.resolver(
-            "artwork_island_connectivity",
-        )
-    )
+    trace = context.input("prepare.trace")
+    manifest = context.output("manifest")
 
     if not trace.is_file():
         raise RasterError(f"Artwork trace does not exist: {trace}")
@@ -219,6 +175,28 @@ def execute(
 
     try:
         tree = load(trace)
+
+        if _is_native_svg(tree):
+            _write_native_svg_manifest(
+                trace,
+                manifest,
+                tree,
+            )
+            return
+
+        # Existing PNG-derived trace workflow.
+
+        pixels = _positive_integer(
+            "artwork_pixels",
+            context.resolver("artwork_pixels"),
+        )
+
+        minimum_area = _positive_integer(
+            "artwork_min_island_area",
+            context.resolver("artwork_min_island_area"),
+        )
+
+        connectivity = _connectivity(context.resolver("artwork_island_connectivity"))
 
         objects = get_trace_objects(tree)
 
@@ -268,8 +246,163 @@ def execute(
         SVGError,
         InkscapeError,
         OSError,
+        ET.ParseError,
     ) as exc:
-        raise RasterError(f"Could not rasterize artwork trace {trace}: {exc}") from exc
+        raise RasterError(f"Could not process artwork trace {trace}: {exc}") from exc
+
+
+def _is_native_svg(
+    tree: ET.ElementTree[ET.Element[str]],
+) -> bool:
+    """
+    Distinguish native vector artwork from PNG-derived traces.
+
+    The PNG trace retains its original embedded raster image.
+    Native SVG artwork contains no image elements.
+
+    An SVG containing an image but lacking the expected Inkscape
+    trace structure is not accepted as native artwork.
+    """
+
+    root = tree.getroot()
+
+    if root.tag != f"{{{SVG_NS}}}svg":
+        raise RasterError("Artwork source is not an SVG document.")
+
+    image_tag = f"{{{SVG_NS}}}image"
+
+    contains_image = any(element.tag == image_tag for element in root.iter())
+
+    if not contains_image:
+        return True
+
+    try:
+        get_trace_objects(tree)
+    except SVGError as exc:
+        raise RasterError(
+            "SVG contains embedded raster content without a valid Inkscape multicolor trace."
+        ) from exc
+
+    return False
+
+
+def _native_svg_objects(
+    tree: ET.ElementTree[ET.Element[str]],
+) -> list[tuple[str, tuple[int, int, int]]]:
+    """
+    Discover native SVG path objects and their authored RGB colors.
+
+    Colors are inherited through SVG groups and may be specified
+    through either fill attributes or inline style.
+
+    Repeated RGB values remain distinct objects but share one
+    Artifact-color identity when the manifest is written.
+    """
+
+    root = tree.getroot()
+
+    path_tag = f"{{{SVG_NS}}}path"
+    group_tag = f"{{{SVG_NS}}}g"
+
+    objects: list[tuple[str, tuple[int, int, int]]] = []
+    used_ids: set[str] = set()
+
+    def effective_fill(
+        element: ET.Element[str],
+        inherited: str,
+    ) -> str:
+        fill = element.get("fill", inherited)
+
+        style = element.get("style", "")
+
+        for declaration in style.split(";"):
+            if ":" not in declaration:
+                continue
+
+            name, value = declaration.split(":", 1)
+
+            if name.strip().lower() == "fill":
+                fill = value.strip()
+
+        return fill.strip()
+
+    def parse_rgb(
+        value: str,
+    ) -> tuple[int, int, int] | None:
+        value = value.strip().lower()
+
+        if value == "none":
+            return None
+
+        if not value.startswith("#"):
+            raise RasterError(f"Unsupported native SVG fill color: {value}")
+
+        hexadecimal = value[1:]
+
+        if len(hexadecimal) == 3:
+            hexadecimal = "".join(character * 2 for character in hexadecimal)
+
+        if len(hexadecimal) != 6:
+            raise RasterError(f"Unsupported native SVG fill color: {value}")
+
+        try:
+            return (
+                int(hexadecimal[0:2], 16),
+                int(hexadecimal[2:4], 16),
+                int(hexadecimal[4:6], 16),
+            )
+        except ValueError as exc:
+            raise RasterError(f"Invalid native SVG fill color: {value}") from exc
+
+    def visit(
+        element: ET.Element[str],
+        inherited_fill: str,
+    ) -> None:
+        fill = effective_fill(
+            element,
+            inherited_fill,
+        )
+
+        if element.tag == path_tag:
+            object_id = element.get("id")
+
+            if not object_id:
+                raise RasterError("Native SVG paths must have object IDs.")
+
+            if object_id in used_ids:
+                raise RasterError(f"Duplicate native SVG object ID: {object_id}")
+
+            used_ids.add(object_id)
+
+            rgb = parse_rgb(fill)
+
+            if rgb is not None:
+                objects.append((object_id, rgb))
+
+            return
+
+        if element.tag == group_tag or element is root:
+            for child in element:
+                visit(child, fill)
+            return
+
+        if element.tag in {
+            f"{{{SVG_NS}}}defs",
+            f"{{{SVG_NS}}}metadata",
+            f"{{{SVG_NS}}}title",
+            f"{{{SVG_NS}}}desc",
+            f"{{{SVG_NS}}}namedview",
+        }:
+            return
+
+        raise RasterError(f"Unsupported native SVG element: {element.tag.rsplit('}', 1)[-1]}")
+
+    visit(root, "black")
+
+    if not objects:
+        raise RasterError("Native SVG contains no supported filled paths.")
+
+    return objects
 
 
 # =========================================================
@@ -1146,6 +1279,72 @@ def _write_manifest(
     }
 
     path.write_text(
+        json.dumps(
+            data,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_native_svg_manifest(
+    source: Path,
+    manifest: Path,
+    tree: ET.ElementTree[ET.Element[str]],
+) -> None:
+    """
+    Publish native SVG object and Artifact-color identities.
+
+    The source SVG is referenced, not copied or rasterized.
+
+    Object identities remain distinct. Repeated RGB colors receive
+    the same Artifact-color index, assigned in first-occurrence order.
+
+    Vector owns subsequent registered geometry construction.
+    """
+
+    objects = _native_svg_objects(tree)
+
+    color_indices: dict[
+        tuple[int, int, int],
+        int,
+    ] = {}
+
+    products: list[dict[str, Any]] = []
+
+    for object_id, rgb in objects:
+        if rgb not in color_indices:
+            color_indices[rgb] = len(color_indices) + 1
+
+        color_index = color_indices[rgb]
+
+        products.append(
+            {
+                "object_id": object_id,
+                "artifact_color": {
+                    "index": color_index,
+                    "rgb": {
+                        "red": rgb[0],
+                        "green": rgb[1],
+                        "blue": rgb[2],
+                    },
+                },
+            }
+        )
+
+    relative_source = os.path.relpath(
+        source.resolve(),
+        start=manifest.parent.resolve(),
+    )
+
+    data = {
+        "representation": "native-svg",
+        "source": relative_source,
+        "products": products,
+    }
+
+    manifest.write_text(
         json.dumps(
             data,
             indent=2,

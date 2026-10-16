@@ -193,6 +193,12 @@ def _execute_stubbed_raster(
 
     monkeypatch.setattr(
         raster,
+        "_is_native_svg",
+        lambda tree: False,
+    )
+
+    monkeypatch.setattr(
+        raster,
         "get_trace_objects",
         lambda tree: objects,
     )
@@ -338,6 +344,12 @@ def test_raster_uses_declared_prepare_trace(
 
     monkeypatch.setattr(
         raster,
+        "_is_native_svg",
+        lambda tree: False,
+    )
+
+    monkeypatch.setattr(
+        raster,
         "get_trace_objects",
         lambda tree: ["object-1"],
     )
@@ -442,6 +454,12 @@ def test_raster_places_dynamic_pngs_beside_declared_manifest(
         raster,
         "load",
         lambda source: object(),
+    )
+
+    monkeypatch.setattr(
+        raster,
+        "_is_native_svg",
+        lambda tree: False,
     )
 
     monkeypatch.setattr(
@@ -925,3 +943,172 @@ def test_raster_executes_without_printer_colors(
             "blue": 61,
         },
     ]
+
+
+def test_raster_native_svg_preserves_authored_colors_without_rasterization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Native SVG passes through Raster without PNG rendering or tracing.
+
+    The manifest identifies the native source and its authored color
+    regions for subsequent registered-vector processing.
+    """
+
+    trace = tmp_path / "prepare" / "trace.svg"
+    trace.parent.mkdir(parents=True)
+
+    trace.write_text(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             width="100" height="100"
+             viewBox="0 0 100 100">
+          <g transform="translate(10, 5)">
+            <path id="red-region"
+                  d="M 0 0 H 60 V 60 H 0 Z
+                     M 20 20 H 40 V 40 H 20 Z"
+                  fill="#ff0000"
+                  fill-rule="evenodd"/>
+          </g>
+          <path id="blue-region"
+                d="M 70 70 H 90 V 90 H 70 Z"
+                fill="#0000ff"/>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    manifest = tmp_path / "raster" / "products.json"
+
+    context = StubContext(
+        inputs={"prepare.trace": trace},
+        outputs={"manifest": manifest},
+        resolver=_resolver(),
+    )
+
+    def unexpected_rasterization(
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        pytest.fail("Native SVG must not generate raster layers.")
+
+    monkeypatch.setattr(
+        raster,
+        "_render_layers",
+        unexpected_rasterization,
+    )
+
+    monkeypatch.setattr(
+        raster,
+        "_cleanup_layers",
+        unexpected_rasterization,
+    )
+
+    raster.execute(context)  # type: ignore[arg-type]
+
+    assert manifest.is_file()
+
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+
+    assert data["representation"] == "native-svg"
+
+    source = data["source"]
+
+    assert isinstance(source, str)
+    assert (manifest.parent / source).resolve() == trace.resolve()
+
+    products = data["products"]
+
+    assert len(products) == 2
+
+    assert [product["artifact_color"] for product in products] == [
+        {
+            "index": 1,
+            "rgb": {"red": 255, "green": 0, "blue": 0},
+        },
+        {
+            "index": 2,
+            "rgb": {"red": 0, "green": 0, "blue": 255},
+        },
+    ]
+
+    assert {product["object_id"] for product in products} == {"red-region", "blue-region"}
+
+    assert not list(manifest.parent.glob("color-*.png"))
+
+
+def test_raster_native_svg_groups_objects_by_authored_color(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Separate SVG objects with the same authored RGB share one
+    Artifact-color identity without losing their object identities.
+    """
+
+    trace = tmp_path / "prepare" / "trace.svg"
+    trace.parent.mkdir(parents=True)
+
+    trace.write_text(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             width="100" height="100"
+             viewBox="0 0 100 100">
+          <path id="red-left"
+                d="M 0 0 H 20 V 20 H 0 Z"
+                fill="#ff0000"/>
+          <path id="blue-middle"
+                d="M 30 0 H 50 V 20 H 30 Z"
+                fill="#0000ff"/>
+          <path id="red-right"
+                d="M 60 0 H 80 V 20 H 60 Z"
+                fill="#ff0000"/>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    manifest = tmp_path / "raster" / "products.json"
+
+    context = StubContext(
+        inputs={"prepare.trace": trace},
+        outputs={"manifest": manifest},
+        resolver=_resolver(),
+    )
+
+    def unexpected_rasterization(
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        pytest.fail("Native SVG must not generate raster layers.")
+
+    monkeypatch.setattr(
+        raster,
+        "_render_layers",
+        unexpected_rasterization,
+    )
+
+    monkeypatch.setattr(
+        raster,
+        "_cleanup_layers",
+        unexpected_rasterization,
+    )
+
+    raster.execute(context)  # type: ignore[arg-type]
+
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+
+    products = data["products"]
+
+    assert len(products) == 3
+
+    by_object = {product["object_id"]: product["artifact_color"] for product in products}
+
+    assert by_object["red-left"] == by_object["red-right"]
+
+    assert by_object["red-left"] != by_object["blue-middle"]
+
+    assert {color["index"] for color in by_object.values()} == {1, 2}
+
+    assert not list(manifest.parent.glob("color-*.png"))
