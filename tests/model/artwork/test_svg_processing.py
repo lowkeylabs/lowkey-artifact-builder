@@ -989,3 +989,298 @@ def test_native_svg_extrude_preserves_disconnected_regions(
 
     # The space between the regions remains empty.
     assert not top_surface_contains(0.0, 0.0)
+
+
+# ----------------------------------------------------------------
+# Batch 2 — Native SVG manufacturing integration
+# ----------------------------------------------------------------
+
+
+def _manufacturing_svg_context(
+    tmp_path: Path,
+    **overrides: Any,
+) -> tuple[StubContext, Path]:
+    """
+    Construct a transformed, non-square registered SVG for real extrusion.
+
+    Authored envelope: X=0..80, Y=0..40.
+    Registered envelope: X=30..110, Y=40..80.
+    Physical envelope at artwork_size=100: 100 x 50, centered.
+    """
+    vector_directory = tmp_path / "vector"
+    vector_directory.mkdir(parents=True, exist_ok=True)
+
+    svg = """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 200 200">
+            <g transform="translate(30,40)">
+                <path d="M 0 0 H 80 V 40 H 0 Z"/>
+            </g>
+        </svg>
+    """
+
+    envelope = vector_directory / "envelope.svg"
+    layer = vector_directory / "color-1.svg"
+
+    envelope.write_text(svg, encoding="utf-8")
+    layer.write_text(svg, encoding="utf-8")
+
+    vector_manifest = vector_directory / "products.json"
+    vector_manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 200,
+                "envelope": envelope.name,
+                "products": [
+                    _product(
+                        index=1,
+                        path=layer.name,
+                        artifact_color_index=1,
+                        artifact_rgb=(255, 0, 0),
+                    ),
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    parameters: dict[str, Any] = {
+        "artwork_size": 100.0,
+        "artwork_raise": 1.5,
+        "artwork_base_raise": 0.0,
+        "artwork_outer_ridge_width": 0.0,
+        "loop_inner_diameter": 0.0,
+        "artwork_hole_diameter": 0.0,
+    }
+    parameters.update(overrides)
+
+    context = StubContext(
+        inputs={"artwork.vector.manifest": vector_manifest},
+        outputs={"manifest": extrude_manifest},
+        resolver=_resolver(tmp_path, **parameters),
+    )
+
+    return context, extrude_manifest
+
+
+def _stl_top_surface_contains(
+    path: Path,
+    *,
+    x: float,
+    y: float,
+    z: float,
+) -> bool:
+    """
+    Determine whether an interior point belongs to an STL top surface.
+
+    This checks actual rendered triangles, not just the STL bounding box.
+    Test points should be strictly inside or outside expected regions,
+    rather than exactly on their boundaries.
+    """
+    vertices: list[tuple[float, float, float]] = []
+
+    for line in path.read_text(encoding="utf-8").splitlines():
+        fields = line.strip().split()
+
+        if fields[:1] != ["vertex"]:
+            continue
+
+        vertex = tuple(float(value) for value in fields[1:])
+        assert len(vertex) == 3
+        vertices.append(vertex)
+
+    assert vertices
+    assert len(vertices) % 3 == 0
+
+    for index in range(0, len(vertices), 3):
+        a, b, c = vertices[index : index + 3]
+
+        if not all(abs(vertex[2] - z) < 0.01 for vertex in (a, b, c)):
+            continue
+
+        def cross(
+            p: tuple[float, float, float],
+            q: tuple[float, float, float],
+        ) -> float:
+            return (q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0])
+
+        values = (
+            cross(a, b),
+            cross(b, c),
+            cross(c, a),
+        )
+
+        if min(values) >= -1e-6 or max(values) <= 1e-6:
+            return True
+
+    return False
+
+
+def test_native_svg_base_preserves_transformed_envelope_and_z_registration(
+    tmp_path: Path,
+) -> None:
+    """
+    Base uses the transformed native SVG envelope.
+
+    The Base occupies Z=0..2, and Artwork occupies Z=2..3.5.
+    Both retain the same physical XY registration.
+    """
+    context, manifest = _manufacturing_svg_context(
+        tmp_path,
+        artwork_base_raise=2.0,
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    base = manifest.parent / "base.stl"
+    artwork = manifest.parent / "color-1.stl"
+
+    assert base.is_file()
+    assert artwork.is_file()
+
+    assert _stl_bounds(base) == pytest.approx(
+        (-50.0, 50.0, -25.0, 25.0, 0.0, 2.0),
+        abs=0.01,
+    )
+
+    assert _stl_bounds(artwork) == pytest.approx(
+        (-50.0, 50.0, -25.0, 25.0, 2.0, 3.5),
+        abs=0.01,
+    )
+
+
+def test_native_svg_loop_attaches_to_transformed_envelope(
+    tmp_path: Path,
+) -> None:
+    """
+    Loop attaches to the physical top edge of the registered SVG.
+
+    The envelope's physical top is Y=25, not the viewBox top.
+    The Loop inner radius is 3 and outer radius is 5, placing
+    its center at Y=28 and its outer extent at Y=23..33.
+    """
+    context, manifest = _manufacturing_svg_context(
+        tmp_path,
+        artwork_base_raise=2.0,
+        loop_inner_diameter=6.0,
+        loop_width=2.0,
+        loop_position=0,
+        loop_raise=1.5,
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    loop = manifest.parent / "loop.stl"
+    artwork = manifest.parent / "color-1.stl"
+
+    assert loop.is_file()
+    assert artwork.is_file()
+
+    assert _stl_bounds(artwork) == pytest.approx(
+        (-50.0, 50.0, -25.0, 25.0, 2.0, 3.5),
+        abs=0.01,
+    )
+
+    assert _stl_bounds(loop) == pytest.approx(
+        (-5.0, 5.0, 23.0, 33.0, 2.0, 3.5),
+        abs=0.01,
+    )
+
+    # The annulus contains material outside its inner opening.
+    assert _stl_top_surface_contains(loop, x=0.0, y=32.0, z=3.5)
+
+    # The central opening remains empty.
+    assert not _stl_top_surface_contains(loop, x=0.0, y=28.0, z=3.5)
+
+
+def test_native_svg_outer_ridge_preserves_registered_perimeter(
+    tmp_path: Path,
+) -> None:
+    """
+    Outer Ridge surrounds the transformed SVG envelope.
+
+    The overall manufactured envelope remains 100 x 50.
+    A ridge width of 4 reserves a uniform scale of 0.92
+    for the Artwork proper, producing 92 x 46 geometry.
+    """
+    context, manifest = _manufacturing_svg_context(
+        tmp_path,
+        artwork_outer_ridge_width=4.0,
+        artwork_outer_ridge_raise=2.0,
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    ridge = manifest.parent / "outer-ridge.stl"
+    artwork = manifest.parent / "color-1.stl"
+
+    assert ridge.is_file()
+    assert artwork.is_file()
+
+    assert _stl_bounds(ridge) == pytest.approx(
+        (-50.0, 50.0, -25.0, 25.0, 0.0, 2.0),
+        abs=0.01,
+    )
+
+    assert _stl_bounds(artwork) == pytest.approx(
+        (-46.0, 46.0, -23.0, 23.0, 0.0, 1.5),
+        abs=0.01,
+    )
+
+    # The ridge contains perimeter material.
+    assert _stl_top_surface_contains(ridge, x=49.0, y=0.0, z=2.0)
+
+    # The ridge interior is empty.
+    assert not _stl_top_surface_contains(ridge, x=0.0, y=0.0, z=2.0)
+
+    # The reduced Artwork occupies the ridge opening.
+    assert _stl_top_surface_contains(artwork, x=0.0, y=0.0, z=1.5)
+
+
+def test_native_svg_configured_hole_subtracts_base_and_artwork(
+    tmp_path: Path,
+) -> None:
+    """
+    A configured Hole subtracts material from native SVG Artwork and Base.
+
+    The physical envelope is 100 x 50, centered at the origin.
+    With a 10 mm hole and 5 mm edge distance at the top,
+    the hole center is (0, 15), radius 5.
+
+    The Hole is independent of SVG-authored even-odd holes.
+    """
+    context, manifest = _manufacturing_svg_context(
+        tmp_path,
+        artwork_base_raise=2.0,
+        artwork_hole_diameter=10.0,
+        artwork_hole_edge_distance=5.0,
+        artwork_hole_position=0,
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    base = manifest.parent / "base.stl"
+    artwork = manifest.parent / "color-1.stl"
+
+    assert base.is_file()
+    assert artwork.is_file()
+
+    assert _stl_bounds(base) == pytest.approx(
+        (-50.0, 50.0, -25.0, 25.0, 0.0, 2.0),
+        abs=0.01,
+    )
+
+    assert _stl_bounds(artwork) == pytest.approx(
+        (-50.0, 50.0, -25.0, 25.0, 2.0, 3.5),
+        abs=0.01,
+    )
+
+    # Material exists away from the configured Hole.
+    assert _stl_top_surface_contains(base, x=20.0, y=0.0, z=2.0)
+    assert _stl_top_surface_contains(artwork, x=20.0, y=0.0, z=3.5)
+
+    # The configured Hole passes through both components.
+    assert not _stl_top_surface_contains(base, x=0.0, y=15.0, z=2.0)
+    assert not _stl_top_surface_contains(artwork, x=0.0, y=15.0, z=3.5)
