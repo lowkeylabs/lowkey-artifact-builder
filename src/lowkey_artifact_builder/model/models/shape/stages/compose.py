@@ -480,8 +480,10 @@ def execute(
     _write_artifact_svg(
         artifact_output,
         composition=composition_output,
+        border_labels=border_labels,
         artwork=artwork,
         artwork_transform=artwork_transform,
+        qr=qr,
         shape_size=shape_size,
     )
 
@@ -490,20 +492,23 @@ def _write_artifact_svg(
     path: Path,
     *,
     composition: Path,
+    border_labels: dict[str, dict[str, object] | None],
     artwork: RegisteredArtwork | None,
     artwork_transform: RegisteredArtworkTransform | None,
+    qr: RegisteredQR | None,
     shape_size: float,
 ) -> None:
     """
     Write the canonical, physically dimensioned Shape SVG.
 
-    Registered ridge boundaries become filled planar regions.
-    Construction geometry is not exported as visible geometry.
+    Registered structural boundaries become filled planar ridge regions.
+    Border Labels and QR components reuse persistent registered geometry.
 
-    Artwork components preserve their registered RGB identities
-    and share the authoritative placement transform.
+    Artwork retains its component identities, RGB colors, and common
+    placement transform. A participating QR excludes its complete rounded
+    footprint from Artwork, including the quiet zone.
 
-    The solid Shape Base is excluded.
+    Construction geometry and the solid Shape Base are excluded.
     """
     if not math.isfinite(shape_size) or shape_size <= 0.0:
         raise ValueError("Canonical Shape SVG requires positive finite Shape size.")
@@ -580,6 +585,46 @@ def _write_artifact_svg(
             },
         )
 
+    # Border Labels are already fitted and vectorized by Compose.
+    # Import their registered glyph geometry without repeating typography.
+
+    for position in ("top", "bottom"):
+        component = border_labels.get(position)
+
+        if component is None:
+            continue
+
+        relative_path = component.get("path")
+
+        if not isinstance(relative_path, str):
+            raise ValueError(f"Canonical Shape SVG requires a registered {position} label path.")
+
+        label_group = ET.SubElement(
+            root,
+            SVG_GROUP,
+            {
+                "id": f"{position}-border-label",
+                "fill": "black",
+                "stroke": "none",
+            },
+        )
+
+        _append_registered_svg(
+            label_group,
+            path.parent / relative_path,
+        )
+
+    # The QR footprint is the authoritative exclusion geometry shared
+    # by the manifest, QR background, and Artwork mask.
+
+    footprint: dict[str, float | str] | None = None
+
+    if qr is not None:
+        footprint = _registered_qr_footprint(
+            qr,
+            shape_size=shape_size,
+        )
+
     if artwork is not None:
         if artwork_transform is None:
             raise ValueError("Canonical Shape SVG requires registered Artwork placement.")
@@ -592,6 +637,58 @@ def _write_artifact_svg(
                 "stroke": "none",
             },
         )
+
+        if footprint is not None:
+            defs = ET.SubElement(
+                root,
+                f"{{{SVG_NAMESPACE}}}defs",
+            )
+
+            mask = ET.SubElement(
+                defs,
+                f"{{{SVG_NAMESPACE}}}mask",
+                {
+                    "id": "qr-artwork-exclusion",
+                    "maskUnits": "userSpaceOnUse",
+                    "maskContentUnits": "userSpaceOnUse",
+                    "x": "-0.5",
+                    "y": "-0.5",
+                    "width": "1",
+                    "height": "1",
+                    "style": "mask-type:luminance",
+                },
+            )
+
+            ET.SubElement(
+                mask,
+                SVG_RECT,
+                {
+                    "x": "-0.5",
+                    "y": "-0.5",
+                    "width": "1",
+                    "height": "1",
+                    "fill": "white",
+                },
+            )
+
+            ET.SubElement(
+                mask,
+                SVG_RECT,
+                {
+                    "x": f"{float(footprint['x']):g}",
+                    "y": f"{float(footprint['y']):g}",
+                    "width": f"{float(footprint['width']):g}",
+                    "height": f"{float(footprint['height']):g}",
+                    "rx": f"{float(footprint['corner_radius']):g}",
+                    "ry": f"{float(footprint['corner_radius']):g}",
+                    "fill": "black",
+                },
+            )
+
+            artwork_group.set(
+                "mask",
+                "url(#qr-artwork-exclusion)",
+            )
 
         transform = artwork_transform
 
@@ -618,6 +715,49 @@ def _write_artifact_svg(
             for element in component_root:
                 component_group.append(ET.fromstring(ET.tostring(element, encoding="unicode")))
 
+    # QR is independent of Artwork. Its light background must cover
+    # the entire quiet zone, and its dark modules remain a distinct
+    # manufacturing component.
+
+    if qr is not None:
+        if footprint is None:
+            raise ValueError("Canonical Shape SVG requires QR footprint.")
+
+        for name in ("qr-light", "qr-dark"):
+            component_path = qr.components.get(name)
+
+            if component_path is None:
+                raise ValueError(f"Canonical Shape SVG requires registered {name} geometry.")
+
+            qr_group = ET.SubElement(
+                root,
+                SVG_GROUP,
+                {
+                    "id": name,
+                    "fill": "white" if name == "qr-light" else "black",
+                    "stroke": "none",
+                },
+            )
+
+            if name == "qr-light":
+                ET.SubElement(
+                    qr_group,
+                    SVG_RECT,
+                    {
+                        "x": f"{float(footprint['x']):g}",
+                        "y": f"{float(footprint['y']):g}",
+                        "width": f"{float(footprint['width']):g}",
+                        "height": f"{float(footprint['height']):g}",
+                        "rx": f"{float(footprint['corner_radius']):g}",
+                        "ry": f"{float(footprint['corner_radius']):g}",
+                    },
+                )
+
+            _append_registered_svg(
+                qr_group,
+                component_path,
+            )
+
     ET.register_namespace("", SVG_NAMESPACE)
 
     ET.ElementTree(root).write(
@@ -625,6 +765,31 @@ def _write_artifact_svg(
         encoding="unicode",
         xml_declaration=True,
     )
+
+
+def _append_registered_svg(
+    destination: ET.Element,
+    source: Path,
+) -> None:
+    """
+    Append persistent registered SVG geometry to an output group.
+
+    The producer's root SVG is a registered coordinate container.
+    Its children are copied without recomputing geometry, placement,
+    typography, or component identity.
+
+    The resulting canonical SVG is self-contained.
+    """
+    source_root = ET.parse(source).getroot()
+
+    if source_root.tag != f"{{{SVG_NAMESPACE}}}svg":
+        raise ValueError(f"Registered SVG component requires an SVG root: {source}")
+
+    if not len(source_root):
+        raise ValueError(f"Registered SVG component contains no geometry: {source}")
+
+    for element in source_root:
+        destination.append(ET.fromstring(ET.tostring(element, encoding="unicode")))
 
 
 def _svg_boundary_path(element: ET.Element) -> str:

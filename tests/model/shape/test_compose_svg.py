@@ -10,6 +10,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import Mock
 
+import pytest
+
 from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.model.models.shape import MODEL
 from lowkey_artifact_builder.model.models.shape.stages import compose
@@ -74,6 +76,10 @@ def _run_compose(
     offset_y: float = 0.0,
     scale: float = 1.0,
     outer_ridge_width: float = 0.0,
+    top_label: str = "",
+    bottom_label: str = "",
+    qr_payload: str = "",
+    qr_size: float = 20.0,
 ) -> tuple[Path, Path, Path]:
     """Execute SHAPE Compose with real registered inputs."""
     directory.mkdir(parents=True, exist_ok=True)
@@ -116,9 +122,12 @@ def _run_compose(
         "shape_border_label_arc_degrees": 140.0,
         "shape_border_label_end_margin": 1.0,
         "shape_border_label_font_family": "DejaVu Sans",
-        "shape_top_border_label_text": "",
-        "shape_bottom_border_label_text": "",
-        "shape_qr_payload": "",
+        "shape_top_border_label_text": top_label,
+        "shape_bottom_border_label_text": bottom_label,
+        "shape_qr_payload": qr_payload,
+        "shape_qr_size": qr_size,
+        "shape_qr_alignment": "centered",
+        "shape_qr_position": 0.0,
         "shape_artwork_offset_x": offset_x,
         "shape_artwork_offset_y": offset_y,
         "shape_artwork_scale": scale,
@@ -332,3 +341,199 @@ def test_compose_svg_preserves_registered_artwork_colors(
 
     # Both components must use the same registered placement.
     assert components["artwork-1"].get("transform") == components["artwork-2"].get("transform")
+
+
+def test_compose_svg_includes_registered_border_label_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Participating Border Labels must appear as portable vector
+    geometry in the canonical SVG.
+
+    The SVG must reuse the registered glyph geometry persisted
+    by Compose rather than exporting construction baselines.
+    """
+    artifact, _, manifest_path = _run_compose(
+        tmp_path / "output",
+        shape_size=100.0,
+        outer_ridge_width=2.0,
+        top_label="Holiday House Tour",
+        bottom_label="Fan District RVA",
+    )
+
+    root = _svg_root(artifact)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    labels = manifest["border_labels"]
+
+    for position in ("top", "bottom"):
+        component = labels[position]
+        assert component is not None
+
+        source = manifest_path.parent / component["path"]
+        assert source.is_file()
+
+        source_root = ET.parse(source).getroot()
+        source_paths = list(source_root.iter(f"{{{SVG}}}path"))
+
+        assert source_paths, f"Missing registered {position} glyph paths"
+
+        exported = next(
+            (element for element in root.iter() if element.get("id") == f"{position}-border-label"),
+            None,
+        )
+
+        assert exported is not None
+        assert list(exported.iter(f"{{{SVG}}}path"))
+
+    # Construction geometry is not manufacturing geometry.
+    construction_ids = {
+        "border-label-top-baseline",
+        "border-label-bottom-baseline",
+        "border-label-inner-boundary",
+        "top-border-label-path",
+        "bottom-border-label-path",
+    }
+
+    assert not any(element.get("id") in construction_ids for element in root.iter())
+
+    # Text must already be converted into portable paths.
+    assert not list(root.iter(f"{{{SVG}}}text"))
+    assert not list(root.iter(f"{{{SVG}}}textPath"))
+
+
+def test_compose_svg_includes_registered_qr_components_without_artwork(
+    tmp_path: Path,
+) -> None:
+    """
+    QR is Shape-owned and must appear in the canonical SVG
+    even when no incorporated Artwork exists.
+
+    Dark and light geometry retain independent identities.
+    """
+    artifact, _, manifest_path = _run_compose(
+        tmp_path / "output",
+        shape_size=100.0,
+        qr_payload="https://lowkeylabs.com",
+        qr_size=30.0,
+    )
+
+    root = _svg_root(artifact)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["artwork"] is None
+
+    qr = manifest["qr"]
+
+    assert set(qr["components"]) == {"qr-dark", "qr-light"}
+
+    for name in ("qr-dark", "qr-light"):
+        source = manifest_path.parent / qr["components"][name]["path"]
+
+        assert source.is_file()
+
+        exported = next(
+            (element for element in root.iter() if element.get("id") == name),
+            None,
+        )
+
+        assert exported is not None
+
+        geometry = [
+            element
+            for element in exported.iter()
+            if element.tag
+            in {
+                f"{{{SVG}}}path",
+                f"{{{SVG}}}rect",
+                f"{{{SVG}}}circle",
+                f"{{{SVG}}}polygon",
+            }
+        ]
+
+        assert geometry, f"Missing exported {name} geometry"
+
+    footprint = qr["footprint"]
+
+    assert footprint["width"] == pytest.approx(0.3)
+    assert footprint["height"] == pytest.approx(0.3)
+
+    assert root.get("width") == "100mm"
+    assert root.get("height") == "100mm"
+
+    assert not any(element.get("id") == "base" for element in root.iter())
+
+
+def test_compose_svg_qr_precedence_preserves_artwork_registration(
+    tmp_path: Path,
+) -> None:
+    """
+    QR must reserve its complete footprint, including the
+    quiet zone, against underlying Artwork in the SVG.
+
+    Artwork component identities, colors, and placement
+    remain authoritative.
+    """
+    artwork_manifest = _write_artwork(tmp_path / "source")
+
+    artifact, _, manifest_path = _run_compose(
+        tmp_path / "output",
+        artwork_manifest=artwork_manifest,
+        shape_size=100.0,
+        qr_payload="https://lowkeylabs.com",
+        qr_size=30.0,
+    )
+
+    root = _svg_root(artifact)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    artwork = manifest["artwork"]
+    qr = manifest["qr"]
+
+    assert artwork is not None
+    assert len(artwork["exclusions"]) == 1
+
+    exclusion = artwork["exclusions"][0]
+    footprint = qr["footprint"]
+
+    for key in ("x", "y", "width", "height", "corner_radius"):
+        assert exclusion[key] == pytest.approx(footprint[key])
+
+    groups = {
+        element.get("id"): element
+        for element in root.iter(f"{{{SVG}}}g")
+        if element.get("id")
+        in {
+            "artwork-1",
+            "artwork-2",
+            "qr-dark",
+            "qr-light",
+        }
+    }
+
+    assert set(groups) == {
+        "artwork-1",
+        "artwork-2",
+        "qr-dark",
+        "qr-light",
+    }
+
+    assert groups["artwork-1"].get("fill") == "#f0f0f0"
+    assert groups["artwork-2"].get("fill") == "#141414"
+
+    assert groups["artwork-1"].get("transform") == groups["artwork-2"].get("transform")
+
+    # The QR footprint must actually mask or clip the
+    # underlying Artwork, not merely cover it visually
+    # with an opaque rectangle.
+    artwork_group = next(
+        element for element in root.iter(f"{{{SVG}}}g") if element.get("id") == "artwork"
+    )
+
+    masking = [
+        element
+        for element in (artwork_group, *artwork_group.iter())
+        if element.get("clip-path") or element.get("mask")
+    ]
+
+    assert masking, "QR precedence must exclude the complete QR footprint from exported Artwork."
