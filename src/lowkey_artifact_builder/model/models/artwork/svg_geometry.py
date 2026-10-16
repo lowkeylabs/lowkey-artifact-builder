@@ -416,7 +416,20 @@ def validate_nonoverlapping_colors(
         regions.append((object_id, color, region))
 
 
+SVGMatrix = Matrix
+SVG_IDENTITY = _IDENTITY
+
+svg_transform_matrix = _transform_matrix
+svg_multiply = _multiply
+svg_apply = _apply
+
+
 __all__ = [
     "SVGGeometryError",
+    "SVGMatrix",
+    "SVG_IDENTITY",
+    "svg_transform_matrix",
+    "svg_multiply",
+    "svg_apply",
     "validate_nonoverlapping_colors",
 ]

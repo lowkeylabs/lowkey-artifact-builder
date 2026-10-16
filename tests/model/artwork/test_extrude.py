@@ -2273,3 +2273,97 @@ def test_participating_outer_ridge_records_attachment_artifact_color_index(
         "path": "outer-ridge.stl",
         "artifact_color_index": 7,
     }
+
+
+def test_native_svg_envelope_bounds_include_registration_transform(
+    tmp_path: Path,
+) -> None:
+    """
+    Native Vector may register authored SVG geometry through an
+    outer group transform.
+
+    Extrude must measure the registered envelope, not the original
+    untransformed path coordinates.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 100 100">
+            <g transform="translate(-20,-10)">
+                <path d="M 30 20 H 70 V 60 H 30 Z"/>
+            </g>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    assert extrude._envelope_bounds(envelope) == pytest.approx((10.0, 10.0, 50.0, 50.0))
+
+
+def test_native_svg_envelope_points_include_nested_transforms(
+    tmp_path: Path,
+) -> None:
+    """
+    Nested SVG transforms must be composed in document order.
+
+    Registration must preserve the actual polygon vertices used for
+    physical sizing and Loop attachment.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 100 100">
+            <g transform="translate(10,5)">
+                <g transform="scale(2)">
+                    <path d="M 0 0 H 20 V 10 H 0 Z"/>
+                </g>
+            </g>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    points = extrude._envelope_path_points(envelope)
+
+    assert len(points) == 4
+
+    expected = (
+        (10.0, 5.0),
+        (50.0, 5.0),
+        (50.0, 25.0),
+        (10.0, 25.0),
+    )
+
+    for actual, expected_point in zip(points, expected, strict=True):
+        assert actual == pytest.approx(expected_point)
+
+    assert extrude._envelope_bounds(envelope) == pytest.approx((10.0, 5.0, 50.0, 25.0))
+
+
+def test_native_svg_envelope_without_transform_preserves_bounds(
+    tmp_path: Path,
+) -> None:
+    """
+    Adding native transform support must not change ordinary
+    registered envelopes produced by the existing PNG workflow.
+    """
+
+    envelope = tmp_path / "envelope.svg"
+
+    envelope.write_text(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 100 100">
+            <path d="M 10 15 H 70 V 55 H 10 Z"/>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    assert extrude._envelope_bounds(envelope) == pytest.approx((10.0, 15.0, 70.0, 55.0))

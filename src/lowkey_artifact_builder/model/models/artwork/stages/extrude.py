@@ -51,6 +51,13 @@ from lowkey_artifact_builder.model.models.artwork.loop import (
 from lowkey_artifact_builder.model.models.artwork.outer_ridge import (
     artwork_scale_for_outer_ridge,
 )
+from lowkey_artifact_builder.model.models.artwork.svg_geometry import (
+    SVG_IDENTITY,
+    SVGGeometryError,
+    svg_apply,
+    svg_multiply,
+    svg_transform_matrix,
+)
 from lowkey_artifact_builder.model.models.artwork.vector_manifest import (
     VectorLayer,
     VectorManifest,
@@ -976,6 +983,10 @@ def _envelope_path_points(
     accepted path syntax is therefore intentionally limited to absolute or
     relative M/L/H/V/Z commands rather than implementing a general SVG path
     parser.
+
+    SVG transforms on the path and its ancestors are composed and applied
+    to the vertices so that bounds and Loop attachment use the registered
+    geometry.
     """
 
     try:
@@ -991,26 +1002,50 @@ def _envelope_path_points(
             f"Could not read registered Artwork envelope: {envelope}",
         ) from exc
 
-    path_data: list[str] = []
+    path_data: list[
+        tuple[
+            str,
+            tuple[float, float, float, float, float, float],
+        ]
+    ] = []
 
-    for element in root.iter():
-        if (
-            element.tag.rsplit(
-                "}",
-                1,
-            )[-1]
-            != "path"
-        ):
-            continue
+    def visit(
+        element: ET.Element[str],
+        parent: tuple[float, float, float, float, float, float],
+    ) -> None:
+        try:
+            local = svg_transform_matrix(
+                element.get("transform", ""),
+            )
+        except SVGGeometryError as exc:
+            raise ExtrudeError(
+                f"Invalid registered Artwork envelope transform: {envelope}",
+            ) from exc
 
-        data = element.get(
-            "d",
+        matrix = svg_multiply(
+            parent,
+            local,
         )
 
-        if data:
-            path_data.append(
-                data,
-            )
+        if element.tag.rsplit("}", 1)[-1] == "path":
+            data = element.get("d")
+
+            if data:
+                path_data.append(
+                    (data, matrix),
+                )
+
+        else:
+            for child in element:
+                visit(
+                    child,
+                    matrix,
+                )
+
+    visit(
+        root,
+        SVG_IDENTITY,
+    )
 
     if len(path_data) != 1:
         raise ExtrudeError(
@@ -1018,10 +1053,12 @@ def _envelope_path_points(
             f"for Loop attachment geometry: {envelope}",
         )
 
+    data, matrix = path_data[0]
+
     tokens = re.findall(
         r"[MLHVZmlhvz]|"
         r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?",
-        path_data[0],
+        data,
     )
 
     points: list[tuple[float, float]] = []
@@ -1151,7 +1188,11 @@ def _envelope_path_points(
         )
 
     return tuple(
-        points,
+        svg_apply(
+            matrix,
+            complex(x, y),
+        )
+        for x, y in points
     )
 
 
