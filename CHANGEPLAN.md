@@ -90,9 +90,55 @@ One test may be sufficient to establish a seam. A small coherent group of tests 
 
 Add narrower tests when they help discover an uncertain boundary, protect an independently meaningful contract, reproduce a defect, or address a specific algorithmic or regression risk.
 
+----
+
+## Phase 1 — SHAPE Artwork Placement and SVG Export
+
+### Purpose
+
+Extend SHAPE with Artwork placement controls and SVG export, allowing an operator to adjust incorporated Artwork and publish a two-dimensional representation of any SHAPE Realization without changing source Artwork or duplicating Shape geometry.
+
+Introduce four SHAPE parameters:
+
+- `shape_artwork_offset_x = 0.0` — horizontal translation in physical millimeters; positive moves right.
+- `shape_artwork_offset_y = 0.0` — vertical translation in physical millimeters; positive moves toward the top of the finished Shape.
+- `shape_artwork_scale = 1.0` — positive, dimensionless multiplier applied to the existing automatically fitted Artwork size.
+- `shape_svg_enabled = false` — publish the SHAPE Compose SVG alongside the existing 3MF.
+
+Neutral defaults preserve existing manufacturing behavior.
+
+These parameters follow the existing Model, Variant, Artifact, and Realization configuration hierarchy. An Artifact-level `shape_svg_enabled = true` enables SVG publication for all its SHAPE Realizations unless individually overridden.
+
+SHAPE Compose produces the combined SVG as an ordinary persistent Product, independently of whether publication is enabled. The parameter controls publication, not SVG generation or registered composition.
+
+The separate LASER Model remains responsible for advanced two-dimensional manufacturing representations in Phase 2.
+
+### Architectural boundaries
+
+- SHAPE Compose owns the common registered Artwork placement transform. Extend that mechanism rather than introducing separate component transforms or downstream mesh adjustments.
+- Preserve existing automatic-fit placement as the baseline. Apply additional uniform scale about the fitted Artwork center, then physical X/Y offsets in the finished Shape coordinate convention.
+- Transform the authoritative Artwork envelope and every incorporated Artwork component identically. Preserve relative geometry, registration, logical color identities, and component topology.
+- Convert millimeter offsets at the owning composition boundary using effective Shape size and registered coordinates.
+- Preserve structural Shape geometry, ridges, border labels, loops, holes, and other Features. Artwork placement must not translate these components.
+- Maintain existing interior placement and clipping contracts. Invalid placements must fail clearly rather than silently crop, deform, or reduce the requested transform.
+- Persist the resolved placement transform in existing SHAPE Compose Products so downstream consumers reuse authoritative placement without recomputation.
+- SHAPE Compose owns generation of the combined SVG. It produces `artifact.svg` alongside its existing `composition.svg` and `products.json` Products.
+- The combined SVG represents participating planar manufacturing geometry rather than raw structural construction geometry. It includes registered Artwork, ridges, labels, and applicable Features while excluding the solid Shape Base.
+- The Shape perimeter may be represented as an explicit outline. Enabled ridges are represented as filled planar regions. Avoid implicit opaque backgrounds, duplicate filled regions, and construction boundaries.
+- Preserve registered geometry, orientation, component identities, logical Artwork-color separation, and authoritative Artwork transforms.
+- SVG output is self-contained, physically dimensioned, and portable. Text is represented by vector geometry; external resources, unresolved fonts, and editor-specific dependencies are not required.
+- Structural outlines use explicit, physically appropriate stroke widths rather than SVG defaults that may obscure the design.
+- SVG assembly uses existing SHAPE composition geometry and reusable serialization mechanisms without independently reconstructing Shape Features or Artwork placement.
+- The SVG and 3MF represent the same SHAPE Realization, subject to the deliberate absence of Z dimensions and the solid Base in the SVG.
+- SVG generation belongs to Compose and does not depend on Extrude or Package.
+- `shape_svg_enabled` controls publication of the existing Compose SVG as a Realization-named convenience Product. It does not change registered composition, geometry, or 3MF manufacturing.
+- Publication occurs through the existing build/application infrastructure, not through CLI-specific filesystem copying.
+- Enabling SVG
+
+
 ---
 
-## Phase 1 — LASER Model and 2D Manufacturing Products
+## Phase 2 — LASER Model and 2D Manufacturing Products
 
 ### Purpose
 
@@ -187,61 +233,7 @@ LASER defines the manufactured 2D design, not the laser-processing job. xTool St
 
 ### Completion
 
-Phase 1 is complete when LASER is a first-class manufacturing Model that reuses SHAPE's registered pre-extrusion composition, supports vector and raster Artwork, and produces independently buildable SVG and PNG manufacturing Products verified for practical import into xTool Studio.
+Phase 2 is complete when LASER is a first-class manufacturing Model that reuses SHAPE's registered pre-extrusion composition, supports vector and raster Artwork, and produces independently buildable SVG and PNG manufacturing Products verified for practical import into xTool Studio.
 
 LASER must not require SHAPE extrusion, 3MF packaging, duplicated composition logic, duplicated Artwork coverage, or manual reconstruction of Artwork placement. Advanced image optimization and machine-specific engraving settings remain outside this phase.
 
-
----------------------------
-
-## Phase 2 — SHAPE Artwork Placement Controls
-
-### Purpose
-
-Allow an operator to adjust the position and size of incorporated Artwork within a SHAPE Realization without editing source Artwork or changing structural Shape geometry.
-
-Introduce three optional SHAPE parameters:
-
-- `shape_artwork_offset_x = 0.0` — horizontal translation in physical millimeters; positive moves right.
-- `shape_artwork_offset_y = 0.0` — vertical translation in physical millimeters; positive moves toward the top of the finished Shape.
-- `shape_artwork_scale = 1.0` — positive, dimensionless multiplier applied to the existing automatically fitted Artwork size.
-
-Neutral defaults preserve existing manufacturing behavior. These are SHAPE composition controls, not standalone ARTWORK parameters or changes to Model/Variant/Realization inheritance.
-
-### Architectural boundaries
-
-- SHAPE Compose owns the common registered Artwork placement transform. Extend that existing mechanism rather than introducing separate component transforms or downstream mesh adjustments.
-- Preserve the existing automatic-fit placement as the baseline. Apply the additional uniform scale about the fitted Artwork center, then apply physical X/Y offsets in the finished Shape coordinate convention.
-- Transform the authoritative Artwork envelope and every incorporated Artwork component identically. Preserve relative geometry, registration, logical color identities, and component topology.
-- Convert millimeter offsets at the owning composition boundary using the effective Shape size and registered coordinate system; do not interpret them as source SVG pixels or unscaled registered units.
-- Preserve structural Shape geometry, ridges, border labels, loops, holes, and other Features. Artwork placement must not translate these components.
-- Maintain the existing interior placement and clipping contracts. A requested placement that violates required clearances or permitted containment must produce a clear configuration/manufacturing error rather than silently crop, deform, or auto-reduce the requested transform.
-- Persist the resolved placement transform in the existing SHAPE Compose Product/manifest contract so dependent consumers, including LASER, reuse authoritative placement without recomputation.
-- Parameter changes invalidate SHAPE Compose and its dependent Products through normal stage fingerprinting; they must not invalidate upstream ARTWORK Products or SHAPE Structure when those inputs are unchanged.
-
-### Work
-
-1. Audit the current SHAPE Compose Artwork fitting, registered transforms, containment/clipping rules, manifest, and dependent consumers. Confirm the physical-to-registered coordinate convention and existing placement constraints before implementation.
-2. Add the three parameters to SHAPE's declared configuration vocabulary and Compose Stage parameter dependencies, with defaults, units, sign conventions, and validation documented in `shape/DEFINITION.md` and `parameters.toml`.
-3. Extend the existing common Artwork placement calculation to apply uniform scale and offsets after automatic fitting. Keep all Artwork components and their envelope on one authoritative transform.
-4. Validate finite offsets, finite positive scale, and transformed Artwork placement against the permitted interior and any applicable Feature clearances. Reject invalid requests with actionable errors; preserve existing neutral-default behavior.
-5. Ensure composed geometry, fill/envelope behavior, manifest placement metadata, and downstream extrusion/packaging consistently consume the adjusted transform. Keep the placement contract suitable for LASER's vector/raster Artwork substitution.
-6. Add focused test-first coverage at the SHAPE Compose boundary for neutral defaults, nonzero X/Y translation, relative scaling, shared component/envelope registration, and invalid placement. Add a representative end-to-end manufacturing and freshness test only where needed to protect the cross-stage contract.
-7. Verify configuration inspection and ordinary build behavior for an Artifact-specific Realization using these overrides. Run the appropriate complete tests, pyright, and ruff.
-
-### Acceptance criteria
-
-- All three parameters are accepted in SHAPE Realization configuration and appear with correct effective values and provenance in configuration inspection.
-- Zero offsets and unit scale preserve existing SHAPE output and manufacturing behavior.
-- Positive X moves incorporated Artwork right; positive Y moves it toward the top of the finished Shape. Both are expressed in physical millimeters.
-- Scale multiplies the existing fitted Artwork size uniformly about its center; Artwork proportions are preserved.
-- Every Artwork component, the authoritative envelope, and dependent fill geometry remain aligned after translation and scaling.
-- Ridges, labels, base, loops, holes, and other structural Features remain fixed.
-- Invalid parameter values or placements fail clearly rather than generating clipped or geometrically inconsistent Products.
-- The composed Product publishes authoritative placement sufficient for downstream consumers, including LASER, without duplicating placement calculations.
-- Changing placement parameters rebuilds the affected SHAPE Compose and downstream Products but does not unnecessarily rebuild upstream ARTWORK or SHAPE Structure Products.
-- Existing SHAPE and other Model manufacturing remains functional; focused behavioral tests, the appropriate complete suite, pyright, and ruff pass.
-
-### Completion
-
-Phase 2 is complete when SHAPE Realizations can independently translate and uniformly scale incorporated Artwork within the permitted interior, using stable physical units and one authoritative Compose transform, without altering source Artwork or unrelated Shape Features.
