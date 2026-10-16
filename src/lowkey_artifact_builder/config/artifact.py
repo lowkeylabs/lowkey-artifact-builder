@@ -39,9 +39,9 @@ from .config import (
 
 
 _ARTWORK_INPUT = "artwork"
-_ARTWORK_FILENAME = "artifact.png"
+_ARTWORK_FILENAME = "artifact"
 _ORIGINALS_DIRECTORY = "originals"
-_ORIGINAL_SUFFIX = ".png"
+_ORIGINAL_SUFFIXES = frozenset({".png", ".svg"})
 
 
 # =========================================================
@@ -87,18 +87,12 @@ def discover_artifacts(
     ``originals/`` and stable Artifact workspace directories under
     ``artifacts/``.
 
-    Preserved PNGs are source-backed registrations. ``.artifact`` files are
-    source-less registrations. An Artifact workspace directory independently
-    establishes the same Artifact identity, including when its persistent
-    configuration is incomplete.
+    Preserved PNGs and SVGs are source-backed registrations. ``.artifact``
+    files are source-less registrations. An Artifact workspace directory
+    independently establishes Artifact identity.
 
-    For each Artifact, discovery also reports whether its workspace has been
-    materialized. Materialization requires:
-
-        artifacts/<artifact_id>/artifact.toml
-
-    Artifact-owned Artwork and generated Product state are intentionally not
-    part of this predicate.
+    Materialization requires artifact.toml. Artifact-owned Artwork and
+    generated Product state do not participate in this predicate.
     """
 
     root = project_root if project_root is not None else Path.cwd()
@@ -107,24 +101,36 @@ def discover_artifacts(
 
     artifact_ids: set[str] = set()
     original_paths: dict[str, Path] = {}
+    registrations: dict[str, Path] = {}
 
     if originals_root.is_dir():
-        for registration in originals_root.iterdir():
+        for registration in sorted(
+            originals_root.iterdir(),
+            key=lambda path: path.name.casefold(),
+        ):
             if not registration.is_file():
                 continue
 
             suffix = registration.suffix.lower()
 
-            if suffix not in {
-                _ORIGINAL_SUFFIX,
-                ".artifact",
-            }:
+            if suffix not in _ORIGINAL_SUFFIXES | {".artifact"}:
                 continue
 
             artifact_id = registration.stem
+            identity = artifact_id.casefold()
+
+            previous = registrations.get(identity)
+
+            if previous is not None:
+                raise ConfigError(
+                    f"Conflicting Artifact registrations "
+                    f"{previous.name!r} and {registration.name!r}."
+                )
+
+            registrations[identity] = registration
             artifact_ids.add(artifact_id)
 
-            if suffix == _ORIGINAL_SUFFIX:
+            if suffix in _ORIGINAL_SUFFIXES:
                 original_paths[artifact_id] = registration
 
     if artifacts_root.is_dir():
@@ -449,18 +455,25 @@ def _configure_artwork_input(
     project_root: Path,
 ) -> None:
     """
-    Ingest artwork and persist its Artifact-owned source location.
+    Ingest PNG or SVG Artwork and persist its Artifact-owned source location.
 
     Artwork is an Artifact input. It does not select a Model, Variant,
     or Realization.
 
-    Persistent Artifact paths are stored relative to the project root so
-    Artifact definitions remain portable with the project.
+    The source format is preserved without conversion. Persistent Artifact
+    paths are stored relative to the project root.
     """
+
+    suffix = source.suffix.lower()
+
+    if suffix not in _ORIGINAL_SUFFIXES:
+        raise ConfigError(
+            f"Unsupported Artwork source format {source.suffix!r}; expected PNG or SVG."
+        )
 
     destination = _artifact_input_path(
         artifact_id,
-        _ARTWORK_FILENAME,
+        f"{_ARTWORK_FILENAME}{suffix}",
         project_root=project_root,
     )
 
@@ -554,33 +567,23 @@ def materialize_artifact(
     """
     Materialize baseline workspace state for one Artifact.
 
-    A canonical preserved original under ``originals/`` establishes an
-    Artifact entering through the Artwork ingestion workflow and is the
-    authoritative source for Artwork materialization.
+    A preserved PNG or SVG original establishes a source-backed Artifact.
+    Its native format is retained during materialization.
 
-    Persistent Artifact configuration may independently establish an
-    Artifact whose inputs do not require Artifact-owned Artwork. Such an
-    Artifact requires no Artwork materialization and is left unchanged.
-
-    If an ingested Artifact workspace is absent, materialization creates:
+    Materialization creates:
 
         artifacts/<artifact_id>/artifact.toml
-        artifacts/<artifact_id>/artifact.png
+        artifacts/<artifact_id>/artifact.png or artifact.svg
 
-    An already-materialized Artifact is left unchanged.
+    An already-materialized Artifact is left unchanged. Incomplete
+    workspace state is rejected rather than silently repaired.
 
-    A partially existing ingested Artifact workspace is inconsistent
-    baseline state and is rejected rather than silently repaired or
-    replaced.
-
-    Generated Model, Realization, Stage, and Product state is outside this
-    operation and remains the responsibility of the planning and execution
-    engine.
+    Generated Model, Realization, Stage, and Product state remains
+    the responsibility of the planning and execution engine.
     """
 
     root = project_root if project_root is not None else Path.cwd()
-
-    original_path = root / _ORIGINALS_DIRECTORY / f"{artifact_id}{_ORIGINAL_SUFFIX}"
+    originals_root = root / _ORIGINALS_DIRECTORY
 
     config_path = artifact_config_path(
         artifact_id,
@@ -588,15 +591,33 @@ def materialize_artifact(
     )
 
     artifact_dir = config_path.parent
-    artwork_path = artifact_dir / _ARTWORK_FILENAME
 
-    # Persistent configuration independently establishes an Artifact when
-    # there is no preserved Artwork original. Nothing needs to be
-    # materialized at the Artifact-owned Artwork boundary in that case.
-    if config_path.is_file() and not original_path.is_file():
+    originals = (
+        [
+            path
+            for path in originals_root.iterdir()
+            if path.is_file()
+            and path.stem.casefold() == artifact_id.casefold()
+            and path.suffix.lower() in _ORIGINAL_SUFFIXES
+        ]
+        if originals_root.is_dir()
+        else []
+    )
+
+    if len(originals) > 1:
+        raise ConfigError(
+            f"Artifact {artifact_id!r} has conflicting preserved originals: "
+            + ", ".join(sorted(path.name for path in originals))
+        )
+
+    original_path = originals[0] if originals else None
+
+    # Existing configuration may independently establish an Artifact
+    # without a preserved Artwork original.
+    if config_path.is_file() and original_path is None:
         return
 
-    if not original_path.is_file():
+    if original_path is None:
         raise ConfigError(f"Artifact {artifact_id!r} has no preserved original.")
 
     if _artifact_is_materialized(
@@ -607,6 +628,8 @@ def materialize_artifact(
 
     if artifact_dir.exists():
         raise ConfigError(f"Artifact {artifact_id!r} has incomplete materialized state.")
+
+    artwork_path = artifact_dir / (f"{_ARTWORK_FILENAME}{original_path.suffix.lower()}")
 
     source_value = str(artwork_path.relative_to(root))
     original_value = str(original_path.relative_to(root))
@@ -633,9 +656,7 @@ def materialize_artifact(
     except (OSError, ConfigError) as exc:
         try:
             if artifact_dir.exists():
-                shutil.rmtree(
-                    artifact_dir,
-                )
+                shutil.rmtree(artifact_dir)
         except OSError:
             pass
 

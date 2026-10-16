@@ -12,15 +12,13 @@ System terminology, relationships, and invariants are defined by
 
 The primary CLI workflow is simple:
 
-> Get the desired 3MF to the printer as quickly and efficiently as
-
-> possible.
+> Get the desired manufacturing Product to its destination as quickly and efficiently as possible.
 
 The normal value chain is:
 
 ```text
 
-customer image
+customer artwork (PNG or SVG)
 
       │
 
@@ -44,13 +42,14 @@ artifact build
 
       ▼
 
-correct printable 3MF
+current manufacturing Product
 
       │
 
       ▼
 
-slicer / share / upload / print
+manufacture / share / upload / print
+
 ```
 
 `create` and `build` define the ordinary manufacturing path. `show`,
@@ -67,7 +66,7 @@ The CLI operates on the current working directory as the project root.
 
 A project may contain:
 
--   root-level PNG files awaiting intake;
+-   root-level PNG or SVG files awaiting intake;
 
 -   `originals/`, containing preserved Artifact registrations and source
 
@@ -87,7 +86,7 @@ Artifact registration and Artifact materialization are distinct. An
 
 Artifact may be registered under `originals/` before
 
-`artifacts/<artifact_id>/artifact.toml` exists.
+`artifacts/\<artifact_id>/artifact.toml` exists.
 
 ## Presentation
 
@@ -140,6 +139,7 @@ Top-level semantic messaging options are:
 -vv, --very-verbose
 
 --quiet
+
 ```
 
 Default BUILD output reports the operator-relevant manufacturing result.
@@ -159,6 +159,7 @@ Diagnostic logging is controlled independently with:
 ```text
 
 --log-level=LEVEL
+
 ```
 
 Supported logging levels are:
@@ -180,6 +181,7 @@ WARNING
 ERROR
 
 CRITICAL
+
 ```
 
 `--log-level` controls Python diagnostic logging only. It may be
@@ -207,17 +209,21 @@ With no options:
 ```text
 
 artifact create
+
 ```
 
 CREATE inspects the intake state, including registered Artifacts and
 
-root-level PNG sources available for ingestion.
+root-level PNG and SVG sources available for ingestion.
 
-To ingest one PNG using its filename stem as the Artifact ID:
+To ingest one PNG or SVG using its filename stem as the Artifact ID:
 
 ```text
 
 artifact create --source lilo.png
+
+artifact create --source logo.svg
+
 ```
 
 To assign the Artifact ID explicitly:
@@ -225,13 +231,15 @@ To assign the Artifact ID explicitly:
 ```text
 
 artifact create --artifact-id baird-lilo --source lilo.png
+
 ```
 
-To ingest all eligible root-level PNG sources:
+To ingest all eligible root-level PNG and SVG sources:
 
 ```text
 
 artifact create --all-sources
+
 ```
 
 A source-less Artifact may be registered explicitly:
@@ -239,11 +247,20 @@ A source-less Artifact may be registered explicitly:
 ```text
 
 artifact create --artifact-id blank-coaster
+
 ```
 
 Successfully ingested source artwork is preserved under `originals/`
 
-using the canonical Artifact identity. CREATE owns registration and
+using the canonical Artifact identity and original source format. For example,
+
+`logo.svg` registered as `ornament` is preserved as `originals/ornament.svg`.
+
+An Artifact has at most one registered source. An existing PNG or SVG
+
+registration must not be silently overwritten or duplicated by intake of
+
+another source format with the same Artifact identity. CREATE owns registration and
 
 source ingestion; BUILD owns Artifact workspace materialization and
 
@@ -272,6 +289,7 @@ With no Artifact ID:
 ```text
 
 artifact show
+
 ```
 
 SHOW discovers registered Artifacts and presents a manufacturing
@@ -291,6 +309,7 @@ Given an Artifact:
 ```text
 
 artifact show baird-lilo
+
 ```
 
 SHOW presents the Artifact's effective built-in and custom Realizations,
@@ -308,6 +327,7 @@ A specific Realization may be selected:
 ```text
 
 artifact show baird-lilo --realization shape_ornament
+
 ```
 
 This narrows the same manufacturing inspection to one Realization.
@@ -327,6 +347,7 @@ For one Artifact:
 ```text
 
 artifact config baird-lilo
+
 ```
 
 CONFIG presents the authored Artifact configuration and effective
@@ -338,6 +359,7 @@ For one selected Realization:
 ```text
 
 artifact config baird-lilo --realization shape_ornament
+
 ```
 
 CONFIG presents the controlling Model construction parameters, their
@@ -361,6 +383,7 @@ overrides in the Artifact's `artifact.toml`:
 artifact config baird-lilo --realization shape_ornament \\
 
     --parameters shape_size=200
+
 ```
 
 The change does not modify an upstream system, workspace, Model, or
@@ -380,6 +403,7 @@ artifact config baird-lilo --realization large-ornament --create \\
     --parameters variant=shape.ornament \\
 
     --parameters shape_size=125
+
 ```
 
 Realization configuration and creation may also be applied across all
@@ -391,6 +415,7 @@ existing Artifacts by omitting the Artifact ID:
 artifact config --realization shape_ornament \\
 
     --parameters shape_size=110
+
 ```
 
 Bulk operations validate their applicable scope before mutation.
@@ -412,6 +437,7 @@ Analyze an Artifact:
 ```text
 
 artifact colors baird-lilo
+
 ```
 
 Analyze a selected Realization:
@@ -419,6 +445,7 @@ Analyze a selected Realization:
 ```text
 
 artifact colors baird-lilo --realization shape_ornament
+
 ```
 
 Color analysis consumes existing manufacturing Products. It does not
@@ -440,6 +467,7 @@ artifact colors baird-lilo --recolor library
 artifact colors baird-lilo --recolor reset
 
 artifact colors baird-lilo --recolor reset-all-realizations
+
 ```
 
 A selected Realization may be combined with recoloring modes where that
@@ -449,6 +477,7 @@ scope is meaningful:
 ```text
 
 artifact colors baird-lilo --realization shape_ornament --recolor printer
+
 ```
 
 Recoloring persists printer-color configuration at the selected Artifact
@@ -484,6 +513,7 @@ Bare BUILD is a read-only project-status operation:
 ```text
 
 artifact build
+
 ```
 
 To build one selected Realization:
@@ -491,6 +521,7 @@ To build one selected Realization:
 ```text
 
 artifact build baird-lilo --realization shape_ornament
+
 ```
 
 Without `--realization`, explicitly selected Artifacts are built across
@@ -500,6 +531,7 @@ their effective Realizations:
 ```text
 
 artifact build baird-lilo
+
 ```
 
 To incrementally build every effective Realization of every project
@@ -509,6 +541,7 @@ Artifact:
 ```text
 
 artifact build --build-all
+
 ```
 
 Already-current Products are reused. BUILD executes only work required
@@ -520,6 +553,7 @@ To clean and rebuild one selected Artifact Realization:
 ```text
 
 artifact build baird-lilo --realization shape_ornament --rebuild
+
 ```
 
 To clean and rebuild every effective Realization of every project
@@ -529,6 +563,7 @@ Artifact:
 ```text
 
 artifact build --rebuild-all
+
 ```
 
 `--dry-run` displays normal build planning without performing
@@ -537,7 +572,9 @@ manufacturing work.
 
 From the operator's perspective, the important BUILD result is a current
 
-manufacturing Product, normally a 3MF, ready for downstream use.
+manufacturing Product in the format required by the selected Model,
+
+normally a 3MF for standalone Artwork, Shape, or Coin.
 
 #### Independent Stage execution
 
@@ -548,6 +585,7 @@ exactly one declared Stage independently:
 ```text
 
 artifact build baird-lilo --stage vector
+
 ```
 
 A Realization may be selected when needed:
@@ -555,6 +593,7 @@ A Realization may be selected when needed:
 ```text
 
 artifact build baird-lilo --stage vector --realization artwork_default
+
 ```
 
 Independent Stage execution may bind declared inputs, parameters, and
@@ -570,6 +609,7 @@ artifact build baird-lilo --stage vector \\
     --parameter artwork_size=90 \\
 
     --output manifest=external/vector.json
+
 ```
 
 `--input`, `--parameter`, and `--output` belong only to independent
@@ -597,6 +637,7 @@ Clean generated Products for one Artifact:
 ```text
 
 artifact clean baird-lilo
+
 ```
 
 Clean one Realization of one Artifact:
@@ -604,6 +645,7 @@ Clean one Realization of one Artifact:
 ```text
 
 artifact clean baird-lilo --realization shape_ornament
+
 ```
 
 Clean one Realization across all existing Artifacts:
@@ -611,6 +653,7 @@ Clean one Realization across all existing Artifacts:
 ```text
 
 artifact clean --realization shape_ornament
+
 ```
 
 With no Artifact ID or Realization, CLEAN targets all existing Artifacts
@@ -620,6 +663,7 @@ and asks for confirmation:
 ```text
 
 artifact clean
+
 ```
 
 For unattended project-wide cleaning:
@@ -627,6 +671,7 @@ For unattended project-wide cleaning:
 ```text
 
 artifact clean --force
+
 ```
 
 Cleaning is a maintenance operation rather than part of the normal path
@@ -658,6 +703,7 @@ COMMAND --realization shape_ornament
 COMMAND baird-lilo --realization shape_ornament
 
     that Realization of baird-lilo
+
 ```
 
 Individual commands support only the scopes meaningful to their
@@ -679,6 +725,7 @@ example:
 ```text
 
 artifact show
+
 ```
 
 may report that no Artifacts exist without producing an error or
@@ -705,7 +752,7 @@ not be indiscriminately converted into ordinary operator errors.
 
 ## Common workflows
 
-### New customer image
+### New customer artwork (PNG or SVG)
 
 For a specific incoming image:
 
@@ -716,13 +763,14 @@ artifact create --artifact-id baird-lilo --source lilo.png
 artifact show baird-lilo
 
 artifact build baird-lilo --realization shape_ornament
+
 ```
 
 If the desired Realization is already known, SHOW is optional; CREATE
 
 followed directly by BUILD is the normal short manufacturing path.
 
-For a batch of root-level PNGs:
+For a batch of root-level PNG and SVG files:
 
 ```text
 
@@ -731,70 +779,103 @@ artifact create --all-sources
 artifact show
 
 artifact build --build-all
+
 ```
 
 ### Two-sided Coin
 
 A Coin combines two complete packaged Shape Products as opposite Faces
+
 of one printable object. The Face dependencies are persistent Artifact
+
 configuration rather than ordinary Coin parameters.
 
 For example, a Coin Artifact may bind its Faces in `artifact.toml`:
 
 ```toml
+
 model = "coin"
 
 [product_dependencies.faceA]
+
 artifact = "front"
+
 model = "shape"
+
 realization = "shape_default"
+
 stage = "package"
+
 product = "artifact"
 
 [product_dependencies.faceB]
+
 artifact = "back"
+
 model = "shape"
+
 realization = "shape_default"
+
 stage = "package"
+
 product = "artifact"
+
 ```
 
 `faceA` and `faceB` are independent Product dependencies. They may refer
+
 to the same packaged Shape Product, different Shape Realizations of one
+
 Artifact, or packaged Shape Products from different Artifacts.
 
 Face B must be a Shape whose resolved raise style is `inlaid`. Coin
+
 validates that requirement from the packaged Shape Product.
 
 Coin orientation is controlled by the `coin_orientation` parameter:
 
 -   `aligned` is the default. When each outward Face is viewed directly,
+
     the semantic tops of Face A and Face B appear at the same physical
+
     end.
+
 -   `inverted` places Face B's semantic top opposite Face A.
 
 When the default `aligned` orientation is appropriate, no Coin parameter
+
 override is required. To select `inverted`:
 
 ```text
+
 artifact config coin-example --realization coin_default \
+
     --parameters coin_orientation=inverted
+
 ```
 
 Build the Coin through the ordinary dependency-driven workflow:
 
 ```text
+
 artifact build coin-example --realization coin_default
+
 ```
 
 The operator does not need to build Face A and Face B manually first.
+
 BUILD realizes missing or stale packaged Shape dependencies as required,
+
 reuses current dependency Products, composes the two Faces, and produces
+
 the Coin 3MF.
 
 The current CONFIG command edits Realization parameters such as
+
 `coin_orientation`; it does not author `product_dependencies`. Face
+
 bindings are therefore configured in the Coin Artifact's
+
 `artifact.toml`.
 
 ### Existing current Realization
@@ -814,6 +895,7 @@ shape_ornament is current
         ▼
 
 use the existing shape_ornament.3mf
+
 ```
 
 No build or additional inspection is necessary.
@@ -841,6 +923,7 @@ artifact build baird-lilo --realization shape_ornament
         ▼
 
 use the resulting shape_ornament.3mf
+
 ```
 
 ### Configuration exception
@@ -850,6 +933,7 @@ Inspect the effective construction configuration:
 ```text
 
 artifact config baird-lilo --realization shape_ornament
+
 ```
 
 Apply only the required sparse override:
@@ -859,6 +943,7 @@ Apply only the required sparse override:
 artifact config baird-lilo --realization shape_ornament \\
 
     --parameters shape_size=110
+
 ```
 
 Then build the affected Realization:
@@ -866,6 +951,7 @@ Then build the affected Realization:
 ```text
 
 artifact build baird-lilo --realization shape_ornament
+
 ```
 
 Dependency-driven execution determines which manufacturing work must
@@ -879,6 +965,7 @@ Inspect the relevant physical color state:
 ```text
 
 artifact colors baird-lilo --realization shape_ornament
+
 ```
 
 If an operator color assignment is required:
@@ -886,6 +973,7 @@ If an operator color assignment is required:
 ```text
 
 artifact colors baird-lilo --realization shape_ornament --recolor printer
+
 ```
 
 COLORS does not manufacture missing geometry. If required manufacturing
@@ -901,6 +989,7 @@ Clean only the affected Realization:
 ```text
 
 artifact clean baird-lilo --realization shape_ornament
+
 ```
 
 Then rebuild it:
@@ -908,6 +997,7 @@ Then rebuild it:
 ```text
 
 artifact build baird-lilo --realization shape_ornament
+
 ```
 
 BUILD regenerates the required dependency-driven work and produces the
@@ -918,7 +1008,7 @@ current final 3MF.
 
 Commands are not independent utilities. Together they support the
 
-shortest practical path from incoming artwork to a usable manufacturing
+shortest practical path from incoming PNG or SVG artwork to a usable manufacturing
 
 Product.
 
@@ -932,13 +1022,13 @@ operator:
 
     needed;
 
-3.  reuse an existing current 3MF whenever possible;
+3.  reuse an existing current manufacturing Product whenever possible;
 
 4.  make only necessary configuration or color decisions;
 
 5.  build only missing or stale work; and
 
-6.  retrieve the resulting 3MF for slicing, sharing, uploading, or
+6.  retrieve the resulting manufacturing Product for sharing, uploading, or
 
     printing.
 
@@ -954,7 +1044,8 @@ artifact build
 
       ↓
 
-printable 3MF
+manufacturing Product
+
 ```
 
 Inspection, customization, developer Stage execution, and maintenance

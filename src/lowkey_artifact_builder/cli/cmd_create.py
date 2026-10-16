@@ -4,7 +4,7 @@ Artifact creation command.
 Registers Artifact identity in the project's preserved-original registry.
 
 CREATE owns Artifact registration and source ingestion only. Source-backed
-Artifacts are registered by a canonical PNG in originals/. Source-less
+Artifacts are registered by a canonical PNG or SVG in originals/. Source-less
 Artifacts are registered by a zero-content .artifact marker in originals/.
 
 Source artwork presented to CREATE is intake material. Successful ingestion
@@ -46,12 +46,12 @@ from lowkey_artifact_builder.config import list_artifacts
 @click.option(
     "--source",
     type=str,
-    help="Ingest the specified PNG as the Artifact source.",
+    help="Ingest the specified PNG or SVG as the Artifact source.",
 )
 @click.option(
     "--all-sources",
     is_flag=True,
-    help="Ingest all root-level PNG sources.",
+    help="Ingest all root-level PNG and SVG sources.",
 )
 def cli(
     artifact_id: str | None,
@@ -187,7 +187,7 @@ def _create_all_sources(
     project_root: Path,
 ) -> None:
     """
-    Register every eligible root-level PNG source.
+    Register every eligible root-level PNG or SVG source.
 
     Artifact identities derive from source filename stems. The complete intake
     queue is preflighted before any persistent project state is modified.
@@ -242,12 +242,12 @@ def _preflight_source_intake(
 
     originals/ is the authoritative registry of Artifact identities.
 
-    Both preserved PNGs and source-less .artifact markers establish Artifact
+    Preserved PNGs, SVGs, and source-less .artifact markers establish Artifact
     identity. Artifact identities are case-insensitive.
 
     Incoming content may identify a verified duplicate only when its
     fingerprint matches exactly one preserved original. Multiple preserved
-    originals may legitimately contain identical content; an incoming PNG
+    originals may legitimately contain identical content; an incoming source
     matching more than one is ambiguous.
 
     Source-less registrations participate in identity collision detection but
@@ -259,7 +259,7 @@ def _preflight_source_intake(
     registrations = _discover_registrations(project_root)
 
     registrations_by_identity: dict[str, Path] = {}
-    originals_by_digest: dict[str, list[Path]] = {}
+    originals_by_digest: dict[tuple[str, str], list[Path]] = {}
 
     for registration in registrations:
         artifact_id = registration.stem
@@ -275,10 +275,10 @@ def _preflight_source_intake(
 
         registrations_by_identity[identity] = registration
 
-        if registration.suffix.lower() == ".png":
+        if registration.suffix.lower() in {".png", ".svg"}:
             digest = _sha256(registration)
             originals_by_digest.setdefault(
-                digest,
+                (registration.suffix.lower(), digest),
                 [],
             ).append(registration)
 
@@ -303,7 +303,8 @@ def _preflight_source_intake(
 
         if existing_registration is not None:
             if (
-                existing_registration.suffix.lower() == ".png"
+                existing_registration.suffix.lower() == source_path.suffix.lower()
+                and existing_registration.suffix.lower() in {".png", ".svg"}
                 and _sha256(existing_registration) == source_digest
             ):
                 console.print(
@@ -315,12 +316,12 @@ def _preflight_source_intake(
                 continue
 
             raise click.ClickException(
-                f"Incoming PNG {source_path.name!r} conflicts with "
+                f"Incoming source {source_path.name!r} conflicts with "
                 f"existing Artifact {existing_registration.stem!r}."
             )
 
         matching_originals = originals_by_digest.get(
-            source_digest,
+            (source_path.suffix.lower(), source_digest),
             [],
         )
 
@@ -339,7 +340,7 @@ def _preflight_source_intake(
             matches = ", ".join(repr(matching_id) for matching_id in matching_ids)
 
             raise click.ClickException(
-                f"Intake PNG {source_path.name!r} is ambiguous: its content "
+                f"Intake source {source_path.name!r} is ambiguous: its content "
                 f"matches multiple Artifacts: {matches}."
             )
 
@@ -398,7 +399,7 @@ def _preserve_intake_original(
         exist_ok=True,
     )
 
-    destination = originals_dir / f"{artifact_id}.png"
+    destination = originals_dir / f"{artifact_id}{source_path.suffix.lower()}"
 
     try:
         shutil.move(
@@ -407,7 +408,7 @@ def _preserve_intake_original(
         )
     except OSError as exc:
         raise click.ClickException(
-            f"Could not preserve original PNG {source_path.name!r}: {exc}"
+            f"Could not preserve original source {source_path.name!r}: {exc}"
         ) from exc
 
 
@@ -420,14 +421,14 @@ def _discover_sources(
     project_root: Path,
 ) -> list[Path]:
     """
-    Discover root-level PNG source files in deterministic order.
+    Discover root-level PNG and SVG source files in deterministic order.
     """
 
     return sorted(
         (
             path
             for path in project_root.iterdir()
-            if path.is_file() and path.suffix.lower() == ".png"
+            if path.is_file() and path.suffix.lower() in {".png", ".svg"}
         ),
         key=lambda path: path.name.casefold(),
     )
@@ -439,7 +440,7 @@ def _discover_registrations(
     """
     Discover registered Artifact identities in deterministic order.
 
-    A preserved PNG registers a source-backed Artifact. A zero-content
+    A preserved PNG or SVG registers a source-backed Artifact. A zero-content
     .artifact marker registers a source-less Artifact.
     """
 
@@ -456,6 +457,7 @@ def _discover_registrations(
             and path.suffix.lower()
             in {
                 ".png",
+                ".svg",
                 ".artifact",
             }
         ),
@@ -476,7 +478,7 @@ def _discover_originals(
     return [
         registration
         for registration in _discover_registrations(project_root)
-        if registration.suffix.lower() == ".png"
+        if registration.suffix.lower() in {".png", ".svg"}
     ]
 
 
@@ -492,11 +494,11 @@ def _validate_source(
     Validate an explicitly selected Artifact source.
     """
 
-    if source.suffix.lower() != ".png":
-        raise click.ClickException("Artifact source must be a PNG file.")
+    if source.suffix.lower() not in {".png", ".svg"}:
+        raise click.ClickException("Artifact source must be a PNG or SVG file.")
 
     if not source.is_file():
-        raise click.ClickException(f"Artifact source PNG {source.name!r} does not exist.")
+        raise click.ClickException(f"Artifact source {source.name!r} does not exist.")
 
     return source
 

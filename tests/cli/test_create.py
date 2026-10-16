@@ -322,3 +322,101 @@ def test_create_batch_preserves_intake_source_when_original_preservation_fails(
     assert source.read_bytes() == content
     assert not (tmp_path / "originals" / "dog.png").exists()
     assert not (tmp_path / "artifacts").exists()
+
+
+def test_create_svg_source_preserves_native_format_through_materialization(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    SVG is a native Artwork source, not a PNG conversion.
+
+    CREATE registers the Artifact and preserves the original source.
+    Materialization retains the SVG format and records the ordinary
+    Artifact source/original relationship without realizing Products.
+    """
+    from lowkey_artifact_builder.config import (
+        discover_artifacts,
+        load_artifact_config,
+        materialize_artifact,
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    source = tmp_path / "customer-design.svg"
+    content = (
+        b'<svg xmlns="http://www.w3.org/2000/svg" '
+        b'width="100" height="100" viewBox="0 0 100 100">'
+        b'<path d="M 10 10 H 90 V 90 H 10 Z" '
+        b'fill="#ff0000"/>'
+        b"</svg>"
+    )
+    source.write_bytes(content)
+
+    result = _invoke(
+        "--artifact-id=ornament",
+        "--source=customer-design.svg",
+    )
+
+    assert result.exit_code == 0, result.output
+
+    original = tmp_path / "originals" / "ornament.svg"
+
+    assert original.read_bytes() == content
+    assert not source.exists()
+    assert not (tmp_path / "originals" / "ornament.png").exists()
+    assert not (tmp_path / "artifacts").exists()
+
+    artifacts = discover_artifacts(project_root=tmp_path)
+    registered = next(artifact for artifact in artifacts if artifact.artifact_id == "ornament")
+
+    assert registered.original_path == original
+    assert not registered.materialized
+
+    materialize_artifact(
+        "ornament",
+        project_root=tmp_path,
+    )
+
+    managed_source = tmp_path / "artifacts" / "ornament" / "artifact.svg"
+
+    assert managed_source.read_bytes() == content
+    assert not (tmp_path / "artifacts" / "ornament" / "artifact.png").exists()
+
+    config = load_artifact_config(
+        "ornament",
+        project_root=tmp_path,
+    )
+
+    assert config["source"] == "artifacts/ornament/artifact.svg"
+    assert config["original"] == "originals/ornament.svg"
+
+    assert not (tmp_path / "artifacts" / "ornament" / "products").exists()
+
+
+def test_create_rejects_source_format_conflict_for_registered_artifact(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """An SVG cannot replace an existing PNG registration for the same Artifact."""
+    monkeypatch.chdir(tmp_path)
+
+    original = _preserve_original(
+        tmp_path,
+        "ornament",
+        content=b"existing PNG artwork",
+    )
+    source = tmp_path / "ornament.svg"
+    source.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"/>',
+        encoding="utf-8",
+    )
+
+    result = _invoke("--artifact-id=ornament", "--source=ornament.svg")
+
+    assert result.exit_code != 0
+    assert "ornament" in result.output.lower()
+    assert original.read_bytes() == b"existing PNG artwork"
+    assert source.exists()
+    assert not (tmp_path / "originals" / "ornament.svg").exists()
+    assert not (tmp_path / "artifacts").exists()

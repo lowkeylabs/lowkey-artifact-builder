@@ -1,6 +1,6 @@
 # Artwork Model Definition
 
-The `artwork` model converts raster source artwork into registered, color-separated geometry.
+The `artwork` model converts PNG or SVG source artwork into registered, color-separated geometry.
 
 Registered Artwork may be dimensionalized into a standalone multicolor 3MF or consumed as an intermediate product by another model.
 
@@ -8,11 +8,11 @@ This document defines the semantic contract of the Artwork model.
 
 ## Purpose
 
-Artwork interprets raster source artwork and converts it into reusable registered geometry.
+Artwork interprets raster or vector source artwork and converts it into reusable registered geometry.
 
 The Artwork model supports:
 
--   a raster source image;
+-   a raster or vector source image;
 -   Artwork-envelope derivation;
 -   source-driven color separation;
 -   measured Artifact colors;
@@ -33,35 +33,40 @@ Artwork deliberately separates:
 
 ## Source
 
-Artwork consumes one raster source:
+Artwork consumes one source:
 
-``` text
+```text
 source
 ```
 
-The build system materializes the source into the artifact workspace before Artwork processing begins.
+Supported source formats are PNG and SVG.
+
+PNG and SVG are alternative source representations of the same Artifact identity. Source format does not establish a separate Artifact identity. An Artifact has at most one registered source, and a new source does not silently replace an existing registration.
+
+The build system materializes the source into the Artifact workspace before Artwork processing begins, preserving its source format.
 
 Artwork stages consume the materialized source through the build-engine context rather than depending on the source's original filesystem location.
 
+PNG sources follow raster interpretation and multicolor tracing.
+
+SVG sources follow vector-native interpretation. Supported authored geometry and color regions are preserved without conversion to PNG and retracing.
+
+Both formats produce the established registered Artwork representation and remain interchangeable from the perspective of downstream consuming Models.
+
+
 ## Artifact Colors
 
-Artwork color separation is controlled by:
+For PNG sources, Artwork preparation supplies the source's color information to multicolor tracing. It does not first quantize the source to printer, library, or catalog filament colors.
 
-``` text
-artifact_color_count
-```
+For PNG sources, multicolor tracing produces `artifact_color_count` traced color regions and assigns an RGB representation to each region.
 
-`artifact_color_count` defines the number of color regions requested when the source image is traced as multicolor Artwork.
+Deriving `artifact_color_count` from the number of configured `printer_colors` does not make the identities of those printer colors material inputs to registered Artwork geometry.
 
-Unless explicitly configured, `artifact_color_count` is derived from the number of configured:
+For PNG sources, registered Artwork processing depends on the effective `artifact_color_count`, not the identities of configured physical printer colors.
 
-``` text
-printer_colors
-```
+For SVG sources, registered Artwork processing depends on the supported authored geometry and colors, independently of `artifact_color_count`.
 
-The default therefore permits Artwork to use the available printer color capacity without requiring every Artwork to contain that many colors.
-
-An explicitly configured `artifact_color_count` permits source Artwork with a known smaller palette to request only the colors actually represented by the Artwork.
+Changing physical printer-color selection without changing the effective PNG tracing count therefore does not change registered Artwork geometry. SVG registered geometry is likewise independent of physical printer-color selection.
 
 For example, a three-color logo may configure:
 
@@ -93,20 +98,15 @@ Artifact colors are derived product information rather than configured physical 
 
 An Artifact color has:
 
--   a stable color-region identity within the prepared Artwork; and
--   an RGB representation measured from the multicolor trace.
+- a stable color-region identity within the prepared Artwork; and
+- an RGB representation derived from the interpreted source artwork.
+
+For PNG sources, RGB representations are measured from the multicolor trace. For SVG sources, they are derived from supported authored colors.
 
 Artifact colors are not required to equal the RGB representation of any printer, library, or catalog color.
 
 Physical filament availability does not determine the RGB values of `artifact_colors`.
 
-The number of Artifact colors is:
-
-``` text
-artifact_color_count
-```
-
-Artwork does not manufacture additional Artifact colors merely because additional printer tools or filament colors are available.
 
 ## Color Availability
 
@@ -170,7 +170,7 @@ Assignment uses the generic perceptual color-distance semantics defined by the s
 
 Assignments within one scope are determined jointly.
 
-For a scope containing at least `artifact_color_count` available physical colors, Artwork selects a one-to-one assignment between Artifact colors and distinct candidate physical colors that minimizes aggregate perceptual distance.
+For a scope containing at least as many available physical colors as discovered Artifact colors, Artwork selects a one-to-one assignment between Artifact colors and distinct candidate physical colors that minimizes aggregate perceptual distance.
 
 Two different Artifact colors are not assigned the same physical color within one assignment set.
 
@@ -204,21 +204,11 @@ A physical color selected by one assignment scope does not constrain the physica
 
 `printer_assignments` define the physical semantic colors used to manufacture the current Artwork realization.
 
-The number of printer assignments is:
+The number of printer assignments equals the number of discovered Artifact colors.
 
-``` text
-artifact_color_count
-```
+Printer assignment selects one distinct color from `printer_colors` for each Artifact color, minimizing aggregate perceptual distance.
 
-A printer assignment therefore selects the best `artifact_color_count` distinct colors from `printer_colors`.
-
-When:
-
-``` text
-artifact_color_count < len(printer_colors)
-```
-
-some configured printer colors remain unused by the Artwork.
+When more printer colors are available than discovered Artifact colors, unused printer colors remain unused.
 
 For example, three-color Artwork on a printer configured with five colors uses the best three-color assignment and does not create two additional Artifact colors merely to use every configured printer color.
 
@@ -242,7 +232,7 @@ Changing `printer_colors` without changing upstream material parameters therefor
 library_colors
 ```
 
-The assignment selects `artifact_color_count` distinct library colors that minimize aggregate perceptual distance to the complete set of Artifact colors.
+The assignment selects one distinct library color for each discovered Artifact color, minimizing aggregate perceptual distance across the complete set of Artifact colors.
 
 Library assignment is diagnostic.
 
@@ -261,7 +251,7 @@ Library assignment does not automatically:
 
 `catalog_assignments` describe the best physical realization available from the complete physical color catalog.
 
-The assignment selects `artifact_color_count` distinct physical catalog colors that minimize aggregate perceptual distance to the complete set of Artifact colors.
+The assignment selects one distinct physical catalog color for each discovered Artifact color, minimizing aggregate perceptual distance across the complete set of Artifact colors.
 
 Catalog assignment is diagnostic.
 
@@ -311,17 +301,17 @@ The physical printer assignment used by a standalone manufactured Artwork artifa
 
 ## Prepare
 
-Preparation converts the source image into prepared Artwork described by:
+Preparation interprets the source into prepared Artwork described by:
 
-``` text
+```text
 trace.svg envelope.svg
 ```
 
-The trace represents the prepared multicolor Artwork.
+The trace represents the prepared color-separated Artwork. For PNG sources, it is produced through multicolor tracing. For SVG sources, it is produced through native vector interpretation without raster retracing.
 
-The envelope represents the outer region belonging to the Artwork.
+The envelope represents the outer occupied region belonging to the Artwork.
 
-Pixels outside the envelope do not belong to the Artwork.
+Geometry outside the envelope does not belong to the Artwork.
 
 Artwork envelope derivation is controlled by:
 
@@ -351,19 +341,19 @@ An enclosed Artwork region is not excluded solely because its color also occurs 
 
 Envelope derivation affects interpretation of the source Artwork. It does not alter the registered coordinate system or the semantics of downstream Artwork products.
 
-Preparation preserves the source color information belonging to the Artwork rather than quantizing it to configured physical filament colors.
+For SVG sources, envelope derivation operates on the supported interpreted vector geometry, including its occupied regions, holes, and transparency. It must preserve the distinction between enclosed Artwork regions and exterior background.
 
-Preparation performs multicolor tracing using:
+SVG interpretation supports document dimensions, `viewBox`, transforms, paths, fills, and transparency where these can be normalized into the registered Artwork contract.
 
-``` text
-artifact_color_count
-```
+Unsupported SVG constructs must be rejected with actionable errors rather than silently rasterized or interpreted incorrectly. General mixed raster/vector SVG composition is not required.
 
-as the requested number of color regions.
+Preparation preserves source color information belonging to the Artwork rather than quantizing it to configured physical filament colors.
 
-The RGB representations assigned to those traced regions by multicolor tracing form `artifact_colors`.
+For PNG sources, multicolor tracing produces `artifact_color_count` traced color regions and assigns an RGB representation to each region.
 
-The traced color regions collectively represent the Artwork within the derived envelope.
+For SVG sources, preparation preserves supported authored color regions and derives `artifact_colors` from their interpreted colors without multicolor retracing.
+
+The prepared color regions collectively represent the Artwork within the derived envelope.
 
 Physical printer, library, or catalog color assignments do not determine the Artifact colors discovered during preparation.
 
@@ -371,7 +361,9 @@ Physical printer, library, or catalog color assignments do not determine the Art
 
 Rasterization converts prepared Artwork into registered, color-separated raster products.
 
-Raster consumes the Artifact colors measured from the prepared multicolor trace.
+For PNG sources, Raster consumes the prepared multicolor trace. For SVG sources, Raster derives its registered raster products from the prepared vector-native color regions without retracing the source.
+
+Raster consumes the Artifact colors established during preparation.
 
 Raster products:
 
@@ -405,7 +397,11 @@ Raster processing also does not depend on physical printer-color assignment. Cha
 
 ## Vector
 
-Vectorization converts registered raster color layers into registered vector color layers.
+Vector produces registered vector color layers from the prepared Artwork.
+
+For PNG sources, vector geometry is derived from registered raster color layers. For SVG sources, vector geometry preserves the prepared native vector regions without raster retracing.
+
+Both paths produce the same registered vector manifest, color-region identities, envelope registration, and `registered_extent` contract.
 
 All vector layers:
 
@@ -570,13 +566,36 @@ Registered Artwork may be consumed by another artifact before standalone Artwork
 For the current Artwork model, a consumer of registered vector Artwork requires:
 
 ``` text
-artwork/prepare │ ├──────────────┐ │              │ ▼              │ artwork/raster       │ │              │ ▼              │ artwork/vector ◄─────┘ │ ▼ consumer
+                      source
+                     PNG | SVG
+                         |
+                         v
+                      prepare
+                         |
+              +----------+----------+
+              |                     |
+              v                     |
+             raster                 |
+              |                     |
+              +----------+----------+
+                         |
+                         v
+                       vector
+                         |
+                +--------+--------+
+                |                 |
+                v                 v
+             consumer           extrude
+                                  |
+                                  v
+                                package
 ```
 
-The vector stage consumes both:
+For PNG sources, the vector stage consumes registered raster color layers and the prepared Artwork envelope.
 
--   registered raster color layers produced by `artwork/raster`; and
--   the registered Artwork envelope produced by `artwork/prepare`.
+For SVG sources, the vector stage consumes prepared native vector color regions and the prepared Artwork envelope.
+
+The registered vector products exposed to consuming Models are identical in contract regardless of source format.
 
 The later Artwork stages:
 
@@ -1228,16 +1247,41 @@ Artwork defines:
 with dependencies:
 
 ``` text
-prepare │ ├──────────────┐ │              │ ▼              │ raster            │ │              │ ▼              │ vector ◄──────────┘ │ ▼ extrude │ ▼ package
+                      source
+                     PNG | SVG
+                         |
+                         v
+                      prepare
+                         |
+              +----------+----------+
+              |                     |
+              v                     |
+             raster                 |
+              |                     |
+              +----------+----------+
+                         |
+                         v
+                       vector
+                         |
+                +--------+--------+
+                |                 |
+                v                 v
+             consumer           extrude
+                                  |
+                                  v
+                                package
 ```
 
-The direct dependencies reflect the products consumed by each stage:
 
--   `raster` depends on `prepare`;
--   `vector` depends on `raster` for registered color layers;
--   `vector` also depends directly on `prepare` for the registered Artwork envelope;
--   `extrude` depends on `vector`;
--   `package` depends on `extrude`.
+
+The Artwork stages retain their established identities and declared Products.
+
+PNG follows the existing Prepare → Raster → Vector processing path.
+
+SVG follows native vector interpretation through Prepare and Vector. Raster remains responsible for registered raster Products where required, but SVG vector geometry must not be reconstructed by raster tracing.
+
+The source-dependent execution path must preserve existing logical Product identities, dependency planning, fingerprinting, and manufacturing-state semantics.
+
 
 The stage boundaries also define the Artwork color lifecycle:
 
@@ -1286,21 +1330,21 @@ The following are model-wide invariants. Feature-specific invariants are defined
 
 A conforming Artwork implementation satisfies the following:
 
-1.  Artwork consumes a materialized raster source image.
+1. Artwork consumes one materialized PNG or SVG source.
 2.  Prepared Artwork is limited to its derived Artwork envelope.
 3.  Artwork envelope derivation is controlled by `artwork_envelope_mode`.
 4.  `artwork_envelope_mode` defaults to `shrink-wrap`.
 5.  `alpha` envelope derivation determines meaningful source foreground from source alpha.
 6.  `shrink-wrap` envelope derivation produces a conservative outer envelope by distinguishing exterior background from enclosed Artwork.
 7.  Shrink-wrap does not exclude an enclosed Artwork region solely because its color also occurs in the exterior background.
-8.  `artifact_color_count` defines the number of color regions requested from multicolor source tracing.
-9.  Unless explicitly configured, `artifact_color_count` is derived from the number of configured `printer_colors`.
-10. An explicitly configured `artifact_color_count` may be smaller than the number of configured printer colors.
+8. `artifact_color_count` controls the requested number of color regions for PNG multicolor tracing. SVG color regions are derived from supported authored colors independently of this parameter.
+9. Unless explicitly configured, `artifact_color_count` is derived from the number of configured `printer_colors` for PNG tracing.
+10. An explicitly configured `artifact_color_count` may be smaller than the number of configured printer colors; it does not constrain the number of colors discovered in SVG sources.
 11. Artwork does not create additional Artifact colors merely to use all available printer colors.
-12. Preparation preserves source color information within the Artwork envelope until multicolor tracing performs source color separation.
-13. Preparation does not quantize source Artwork to printer, library, or catalog filament RGB values before multicolor color discovery.
-14. Multicolor tracing assigns RGB representations to the traced color regions.
-15. The RGB representations measured from those traced regions form `artifact_colors`.
+12. Preparation preserves source color information within the Artwork envelope.
+13. Preparation does not quantize source Artwork to printer, library, or catalog filament RGB values.
+14. PNG multicolor tracing assigns RGB representations to traced color regions; SVG interpretation derives RGB representations from authored color regions.
+15. The RGB representations and stable identities of the color regions discovered during preparation form `artifact_colors`. The number of discovered Artifact colors determines the number of registered color regions and the physical colors required for one-to-one assignment.
 16. Artifact colors are derived product information and are not required to correspond exactly to any physical catalog color.
 17. Physical filament availability does not determine the RGB values assigned to Artifact colors.
 18. The prepared color regions collectively represent the Artwork within its envelope.
@@ -1326,7 +1370,7 @@ A conforming Artwork implementation satisfies the following:
 38. Raster island cleanup is defined in raster pixel space rather than physical space.
 39. Raster island cleanup does not create unassigned retained Artwork merely by removing an insignificant color island.
 40. Raster processing is independent of physical `artwork_size`.
-41. Vector color layers use one common registered coordinate system.
+41. Registered vector color layers use one common coordinate system regardless of source format.
 42. Vector processing is independent of physical `artwork_size`.
 43. The vector manifest records the common `registered_extent`.
 44. The Artwork envelope uses the same registered coordinate system as the vector color layers.
@@ -1362,7 +1406,7 @@ A conforming Artwork implementation satisfies the following:
 
 The Artwork model includes:
 
--   raster source interpretation;
+-   PNG raster source interpretation and SVG native vector source interpretation;
 -   Artwork-envelope derivation;
 -   source-driven multicolor separation;
 -   Artifact color measurement;
