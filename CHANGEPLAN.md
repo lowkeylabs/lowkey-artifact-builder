@@ -133,8 +133,75 @@ The separate LASER Model remains responsible for advanced two-dimensional manufa
 - SVG generation belongs to Compose and does not depend on Extrude or Package.
 - `shape_svg_enabled` controls publication of the existing Compose SVG as a Realization-named convenience Product. It does not change registered composition, geometry, or 3MF manufacturing.
 - Publication occurs through the existing build/application infrastructure, not through CLI-specific filesystem copying.
-- Enabling SVG
+- Enabling SVG publication must not unnecessarily rebuild upstream ARTWORK, SHAPE Structure, Compose, Extrude, or Package Products when their canonical Products remain current.
+- A missing or outdated published SVG must be recoverable from its current canonical Compose Product without unnecessary recomputation.
+- The canonical Compose SVG remains authoritative. Its Realization-named published copy is a convenience manufacturing output.
+- The LASER Model remains independent. Phase 2 may reuse common SVG mechanisms without invoking another Model's Stage implementation or duplicating registered composition logic.
+- Preserve existing Product identity, dependency planning, fingerprinting, manufacturing-state, and generic engine contracts.
 
+### Work
+
+1. Audit current SHAPE Compose Artwork fitting, registered transforms, containment and clipping rules, manifests, and dependent consumers. Confirm physical-to-registered coordinate conventions and placement constraints.
+
+2. Add the three Artwork placement parameters to SHAPE's configuration vocabulary and Compose Stage dependencies. Document defaults, units, sign conventions, and validation in `shape/DEFINITION.md` and `parameters.toml`.
+
+3. Extend the common Artwork placement calculation to apply uniform scale and physical offsets after automatic fitting. Keep every Artwork component and its envelope on one authoritative transform.
+
+4. Validate finite offsets, finite positive scale, and transformed Artwork placement against permitted interior regions and applicable Feature clearances. Preserve neutral-default behavior.
+
+5. Ensure composed geometry, fill/envelope behavior, manifest placement metadata, and downstream extrusion/packaging consistently consume the adjusted transform.
+
+6. Add `shape_svg_enabled` to SHAPE's configuration vocabulary, defaulting to `false`. Support Artifact-level defaults and Realization-level overrides through existing configuration precedence.
+
+7. Audit existing SHAPE Compose Products and LASER SVG packaging. Identify reusable structural-region conversion, component assembly, and SVG serialization behavior without introducing cross-Model Stage dependencies.
+
+8. Extend SHAPE Compose's declared Products to include `artifact.svg` alongside `composition.svg` and `products.json`. The combined SVG is always generated as part of successful Compose execution, independently of `shape_svg_enabled`.
+
+9. Implement combined SVG assembly within SHAPE Compose using authoritative registered geometry and placement. Include participating ridges, border labels, Artwork components, and applicable planar Features, excluding the solid Base. Preserve physical dimensions, orientation, component identities, and logical Artwork-color separation.
+
+10. Ensure portable vector output with explicit structural stroke widths, appropriate filled-region semantics, and no unintended backgrounds, duplicate geometry, external resources, or construction objects.
+
+11. Extend the existing manufacturing publication mechanism to publish the canonical Compose SVG as `<realization>.svg` in the Artifact directory when `shape_svg_enabled = true`. Preserve existing `<realization>.3mf` publication and keep publication outside CLI presentation code.
+
+12. Define publication and freshness behavior. A current canonical Compose SVG may be republished without rerunning Compose. Disabled SVG publication must not affect 3MF manufacturing. Resolve the treatment of previously published SVG files when publication is subsequently disabled without deleting canonical Compose Products.
+
+13. Add focused test-first coverage for Artwork placement, configuration precedence, SVG component participation, physical dimensions, registration, and combined SVG generation. Protect publication, republishing, and 3MF independence with representative build and manufacturing-state tests.
+
+14. Verify ordinary `artifact build`, `show`, `config`, and manufacturing-status behavior for SHAPE Realizations with SVG publication enabled and disabled. Run the appropriate complete tests, pyright, and ruff.
+
+### Acceptance criteria
+
+- All four parameters are accepted through SHAPE configuration and expose correct effective values and provenance.
+- Neutral Artwork placement parameters preserve existing SHAPE manufacturing behavior.
+- Positive X moves Artwork right; positive Y moves it toward the top of the finished Shape, using physical millimeters.
+- Artwork scale uniformly multiplies the existing fitted size about its center.
+- Every Artwork component, its authoritative envelope, and dependent fill geometry remain registered after placement adjustments.
+- Structural geometry, ridges, labels, loops, holes, and unrelated Features remain fixed when Artwork placement changes.
+- Invalid placement requests produce clear errors rather than clipped or inconsistent manufacturing Products.
+- SHAPE Compose persists authoritative Artwork placement for extrusion, SVG export, and downstream consumers.
+- SHAPE Compose always produces a declared, persistent `artifact.svg` Product alongside its existing Products.
+- The combined SVG contains participating Artwork, labels, ridges, and applicable planar Features without an opaque solid Base.
+- SVG output is self-contained, physically dimensioned, correctly registered, and portable.
+- Structural outlines have explicit physical stroke widths and do not obscure the design.
+- SVG and 3MF outputs reflect the same SHAPE composition and effective Realization parameters.
+- SVG generation requires neither SHAPE extrusion nor 3MF packaging.
+- `shape_svg_enabled` defaults to `false`, supports Artifact-level configuration, and permits Realization-level overrides.
+- When SVG publication is enabled, the Realization produces both `<realization>.3mf` and `<realization>.svg` in the Artifact directory.
+- When SVG publication is disabled, ordinary SHAPE manufacturing continues without requiring a published SVG.
+- A missing or outdated published SVG can be restored from a current canonical Compose Product without rebuilding unchanged geometry.
+- Changing `shape_svg_enabled` alone does not invalidate unchanged canonical Compose, Extrude, or Package Products.
+- Changing Artwork placement invalidates affected Compose and downstream Products without unnecessarily rebuilding upstream ARTWORK or SHAPE Structure.
+- Changes confined to extrusion or printer packaging do not unnecessarily rebuild the canonical Compose SVG.
+- Existing SHAPE, ARTWORK, COIN, and LASER manufacturing remains functional.
+- Focused behavioral tests, the appropriate complete test suite, pyright, and ruff pass.
+
+### Completion
+
+Phase 1 is complete when SHAPE Realizations can independently translate and uniformly scale incorporated Artwork within the permitted interior, and SHAPE Compose produces a complete, registered, physically dimensioned SVG alongside its existing Products.
+
+When enabled, the SVG is published as a Realization-named manufacturing output alongside the existing 3MF, using the established build infrastructure without unnecessary recomputation.
+
+The LASER Model remains available for the independent two-dimensional manufacturing capabilities developed in Phase 2.
 
 ---
 
