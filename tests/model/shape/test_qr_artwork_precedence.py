@@ -62,14 +62,21 @@ def _artwork(tmp_path: Path) -> Path:
 def _compose(tmp_path: Path, *, payload: str) -> tuple[Path, dict]:
     directory = tmp_path / ("with_qr" if payload else "without_qr")
     directory.mkdir()
+
     structure = directory / "structure.svg"
     _svg(structure, [])
+
     # Shape structure must have a circle as its structural boundary.
     root = ET.parse(structure).getroot()
     ET.SubElement(root, f"{{{SVG}}}circle", {"cx": "0", "cy": "0", "r": "0.5"})
-    ET.ElementTree(root).write(structure, encoding="unicode", xml_declaration=True)
+    ET.ElementTree(root).write(
+        structure,
+        encoding="unicode",
+        xml_declaration=True,
+    )
 
     manifest = directory / "products.json"
+
     values = {
         "shape_size": 100.0,
         "shape_outer_ridge_width": 0.0,
@@ -83,24 +90,36 @@ def _compose(tmp_path: Path, *, payload: str) -> tuple[Path, dict]:
         "shape_border_label_font_family": "DejaVu Sans",
         "shape_top_border_label_text": "",
         "shape_bottom_border_label_text": "",
+        # Neutral Artwork placement adjustments.
+        "shape_artwork_offset_x": 0.0,
+        "shape_artwork_offset_y": 0.0,
+        "shape_artwork_scale": 1.0,
         "shape_qr_payload": payload,
         "shape_qr_size": 30.0,
         "shape_qr_alignment": "centered",
         "shape_qr_position": 0.0,
     }
+
     context = Mock(spec=StageContext)
+
     vector = tmp_path / "source" / "vector.json"
+
     context.input.side_effect = {
         "structure.structure": structure,
         "artwork.vector.manifest": vector,
     }.__getitem__
+
     context.has_input.side_effect = lambda name: name == "artwork.vector.manifest"
+
     context.output.side_effect = {
         "composition": directory / "composition.svg",
         "manifest": manifest,
     }.__getitem__
+
     context.resolver.side_effect = values.__getitem__
+
     compose.execute(context)
+
     return manifest, json.loads(manifest.read_text(encoding="utf-8"))
 
 

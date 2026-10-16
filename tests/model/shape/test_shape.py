@@ -244,13 +244,16 @@ def test_shape_compose_consumes_structural_partition_parameters() -> None:
     font, fitting, border, and path parameters likewise determine registered
     composition geometry.
 
-    Ridge and Border Label raises remain physical Z dimensions and therefore
-    do not belong to registered composition.
+    Artwork offsets and scale adjust incorporated Artwork placement after
+    automatic fitting and therefore belong to registered composition.
+
+    Ridge, Border Label, and Artwork raises remain physical Z dimensions
+    and therefore do not belong to registered composition.
     """
 
     compose_stage = _compose_stage()
 
-    assert compose_stage.parameters == (
+    expected_parameters = {
         "shape_size",
         "shape_outer_ridge_width",
         "shape_outer_ridge_style",
@@ -263,11 +266,17 @@ def test_shape_compose_consumes_structural_partition_parameters() -> None:
         "shape_border_label_font_family",
         "shape_top_border_label_text",
         "shape_bottom_border_label_text",
+        "shape_artwork_offset_x",
+        "shape_artwork_offset_y",
+        "shape_artwork_scale",
         "shape_qr_payload",
         "shape_qr_size",
         "shape_qr_alignment",
         "shape_qr_position",
-    )
+    }
+
+    assert len(compose_stage.parameters) == len(expected_parameters)
+    assert set(compose_stage.parameters) == expected_parameters
 
 
 # =========================================================

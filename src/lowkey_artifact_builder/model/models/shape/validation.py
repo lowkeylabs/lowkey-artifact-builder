@@ -10,6 +10,8 @@ the Shape model.
 
 from __future__ import annotations
 
+import math
+
 from lowkey_artifact_builder.config import ConfigError
 from lowkey_artifact_builder.model.validation import (
     ConfigurationResolver,
@@ -701,6 +703,42 @@ def _validate_qr_configuration(
             raise ConfigError(f"{parameter} must be a nonempty color name.")
 
 
+def _validate_artwork_adjustments(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Validate configured Artwork placement adjustments.
+
+    Offsets are physical millimeters and must be finite.
+    Scale is a positive, finite multiplier of automatic fitting.
+
+    Geometric containment is validated by Shape Compose, where the
+    registered Artwork envelope and Shape interior are available.
+    """
+    for parameter in (
+        "shape_artwork_offset_x",
+        "shape_artwork_offset_y",
+    ):
+        value = resolver(parameter)
+
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not math.isfinite(value)
+        ):
+            raise ConfigError(f"{parameter} must be a finite number.")
+
+    scale = resolver("shape_artwork_scale")
+
+    if (
+        isinstance(scale, bool)
+        or not isinstance(scale, int | float)
+        or not math.isfinite(scale)
+        or scale <= 0.0
+    ):
+        raise ConfigError("shape_artwork_scale must be a positive finite number.")
+
+
 VALIDATORS = (
     ConfigurationValidator(
         parameters=("shape_geometry",),
@@ -834,6 +872,14 @@ VALIDATORS = (
             "shape_qr_light_color",
         ),
         validate=_validate_qr_configuration,
+    ),
+    ConfigurationValidator(
+        parameters=(
+            "shape_artwork_offset_x",
+            "shape_artwork_offset_y",
+            "shape_artwork_scale",
+        ),
+        validate=_validate_artwork_adjustments,
     ),
 )
 

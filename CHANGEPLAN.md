@@ -303,4 +303,3 @@ LASER defines the manufactured 2D design, not the laser-processing job. xTool St
 Phase 2 is complete when LASER is a first-class manufacturing Model that reuses SHAPE's registered pre-extrusion composition, supports vector and raster Artwork, and produces independently buildable SVG and PNG manufacturing Products verified for practical import into xTool Studio.
 
 LASER must not require SHAPE extrusion, 3MF packaging, duplicated composition logic, duplicated Artwork coverage, or manual reconstruction of Artwork placement. Advanced image optimization and machine-specific engraving settings remain outside this phase.
-

@@ -293,6 +293,40 @@ def _qr_registered_interior(
     )
 
 
+def _validate_registered_artwork_placement(
+    artwork: RegisteredArtwork,
+    *,
+    transform: RegisteredArtworkTransform,
+    placement: ArtworkPlacementCircle,
+) -> None:
+    """
+    Validate transformed Artwork against the registered placement circle.
+
+    The authoritative envelope determines the occupied radial extent.
+    Validation uses the same envelope geometry as automatic fitting.
+    """
+    bounds = registered_artwork_envelope_bounds(artwork)
+
+    source_center_x = bounds.x + bounds.width / 2.0
+    source_center_y = bounds.y + bounds.height / 2.0
+
+    placed_center_x = source_center_x * transform.scale + transform.translate_x
+    placed_center_y = source_center_y * transform.scale + transform.translate_y
+
+    center_distance = math.hypot(
+        placed_center_x - placement.center_x,
+        placed_center_y - placement.center_y,
+    )
+
+    occupied_radius = registered_artwork_envelope_radius(artwork) * transform.scale
+
+    if not math.isfinite(center_distance + occupied_radius):
+        raise ValueError("Artwork placement produces non-finite geometry.")
+
+    if center_distance + occupied_radius > placement.radius + 1.0e-9:
+        raise ValueError("Artwork placement exceeds the available Shape interior.")
+
+
 def _registered_qr_footprint(
     qr: RegisteredQR,
     *,
@@ -340,12 +374,10 @@ def execute(
     Execute registered Shape composition.
 
     Structural geometry and optional Artwork are composed in registered
-    space. A participating QR Code is generated as separate registered
-    dark/light geometry without requiring Artwork.
+    space. Artwork adjustments are applied after automatic fitting.
 
-    QR placement uses the available registered Shape interior.
-    Its rounded exclusion footprint is persisted for downstream
-    physical dimensionalization.
+    A participating QR Code is generated as separate registered dark/light
+    geometry without requiring Artwork.
 
     Color assignment remains downstream.
     """
@@ -406,6 +438,10 @@ def execute(
         artwork_transform = fit_registered_artwork_to_shape(
             artwork,
             composition=composition_output,
+            shape_size=shape_size,
+            offset_x=float(context.resolver("shape_artwork_offset_x")),
+            offset_y=float(context.resolver("shape_artwork_offset_y")),
+            scale=float(context.resolver("shape_artwork_scale")),
         )
 
         artwork_fill = registered_artwork_fill_region(
@@ -2587,25 +2623,36 @@ def fit_registered_artwork_to_shape(
     artwork: RegisteredArtwork,
     *,
     composition: Path,
+    shape_size: float = 100.0,
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
+    scale: float = 1.0,
 ) -> RegisteredArtworkTransform:
     """
-    Fit registered Artwork within the Shape's common placement region.
+    Fit registered Artwork and apply optional placement adjustments.
 
-    The Shape composition determines the registered interior boundary. That
-    boundary is reduced to the largest origin-centered circle wholly contained
-    within the interior, and registered Artwork is uniformly fitted within
-    that common placement circle.
+    Automatic fitting establishes the baseline placement within the
+    origin-centered Shape placement circle.
 
-    Shape geometry therefore does not determine Artwork fitting policy.
+    Uniform scaling is applied about the fitted Artwork center, followed
+    by physical X/Y offsets. Positive Y moves upward.
+
+    The final common transform is validated against the placement circle.
     """
+    if not math.isfinite(shape_size) or shape_size <= 0.0:
+        raise ValueError("Artwork placement requires positive finite Shape size.")
 
-    interior = registered_interior_region(
-        composition,
-    )
+    if not math.isfinite(offset_x) or not math.isfinite(offset_y):
+        raise ValueError("Artwork placement offsets must be finite.")
 
-    placement = artwork_placement_circle(
-        interior,
-    )
+    if not math.isfinite(scale) or scale <= 0.0:
+        raise ValueError("Artwork placement scale must be positive and finite.")
+
+    interior = registered_interior_region(composition)
+    placement = artwork_placement_circle(interior)
+
+    if not math.isfinite(placement.radius) or placement.radius <= 0.0:
+        raise ValueError("Artwork placement requires a positive interior radius.")
 
     placement_element = ET.Element(
         SVG_CIRCLE,
@@ -2616,10 +2663,39 @@ def fit_registered_artwork_to_shape(
         },
     )
 
-    return _fit_registered_artwork_to_circle(
+    fitted = _fit_registered_artwork_to_circle(
         artwork,
         interior=placement_element,
     )
+
+    bounds = registered_artwork_envelope_bounds(artwork)
+
+    source_center_x = bounds.x + bounds.width / 2.0
+    source_center_y = bounds.y + bounds.height / 2.0
+
+    fitted_center_x = source_center_x * fitted.scale + fitted.translate_x
+    fitted_center_y = source_center_y * fitted.scale + fitted.translate_y
+
+    adjusted_scale = fitted.scale * scale
+
+    adjusted_center_x = fitted_center_x + offset_x / shape_size
+    adjusted_center_y = fitted_center_y - offset_y / shape_size
+
+    adjusted = RegisteredArtworkTransform(
+        scale=adjusted_scale,
+        width=bounds.width * adjusted_scale,
+        height=bounds.height * adjusted_scale,
+        translate_x=adjusted_center_x - source_center_x * adjusted_scale,
+        translate_y=adjusted_center_y - source_center_y * adjusted_scale,
+    )
+
+    _validate_registered_artwork_placement(
+        artwork,
+        transform=adjusted,
+        placement=placement,
+    )
+
+    return adjusted
 
 
 def place_registered_artwork(

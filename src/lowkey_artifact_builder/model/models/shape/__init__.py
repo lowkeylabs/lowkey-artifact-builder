@@ -108,6 +108,9 @@ MODEL = ModelSpec(
                 "shape_qr_size",
                 "shape_qr_alignment",
                 "shape_qr_position",
+                "shape_artwork_offset_x",
+                "shape_artwork_offset_y",
+                "shape_artwork_scale",
             ),
             products=(
                 ProductSpec(

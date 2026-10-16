@@ -502,3 +502,39 @@ shape_qr_raise = 1.0
 # Semantic printing colors; resolved during packaging.
 shape_qr_dark_color = "black"
 shape_qr_light_color = "white"
+
+
+#
+# Physical horizontal adjustment of incorporated Artwork, in millimeters.
+#
+# Applied after automatic fitting. Positive values move Artwork right;
+# negative values move Artwork left.
+#
+# Zero preserves the automatically fitted horizontal position.
+#
+
+shape_artwork_offset_x = 0.0
+
+
+#
+# Physical vertical adjustment of incorporated Artwork, in millimeters.
+#
+# Applied after automatic fitting. Positive values move Artwork upward;
+# negative values move Artwork downward.
+#
+# Zero preserves the automatically fitted vertical position.
+#
+
+shape_artwork_offset_y = 0.0
+
+
+#
+# Uniform scale multiplier applied to incorporated Artwork after
+# automatic fitting, about the fitted Artwork center.
+#
+# Must be positive and finite. A value of 1.0 preserves automatic
+# fitting. Values below 1.0 shrink Artwork; values above 1.0 enlarge it,
+# subject to placement containment.
+#
+
+shape_artwork_scale = 1.0
