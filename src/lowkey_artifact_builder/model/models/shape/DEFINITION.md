@@ -510,6 +510,7 @@ All components belonging to one registered Artwork collection share the
 same Artwork coordinate system and receive the same transformation into
 registered Shape space.
 
+
 ## Artwork Placement
 
 Registered Artwork is placed within the registered Shape interior
@@ -524,31 +525,58 @@ registered Shape interior region.
 
 The placement circle is computed from the registered interior boundary.
 
-The same computation is used regardless of whether the Shape geometry is
-a circle, square, or regular polygon.
+The same computation is used regardless of whether the Shape geometry
+is a circle, square, or regular polygon.
 
-Registered Artwork is:
+By default, registered Artwork is:
 
 - centered within the Artwork placement region;
 - uniformly scaled to the largest size at which its authoritative Artwork
   envelope remains contained within the Artwork placement region;
-
 - aspect-ratio preserving;
 - not stretched;
 - not cropped merely to increase its fitted size.
 
 The authoritative Artwork envelope determines Artwork occupancy for
-fitting.
+fitting. Shape does not infer Artwork occupancy from the independent
+bounds of its individual color components.
 
-Shape does not infer Artwork occupancy from the independent bounds of
-its individual color components.
+The Artwork Placement Feature provides three optional adjustments:
 
-The transformation from registered Artwork space into registered Shape
-space is derived from the Artwork collection's common registered extent
-and the computed Artwork placement region.
+```text
+shape_artwork_offset_x = 0.0
+shape_artwork_offset_y = 0.0
+shape_artwork_scale = 1.0
+```
 
-All registered Artwork color layers receive the same transformation so
-that their registration is preserved.
+Offsets are physical millimeters in the finished Shape coordinate
+system. Positive X moves Artwork right; positive Y moves Artwork toward
+the top of the finished Shape.
+
+Scale is a positive, dimensionless multiplier of the automatically
+fitted Artwork size.
+
+Shape first computes the existing automatic-fit transformation, then
+applies uniform scaling about the fitted Artwork center, followed by
+the configured translations.
+
+Physical offsets are converted to registered Shape coordinates using
+the effective `shape_size`.
+
+The resulting common transformation applies identically to the
+authoritative Artwork envelope and every incorporated Artwork component.
+
+The transformed Artwork must remain within the permitted interior
+placement region and respect applicable Feature clearances. Invalid
+placements are rejected rather than silently cropped, deformed, or
+automatically rescaled.
+
+Shape Compose persists the authoritative placement transformation for
+downstream consumers. No downstream stage independently recomputes
+Artwork placement.
+
+Neutral adjustment values preserve existing placement behavior.
+
 
 ## Registered Composition
 
@@ -1232,6 +1260,39 @@ product participation are defined within that Feature subsection.
 
 Feature-specific semantics are not duplicated in unrelated model sections. A stage
 may operate on participating Features without owning their semantics.
+
+
+### Artwork Placement
+
+The Artwork Placement Feature adjusts the position and size of
+incorporated Artwork without modifying its source geometry.
+
+Its parameters are:
+
+```text
+shape_artwork_offset_x
+shape_artwork_offset_y
+shape_artwork_scale
+```
+
+The default offsets are zero millimeters and the default scale is
+`1.0`.
+
+Offsets must be finite. Scale must be finite and greater than zero.
+
+The Feature participates only when Artwork is incorporated. Its
+placement rules, transformation order, containment requirements, and
+registration semantics are defined in `Artwork Placement`.
+
+Placement adjustments affect the incorporated Artwork and its
+authoritative envelope, including dependent Artwork-fill geometry.
+They do not translate or scale Shape structure, ridges, labels,
+loops, holes, or other Shape-owned geometry.
+
+Placement changes affect registered composition and its downstream
+consumers, but do not require changes to upstream Artwork products
+or Shape Structure.
+
 
 ### Outer Ridge
 
@@ -3567,6 +3628,80 @@ A conforming QR Code Feature satisfies the following:
 39. A Shape containing a QR Code remains valid without incorporated Artwork.
 
 
+
+### SVG Export
+
+The SVG Export Feature optionally produces a two-dimensional
+manufacturing Product representing the registered SHAPE composition.
+
+It is controlled by:
+
+```text
+shape_svg_enabled = false
+```
+
+The parameter is Boolean and follows the normal Model, Artifact,
+and Realization configuration precedence. An Artifact-level setting
+applies to its SHAPE Realizations unless overridden by an individual
+Realization.
+
+When enabled, SHAPE publishes an additional Product:
+
+```text
+<realization>.svg
+```
+
+alongside the existing:
+
+```text
+<realization>.3mf
+```
+
+SVG Export uses authoritative registered SHAPE Compose Products.
+It does not reconstruct geometry from STL or 3MF, introduce
+independent Artwork placement, or alter the physical 3MF.
+
+The exported SVG:
+
+- combines participating registered Artwork, ridges, border labels,
+  and applicable planar Shape Features;
+- excludes the solid Shape Base while permitting explicit structural
+  boundary outlines;
+- preserves registered placement, orientation, semantic component
+  identity, and logical Artwork-color separation;
+- uses physical millimeter dimensions derived from `shape_size`;
+- contains portable vector geometry without external resources,
+  unresolved fonts, or editor-specific dependencies;
+- avoids construction geometry, unintended opaque backgrounds,
+  duplicate filled regions, and oversized default strokes.
+
+Structural outlines use explicit physical stroke widths.
+
+SVG Export consumes authoritative registered SHAPE Compose Products
+and produces a declared SVG manufacturing Product.
+
+The export implementation does not duplicate or independently
+reconstruct SHAPE composition geometry.
+
+SVG generation does not depend on successful Shape Extrude or Package.
+Publication exposes the SVG as the realization-named manufacturing
+Product without duplicating composition logic.
+
+When SVG Export is disabled, the SVG is not required for successful
+SHAPE manufacturing.
+
+Enabling or disabling SVG Export does not change registered Shape
+geometry, physical dimensionalization, printer-color assignment, or
+the existing 3MF Product.
+
+SVG freshness and publication are tracked independently of unrelated
+extrusion and 3MF packaging changes.
+
+SVG Export provides a direct planar representation of SHAPE. It does
+not replace the separate LASER Model, which owns additional
+two-dimensional manufacturing representation policies.
+
+
 ## Final Product
 
 Shape produces:
@@ -3574,6 +3709,9 @@ Shape produces:
 ```text
 artifact.3mf
 ```
+
+When the SVG Export Feature is enabled, Shape additionally produces
+the SVG manufacturing Product defined by that Feature.
 
 The final artifact contains the dimensionalized structural Shape
 geometry.
