@@ -55,32 +55,27 @@ def _publish_manufacturing_product(
     plan: BuildPlan,
 ) -> None:
     """
-    Publish the current package Product for one Artifact Realization.
+    Publish Realization-named manufacturing convenience files.
 
-    The canonical package Product remains the persistent Product authority.
-    Publication creates a Realization-named convenience copy beside the
-    Artifact configuration so an operator can retrieve the manufacturing
-    result without navigating the Stage workspace.
+    The canonical Stage Products remain authoritative.
 
-    Publication is a postcondition of successful artifact-level execution.
-    It is independent of whether the package Stage executed during the
-    current invocation. A current canonical package Product may therefore
-    restore a missing convenience publication without rerunning package
-    production.
+    The packaged 3MF is published whenever the package Product exists,
+    preserving the existing artifact-build behavior.
 
-    A BuildPlan without a package Stage has no manufacturing Product to
-    publish and is left unchanged.
+    For SHAPE, an enabled shape_svg_enabled setting additionally publishes
+    the canonical Compose SVG. This publication is independent of whether
+    Compose executed during the current build.
+
+    Publication settings do not change Stage dependencies, fingerprints,
+    or canonical Products. Disabling SVG publication does not delete a
+    previously published convenience file.
     """
-
     package_stage = next(
         (stage for stage in plan.stages if stage.name == "package"),
         None,
     )
 
-    if package_stage is None:
-        return
-
-    if not package_stage.products:
+    if package_stage is None or not package_stage.products:
         return
 
     package_product = package_stage.products[0]
@@ -88,16 +83,69 @@ def _publish_manufacturing_product(
     if not package_product.path.is_file():
         return
 
-    published = plan.artifact_dir / f"{plan.realization_name}.3mf"
+    published_3mf = plan.artifact_dir / f"{plan.realization_name}.3mf"
 
     try:
         shutil.copy2(
             package_product.path,
-            published,
+            published_3mf,
         )
     except OSError as exc:
         raise RuntimeError(
-            f"Could not publish manufacturing Product {package_product.path} to {published}: {exc}"
+            f"Could not publish manufacturing Product "
+            f"{package_product.path} to {published_3mf}: {exc}"
+        ) from exc
+
+    # SVG publication is currently a SHAPE-specific policy.
+    # Other Models retain their existing publication behavior.
+
+    if plan.model_name != "shape":
+        return
+
+    if not plan.resolver("shape_svg_enabled"):
+        return
+
+    compose_stage = next(
+        (stage for stage in plan.stages if stage.name == "compose"),
+        None,
+    )
+
+    if compose_stage is None:
+        raise RuntimeError(
+            f"Cannot publish SVG for Shape Realization "
+            f"{plan.realization_name!r}: "
+            "Compose Stage is missing from the BuildPlan."
+        )
+
+    svg_product = next(
+        (product for product in compose_stage.products if product.spec.name == "artifact"),
+        None,
+    )
+
+    if svg_product is None:
+        raise RuntimeError(
+            f"Cannot publish SVG for Shape Realization "
+            f"{plan.realization_name!r}: "
+            "Compose Stage does not declare an artifact Product."
+        )
+
+    if not svg_product.path.is_file():
+        raise RuntimeError(
+            f"Cannot publish SVG for Shape Realization "
+            f"{plan.realization_name!r}: "
+            f"canonical Product is missing: {svg_product.path}"
+        )
+
+    published_svg = plan.artifact_dir / f"{plan.realization_name}.svg"
+
+    try:
+        shutil.copy2(
+            svg_product.path,
+            published_svg,
+        )
+    except OSError as exc:
+        raise RuntimeError(
+            f"Could not publish manufacturing Product {svg_product.path} to {published_svg}: {exc}"
         ) from exc
 
 

@@ -5,6 +5,21 @@
 [parameters]
 
 # =========================================================
+# Manufacturing publication
+# =========================================================
+
+#
+# Publish the canonical Compose SVG as a Realization-named
+# convenience file alongside the packaged 3MF.
+#
+# The canonical Compose SVG is always generated.
+# This setting controls publication only and must not
+# invalidate Shape manufacturing Products.
+#
+
+shape_svg_enabled = false
+
+# =========================================================
 # Shape geometry
 # =========================================================
 
