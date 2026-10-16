@@ -1705,3 +1705,350 @@ def test_native_svg_printer_reassignment_preserves_extrusion_geometry(
     assert manifest.read_bytes() == original_manifest
 
     assert {path.name: path.read_bytes() for path in manifest.parent.glob("*.stl")} == original_stls
+
+
+# ----------------------------------------------------------------
+# Batch 4 — Native SVG Prepare -> Raster -> Vector integration
+# ----------------------------------------------------------------
+
+
+def _native_svg_pipeline(
+    tmp_path: Path,
+    *,
+    source_text: str,
+    **parameters: Any,
+) -> tuple[Path, Path, Path, Path]:
+    """
+    Execute the real native SVG registration pipeline.
+
+    Prepare may render a temporary PNG to derive the envelope.
+    Raster and Vector must preserve authored color geometry without
+    bitmap tracing.
+
+    Return source, prepared trace, raster manifest, vector manifest.
+    """
+    from lowkey_artifact_builder.model.models.artwork.stages import (
+        prepare,
+        raster,
+        vector,
+    )
+
+    source = tmp_path / "source.svg"
+    source.write_text(source_text, encoding="utf-8")
+
+    prepared = tmp_path / "prepare"
+    raster_dir = tmp_path / "raster"
+    vector_dir = tmp_path / "vector"
+
+    trace = prepared / "trace.svg"
+    envelope = prepared / "envelope.svg"
+    raster_manifest = raster_dir / "products.json"
+    vector_manifest = vector_dir / "products.json"
+
+    resolver = _resolver(
+        tmp_path,
+        artwork_envelope_mode="alpha",
+        **parameters,
+    )
+
+    prepare.execute(
+        StubContext(
+            inputs={"source": source},
+            outputs={
+                "trace": trace,
+                "envelope": envelope,
+            },
+            resolver=resolver,
+        )  # type: ignore[arg-type]
+    )
+
+    raster.execute(
+        StubContext(
+            inputs={"prepare.trace": trace},
+            outputs={"manifest": raster_manifest},
+            resolver=resolver,
+        )  # type: ignore[arg-type]
+    )
+
+    vector.execute(
+        StubContext(
+            inputs={
+                "raster.manifest": raster_manifest,
+                "prepare.envelope": envelope,
+            },
+            outputs={"manifest": vector_manifest},
+            resolver=resolver,
+        )  # type: ignore[arg-type]
+    )
+
+    return source, trace, raster_manifest, vector_manifest
+
+
+def _native_svg_pipeline_source() -> str:
+    """
+    Three authored objects in two colors.
+
+    The red objects are disconnected but share one Artifact color.
+    Blue occupies the adjacent right-hand region.
+    """
+    return """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 200 200">
+            <g transform="translate(30,40)">
+                <g transform="scale(2)">
+                    <path id="red-left"
+                          d="M 0 0 H 10 V 20 H 0 Z"
+                          fill="#ff0000"/>
+                    <path id="red-middle"
+                          d="M 10 0 H 20 V 20 H 10 Z"
+                          style="fill:#ff0000"/>
+                    <path id="blue-right"
+                          d="M 20 0 H 40 V 20 H 20 Z"
+                          fill="#0000ff"/>
+                </g>
+            </g>
+        </svg>
+    """
+
+
+def _native_svg_layer_paths(
+    manifest: Path,
+) -> dict[int, Path]:
+    """Resolve registered Vector products using their manifest paths."""
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+
+    result: dict[int, Path] = {}
+
+    for product in data["products"]:
+        index = product["artifact_color"]["index"]
+        result[index] = manifest.parent / product["path"]
+
+    return result
+
+
+def _native_svg_path_ids(path: Path) -> set[str]:
+    """Read authored path identities from a registered SVG layer."""
+    root = ET.parse(path).getroot()
+    namespace = "{http://www.w3.org/2000/svg}"
+
+    return {element.attrib["id"] for element in root.iter(f"{namespace}path")}
+
+
+@pytest.mark.slow
+def test_native_svg_pipeline_preserves_authored_geometry_and_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Prepare, Raster, and Vector preserve authored SVG color geometry.
+
+    Two red objects share one Artifact-color identity. The blue
+    object receives another. All authored paths survive unchanged.
+    """
+    source_text = _native_svg_pipeline_source()
+
+    source, trace, raster_manifest, vector_manifest = _native_svg_pipeline(
+        tmp_path,
+        source_text=source_text,
+    )
+
+    # Prepare preserves the original SVG source verbatim.
+    assert trace.read_bytes() == source.read_bytes()
+
+    raster_data = json.loads(raster_manifest.read_text(encoding="utf-8"))
+
+    assert raster_data["representation"] == "native-svg"
+
+    products = raster_data["products"]
+
+    assert [product["object_id"] for product in products] == [
+        "red-left",
+        "red-middle",
+        "blue-right",
+    ]
+
+    assert [product["artifact_color"]["index"] for product in products] == [1, 1, 2]
+
+    assert products[0]["artifact_color"]["rgb"] == _color(255, 0, 0)
+    assert products[1]["artifact_color"]["rgb"] == _color(255, 0, 0)
+    assert products[2]["artifact_color"]["rgb"] == _color(0, 0, 255)
+
+    vector_data = json.loads(vector_manifest.read_text(encoding="utf-8"))
+
+    assert vector_data["registered_extent"] == 200
+    assert len(vector_data["products"]) == 2
+
+    layers = _native_svg_layer_paths(vector_manifest)
+    assert set(layers) == {1, 2}
+
+    assert _native_svg_path_ids(layers[1]) == {
+        "red-left",
+        "red-middle",
+    }
+    assert _native_svg_path_ids(layers[2]) == {
+        "blue-right",
+    }
+
+    source_root = ET.parse(source).getroot()
+    source_paths = {
+        element.get("id"): element.get("d")
+        for element in source_root.iter("{http://www.w3.org/2000/svg}path")
+    }
+
+    for layer in layers.values():
+        root = ET.parse(layer).getroot()
+
+        for element in root.iter("{http://www.w3.org/2000/svg}path"):
+            object_id = element.get("id")
+            assert object_id in source_paths
+            assert element.get("d") == source_paths[object_id]
+
+        # Authored nested transforms survive registration.
+        transforms = [
+            element.get("transform") for element in root.iter("{http://www.w3.org/2000/svg}g")
+        ]
+
+        assert "translate(30,40)" in transforms
+        assert "scale(2)" in transforms
+
+
+@pytest.mark.slow
+def test_native_svg_pipeline_does_not_retrace_color_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Native SVG Raster and Vector produce SVG-only registered products.
+
+    Prepare may use temporary rasterization for envelope analysis,
+    but authored color geometry must never become bitmap products.
+    """
+    source, trace, raster_manifest, vector_manifest = _native_svg_pipeline(
+        tmp_path,
+        source_text=_native_svg_pipeline_source(),
+    )
+
+    assert source.is_file()
+    assert trace.read_bytes() == source.read_bytes()
+
+    raster_data = json.loads(raster_manifest.read_text(encoding="utf-8"))
+
+    assert raster_data["representation"] == "native-svg"
+
+    # Raster publishes object/color identity, not bitmap layers.
+    assert all("object_id" in product for product in raster_data["products"])
+
+    assert not list(raster_manifest.parent.glob("*.png"))
+
+    # Vector publishes registered SVG layers, not traced PNGs.
+    layers = _native_svg_layer_paths(vector_manifest)
+
+    assert len(layers) == 2
+    assert all(path.suffix == ".svg" for path in layers.values())
+    assert all(path.is_file() for path in layers.values())
+    assert not list(vector_manifest.parent.glob("*.png"))
+
+    # Every output still contains authored path commands.
+    assert _native_svg_path_ids(layers[1]) == {
+        "red-left",
+        "red-middle",
+    }
+    assert _native_svg_path_ids(layers[2]) == {
+        "blue-right",
+    }
+
+
+@pytest.mark.slow
+def test_native_svg_pipeline_excludes_unpainted_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    fill='none' objects do not create registered color layers.
+
+    Painted geometry remains intact and the unpainted path
+    is absent from the resulting registered Artwork products.
+    """
+    source_text = """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 100 100">
+            <g transform="translate(10,10)">
+                <path id="painted"
+                      d="M 0 0 H 60 V 60 H 0 Z"
+                      fill="#ff0000"/>
+                <path id="unpainted"
+                      d="M 20 20 H 40 V 40 H 20 Z"
+                      fill="none"/>
+            </g>
+        </svg>
+    """
+
+    _, _, raster_manifest, vector_manifest = _native_svg_pipeline(
+        tmp_path,
+        source_text=source_text,
+    )
+
+    raster_data = json.loads(raster_manifest.read_text(encoding="utf-8"))
+
+    assert [product["object_id"] for product in raster_data["products"]] == ["painted"]
+
+    layers = _native_svg_layer_paths(vector_manifest)
+
+    assert set(layers) == {1}
+    assert _native_svg_path_ids(layers[1]) == {"painted"}
+
+    root = ET.parse(layers[1]).getroot()
+
+    assert not any(element.get("id") == "unpainted" for element in root.iter())
+
+
+@pytest.mark.slow
+def test_native_svg_pipeline_is_independent_of_printer_palette(
+    tmp_path: Path,
+) -> None:
+    """
+    Printer colors and PNG tracing settings do not change
+    registered native SVG geometry or Artifact-color identities.
+    """
+    source_text = _native_svg_pipeline_source()
+
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+
+    first_root.mkdir()
+    second_root.mkdir()
+
+    _, first_trace, first_raster, first_vector = _native_svg_pipeline(
+        first_root,
+        source_text=source_text,
+        printer_colors=["red", "blue"],
+        artifact_color_count=2,
+        artwork_pixels=512,
+    )
+
+    _, second_trace, second_raster, second_vector = _native_svg_pipeline(
+        second_root,
+        source_text=source_text,
+        printer_colors=["green", "yellow", "black"],
+        artifact_color_count=5,
+        artwork_pixels=1024,
+    )
+
+    assert first_trace.read_bytes() == second_trace.read_bytes()
+
+    first_raster_data = json.loads(first_raster.read_text(encoding="utf-8"))
+    second_raster_data = json.loads(second_raster.read_text(encoding="utf-8"))
+
+    assert first_raster_data["products"] == (second_raster_data["products"])
+
+    first_vector_data = json.loads(first_vector.read_text(encoding="utf-8"))
+    second_vector_data = json.loads(second_vector.read_text(encoding="utf-8"))
+
+    assert first_vector_data["registered_extent"] == (second_vector_data["registered_extent"])
+
+    assert first_vector_data["products"] == (second_vector_data["products"])
+
+    first_layers = _native_svg_layer_paths(first_vector)
+    second_layers = _native_svg_layer_paths(second_vector)
+
+    assert set(first_layers) == set(second_layers)
+
+    for index in first_layers:
+        assert first_layers[index].read_bytes() == second_layers[index].read_bytes()
