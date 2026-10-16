@@ -190,4 +190,3 @@ Shape owns the source planar composition and its Features. Artwork owns register
 Laser does not provide independent Shape geometry generation, arbitrary object placement, physical extrusion, or machine-specific laser processing.
 
 New Laser capabilities should be introduced as self-contained Features without changing the core Model contract unless the underlying architectural semantics change.
-

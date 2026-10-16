@@ -42,6 +42,7 @@ MODEL = ModelSpec(
             description=("Shape with an enabled outer ridge suitable for an ornament."),
             parameters={
                 "shape_outer_ridge_width": 1.5,
+                "shape_size": 76,
             },
         ),
         VariantSpec(
@@ -49,6 +50,7 @@ MODEL = ModelSpec(
             description=("Shape with an enabled outer ridge suitable for an ornament."),
             parameters={
                 "shape_outer_ridge_width": 1.5,
+                "shape_size": 89,
             },
         ),
         VariantSpec(

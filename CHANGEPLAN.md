@@ -245,4 +245,3 @@ Neutral defaults preserve existing manufacturing behavior. These are SHAPE compo
 ### Completion
 
 Phase 2 is complete when SHAPE Realizations can independently translate and uniformly scale incorporated Artwork within the permitted interior, using stable physical units and one authoritative Compose transform, without altering source Artwork or unrelated Shape Features.
-
