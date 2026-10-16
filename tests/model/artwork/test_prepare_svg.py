@@ -42,10 +42,12 @@ def _paths(svg: Path) -> list[ET.Element]:
 
 
 def test_fan_shell_assigns_unique_ids_to_all_unnamed_paths(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The real fan fixture has eleven unnamed spines, all requiring IDs."""
+    """Normalize eleven authored paths and one circle into identified paths."""
     assert FAN_SHELL.is_file()
+
     source_paths = _paths(FAN_SHELL)
     assert len(source_paths) == 11
     assert all(path.get("id") is None for path in source_paths)
@@ -54,69 +56,53 @@ def test_fan_shell_assigns_unique_ids_to_all_unnamed_paths(
     output_paths = _paths(trace)
     ids = [path.get("id") for path in output_paths]
 
-    assert len(ids) == 11
+    assert len(output_paths) == 12
     assert all(ids)
-    assert len(set(ids)) == 11
-    assert [path.get("d") for path in output_paths] == [path.get("d") for path in source_paths]
-    assert [path.get("fill") for path in output_paths] == [
+    assert len(set(ids)) == 12
+
+    # Existing paths retain their geometry and explicit fill attributes.
+    assert [path.get("d") for path in output_paths[:11]] == [path.get("d") for path in source_paths]
+    assert [path.get("fill") for path in output_paths[:11]] == [
         path.get("fill") for path in source_paths
     ]
-    # The unrelated circle remains unchanged; primitive conversion is out of scope.
-    original_circle = ET.parse(FAN_SHELL).getroot().find(f".//{{{SVG_NS}}}circle")
-    trace_circle = ET.parse(trace).getroot().find(f".//{{{SVG_NS}}}circle")
-    assert original_circle is not None and trace_circle is not None
-    assert trace_circle.attrib == original_circle.attrib
+
+    # The circle is represented as a path, not retained as a primitive.
+    root = ET.parse(trace).getroot()
+    assert list(root.iter(f"{{{SVG_NS}}}circle")) == []
 
 
 def test_fan_shell_generated_ids_are_repeatable_and_source_is_unchanged(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """
-    Reprocessing the same native SVG produces deterministic, unique,
-    nonempty path IDs without modifying the authored source.
-    """
-
+    """Repeated normalization produces identical IDs without editing the source."""
     before = FAN_SHELL.read_bytes()
 
     source_paths = _paths(FAN_SHELL)
-
     assert len(source_paths) == 11
     assert all(path.get("id") is None for path in source_paths)
 
-    first = _prepare(
-        FAN_SHELL,
-        tmp_path,
-        monkeypatch,
-        name="first.svg",
-    )
+    first = _prepare(FAN_SHELL, tmp_path, monkeypatch, name="first.svg")
+    second = _prepare(FAN_SHELL, tmp_path, monkeypatch, name="second.svg")
 
-    second = _prepare(
-        FAN_SHELL,
-        tmp_path,
-        monkeypatch,
-        name="second.svg",
-    )
+    first_paths = _paths(first)
+    second_paths = _paths(second)
 
-    first_ids = [path.get("id") for path in _paths(first)]
+    first_ids = [path.get("id") for path in first_paths]
+    second_ids = [path.get("id") for path in second_paths]
 
-    second_ids = [path.get("id") for path in _paths(second)]
+    assert len(first_ids) == 12
+    assert len(second_ids) == 12
 
-    assert len(first_ids) == 11
-    assert len(second_ids) == 11
-
-    # Missing IDs must actually be generated.
     assert all(first_ids)
     assert all(second_ids)
 
-    # Every path must have a distinct identity.
-    assert len(set(first_ids)) == 11
-    assert len(set(second_ids)) == 11
+    assert len(set(first_ids)) == 12
+    assert len(set(second_ids)) == 12
 
-    # Repeated preparation must assign the same identities.
     assert first_ids == second_ids
+    assert [path.get("d") for path in first_paths] == [path.get("d") for path in second_paths]
 
-    # Normalization must never modify the original source.
     assert FAN_SHELL.read_bytes() == before
 
 
@@ -220,3 +206,83 @@ def test_duplicate_authored_ids_are_rejected(
         prepare.PrepareError, match=r"(?i)(duplicate|unique).*id|id.*(duplicate|unique)"
     ):
         _prepare(source, tmp_path, monkeypatch)
+
+
+def test_fan_shell_circle_is_normalized_to_equivalent_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Convert the fan-shell circle without changing its dimensions or position."""
+    source_root = ET.parse(FAN_SHELL).getroot()
+    circle = source_root.find(f".//{{{SVG_NS}}}circle")
+
+    assert circle is not None
+    assert circle.get("cx") == "560"
+    assert circle.get("cy") == "570"
+    assert circle.get("r") == "48"
+
+    trace = _prepare(FAN_SHELL, tmp_path, monkeypatch)
+    root = ET.parse(trace).getroot()
+
+    assert list(root.iter(f"{{{SVG_NS}}}circle")) == []
+
+    paths = _paths(trace)
+    assert len(paths) == 12
+
+    converted = paths[-1]
+
+    assert converted.get("id")
+    assert converted.get("d") == ("M 608 570 A 48 48 0 1 0 512 570 A 48 48 0 1 0 608 570 Z")
+
+    # The circle originally inherits its fill from the parent group.
+    group = root.find(f".//{{{SVG_NS}}}g")
+    assert group is not None
+    assert group.get("fill") == "#303030"
+    assert converted.get("fill") is None
+
+
+def test_circle_normalization_preserves_attributes_and_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preserve authored identity, styling, transforms, and sibling order."""
+    source = tmp_path / "styled-circle.svg"
+    source.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+        '<g fill="#123456" transform="translate(5 10)">'
+        '<path id="before" d="M 0 0 H 10 V 10 Z"/>'
+        '<circle id="round" cx="40" cy="50" r="12" '
+        'style="opacity:0.5" stroke="#abcdef"/>'
+        '<path id="after" d="M 70 70 H 80 V 80 Z"/>'
+        "</g></svg>",
+        encoding="utf-8",
+    )
+
+    before = source.read_bytes()
+    trace = _prepare(source, tmp_path, monkeypatch)
+
+    root = ET.parse(trace).getroot()
+    group = root.find(f".//{{{SVG_NS}}}g")
+
+    assert group is not None
+    assert group.get("fill") == "#123456"
+    assert group.get("transform") == "translate(5 10)"
+
+    children = list(group)
+    assert [child.tag.rsplit("}", 1)[-1] for child in children] == [
+        "path",
+        "path",
+        "path",
+    ]
+    assert [child.get("id") for child in children] == [
+        "before",
+        "round",
+        "after",
+    ]
+
+    converted = children[1]
+    assert converted.get("style") == "opacity:0.5"
+    assert converted.get("stroke") == "#abcdef"
+    assert converted.get("d") == ("M 52 50 A 12 12 0 1 0 28 50 A 12 12 0 1 0 52 50 Z")
+
+    assert source.read_bytes() == before

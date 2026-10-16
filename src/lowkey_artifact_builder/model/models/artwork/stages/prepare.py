@@ -1210,8 +1210,8 @@ def _prepare_svg_source(
     """
     Prepare native SVG artwork without retracing its geometry.
 
-    Validate the SVG source, assign deterministic IDs to unnamed
-    paths, and derive the physical envelope independently.
+    Validate the SVG source, normalize circles into paths, assign
+    deterministic IDs, and derive the physical envelope independently.
 
     Preserve authored geometry, groups, transforms, colors, and
     fill rules in the normalized trace product.
@@ -1237,6 +1237,8 @@ def _prepare_svg_source(
         if _local_name(element.tag) == "image":
             raise PrepareError("Embedded raster images are unsupported in native SVG artwork.")
 
+    _normalize_native_svg_circles(root)
+
     _assign_native_svg_path_ids(root)
 
     _derive_svg_envelope(
@@ -1259,6 +1261,70 @@ def _prepare_svg_source(
 
     except OSError as exc:
         raise PrepareError(f"Could not write native SVG trace: {trace_output}") from exc
+
+
+def _normalize_native_svg_circles(
+    root: ET.Element,
+) -> None:
+    """
+    Replace native SVG circles with equivalent closed paths.
+
+    Preserve authored IDs, presentation attributes, styles,
+    transforms, parent groups, and sibling order.
+
+    Leave ID generation to _assign_native_svg_path_ids().
+    """
+
+    for parent in root.iter():
+        for index, element in enumerate(list(parent)):
+            if _local_name(element.tag) != "circle":
+                continue
+
+            try:
+                cx = float(element.get("cx", "0"))
+                cy = float(element.get("cy", "0"))
+                radius = float(element.get("r", "0"))
+
+            except ValueError as exc:
+                raise PrepareError("Native SVG circle has invalid numeric geometry.") from exc
+
+            if not all(np.isfinite(value) for value in (cx, cy, radius)):
+                raise PrepareError("Native SVG circle geometry must be finite.")
+
+            if radius <= 0:
+                raise PrepareError("Native SVG circle radius must be positive.")
+
+            def number(value: float) -> str:
+                return f"{value:g}"
+
+            right = number(cx + radius)
+            left = number(cx - radius)
+            center_y = number(cy)
+            r = number(radius)
+
+            path_data = (
+                f"M {right} {center_y} "
+                f"A {r} {r} 0 1 0 {left} {center_y} "
+                f"A {r} {r} 0 1 0 {right} {center_y} Z"
+            )
+
+            attributes = {
+                name: value
+                for name, value in element.attrib.items()
+                if name not in {"cx", "cy", "r"}
+            }
+
+            attributes["d"] = path_data
+
+            path = ET.Element(
+                _svg_tag("path"),
+                attributes,
+            )
+
+            path.tail = element.tail
+
+            parent.remove(element)
+            parent.insert(index, path)
 
 
 def _assign_native_svg_path_ids(
