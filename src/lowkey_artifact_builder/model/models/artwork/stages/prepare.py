@@ -26,7 +26,6 @@ parameters, and outputs supplied through StageContext.
 
 from __future__ import annotations
 
-import shutil
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
@@ -1211,11 +1210,11 @@ def _prepare_svg_source(
     """
     Prepare native SVG artwork without retracing its geometry.
 
-    Validate the SVG source, preserve its authored vector content,
-    and derive the physical envelope independently.
+    Validate the SVG source, assign deterministic IDs to unnamed
+    paths, and derive the physical envelope independently.
 
-    The trace is copied rather than reconstructed so that authored
-    geometry, groups, transforms, colors, and fill rules survive.
+    Preserve authored geometry, groups, transforms, colors, and
+    fill rules in the normalized trace product.
     """
 
     try:
@@ -1238,20 +1237,81 @@ def _prepare_svg_source(
         if _local_name(element.tag) == "image":
             raise PrepareError("Embedded raster images are unsupported in native SVG artwork.")
 
+    _assign_native_svg_path_ids(root)
+
     _derive_svg_envelope(
         source,
         envelope_output,
         mode=envelope_mode,
     )
 
+    ET.register_namespace(
+        "",
+        SVG_NAMESPACE,
+    )
+
     try:
-        shutil.copyfile(
-            source,
+        tree.write(
             trace_output,
+            encoding="utf-8",
+            xml_declaration=True,
         )
 
     except OSError as exc:
         raise PrepareError(f"Could not write native SVG trace: {trace_output}") from exc
+
+
+def _assign_native_svg_path_ids(
+    root: ET.Element,
+) -> None:
+    """
+    Assign deterministic, globally unique IDs to unnamed SVG paths.
+
+    Preserve all authored IDs. Reject duplicate authored IDs and
+    reserve IDs belonging to every SVG element, including groups
+    and definitions.
+
+    Generated IDs follow document order and use the path-NNN
+    naming convention.
+    """
+
+    reserved_ids: set[str] = set()
+
+    # Collect and validate authored IDs across the entire document.
+    for element in root.iter():
+        authored_id = element.get("id")
+
+        if authored_id is None:
+            continue
+
+        if authored_id in reserved_ids:
+            raise PrepareError(f"Duplicate SVG element ID: {authored_id!r}")
+
+        reserved_ids.add(authored_id)
+
+    next_index = 1
+
+    # Assign IDs only to paths that do not already have one.
+    for element in root.iter():
+        if _local_name(element.tag) != "path":
+            continue
+
+        if element.get("id") is not None:
+            continue
+
+        while True:
+            generated_id = f"path-{next_index:03d}"
+            next_index += 1
+
+            if generated_id not in reserved_ids:
+                break
+
+        element.set(
+            "id",
+            generated_id,
+        )
+
+        reserved_ids.add(generated_id)
 
 
 def _prepare_source_image(
