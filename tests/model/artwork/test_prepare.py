@@ -924,6 +924,7 @@ def test_prepare_configured_shrink_wrap_changes_persistent_envelope(
     )
 
 
+@pytest.mark.slow
 def test_prepare_svg_preserves_native_geometry_without_raster_tracing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -982,6 +983,7 @@ def test_prepare_svg_preserves_native_geometry_without_raster_tracing(
     assert any(element.get("d") == "M 10 10 H 90 V 90 H 10 Z" for element in paths)
 
 
+@pytest.mark.slow
 def test_prepare_svg_preserves_colors_transforms_and_holes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

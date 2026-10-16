@@ -16,15 +16,16 @@ locations are determined by the declared extrusion manifest.
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from lowkey_artifact_builder.config import Resolver, get_resolver
-from lowkey_artifact_builder.model.models.artwork.stages import extrude
-
-pytestmark = pytest.mark.slow
+from lowkey_artifact_builder.formats.threemf import CORE_NS, component_name
+from lowkey_artifact_builder.model.models.artwork.stages import extrude, package
 
 # ----------------------------------------------------------------
 # helpers
@@ -221,6 +222,196 @@ def _color(
         "green": green,
         "blue": blue,
     }
+
+
+class _SVGPackageResolver:
+    """Minimal packaging resolver with an explicit physical palette."""
+
+    def __init__(
+        self,
+        printer_colors: list[str],
+        colors: dict[str, dict[str, list[int]]],
+    ) -> None:
+        self._values: dict[str, Any] = {
+            "printer_colors": printer_colors,
+        }
+        self.colors = colors
+
+    def __call__(self, name: str) -> Any:
+        return self._values[name]
+
+    def has(self, name: str) -> bool:
+        return name in self._values
+
+
+class _SVGPackageContext:
+    """StageContext-compatible packaging context."""
+
+    def __init__(
+        self,
+        *,
+        manifest: Path,
+        artifact: Path,
+        resolver: _SVGPackageResolver,
+    ) -> None:
+        self.artifact_id = "native-svg"
+        self.resolver = resolver
+        self._manifest = manifest
+        self._artifact = artifact
+
+    def input(self, name: str) -> Path:
+        assert name == "extrude.manifest"
+        return self._manifest
+
+    def output(self, name: str) -> Path:
+        assert name == "artifact"
+        return self._artifact
+
+
+def _native_svg_two_color_context(
+    tmp_path: Path,
+    **overrides: Any,
+) -> tuple[StubContext, Path]:
+    """
+    Create two adjacent registered SVG color layers.
+
+    Registered envelope: X=30..110, Y=40..80.
+    Physical envelope: 100 x 50.
+
+    Layer 1 occupies the left half; Layer 2 the right half.
+    """
+    context, manifest = _manufacturing_svg_context(
+        tmp_path,
+        **overrides,
+    )
+
+    vector_manifest = context.input("artwork.vector.manifest")
+    vector_directory = vector_manifest.parent
+
+    first = vector_directory / "color-1.svg"
+    second = vector_directory / "color-2.svg"
+
+    first.write_text(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 200 200">
+            <g transform="translate(30,40)">
+                <path d="M 0 0 H 40 V 40 H 0 Z"/>
+            </g>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    second.write_text(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 200 200">
+            <g transform="translate(30,40)">
+                <path d="M 40 0 H 80 V 40 H 40 Z"/>
+            </g>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    vector_manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 200,
+                "envelope": "envelope.svg",
+                "products": [
+                    _product(
+                        index=1,
+                        path=first.name,
+                        artifact_color_index=1,
+                        artifact_rgb=(255, 0, 0),
+                    ),
+                    _product(
+                        index=2,
+                        path=second.name,
+                        artifact_color_index=2,
+                        artifact_rgb=(0, 0, 255),
+                    ),
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    return context, manifest
+
+
+def _package_native_svg(
+    manifest: Path,
+    artifact: Path,
+    *,
+    printer_colors: list[str],
+    colors: dict[str, dict[str, list[int]]],
+) -> None:
+    """Package actual OpenSCAD STL products into a real 3MF."""
+    context = _SVGPackageContext(
+        manifest=manifest,
+        artifact=artifact,
+        resolver=_SVGPackageResolver(
+            printer_colors,
+            colors,
+        ),
+    )
+
+    package.execute(context)  # type: ignore[arg-type]
+
+    assert artifact.is_file()
+    assert zipfile.is_zipfile(artifact)
+
+
+def _native_svg_3mf_objects(
+    artifact: Path,
+) -> dict[str, tuple[str, tuple[float, ...]]]:
+    """
+    Inspect real 3MF component names, physical colors, and mesh vertices.
+
+    Return each component's physical color and flattened XYZ coordinates.
+    """
+    with zipfile.ZipFile(artifact) as archive:
+        root = ET.fromstring(archive.read("3D/3dmodel.model"))
+
+    ns = f"{{{CORE_NS}}}"
+
+    materials = {element.get("id"): element for element in root.findall(f".//{ns}basematerials")}
+
+    result: dict[str, tuple[str, tuple[float, ...]]] = {}
+
+    for obj in root.findall(f".//{ns}object"):
+        name = obj.get("name")
+        material_id = obj.get("pid")
+
+        assert name is not None
+        assert material_id is not None
+        assert name not in result
+
+        material = materials[material_id].find(f"{ns}base")
+        assert material is not None
+
+        color = material.get("displaycolor")
+        assert color is not None
+
+        coordinates: list[float] = []
+
+        for vertex in obj.findall(f"./{ns}mesh/{ns}vertices/{ns}vertex"):
+            coordinates.extend(float(vertex.get(axis, "nan")) for axis in ("x", "y", "z"))
+
+        assert coordinates
+
+        result[name] = (
+            color,
+            tuple(coordinates),
+        )
+
+    build_items = root.findall(f"./{ns}build/{ns}item")
+    assert len(build_items) == len(result)
+
+    return result
 
 
 # ----------------------------------------------------------------
@@ -1118,6 +1309,7 @@ def _stl_top_surface_contains(
     return False
 
 
+@pytest.mark.slow
 def test_native_svg_base_preserves_transformed_envelope_and_z_registration(
     tmp_path: Path,
 ) -> None:
@@ -1151,6 +1343,7 @@ def test_native_svg_base_preserves_transformed_envelope_and_z_registration(
     )
 
 
+@pytest.mark.slow
 def test_native_svg_loop_attaches_to_transformed_envelope(
     tmp_path: Path,
 ) -> None:
@@ -1195,6 +1388,7 @@ def test_native_svg_loop_attaches_to_transformed_envelope(
     assert not _stl_top_surface_contains(loop, x=0.0, y=28.0, z=3.5)
 
 
+@pytest.mark.slow
 def test_native_svg_outer_ridge_preserves_registered_perimeter(
     tmp_path: Path,
 ) -> None:
@@ -1239,6 +1433,7 @@ def test_native_svg_outer_ridge_preserves_registered_perimeter(
     assert _stl_top_surface_contains(artwork, x=0.0, y=0.0, z=1.5)
 
 
+@pytest.mark.slow
 def test_native_svg_configured_hole_subtracts_base_and_artwork(
     tmp_path: Path,
 ) -> None:
@@ -1284,3 +1479,229 @@ def test_native_svg_configured_hole_subtracts_base_and_artwork(
     # The configured Hole passes through both components.
     assert not _stl_top_surface_contains(base, x=0.0, y=15.0, z=2.0)
     assert not _stl_top_surface_contains(artwork, x=0.0, y=15.0, z=3.5)
+
+
+def test_native_svg_multicolor_package_preserves_component_registration(
+    tmp_path: Path,
+) -> None:
+    """
+    Native SVG color layers retain physical registration in a real 3MF.
+
+    Package must preserve the two independently extruded regions,
+    canonical artwork-N identities, and assigned physical colors.
+    """
+    context, manifest = _native_svg_two_color_context(tmp_path)
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    first_stl = manifest.parent / "color-1.stl"
+    second_stl = manifest.parent / "color-2.stl"
+
+    assert _stl_bounds(first_stl) == pytest.approx(
+        (-50.0, 0.0, -25.0, 25.0, 0.0, 1.5),
+        abs=0.01,
+    )
+    assert _stl_bounds(second_stl) == pytest.approx(
+        (0.0, 50.0, -25.0, 25.0, 0.0, 1.5),
+        abs=0.01,
+    )
+
+    artifact = tmp_path / "native-svg.3mf"
+
+    _package_native_svg(
+        manifest,
+        artifact,
+        printer_colors=["red", "blue"],
+        colors={
+            "red": {"rgb": [255, 0, 0]},
+            "blue": {"rgb": [0, 0, 255]},
+        },
+    )
+
+    objects = _native_svg_3mf_objects(artifact)
+
+    first_name = component_name("native-svg", "artwork-1", "red")
+    second_name = component_name("native-svg", "artwork-2", "blue")
+
+    assert set(objects) == {first_name, second_name}
+    assert objects[first_name][0] == "#FF0000"
+    assert objects[second_name][0] == "#0000FF"
+
+    def bounds(name: str) -> tuple[float, ...]:
+        values = objects[name][1]
+        xs = values[0::3]
+        ys = values[1::3]
+        zs = values[2::3]
+        return (
+            min(xs),
+            max(xs),
+            min(ys),
+            max(ys),
+            min(zs),
+            max(zs),
+        )
+
+    assert bounds(first_name) == pytest.approx(
+        (-50.0, 0.0, -25.0, 25.0, 0.0, 1.5),
+        abs=0.01,
+    )
+    assert bounds(second_name) == pytest.approx(
+        (0.0, 50.0, -25.0, 25.0, 0.0, 1.5),
+        abs=0.01,
+    )
+
+
+@pytest.mark.slow
+def test_native_svg_package_features_inherit_attached_artifact_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Base, Loop, and Outer Ridge inherit their attached Artwork colors.
+
+    Logical attachment is established during extrusion; physical color
+    assignment is performed only during packaging.
+    """
+    context, manifest = _native_svg_two_color_context(
+        tmp_path,
+        artwork_base_raise=2.0,
+        artwork_outer_ridge_width=4.0,
+        artwork_outer_ridge_raise=1.5,
+        loop_inner_diameter=6.0,
+        loop_width=2.0,
+        loop_position=0,
+        loop_raise=1.5,
+    )
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    products = data["products"]
+
+    layers = {
+        product["artifact_color"]["index"]: product for product in products if "index" in product
+    }
+
+    assert set(layers) == {1, 2}
+
+    features = {product["path"]: product for product in products if "index" not in product}
+
+    assert set(features) == {
+        "base.stl",
+        "loop.stl",
+        "outer-ridge.stl",
+    }
+
+    for product in features.values():
+        assert product["artifact_color_index"] in layers
+
+    artifact = tmp_path / "features.3mf"
+
+    _package_native_svg(
+        manifest,
+        artifact,
+        printer_colors=["red", "blue"],
+        colors={
+            "red": {"rgb": [255, 0, 0]},
+            "blue": {"rgb": [0, 0, 255]},
+        },
+    )
+
+    objects = _native_svg_3mf_objects(artifact)
+
+    assignments = {
+        1: ("red", "#FF0000"),
+        2: ("blue", "#0000FF"),
+    }
+
+    expected_names = {
+        component_name("native-svg", "artwork-1", "red"),
+        component_name("native-svg", "artwork-2", "blue"),
+    }
+
+    for filename, product in features.items():
+        index = product["artifact_color_index"]
+        color_name, color_rgb = assignments[index]
+
+        semantic_name = Path(filename).stem
+        name = component_name("native-svg", semantic_name, color_name)
+
+        expected_names.add(name)
+        assert objects[name][0] == color_rgb
+
+    assert set(objects) == expected_names
+
+    # Every packaged component has actual mesh geometry.
+    assert all(len(coordinates) >= 9 for _, coordinates in objects.values())
+
+
+def test_native_svg_printer_reassignment_preserves_extrusion_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Printer-color changes affect packaging, not native SVG extrusion.
+
+    Two packages built from the same extrusion manifest must contain
+    identical mesh geometry but different physical color assignments.
+    """
+    context, manifest = _native_svg_two_color_context(tmp_path)
+
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    original_manifest = manifest.read_bytes()
+    original_stls = {path.name: path.read_bytes() for path in manifest.parent.glob("*.stl")}
+
+    first_artifact = tmp_path / "original.3mf"
+    second_artifact = tmp_path / "reassigned.3mf"
+
+    _package_native_svg(
+        manifest,
+        first_artifact,
+        printer_colors=["red", "blue"],
+        colors={
+            "red": {"rgb": [255, 0, 0]},
+            "blue": {"rgb": [0, 0, 255]},
+        },
+    )
+
+    _package_native_svg(
+        manifest,
+        second_artifact,
+        printer_colors=["warm-red", "deep-blue"],
+        colors={
+            "warm-red": {"rgb": [240, 0, 0]},
+            "deep-blue": {"rgb": [0, 0, 240]},
+        },
+    )
+
+    first = _native_svg_3mf_objects(first_artifact)
+    second = _native_svg_3mf_objects(second_artifact)
+
+    expected_first = {
+        component_name("native-svg", "artwork-1", "red"): "#FF0000",
+        component_name("native-svg", "artwork-2", "blue"): "#0000FF",
+    }
+
+    expected_second = {
+        component_name("native-svg", "artwork-1", "warm-red"): "#F00000",
+        component_name("native-svg", "artwork-2", "deep-blue"): "#0000F0",
+    }
+
+    assert {name: color for name, (color, _) in first.items()} == expected_first
+
+    assert {name: color for name, (color, _) in second.items()} == expected_second
+
+    # Compare physical meshes by stable semantic component identity.
+    first_geometry = {
+        name.split(" - ", 1)[0]: coordinates for name, (_, coordinates) in first.items()
+    }
+
+    second_geometry = {
+        name.split(" - ", 1)[0]: coordinates for name, (_, coordinates) in second.items()
+    }
+
+    assert first_geometry == second_geometry
+
+    # Packaging must not mutate upstream manufacturing products.
+    assert manifest.read_bytes() == original_manifest
+
+    assert {path.name: path.read_bytes() for path in manifest.parent.glob("*.stl")} == original_stls
