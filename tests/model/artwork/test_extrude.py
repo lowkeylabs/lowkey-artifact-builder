@@ -2367,3 +2367,130 @@ def test_native_svg_envelope_without_transform_preserves_bounds(
     )
 
     assert extrude._envelope_bounds(envelope) == pytest.approx((10.0, 15.0, 70.0, 55.0))
+
+
+def test_native_svg_extrude_preserves_transformed_layer_registration(
+    tmp_path: Path,
+) -> None:
+    """
+    Native SVG group transforms survive physical extrusion.
+
+    Two registered color layers must occupy adjacent physical regions
+    after OpenSCAD imports their transformed SVG geometry.
+    """
+
+    vector_directory = tmp_path / "vector"
+    vector_directory.mkdir(parents=True, exist_ok=True)
+
+    envelope = vector_directory / "envelope.svg"
+    envelope.write_text(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 100 100">
+            <g transform="translate(-10,-5)">
+                <path d="M 20 15 H 80 V 45 H 20 Z"/>
+            </g>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    first_svg = vector_directory / "color-1.svg"
+    first_svg.write_text(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 100 100">
+            <g transform="translate(-10,-10)">
+                <g transform="scale(2)">
+                    <path d="M 10 10 H 25 V 25 H 10 Z"/>
+                </g>
+            </g>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    second_svg = vector_directory / "color-2.svg"
+    second_svg.write_text(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 100 100">
+            <g transform="translate(-10,-5)">
+                <path d="M 50 15 H 80 V 45 H 50 Z"/>
+            </g>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+    vector_manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 100,
+                "envelope": envelope.name,
+                "products": [
+                    _product(
+                        index=1,
+                        path=first_svg.name,
+                        artifact_color_index=1,
+                        artifact_rgb=(255, 0, 0),
+                    ),
+                    _product(
+                        index=2,
+                        path=second_svg.name,
+                        artifact_color_index=2,
+                        artifact_rgb=(0, 0, 255),
+                    ),
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "artwork.vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=120.0,
+            artwork_raise=1.5,
+            artwork_base_raise=0.0,
+            artwork_outer_ridge_width=0.0,
+            loop_inner_diameter=0.0,
+        ),
+    )
+
+    # Deliberately use real OpenSCAD rendering.
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    first_bounds = _stl_bounds(extrude_manifest.parent / "color-1.stl")
+    second_bounds = _stl_bounds(extrude_manifest.parent / "color-2.stl")
+
+    # Registered envelope:
+    # X = 10..70, Y = 10..40.
+    # Physical size 120 gives scale 2.
+    #
+    # Layer 1: X = -60..0, Y = -30..30.
+    # Layer 2: X = 0..60, Y = -30..30.
+
+    assert first_bounds == pytest.approx(
+        (-60.0, 0.0, -30.0, 30.0, 0.0, 1.5),
+        abs=0.01,
+    )
+
+    assert second_bounds == pytest.approx(
+        (0.0, 60.0, -30.0, 30.0, 0.0, 1.5),
+        abs=0.01,
+    )
+
+    assert first_bounds[1] == pytest.approx(
+        second_bounds[0],
+        abs=0.01,
+    )
