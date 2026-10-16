@@ -398,13 +398,19 @@ def _derive_svg_envelope(
     mode: str,
 ) -> None:
     """
-    Derive an SVG source's physical envelope.
+    Derive the physical envelope of native SVG artwork.
 
-    Render the SVG temporarily for silhouette analysis while retaining
-    the original authored vector geometry in the trace product.
+    Preserve every visible component, including disconnected regions
+    and interior holes. Native SVG geometry is authoritative and is
+    not subjected to raster noise removal, morphological closing,
+    hole filling, or primary-component selection.
 
-    The temporary raster is used only for envelope derivation.
+    Rendering is used only to obtain the visible silhouette.
+    The authored vector geometry remains unchanged in trace.svg.
     """
+
+    if mode not in {"alpha", "shrink-wrap"}:
+        raise PrepareError(f"Unsupported artwork envelope mode: {mode!r}.")
 
     temporary_path: Path | None = None
 
@@ -415,9 +421,7 @@ def _derive_svg_envelope(
             dir=output.parent,
             delete=False,
         ) as temporary:
-            temporary_path = Path(
-                temporary.name,
-            )
+            temporary_path = Path(temporary.name)
 
         actions = (
             "export-area-page",
@@ -428,11 +432,7 @@ def _derive_svg_envelope(
         )
 
         try:
-            run(
-                source,
-                actions=actions,
-            )
-
+            run(source, actions=actions)
         except InkscapeError as exc:
             raise PrepareError(f"Could not render SVG for envelope derivation: {source}") from exc
 
@@ -440,20 +440,11 @@ def _derive_svg_envelope(
             raise PrepareError(f"SVG envelope rendering did not produce an image: {source}")
 
         try:
-            with Image.open(
-                temporary_path,
-            ) as rendered:
-                image = rendered.convert(
-                    "RGBA",
-                )
-
+            with Image.open(temporary_path) as rendered:
+                image = rendered.convert("RGBA")
+                envelope = _foreground_mask(image)
         except OSError as exc:
             raise PrepareError(f"Could not read rendered SVG envelope: {source}") from exc
-
-        envelope = _derive_envelope(
-            image,
-            mode=mode,
-        )
 
         if not np.any(envelope):
             raise PrepareError("Could not derive an artwork envelope from the SVG source.")
@@ -461,15 +452,13 @@ def _derive_svg_envelope(
         _write_envelope_svg(
             envelope,
             output,
+            preserve_all=True,
         )
 
     finally:
         if temporary_path is not None:
             try:
-                temporary_path.unlink(
-                    missing_ok=True,
-                )
-
+                temporary_path.unlink(missing_ok=True)
             except OSError:
                 pass
 
@@ -1426,62 +1415,81 @@ Edge = tuple[Point, Point]
 
 def _envelope_path_data(
     envelope: np.ndarray,
+    *,
+    preserve_all: bool = False,
 ) -> str:
     """
-    Return SVG path data for the exterior artwork envelope.
+    Return SVG path data for the artwork envelope.
 
-    The envelope is expected to describe one physical artwork domain.
-    If pixel topology produces multiple loops, the loop enclosing the
-    greatest absolute area is treated as the exterior boundary.
+    PNG-derived artwork retains the existing primary-exterior
+    behavior.
+
+    Native SVG artwork preserves every boundary loop, including
+    disconnected components and interior holes.
+
+    The resulting compound path uses the nonzero fill rule.
+    Boundary orientation distinguishes filled regions from holes.
     """
 
     if envelope.ndim != 2:
         raise PrepareError("Artwork envelope must be two-dimensional.")
 
-    edges = _boundary_edges(
-        envelope,
-    )
+    edges = _boundary_edges(envelope)
 
     if not edges:
         raise PrepareError("Artwork envelope has no boundary.")
 
-    loops = _boundary_loops(
-        edges,
-    )
+    loops = _boundary_loops(edges)
 
     if not loops:
         raise PrepareError("Could not construct a closed artwork envelope boundary.")
 
+    if preserve_all:
+        paths: list[str] = []
+
+        for loop in loops:
+            simplified = _simplify_loop(loop)
+
+            if len(simplified) < 4:
+                raise PrepareError("Artwork envelope boundary contains insufficient geometry.")
+
+            if _signed_area(simplified) == 0:
+                raise PrepareError("Artwork envelope contains a degenerate boundary.")
+
+            paths.append(_svg_path_data(simplified))
+
+        return " ".join(paths)
+
     exterior = max(
         loops,
-        key=lambda loop: abs(
-            _signed_area(
-                loop,
-            )
-        ),
+        key=lambda loop: abs(_signed_area(loop)),
     )
 
-    exterior = _simplify_loop(
-        exterior,
-    )
+    exterior = _simplify_loop(exterior)
 
     if len(exterior) < 4:
         raise PrepareError("Artwork envelope boundary contains insufficient geometry.")
 
-    return _svg_path_data(
-        exterior,
-    )
+    return _svg_path_data(exterior)
 
 
 def _write_envelope_svg(
     envelope: np.ndarray,
     output: Path,
+    *,
+    preserve_all: bool = False,
 ) -> None:
     """
-    Write the exterior artwork envelope as a border-only SVG.
+    Write the physical artwork envelope as an SVG.
 
-    The SVG is intentionally diagnostic geometry: it contains no fill
-    and represents only the physical outer boundary of the artwork.
+    PNG-derived envelopes retain their existing single-exterior
+    diagnostic representation.
+
+    Native SVG envelopes retain all disconnected boundaries and
+    interior holes as one compound path.
+
+    The SVG remains border-only for inspection. Downstream geometry
+    consumers may import the closed contours as planar regions.
     """
 
     if envelope.ndim != 2:
@@ -1494,7 +1502,10 @@ def _write_envelope_svg(
 
     path_data = _envelope_path_data(
         envelope,
+        preserve_all=preserve_all,
     )
+
+    fill_rule = '        fill-rule="nonzero"\n' if preserve_all else ""
 
     svg = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -1503,6 +1514,7 @@ def _write_envelope_svg(
         f'     height="{height}"\n'
         f'     viewBox="0 0 {width} {height}">\n'
         f'  <path d="{path_data}"\n'
+        f"{fill_rule}"
         '        fill="none"\n'
         '        stroke="#000000"\n'
         '        stroke-width="1"/>\n'
@@ -1514,7 +1526,6 @@ def _write_envelope_svg(
             svg,
             encoding="utf-8",
         )
-
     except OSError as exc:
         raise PrepareError(f"Could not write artwork envelope: {output}") from exc
 

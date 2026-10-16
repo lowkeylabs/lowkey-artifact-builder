@@ -1383,6 +1383,8 @@ def test_dependency_build_executes_transitive_dependencies_in_order(
 
     def execute_artifact(
         build_plan: BuildPlan,
+        *,
+        product_dependency_fingerprint=None,
         **kwargs,
     ) -> ExecutionPlan:
         execution_order.append(
@@ -1391,6 +1393,7 @@ def test_dependency_build_executes_transitive_dependencies_in_order(
 
         _record_plan_current(
             build_plan,
+            product_dependency_fingerprint=product_dependency_fingerprint,
         )
 
         return ExecutionPlan(
@@ -1479,6 +1482,8 @@ def test_dependency_build_reuses_current_transitive_dependency(
 
     def execute_artifact(
         build_plan: BuildPlan,
+        *,
+        product_dependency_fingerprint=None,
         **kwargs,
     ) -> ExecutionPlan:
         execution_order.append(
@@ -1487,6 +1492,7 @@ def test_dependency_build_reuses_current_transitive_dependency(
 
         _record_plan_current(
             build_plan,
+            product_dependency_fingerprint=product_dependency_fingerprint,
         )
 
         return ExecutionPlan(
@@ -1560,6 +1566,8 @@ def test_dependency_build_targets_only_required_transitive_product(
 
     def execute_artifact(
         build_plan: BuildPlan,
+        *,
+        product_dependency_fingerprint=None,
         **kwargs,
     ) -> ExecutionPlan:
         for stage in build_plan.stages:
@@ -1572,6 +1580,7 @@ def test_dependency_build_targets_only_required_transitive_product(
 
         _record_plan_current(
             build_plan,
+            product_dependency_fingerprint=product_dependency_fingerprint,
         )
 
         return ExecutionPlan(
@@ -2493,6 +2502,8 @@ def test_dependency_build_executes_shared_producer_once(
 
     def execute_artifact(
         build_plan: BuildPlan,
+        *,
+        product_dependency_fingerprint=None,
         **kwargs,
     ) -> ExecutionPlan:
         execution_order.append(
@@ -2501,6 +2512,7 @@ def test_dependency_build_executes_shared_producer_once(
 
         _record_plan_current(
             build_plan,
+            product_dependency_fingerprint=product_dependency_fingerprint,
         )
 
         return ExecutionPlan(
@@ -2599,10 +2611,13 @@ def test_dependency_build_reuses_shared_producer_for_second_branch(
 
     def execute_artifact(
         build_plan: BuildPlan,
+        *,
+        product_dependency_fingerprint=None,
         **kwargs,
     ) -> ExecutionPlan:
         _record_plan_current(
             build_plan,
+            product_dependency_fingerprint=product_dependency_fingerprint,
         )
 
         return ExecutionPlan(
@@ -2682,6 +2697,8 @@ def test_dependency_build_executes_sibling_producers_before_consumer(
 
     def execute_artifact(
         build_plan: BuildPlan,
+        *,
+        product_dependency_fingerprint=None,
         **kwargs,
     ) -> ExecutionPlan:
         execution_order.append(
@@ -2690,6 +2707,7 @@ def test_dependency_build_executes_sibling_producers_before_consumer(
 
         _record_plan_current(
             build_plan,
+            product_dependency_fingerprint=product_dependency_fingerprint,
         )
 
         return ExecutionPlan(
@@ -3069,3 +3087,77 @@ def test_dependency_build_planning_does_not_mutate_persistent_products(
     assert execution_plan.required_product_dependencies == ()
 
     assert before == after
+
+
+def test_dependency_build_reuses_transitive_producer_fingerprints(
+    tmp_path: Path,
+    test_resolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A consumer must accept producer completion fingerprints computed
+    using authoritative transitive dependency fingerprints.
+    """
+    plan_a, plan_b, plan_c, plan_d = _shared_dependency_plans(
+        tmp_path,
+        resolver=test_resolver,
+    )
+
+    plans = {(plan.artifact_id, plan.model_name): plan for plan in (plan_a, plan_b, plan_c, plan_d)}
+
+    def create_producer_plans(
+        build_plan: BuildPlan,
+        execution_plan: ExecutionPlan,
+    ) -> tuple[BuildPlan, ...]:
+        producer_plans: list[BuildPlan] = []
+
+        for dependency in execution_plan.required_product_dependencies:
+            product_ref = dependency.product_ref
+
+            assert isinstance(product_ref, ProductRef)
+
+            producer_plans.append(
+                plans[
+                    (
+                        product_ref.artifact,
+                        product_ref.model,
+                    )
+                ]
+            )
+
+        return tuple(producer_plans)
+
+    def execute_artifact(
+        build_plan: BuildPlan,
+        *,
+        product_dependency_fingerprint=None,
+        **kwargs,
+    ) -> ExecutionPlan:
+        _record_plan_current(
+            build_plan,
+            product_dependency_fingerprint=product_dependency_fingerprint,
+        )
+
+        return ExecutionPlan(
+            artifact_id=build_plan.artifact_id,
+            model_name=build_plan.model_name,
+            realization=build_plan.realization_name,
+            stages=(),
+        )
+
+    monkeypatch.setattr(
+        dependency_build_module,
+        "create_required_product_dependency_build_plans",
+        create_producer_plans,
+    )
+    monkeypatch.setattr(
+        dependency_build_module,
+        "execute_incremental_artifact_build",
+        execute_artifact,
+    )
+
+    execute_dependency_build(plan_a)
+
+    # Repeating the build must also succeed without requiring
+    # inconsistent producer fingerprints.
+    execute_dependency_build(plan_a)

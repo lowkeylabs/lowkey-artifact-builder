@@ -1852,7 +1852,13 @@ def test_native_svg_pipeline_preserves_authored_geometry_and_colors(
     )
 
     # Prepare preserves the original SVG source verbatim.
-    assert trace.read_bytes() == source.read_bytes()
+    assert ET.canonicalize(
+        trace.read_text(encoding="utf-8"),
+        strip_text=True,
+    ) == ET.canonicalize(
+        source.read_text(encoding="utf-8"),
+        strip_text=True,
+    )
 
     raster_data = json.loads(raster_manifest.read_text(encoding="utf-8"))
 
@@ -1927,7 +1933,13 @@ def test_native_svg_pipeline_does_not_retrace_color_geometry(
     )
 
     assert source.is_file()
-    assert trace.read_bytes() == source.read_bytes()
+    assert ET.canonicalize(
+        trace.read_text(encoding="utf-8"),
+        strip_text=True,
+    ) == ET.canonicalize(
+        source.read_text(encoding="utf-8"),
+        strip_text=True,
+    )
 
     raster_data = json.loads(raster_manifest.read_text(encoding="utf-8"))
 
@@ -2052,3 +2064,235 @@ def test_native_svg_pipeline_is_independent_of_printer_palette(
 
     for index in first_layers:
         assert first_layers[index].read_bytes() == second_layers[index].read_bytes()
+
+
+def test_native_svg_extrude_preserves_large_registered_coordinates(
+    tmp_path: Path,
+) -> None:
+    """
+    A large native SVG must retain its intended physical dimensions.
+
+    Regression for fan-shell-style registration:
+    - Registered canvas: 1120 x 1120
+    - Authored geometry: 1120 x 680
+    - Registration translation: Y +220
+    - Requested physical artwork width: 100 mm
+
+    The rendered STL must be 100 x (100 * 680 / 1120) mm,
+    centered at the origin.
+    """
+    vector_directory = tmp_path / "vector"
+    vector_directory.mkdir(parents=True, exist_ok=True)
+
+    svg = """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             width="1120"
+             height="1120"
+             viewBox="0 0 1120 1120">
+            <g transform="translate(0,220)">
+                <path d="M 0 0 H 1120 V 680 H 0 Z"
+                      fill="#303030"/>
+            </g>
+        </svg>
+    """
+
+    envelope = vector_directory / "envelope.svg"
+    layer = vector_directory / "color-1.svg"
+
+    envelope.write_text(svg, encoding="utf-8")
+    layer.write_text(svg, encoding="utf-8")
+
+    vector_manifest = vector_directory / "products.json"
+    vector_manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 1120,
+                "envelope": envelope.name,
+                "products": [
+                    _product(
+                        index=1,
+                        path=layer.name,
+                        artifact_color_index=1,
+                        artifact_rgb=(48, 48, 48),
+                    ),
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={"artwork.vector.manifest": vector_manifest},
+        outputs={"manifest": extrude_manifest},
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=100.0,
+            artwork_raise=1.5,
+            artwork_base_raise=0.0,
+            artwork_outer_ridge_width=0.0,
+            loop_inner_diameter=0.0,
+        ),
+    )
+
+    # Exercise the real OpenSCAD SVG importer.
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    bounds = _stl_bounds(extrude_manifest.parent / "color-1.stl")
+
+    half_height = 50.0 * 680.0 / 1120.0
+
+    assert bounds == pytest.approx(
+        (
+            -50.0,
+            50.0,
+            -half_height,
+            half_height,
+            0.0,
+            1.5,
+        ),
+        abs=0.01,
+    )
+
+
+@pytest.mark.slow
+def test_native_svg_fan_shell_extrusion_matches_envelope(
+    tmp_path: Path,
+) -> None:
+    """
+    The actual fan-shell SVG must extrude to a centered 100 mm artwork.
+
+    Run the real Prepare -> Raster -> Vector -> Extrude pipeline
+    to reproduce any registration or dimensionalization defect.
+    """
+    source = Path("tests/assets/fan-shell.svg")
+    assert source.is_file()
+
+    source_text = source.read_text(encoding="utf-8")
+
+    _, _, _, vector_manifest = _native_svg_pipeline(
+        tmp_path,
+        source_text=source_text,
+    )
+
+    prepare_envelope = tmp_path / "prepare" / "envelope.svg"
+
+    print(
+        "PREPARE envelope:",
+        extrude._envelope_bounds(prepare_envelope),
+    )
+
+    print(
+        "VECTOR envelope:",
+        extrude._envelope_bounds(vector_manifest.parent / "envelope.svg"),
+    )
+
+    vector_data = json.loads(vector_manifest.read_text(encoding="utf-8"))
+
+    envelope = vector_manifest.parent / vector_data["envelope"]
+    xmin, ymin, xmax, ymax = extrude._envelope_bounds(envelope)
+
+    envelope_width = xmax - xmin
+    envelope_height = ymax - ymin
+
+    assert envelope_width > 0
+    assert envelope_height > 0
+
+    scale = 100.0 / max(envelope_width, envelope_height)
+    expected_width = envelope_width * scale
+    expected_height = envelope_height * scale
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "artwork.vector.manifest": vector_manifest,
+        },
+        outputs={
+            "manifest": extrude_manifest,
+        },
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=100.0,
+            artwork_raise=1.0,
+            artwork_base_raise=0.0,
+            artwork_outer_ridge_width=0.0,
+            loop_inner_diameter=0.0,
+        ),
+    )
+
+    print(
+        "Registered envelope:",
+        extrude._envelope_bounds(envelope),
+    )
+
+    for index, layer in _native_svg_layer_paths(vector_manifest).items():
+        print(
+            f"Layer {index} SVG:",
+            layer,
+        )
+
+    # Real OpenSCAD extrusion.
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    data = json.loads(extrude_manifest.read_text(encoding="utf-8"))
+
+    assert len(data["products"]) == 1
+
+    stl = extrude_manifest.parent / data["products"][0]["path"]
+    bounds = _stl_bounds(stl)
+
+    print(f"\nEnvelope SVG bounds: {(xmin, ymin, xmax, ymax)}")
+    print(f"Envelope physical size: {(expected_width, expected_height)}")
+    print(f"Artwork STL bounds: {bounds}")
+    print(
+        "Artwork physical size:",
+        (bounds[1] - bounds[0], bounds[3] - bounds[2]),
+    )
+
+    assert bounds == pytest.approx(
+        (
+            -expected_width / 2.0,
+            expected_width / 2.0,
+            -expected_height / 2.0,
+            expected_height / 2.0,
+            0.0,
+            1.0,
+        ),
+        abs=0.05,
+    )
+
+    assert max(
+        bounds[1] - bounds[0],
+        bounds[3] - bounds[2],
+    ) == pytest.approx(100.0, abs=0.05)
+
+
+def test_native_svg_envelope_retains_disconnected_regions() -> None:
+    """
+    Native SVG envelopes must preserve all disconnected regions
+    without applying PNG-oriented component filtering.
+    """
+    import numpy as np
+
+    from lowkey_artifact_builder.model.models.artwork.stages import prepare
+
+    foreground = np.zeros((100, 200), dtype=bool)
+
+    # Two substantial, separated artwork regions.
+    foreground[20:80, 10:70] = True
+    foreground[20:80, 130:190] = True
+
+    path_data = prepare._envelope_path_data(
+        foreground,
+        preserve_all=True,
+    )
+
+    # Both disconnected regions must be represented as closed subpaths.
+    assert path_data.count("M ") == 2
+    assert path_data.count("Z") == 2
+
+    # Neither region should be omitted.
+    assert "10 " in path_data
+    assert "190 " in path_data

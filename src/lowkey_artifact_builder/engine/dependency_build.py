@@ -245,6 +245,7 @@ def _execute_dependency_build(
         _record_producer_fingerprints(
             producer_plan=producer_plan,
             fingerprints=produced,
+            product_dependency_fingerprint=product_dependency_fingerprint,
         )
 
     product_dependency_fingerprint = _create_product_dependency_fingerprint_resolver(
@@ -259,7 +260,9 @@ def _execute_dependency_build(
 
     if replanned.required_product_dependencies:
         raise DependencyBuildError(
-            "Producer execution did not satisfy all required product dependencies"
+            "Producer execution did not satisfy all required product dependencies: "
+            f"artifact={build_plan.artifact_id!r}, "
+            f"dependencies={replanned.required_product_dependencies!r}"
         )
 
     return execute_incremental_artifact_build(
@@ -332,6 +335,7 @@ def plan_dependency_build(
         _record_producer_fingerprints(
             producer_plan=producer_plan,
             fingerprints=produced,
+            product_dependency_fingerprint=resolver,
         )
 
     resolver = _create_product_dependency_fingerprint_resolver(
@@ -354,28 +358,20 @@ def _record_producer_fingerprints(
     *,
     producer_plan: BuildPlan,
     fingerprints: dict[
-        tuple[
-            str,
-            str,
-            str,
-            str,
-            str,
-        ],
+        tuple[str, str, str, str, str],
         ProductFingerprint,
     ],
+    product_dependency_fingerprint: ProductDependencyFingerprintResolver | None = None,
 ) -> None:
     """
-    Record required fingerprints for products realized by one producer.
+    Record producer fingerprints using the authoritative dependency context.
 
-    Required stage fingerprints are derived after all transitive producer
-    dependencies required by this BuildPlan have completed.
-
-    Every persistent product produced by a realized stage therefore maps
-    to the fingerprint required for that producing stage.
+    The same dependency fingerprints must be used for producer completion
+    persistence and subsequent consumer freshness evaluation.
     """
-
     required = create_required_fingerprints(
         producer_plan,
+        product_dependency_fingerprint=product_dependency_fingerprint,
     )
 
     for stage in producer_plan.stages:
