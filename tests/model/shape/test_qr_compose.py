@@ -38,6 +38,7 @@ def _execute_compose(
     structure = tmp_path / "structure.svg"
     composition = tmp_path / "composition.svg"
     manifest = tmp_path / "products.json"
+    artifact = tmp_path / "artifact.svg"
 
     _write_structure(structure)
 
@@ -68,6 +69,7 @@ def _execute_compose(
     context.output.side_effect = {
         "composition": composition,
         "manifest": manifest,
+        "artifact": artifact,
     }.__getitem__
     context.resolver.side_effect = values.__getitem__
 

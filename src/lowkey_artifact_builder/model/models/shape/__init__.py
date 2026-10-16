@@ -5,11 +5,11 @@ The shape model defines parameterized geometric bodies that may consume
 registered Artwork geometry.
 
 The current declaration establishes registered structural Shape production,
-registered composition, physical dimensionalization, optional outer-
-and inner-ridge policy, physical-component discovery, and final artifact
-packaging.
-
+registered composition, canonical SVG generation, physical dimensionalization,
+optional outer- and inner-ridge policy, physical-component discovery, and
+final artifact packaging.
 """
+
 # File: src/lowkey_artifact_builder/model/models/shape/__init__.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
@@ -122,6 +122,14 @@ MODEL = ModelSpec(
                     name="manifest",
                     path="products.json",
                     description=("Manifest describing persistent registered Shape composition."),
+                ),
+                ProductSpec(
+                    name="artifact",
+                    path="artifact.svg",
+                    description=(
+                        "Canonical physically dimensioned SVG representation "
+                        "of the composed Shape, excluding the solid base."
+                    ),
                 ),
             ),
         ),

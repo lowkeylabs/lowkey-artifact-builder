@@ -379,11 +379,13 @@ def execute(
     A participating QR Code is generated as separate registered dark/light
     geometry without requiring Artwork.
 
-    Color assignment remains downstream.
+    The canonical SVG is physically dimensioned but remains two-dimensional.
+    Color assignment and physical extrusion remain downstream.
     """
     structure_input = context.input("structure.structure")
     composition_output = context.output("composition")
     manifest_output = context.output("manifest")
+    artifact_output = context.output("artifact")
 
     shape_size = float(context.resolver("shape_size"))
     ridge_width = float(context.resolver("shape_outer_ridge_width"))
@@ -474,6 +476,216 @@ def execute(
         qr=qr,
         shape_size=shape_size,
     )
+
+    _write_artifact_svg(
+        artifact_output,
+        composition=composition_output,
+        artwork=artwork,
+        artwork_transform=artwork_transform,
+        shape_size=shape_size,
+    )
+
+
+def _write_artifact_svg(
+    path: Path,
+    *,
+    composition: Path,
+    artwork: RegisteredArtwork | None,
+    artwork_transform: RegisteredArtworkTransform | None,
+    shape_size: float,
+) -> None:
+    """
+    Write the canonical, physically dimensioned Shape SVG.
+
+    Registered ridge boundaries become filled planar regions.
+    Construction geometry is not exported as visible geometry.
+
+    Artwork components preserve their registered RGB identities
+    and share the authoritative placement transform.
+
+    The solid Shape Base is excluded.
+    """
+    if not math.isfinite(shape_size) or shape_size <= 0.0:
+        raise ValueError("Canonical Shape SVG requires positive finite Shape size.")
+
+    composition_root = ET.parse(composition).getroot()
+
+    root = ET.Element(
+        f"{{{SVG_NAMESPACE}}}svg",
+        {
+            "width": f"{shape_size:g}mm",
+            "height": f"{shape_size:g}mm",
+            "viewBox": "-0.5 -0.5 1 1",
+        },
+    )
+
+    structural_group = ET.SubElement(
+        root,
+        SVG_GROUP,
+        {"id": "structure"},
+    )
+
+    boundaries = {
+        element.get("id"): element for element in composition_root if element.get("id") is not None
+    }
+
+    shape_boundary = boundaries.get("shape-boundary")
+
+    if shape_boundary is None:
+        raise ValueError("Canonical Shape SVG requires a registered Shape boundary.")
+
+    outer_ridge_inner = boundaries.get("ridge-inner-boundary")
+
+    if outer_ridge_inner is not None:
+        ET.SubElement(
+            structural_group,
+            SVG_PATH,
+            {
+                "id": "outer-ridge",
+                "d": (
+                    _svg_boundary_path(shape_boundary) + " " + _svg_boundary_path(outer_ridge_inner)
+                ),
+                "fill": "black",
+                "fill-rule": "evenodd",
+                "stroke": "none",
+            },
+        )
+    else:
+        outline = ET.fromstring(ET.tostring(shape_boundary, encoding="unicode"))
+        outline.set("fill", "none")
+        outline.set("stroke", "black")
+        outline.set("stroke-width", f"{0.1 / shape_size:g}")
+        structural_group.append(outline)
+
+    inner_ridge_outer = boundaries.get("inner-ridge-outer-boundary")
+    inner_ridge_inner = boundaries.get("inner-ridge-inner-boundary")
+
+    if (inner_ridge_outer is None) != (inner_ridge_inner is None):
+        raise ValueError("Canonical Shape SVG requires both inner-ridge boundaries.")
+
+    if inner_ridge_outer is not None and inner_ridge_inner is not None:
+        ET.SubElement(
+            structural_group,
+            SVG_PATH,
+            {
+                "id": "inner-ridge",
+                "d": (
+                    _svg_boundary_path(inner_ridge_outer)
+                    + " "
+                    + _svg_boundary_path(inner_ridge_inner)
+                ),
+                "fill": "black",
+                "fill-rule": "evenodd",
+                "stroke": "none",
+            },
+        )
+
+    if artwork is not None:
+        if artwork_transform is None:
+            raise ValueError("Canonical Shape SVG requires registered Artwork placement.")
+
+        artwork_group = ET.SubElement(
+            root,
+            SVG_GROUP,
+            {
+                "id": "artwork",
+                "stroke": "none",
+            },
+        )
+
+        transform = artwork_transform
+
+        for component in artwork.components:
+            component_root = ET.parse(component.path).getroot()
+
+            rgb = component.artifact_color
+            fill = f"#{rgb['red']:02x}{rgb['green']:02x}{rgb['blue']:02x}"
+
+            component_group = ET.SubElement(
+                artwork_group,
+                SVG_GROUP,
+                {
+                    "id": f"artwork-{component.index}",
+                    "fill": fill,
+                    "transform": (
+                        f"translate({transform.translate_x:g} "
+                        f"{transform.translate_y:g}) "
+                        f"scale({transform.scale:g})"
+                    ),
+                },
+            )
+
+            for element in component_root:
+                component_group.append(ET.fromstring(ET.tostring(element, encoding="unicode")))
+
+    ET.register_namespace("", SVG_NAMESPACE)
+
+    ET.ElementTree(root).write(
+        path,
+        encoding="unicode",
+        xml_declaration=True,
+    )
+
+
+def _svg_boundary_path(element: ET.Element) -> str:
+    """
+    Convert a registered Shape boundary to a closed SVG path.
+
+    Supports the circle, rectangle, and polygon geometry already
+    produced by SHAPE Structure and Compose.
+
+    Compound paths may combine two such boundaries with the
+    even-odd fill rule to represent an annular region.
+    """
+    if element.tag == SVG_CIRCLE:
+        cx = float(element.get("cx", "0"))
+        cy = float(element.get("cy", "0"))
+        radius = float(element.get("r", "0"))
+
+        if radius <= 0.0:
+            raise ValueError("Canonical Shape SVG requires positive circle radius.")
+
+        left = cx - radius
+        right = cx + radius
+
+        return (
+            f"M {left:g} {cy:g} "
+            f"A {radius:g} {radius:g} 0 1 0 {right:g} {cy:g} "
+            f"A {radius:g} {radius:g} 0 1 0 {left:g} {cy:g} "
+            "Z"
+        )
+
+    if element.tag == SVG_RECT:
+        x = float(element.get("x", "0"))
+        y = float(element.get("y", "0"))
+        width = float(element.get("width", "0"))
+        height = float(element.get("height", "0"))
+
+        if width <= 0.0 or height <= 0.0:
+            raise ValueError("Canonical Shape SVG requires positive rectangle dimensions.")
+
+        return (
+            f"M {x:g} {y:g} "
+            f"L {x + width:g} {y:g} "
+            f"L {x + width:g} {y + height:g} "
+            f"L {x:g} {y + height:g} "
+            "Z"
+        )
+
+    if element.tag == SVG_POLYGON:
+        points = _read_polygon_points(element)
+
+        first_x, first_y = points[0]
+
+        commands = [f"M {first_x:g} {first_y:g}"]
+
+        commands.extend(f"L {x:g} {y:g}" for x, y in points[1:])
+
+        commands.append("Z")
+
+        return " ".join(commands)
+
+    raise ValueError("Canonical Shape SVG requires a supported registered boundary.")
 
 
 def _write_composition_manifest(

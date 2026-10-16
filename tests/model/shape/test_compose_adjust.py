@@ -65,14 +65,18 @@ def _run_compose(
     scale: float = 1.0,
 ) -> tuple[dict, str]:
     directory.mkdir(parents=True, exist_ok=True)
+
     structure = directory / "structure.svg"
     structure.write_text(
         f'<svg xmlns="{SVG_NS}" viewBox="-0.5 -0.5 1 1">'
         '<circle id="shape-boundary" cx="0" cy="0" r="0.5"/></svg>',
         encoding="utf-8",
     )
+
     composition = directory / "composition.svg"
     manifest = directory / "products.json"
+    artifact = directory / "artifact.svg"
+
     context = Mock(spec=StageContext)
     inputs = {
         "structure.structure": structure,
@@ -83,7 +87,9 @@ def _run_compose(
     context.output.side_effect = {
         "composition": composition,
         "manifest": manifest,
+        "artifact": artifact,
     }.__getitem__
+
     values = {
         "shape_size": shape_size,
         "shape_outer_ridge_width": 0.0,
@@ -103,8 +109,13 @@ def _run_compose(
         "shape_artwork_scale": scale,
     }
     context.resolver.side_effect = values.__getitem__
+
     compose.execute(context)
-    return json.loads(manifest.read_text(encoding="utf-8")), composition.read_text(encoding="utf-8")
+
+    return (
+        json.loads(manifest.read_text(encoding="utf-8")),
+        composition.read_text(encoding="utf-8"),
+    )
 
 
 def _center(artwork: compose.RegisteredArtwork, transform: dict) -> tuple[float, float]:

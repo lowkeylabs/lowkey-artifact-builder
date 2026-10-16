@@ -207,6 +207,8 @@ def test_shape_compose_produces_persistent_registered_composition() -> None:
     Registered Shape geometry remains available as composition.svg while a
     manifest provides the persistent contract through which downstream stages
     discover composition membership without scanning the stage directory.
+
+    Compose also produces a manufacturing-ready two-dimensional SVG artifact.
     """
 
     compose_stage = _compose_stage()
@@ -214,12 +216,17 @@ def test_shape_compose_produces_persistent_registered_composition() -> None:
     assert tuple(product.name for product in compose_stage.products) == (
         "composition",
         "manifest",
+        "artifact",
     )
 
 
 def test_shape_compose_products_have_canonical_relative_paths() -> None:
     """
     Shape composition products use canonical stage-local relative paths.
+
+    The registered composition and its manifest remain available for downstream
+    dimensionalization. The SVG artifact provides a separate two-dimensional
+    manufacturing product.
 
     Generated filesystem placement remains the responsibility of planning
     and product resolution rather than the Shape model definition.
@@ -232,6 +239,7 @@ def test_shape_compose_products_have_canonical_relative_paths() -> None:
     assert paths == {
         "composition": "composition.svg",
         "manifest": "products.json",
+        "artifact": "artifact.svg",
     }
 
 

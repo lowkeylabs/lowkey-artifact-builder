@@ -57,6 +57,7 @@ def _compose_inner_ridge(
     structure = tmp_path / "structure.svg"
     composition = tmp_path / "composition.svg"
     manifest = tmp_path / "products.json"
+    artifact = tmp_path / "artifact.svg"
 
     _write_registered_circle_structure(
         structure,
@@ -71,6 +72,7 @@ def _compose_inner_ridge(
     outputs = {
         "composition": composition,
         "manifest": manifest,
+        "artifact": artifact,
     }
 
     values = {

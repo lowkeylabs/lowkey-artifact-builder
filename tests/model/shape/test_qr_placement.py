@@ -26,6 +26,7 @@ def _compose_qr(
     structure = tmp_path / "structure.svg"
     composition = tmp_path / "composition.svg"
     manifest = tmp_path / "products.json"
+    artifact = tmp_path / "artifact.svg"
 
     if geometry == "circle":
         boundary = '<circle cx="0" cy="0" r="0.5"/>'
@@ -64,6 +65,7 @@ def _compose_qr(
     context.output.side_effect = {
         "composition": composition,
         "manifest": manifest,
+        "artifact": artifact,
     }.__getitem__
     context.resolver.side_effect = values.__getitem__
 

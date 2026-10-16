@@ -60,12 +60,13 @@ def _configure_compose_outputs(
     Return the persistent composition manifest path for tests that need to
     inspect it.
     """
-
     manifest = composition.parent / f"{composition.stem}-products.json"
+    artifact = composition.parent / "artifact.svg"
 
     outputs = {
         "composition": composition,
         "manifest": manifest,
+        "artifact": artifact,
     }
 
     context.output.side_effect = outputs.__getitem__
@@ -1841,6 +1842,7 @@ def test_compose_stage_materializes_registered_composition_manifest(
     outputs = {
         "composition": composition_output,
         "manifest": manifest_output,
+        "artifact": tmp_path / "artifact.svg",
     }
     context.output.side_effect = outputs.__getitem__
 
@@ -1858,6 +1860,7 @@ def test_compose_stage_materializes_registered_composition_manifest(
     assert context.output.call_args_list == [
         call("composition"),
         call("manifest"),
+        call("artifact"),
     ]
 
 
@@ -1890,6 +1893,7 @@ def test_compose_stage_manifest_declares_structural_composition(
     outputs = {
         "composition": composition_output,
         "manifest": manifest_output,
+        "artifact": tmp_path / "artifact.svg",
     }
     context.output.side_effect = outputs.__getitem__
 
@@ -1966,6 +1970,7 @@ def test_compose_stage_materializes_registered_composition(
     assert context.output.call_args_list == [
         call("composition"),
         call("manifest"),
+        call("artifact"),
     ]
 
     assert output.is_file()
@@ -2949,6 +2954,7 @@ def test_compose_manifest_preserves_registered_artwork_membership(
     outputs = {
         "composition": composition_output,
         "manifest": manifest_output,
+        "artifact": tmp_path / "artifact.svg",
     }
     context.output.side_effect = outputs.__getitem__
 
@@ -3133,6 +3139,7 @@ def test_compose_stage_places_artwork_from_manifest_envelope_occupancy(
     outputs = {
         "composition": composition_output,
         "manifest": manifest_output,
+        "artifact": tmp_path / "artifact.svg",
     }
     context.output.side_effect = outputs.__getitem__
 
@@ -3220,6 +3227,7 @@ def test_compose_manifest_records_one_common_artwork_transform(
     outputs = {
         "composition": composition_output,
         "manifest": manifest_output,
+        "artifact": tmp_path / "artifact.svg",
     }
     context.output.side_effect = outputs.__getitem__
 

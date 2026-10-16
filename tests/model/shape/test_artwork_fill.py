@@ -130,6 +130,7 @@ def _compose_context(
     outputs = {
         "composition": composition_path,
         "manifest": manifest_path,
+        "artifact": composition_path.parent / "artifact.svg",
     }
 
     values = {

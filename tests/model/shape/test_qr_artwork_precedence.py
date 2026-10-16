@@ -90,7 +90,6 @@ def _compose(tmp_path: Path, *, payload: str) -> tuple[Path, dict]:
         "shape_border_label_font_family": "DejaVu Sans",
         "shape_top_border_label_text": "",
         "shape_bottom_border_label_text": "",
-        # Neutral Artwork placement adjustments.
         "shape_artwork_offset_x": 0.0,
         "shape_artwork_offset_y": 0.0,
         "shape_artwork_scale": 1.0,
@@ -114,6 +113,7 @@ def _compose(tmp_path: Path, *, payload: str) -> tuple[Path, dict]:
     context.output.side_effect = {
         "composition": directory / "composition.svg",
         "manifest": manifest,
+        "artifact": directory / "artifact.svg",
     }.__getitem__
 
     context.resolver.side_effect = values.__getitem__
