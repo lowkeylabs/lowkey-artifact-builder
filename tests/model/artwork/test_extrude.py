@@ -2494,3 +2494,143 @@ def test_native_svg_extrude_preserves_transformed_layer_registration(
         second_bounds[0],
         abs=0.01,
     )
+
+
+def test_native_svg_extrude_preserves_evenodd_hole(
+    tmp_path: Path,
+) -> None:
+    """
+    Native SVG even-odd fill produces a physical through-hole.
+
+    Inspect the actual OpenSCAD STL top surface rather than SVG
+    markup or STL bounds alone.
+    """
+
+    vector_directory = tmp_path / "vector"
+    vector_directory.mkdir(parents=True, exist_ok=True)
+
+    envelope = vector_directory / "envelope.svg"
+    envelope.write_text(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 100 100">
+            <path d="M 0 0 H 100 V 100 H 0 Z"/>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    layer = vector_directory / "color-1.svg"
+    layer.write_text(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 100 100">
+            <g transform="translate(10,10)">
+                <path
+                    d="M 0 0 H 80 V 80 H 0 Z
+                       M 30 30 H 50 V 50 H 30 Z"
+                    fill="#ff0000"
+                    fill-rule="evenodd"
+                />
+            </g>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+
+    vector_manifest = vector_directory / "products.json"
+    vector_manifest.write_text(
+        json.dumps(
+            {
+                "registered_extent": 100,
+                "envelope": envelope.name,
+                "products": [
+                    _product(
+                        index=1,
+                        path=layer.name,
+                        artifact_color_index=1,
+                        artifact_rgb=(255, 0, 0),
+                    ),
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    extrude_manifest = tmp_path / "extrude" / "products.json"
+
+    context = StubContext(
+        inputs={"artwork.vector.manifest": vector_manifest},
+        outputs={"manifest": extrude_manifest},
+        resolver=_resolver(
+            tmp_path,
+            artwork_size=100.0,
+            artwork_raise=1.5,
+            artwork_base_raise=0.0,
+            artwork_outer_ridge_width=0.0,
+            loop_inner_diameter=0.0,
+        ),
+    )
+
+    # Real OpenSCAD extrusion; no renderer mocking.
+    extrude.execute(context)  # type: ignore[arg-type]
+
+    stl = extrude_manifest.parent / "color-1.stl"
+
+    assert stl.is_file()
+
+    assert _stl_bounds(stl) == pytest.approx(
+        (-40.0, 40.0, -40.0, 40.0, 0.0, 1.5),
+        abs=0.01,
+    )
+
+    vertices = []
+    triangles = []
+
+    for line in stl.read_text(encoding="utf-8").splitlines():
+        fields = line.strip().split()
+
+        if fields[:1] != ["vertex"]:
+            continue
+
+        vertices.append(tuple(float(value) for value in fields[1:]))
+
+        if len(vertices) == 3:
+            triangles.append(tuple(vertices))
+            vertices = []
+
+    assert triangles
+
+    def top_surface_contains(x: float, y: float) -> bool:
+        """
+        Check whether a point lies on any top-surface triangle.
+        """
+
+        for triangle in triangles:
+            if not all(abs(vertex[2] - 1.5) < 0.01 for vertex in triangle):
+                continue
+
+            a, b, c = triangle
+
+            def cross(
+                p: tuple[float, float, float],
+                q: tuple[float, float, float],
+            ) -> float:
+                return (q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0])
+
+            values = (
+                cross(a, b),
+                cross(b, c),
+                cross(c, a),
+            )
+
+            if min(values) >= -1e-6 or max(values) <= 1e-6:
+                return True
+
+        return False
+
+    # Solid material remains outside the interior cutout.
+    assert top_surface_contains(30.0, 0.0)
+
+    # The central square is empty through the extrusion.
+    assert not top_surface_contains(0.0, 0.0)
