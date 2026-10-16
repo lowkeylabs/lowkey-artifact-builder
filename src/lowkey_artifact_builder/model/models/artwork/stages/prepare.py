@@ -26,6 +26,7 @@ parameters, and outputs supplied through StageContext.
 
 from __future__ import annotations
 
+import shutil
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
@@ -180,24 +181,12 @@ def execute(
     """
     Execute the Artwork prepare stage.
 
-    Preparation establishes the physical Artwork envelope and produces
-    a multicolor SVG trace from source color information.
+    PNG sources are normalized and traced into multicolor SVG geometry.
 
-    Processing:
+    SVG sources preserve their authored vector geometry and colors,
+    without invoking PNG tracing.
 
-        1. Load the source PNG.
-        2. Resolve the requested Artifact color count.
-        3. Identify meaningful visible source Artwork.
-        4. Construct the physical Artwork envelope.
-        5. Write envelope.svg.
-        6. Preserve source colors within the physical envelope.
-        7. Trace the prepared raster using artifact_color_count colors.
-        8. Clip the resulting trace to the physical envelope.
-
-    Physical printer-color selection and assignment are not Prepare
-    responsibilities.
-
-    Pixels outside the envelope remain transparent.
+    Both source formats produce trace.svg and envelope.svg.
     """
 
     source = context.input(
@@ -212,13 +201,6 @@ def execute(
         "envelope",
     )
 
-    artifact_color_count = context.resolver(
-        "artifact_color_count",
-    )
-
-    #
-    # Validate inputs and outputs.
-    #
     _require_source(
         source,
     )
@@ -248,17 +230,6 @@ def execute(
         exist_ok=True,
     )
 
-    #
-    # Load the source raster.
-    #
-    image = _load_source_image(
-        source,
-    )
-
-    #
-    # Determine the configured envelope strategy and construct the
-    # physical Artwork envelope.
-    #
     try:
         envelope_mode = context.resolver(
             "artwork_envelope_mode",
@@ -266,6 +237,25 @@ def execute(
 
     except KeyError:
         envelope_mode = DEFAULT_ENVELOPE_MODE
+
+    if source.suffix.lower() == ".svg":
+        _prepare_svg_source(
+            source,
+            trace_output,
+            envelope_output,
+            envelope_mode=envelope_mode,
+        )
+        return
+
+    # Existing PNG processing remains unchanged.
+
+    artifact_color_count = context.resolver(
+        "artifact_color_count",
+    )
+
+    image = _load_source_image(
+        source,
+    )
 
     envelope = _derive_envelope(
         image,
@@ -275,27 +265,16 @@ def execute(
     if not np.any(envelope):
         raise PrepareError("Could not derive an artwork envelope from the source image.")
 
-    #
-    # Write the envelope as a first-class diagnostic product.
-    #
     _write_envelope_svg(
         envelope,
         envelope_output,
     )
 
-    #
-    # Preserve source color information within the physical envelope.
-    # Pixels outside the envelope remain transparent.
-    #
     prepared = _prepare_source_image(
         image,
         envelope,
     )
 
-    #
-    # The prepared raster is an implementation detail rather than a
-    # persistent stage product.
-    #
     temporary_path: Path | None = None
 
     try:
@@ -314,21 +293,12 @@ def execute(
             format="PNG",
         )
 
-        #
-        # Discover the requested number of intrinsic Artifact colors
-        # directly from the prepared source raster.
-        #
         _trace_multicolor(
             temporary_path,
             trace_output,
             colors=artifact_color_count,
         )
 
-        #
-        # The physical envelope remains authoritative. Clip any
-        # page-sized or otherwise extraneous traced geometry back to
-        # that envelope.
-        #
         _clip_trace_to_envelope(
             trace_output,
             envelope,
@@ -364,14 +334,16 @@ def _require_source(
     source: Path,
 ) -> None:
     """
-    Validate the source raster artwork.
+    Validate the source Artwork file.
+
+    PNG and SVG are supported source formats.
     """
 
     if not source.is_file():
         raise PrepareError(f"Source artwork does not exist: {source}")
 
-    if source.suffix.lower() != ".png":
-        raise PrepareError(f"Source artwork must be a PNG file: {source}")
+    if source.suffix.lower() not in {".png", ".svg"}:
+        raise PrepareError(f"Source artwork must be a PNG or SVG file: {source}")
 
 
 def _require_svg_output(
@@ -418,6 +390,89 @@ def _load_source_image(
 # =========================================================
 # Foreground detection
 # =========================================================
+
+
+def _derive_svg_envelope(
+    source: Path,
+    output: Path,
+    *,
+    mode: str,
+) -> None:
+    """
+    Derive an SVG source's physical envelope.
+
+    Render the SVG temporarily for silhouette analysis while retaining
+    the original authored vector geometry in the trace product.
+
+    The temporary raster is used only for envelope derivation.
+    """
+
+    temporary_path: Path | None = None
+
+    try:
+        with NamedTemporaryFile(
+            prefix="artwork-svg-envelope-",
+            suffix=".png",
+            dir=output.parent,
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(
+                temporary.name,
+            )
+
+        actions = (
+            "export-area-page",
+            "export-background-opacity:0",
+            "export-type:png",
+            f"export-filename:{temporary_path}",
+            "export-do",
+        )
+
+        try:
+            run(
+                source,
+                actions=actions,
+            )
+
+        except InkscapeError as exc:
+            raise PrepareError(f"Could not render SVG for envelope derivation: {source}") from exc
+
+        if not temporary_path.is_file():
+            raise PrepareError(f"SVG envelope rendering did not produce an image: {source}")
+
+        try:
+            with Image.open(
+                temporary_path,
+            ) as rendered:
+                image = rendered.convert(
+                    "RGBA",
+                )
+
+        except OSError as exc:
+            raise PrepareError(f"Could not read rendered SVG envelope: {source}") from exc
+
+        envelope = _derive_envelope(
+            image,
+            mode=mode,
+        )
+
+        if not np.any(envelope):
+            raise PrepareError("Could not derive an artwork envelope from the SVG source.")
+
+        _write_envelope_svg(
+            envelope,
+            output,
+        )
+
+    finally:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(
+                    missing_ok=True,
+                )
+
+            except OSError:
+                pass
 
 
 def _derive_envelope(
@@ -1146,6 +1201,59 @@ def _disk_structure(
 # =========================================================
 
 
+def _prepare_svg_source(
+    source: Path,
+    trace_output: Path,
+    envelope_output: Path,
+    *,
+    envelope_mode: str,
+) -> None:
+    """
+    Prepare native SVG artwork without retracing its geometry.
+
+    Validate the SVG source, preserve its authored vector content,
+    and derive the physical envelope independently.
+
+    The trace is copied rather than reconstructed so that authored
+    geometry, groups, transforms, colors, and fill rules survive.
+    """
+
+    try:
+        tree = ET.parse(
+            source,
+        )
+
+    except (
+        OSError,
+        ET.ParseError,
+    ) as exc:
+        raise PrepareError(f"Could not parse source SVG: {source}") from exc
+
+    root = tree.getroot()
+
+    if _local_name(root.tag) != "svg":
+        raise PrepareError(f"Source does not contain an SVG root element: {source}")
+
+    for element in root.iter():
+        if _local_name(element.tag) == "image":
+            raise PrepareError("Embedded raster images are unsupported in native SVG artwork.")
+
+    _derive_svg_envelope(
+        source,
+        envelope_output,
+        mode=envelope_mode,
+    )
+
+    try:
+        shutil.copyfile(
+            source,
+            trace_output,
+        )
+
+    except OSError as exc:
+        raise PrepareError(f"Could not write native SVG trace: {trace_output}") from exc
+
+
 def _prepare_source_image(
     image: Image.Image,
     envelope: np.ndarray,
@@ -1735,17 +1843,13 @@ def _trace_multicolor(
     Trace a normalized PNG into an inspectable multicolor SVG.
     """
 
-    source = Path(
-        source,
-    )
+    source = Path(source)
+    output = Path(output).resolve()
 
-    output = Path(
-        output,
-    ).resolve()
+    _require_source(source)
 
-    _require_source(
-        source,
-    )
+    if source.suffix.lower() != ".png":
+        raise PrepareError(f"Multicolor tracing requires a PNG source: {source}")
 
     _require_svg_output(
         source,
@@ -1772,27 +1876,13 @@ def _trace_multicolor(
 
     trace_parameters = ",".join(
         (
-            str(
-                colors,
-            ),
-            _bool_value(
-                smooth,
-            ),
-            _bool_value(
-                stack,
-            ),
-            _bool_value(
-                remove_background,
-            ),
-            str(
-                speckles,
-            ),
-            str(
-                smooth_corners,
-            ),
-            str(
-                optimize,
-            ),
+            str(colors),
+            _bool_value(smooth),
+            _bool_value(stack),
+            _bool_value(remove_background),
+            str(speckles),
+            str(smooth_corners),
+            str(optimize),
         )
     )
 

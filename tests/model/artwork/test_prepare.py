@@ -922,3 +922,191 @@ def test_prepare_configured_shrink_wrap_changes_persistent_envelope(
     ) != shrink_wrap_envelope.read_text(
         encoding="utf-8",
     )
+
+
+def test_prepare_svg_preserves_native_geometry_without_raster_tracing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    SVG preparation preserves authored vector geometry and colors
+    without converting the source to PNG for multicolor tracing.
+    """
+
+    import xml.etree.ElementTree as ET
+
+    source = tmp_path / "input" / "artwork.svg"
+    source.parent.mkdir(parents=True)
+
+    source.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'width="100" height="100" viewBox="0 0 100 100">'
+            '<path d="M 10 10 H 90 V 90 H 10 Z" '
+            'fill="#ff0000"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    trace = tmp_path / "products" / "trace.svg"
+    envelope = tmp_path / "products" / "envelope.svg"
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={
+            "trace": trace,
+            "envelope": envelope,
+        },
+        resolver=_resolver(artifact_color_count=5),
+    )
+
+    def unexpected_trace(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("SVG source must not use PNG multicolor tracing.")
+
+    monkeypatch.setattr(
+        prepare,
+        "_trace_multicolor",
+        unexpected_trace,
+    )
+
+    prepare.execute(context)  # type: ignore[arg-type]
+
+    assert trace.is_file()
+    assert envelope.is_file()
+
+    tree = ET.parse(trace)
+
+    paths = [element for element in tree.getroot().iter() if element.tag.endswith("}path")]
+
+    assert any(element.get("d") == "M 10 10 H 90 V 90 H 10 Z" for element in paths)
+
+
+def test_prepare_svg_preserves_colors_transforms_and_holes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Native SVG preparation preserves authored color regions and
+    geometry, including transforms and holes, independently of the
+    configured PNG tracing color count.
+    """
+
+    import xml.etree.ElementTree as ET
+
+    source = tmp_path / "input" / "artwork.svg"
+    source.parent.mkdir(parents=True)
+
+    source.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'width="100" height="100" viewBox="0 0 100 100">'
+            '<g transform="translate(10, 5)">'
+            '<path d="M 0 0 H 60 V 60 H 0 Z '
+            'M 20 20 H 40 V 40 H 20 Z" '
+            'fill="#ff0000" fill-rule="evenodd"/>'
+            "</g>"
+            '<path d="M 70 70 H 90 V 90 H 70 Z" '
+            'fill="#0000ff"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    trace = tmp_path / "products" / "trace.svg"
+    envelope = tmp_path / "products" / "envelope.svg"
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={
+            "trace": trace,
+            "envelope": envelope,
+        },
+        resolver=_resolver(artifact_color_count=1),
+    )
+
+    def unexpected_trace(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("SVG source must not use PNG multicolor tracing.")
+
+    monkeypatch.setattr(
+        prepare,
+        "_trace_multicolor",
+        unexpected_trace,
+    )
+
+    prepare.execute(context)  # type: ignore[arg-type]
+
+    assert trace.is_file()
+    assert envelope.is_file()
+
+    root = ET.parse(trace).getroot()
+
+    serialized = ET.tostring(
+        root,
+        encoding="unicode",
+    ).lower()
+
+    assert "#ff0000" in serialized
+    assert "#0000ff" in serialized
+
+    # The prepared trace must retain native vector geometry.
+    paths = [element for element in root.iter() if element.tag.rsplit("}", 1)[-1] == "path"]
+
+    assert paths
+
+    # The transformed geometry must remain represented as SVG vectors.
+    assert not any(element.tag.rsplit("}", 1)[-1] == "image" for element in root.iter())
+
+
+def test_prepare_svg_rejects_embedded_raster_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Unsupported raster content embedded in an SVG must produce an
+    actionable preparation error without invoking PNG tracing.
+    """
+
+    source = tmp_path / "input" / "artwork.svg"
+    source.parent.mkdir(parents=True)
+
+    source.write_text(
+        (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'width="100" height="100" viewBox="0 0 100 100">'
+            '<image x="10" y="10" width="80" height="80" '
+            'href="data:image/png;base64,'
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+            "AAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg=="
+            '"/>'
+            "</svg>"
+        ),
+        encoding="utf-8",
+    )
+
+    trace = tmp_path / "products" / "trace.svg"
+    envelope = tmp_path / "products" / "envelope.svg"
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={
+            "trace": trace,
+            "envelope": envelope,
+        },
+        resolver=_resolver(),
+    )
+
+    def unexpected_trace(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Unsupported SVG must not fall back to PNG tracing.")
+
+    monkeypatch.setattr(
+        prepare,
+        "_trace_multicolor",
+        unexpected_trace,
+    )
+
+    with pytest.raises(
+        prepare.PrepareError,
+        match=r"(?i)(unsupported|embedded|raster|image)",
+    ):
+        prepare.execute(context)  # type: ignore[arg-type]
