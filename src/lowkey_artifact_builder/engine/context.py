@@ -623,21 +623,15 @@ def _add_explicit_inputs(
     """
     Add artifact-owned locations for explicitly declared inputs.
 
-    The configured external source path is resolved to validate the same
-    configuration contract used during build planning, but independent
-    StageContext construction exposes only the artifact-owned path to
-    the stage.
+    Independent stage contexts use the same source-format-aware
+    materialization paths as build planning.
     """
-
     for input_spec in stage.inputs:
         value = resolver(
             input_spec.parameter,
         )
 
-        if not isinstance(
-            value,
-            str,
-        ):
+        if not isinstance(value, str):
             raise StageContextError(
                 f"Input parameter "
                 f"{input_spec.parameter!r} "
@@ -645,23 +639,27 @@ def _add_explicit_inputs(
                 "must resolve to a string path."
             )
 
-        source_path = Path(
-            value,
-        )
+        source_path = Path(value)
 
         if not source_path.is_absolute():
             source_path = project_root / source_path
 
-        # Resolve the external source location for semantic parity with
-        # normal planning. Existence is intentionally not checked here.
-        _ = source_path
+        destination = Path(input_spec.path)
+
+        if (
+            input_spec.name == "source"
+            and input_spec.parameter == "source"
+            and destination == Path("artifact.png")
+            and source_path.suffix.lower() == ".svg"
+        ):
+            destination = destination.with_suffix(".svg")
 
         _add_input(
             artifact_id=artifact_id,
             stage=stage,
             inputs=inputs,
             name=input_spec.name,
-            path=artifact_dir / input_spec.path,
+            path=artifact_dir / destination,
         )
 
 

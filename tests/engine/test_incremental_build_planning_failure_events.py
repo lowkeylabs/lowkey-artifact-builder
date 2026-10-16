@@ -100,6 +100,8 @@ def test_fingerprint_failure_emits_build_failed(
 
     def fail_fingerprints(
         build_plan: BuildPlan,
+        *,
+        product_dependency_fingerprint: object = None,
     ) -> dict:
         raise expected
 
@@ -144,6 +146,8 @@ def test_fingerprint_failure_does_not_emit_build_completed(
 
     def fail_fingerprints(
         build_plan: BuildPlan,
+        *,
+        product_dependency_fingerprint: object = None,
     ) -> dict:
         raise RuntimeError("fingerprint failure")
 
@@ -291,6 +295,8 @@ def test_planning_build_failed_event_includes_realized_identity(
 
     def fail_fingerprints(
         build_plan: BuildPlan,
+        *,
+        product_dependency_fingerprint: object = None,
     ) -> dict:
         raise RuntimeError("fingerprint failure")
 

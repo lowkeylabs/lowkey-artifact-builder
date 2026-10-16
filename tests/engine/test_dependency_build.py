@@ -597,6 +597,10 @@ def _shared_dependency_plans(
 
 def _record_plan_current(
     build_plan: BuildPlan,
+    *,
+    product_dependency_fingerprint: (
+        Callable[[PlannedProductDependency], ProductFingerprint | None] | None
+    ) = None,
 ) -> None:
     """
     Materialize every realized stage with matching completion metadata.
@@ -604,6 +608,7 @@ def _record_plan_current(
 
     fingerprints = create_required_fingerprints(
         build_plan,
+        product_dependency_fingerprint=product_dependency_fingerprint,
     )
 
     for stage in build_plan.stages:
@@ -2843,12 +2848,13 @@ def test_dependency_build_planning_reports_current_consumer(
     current without executing producer or consumer work.
     """
 
-    _record_producer_current(
+    required_producer_fingerprint = _record_producer_current(
         producer_plan,
     )
 
     _record_plan_current(
         consumer_plan,
+        product_dependency_fingerprint=(lambda dependency: required_producer_fingerprint),
     )
 
     def create_producer_plans(

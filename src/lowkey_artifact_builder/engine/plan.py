@@ -981,17 +981,16 @@ def _plan_input(
     artifact_dir: Path,
 ) -> PlannedInput:
     """
-    Materialize one external filesystem input.
-    """
+    Plan one external filesystem input.
 
+    Native SVG Artwork retains its extension when materialized so the
+    prepare stage can distinguish SVG from raster input.
+    """
     value = resolver(
         input_spec.parameter,
     )
 
-    if not isinstance(
-        value,
-        str,
-    ):
+    if not isinstance(value, str):
         raise BuildPlanError(
             f"Input parameter "
             f"{input_spec.parameter!r} "
@@ -999,19 +998,25 @@ def _plan_input(
             "must resolve to a string path."
         )
 
-    source_path = Path(
-        value,
-    )
+    source_path = Path(value)
 
     if not source_path.is_absolute():
         source_path = project_root / source_path
 
-    path = artifact_dir / input_spec.path
+    destination = Path(input_spec.path)
+
+    if (
+        input_spec.name == "source"
+        and input_spec.parameter == "source"
+        and destination == Path("artifact.png")
+        and source_path.suffix.lower() == ".svg"
+    ):
+        destination = destination.with_suffix(".svg")
 
     return PlannedInput(
         spec=input_spec,
         source_path=source_path,
-        path=path,
+        path=artifact_dir / destination,
     )
 
 

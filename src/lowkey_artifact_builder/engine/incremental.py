@@ -151,35 +151,22 @@ def plan_incremental_execution(
     """
     Construct a persistent-state-aware execution plan.
 
-    Bound cross-artifact product dependencies are evaluated before
+    Bound cross-artifact Product dependencies are evaluated before
     consumer-stage fingerprints are generated.
 
-    The required fingerprint for each bound producer product may be
-    supplied by a higher-level orchestration boundary. This permits
-    persistent producer products to prove freshness without requiring
-    this module to construct producer BuildPlans recursively.
+    A producer Product without an authoritative required fingerprint
+    cannot prove freshness and therefore requires producer work.
 
-    If no producer fingerprint resolver is supplied, producer products
-    cannot prove freshness and therefore retain the existing conservative
-    behavior.
+    If any producer Product is not reusable, consumer fingerprint
+    construction is deferred until producer work is satisfied.
 
-    If any producer product is not currently reusable, the returned
-    ExecutionPlan identifies that required producer work without
-    attempting to fingerprint the consumer workflow against producer
-    content that is unavailable or already known to require production.
+    Once producer Products are reusable, the same authoritative
+    producer fingerprints used for freshness evaluation participate
+    in consumer-stage fingerprint construction.
 
-    Once every bound producer product is reusable, required consumer-stage
-    fingerprints are derived from the complete realized BuildPlan,
-    including declared parameters, external input contents, local
-    dependency fingerprints, and cross-artifact product contents.
-
-    Persistent local product state is then evaluated against those
-    fingerprints.
-
-    Producer build-plan construction and recursive producer execution are
-    intentionally outside this boundary.
+    Producer planning and recursive execution remain outside this
+    boundary.
     """
-
     required_product_dependency_fingerprint = _resolve_product_dependency_fingerprint_resolver(
         product_dependency_fingerprint,
     )
@@ -197,6 +184,7 @@ def plan_incremental_execution(
 
     fingerprints = create_required_fingerprints(
         build_plan,
+        product_dependency_fingerprint=required_product_dependency_fingerprint,
     )
 
     return _create_incremental_execution_plan(
@@ -259,56 +247,21 @@ def execute_incremental_build(
     event_sink: EventSink | None = None,
 ) -> ExecutionPlan:
     """
-    Execute local stages required by the current persistent build state.
+    Execute local stages required by current persistent build state.
 
-    A build.started event is emitted before incremental product-state
-    resolution begins.
+    Cross-artifact Product dependencies are evaluated before local
+    fingerprint construction.
 
-    Bound cross-artifact product dependencies are evaluated before
-    consumer-stage fingerprint generation.
+    When producer Products are reusable, their authoritative
+    required fingerprints are used consistently for both producer
+    freshness evaluation and consumer-stage provenance.
 
-    The required fingerprint for each bound producer product may be
-    supplied by a higher-level orchestration boundary. If no resolver is
-    supplied, producer products cannot prove freshness and retain the
-    existing conservative behavior.
+    Required stage fingerprints are calculated once and reused
+    for execution planning and successful completion persistence.
 
-    Required producer work is represented in the returned ExecutionPlan.
-    This function does not recursively execute producer artifacts.
-
-    Consumer execution cannot proceed while a required producer product
-    requires production.
-
-    Once all producer products are reusable, required fingerprints are
-    calculated once before local execution planning. This provides one
-    coherent build-context snapshot for both execution planning and
-    subsequently persisted completion metadata.
-
-    Product-state observations are emitted while local execution state is
-    resolved.
-
-    Realized local stages are observed in build-plan order.
-
-    Reusable stages emit a stage.skipped event and are not executed.
-
-    Required stages emit stage.started immediately before execution.
-
-    If stage execution fails, stage.failed is emitted before the enclosing
-    build.failed event.
-
-    Completion metadata is persisted only after the supplied stage
-    executor returns successfully. A stage.completed event is emitted
-    only after successful completion metadata has been persisted.
-
-    A build.completed event is emitted after all realized local stages
-    have been successfully processed, including builds requiring no local
-    stage execution.
-
-    Observation is optional and does not participate in execution
-    decisions.
-
-    Return the ExecutionPlan used for this execution.
+    Stage lifecycle and Product-state events are observational and
+    do not participate in execution decisions.
     """
-
     _emit_build_event(
         event_sink,
         build_plan=build_plan,
@@ -333,6 +286,7 @@ def execute_incremental_build(
 
         fingerprints = create_required_fingerprints(
             build_plan,
+            product_dependency_fingerprint=required_product_dependency_fingerprint,
         )
 
         execution_plan = _create_incremental_execution_plan(
@@ -359,7 +313,6 @@ def execute_incremental_build(
                     stage=stage,
                     kind="stage.skipped",
                 )
-
                 continue
 
             _emit_stage_event(
@@ -380,7 +333,6 @@ def execute_incremental_build(
                     stage=stage,
                     kind="stage.failed",
                 )
-
                 raise
 
             if stage.products:
@@ -403,7 +355,6 @@ def execute_incremental_build(
             build_plan=build_plan,
             kind="build.failed",
         )
-
         raise
 
     _emit_build_event(

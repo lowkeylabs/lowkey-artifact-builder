@@ -18,6 +18,7 @@ from click.testing import CliRunner
 
 from lowkey_artifact_builder.cli._main import cli
 from lowkey_artifact_builder.config import (
+    configure_artifact,
     materialize_artifact,
     update_artifact_config,
     write_artifact_config,
@@ -30,6 +31,10 @@ from lowkey_artifact_builder.formats.threemf import (
     CORE_NS,
     component_name,
 )
+
+# ---
+#
+# ---
 
 
 def _materialize_artwork_source(
@@ -2701,3 +2706,419 @@ def test_shape_dependency_does_not_realize_standalone_artwork_base(
     shape_root = project_root / "artifacts" / "artwork-shape" / "shape" / "shape_default"
 
     assert (shape_root / "40-package" / "artifact.3mf").is_file()
+
+
+# =========================================================
+# Native SVG Artwork → Shape acceptance
+# =========================================================
+
+
+def _native_svg_acceptance_source(
+    *,
+    inner_width: int = 20,
+) -> str:
+    """
+    Two-color native SVG with a document transform and a genuine hole.
+
+    The red region is a frame with an even-odd interior hole.
+    The blue region is an independent filled rectangle.
+    Both are authored in the same transformed coordinate system.
+
+    Stable path IDs preserve native SVG object identity.
+
+    Changing inner_width changes the manufactured red geometry while
+    preserving source identity and the logical two-color structure.
+    """
+    return f"""\
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="120" height="80" viewBox="0 0 120 80">
+  <g transform="translate(10 10)">
+    <path id="red-region"
+          fill="#FF0000"
+          fill-rule="evenodd"
+          d="M 0 0 H 40 V 40 H 0 Z
+             M 10 10 H {10 + inner_width} V 30 H 10 Z"/>
+    <path id="blue-region"
+          fill="#0000FF"
+          d="M 50 0 H 90 V 40 H 50 Z"/>
+  </g>
+</svg>
+"""
+
+
+def _native_svg_acceptance_project(
+    project_root: Path,
+) -> tuple[Path, Path]:
+    """
+    Establish a canonical SVG Artwork producer and a Shape consumer.
+
+    The source is preserved in originals/ and materialized through the
+    same configuration operation used by existing acceptance tests.
+    """
+    originals = project_root / "originals"
+    originals.mkdir(parents=True, exist_ok=True)
+
+    original = originals / "svg-source.svg"
+    original.write_text(
+        _native_svg_acceptance_source(),
+        encoding="utf-8",
+    )
+
+    materialize_artifact(
+        "svg-source",
+        project_root=project_root,
+    )
+
+    configure_artifact(
+        "svg-source",
+        input_files={"artwork": original},
+        project_root=project_root,
+    )
+
+    write_artifact_config(
+        "svg-shape",
+        {
+            "realizations": {
+                "shape_default": {
+                    "shape_geometry": "circle",
+                    "shape_size": 100.0,
+                    "shape_base_color": "test-white",
+                },
+            },
+            "product_dependencies": {
+                "manifest": {
+                    "artifact": "svg-source",
+                    "model": "artwork",
+                    "realization": "artwork_default",
+                    "stage": "vector",
+                    "product": "manifest",
+                },
+            },
+        },
+        project_root=project_root,
+    )
+
+    artwork_root = project_root / "artifacts" / "svg-source" / "artwork" / "artwork_default"
+    shape_root = project_root / "artifacts" / "svg-shape" / "shape" / "shape_default"
+
+    return artwork_root, shape_root
+
+
+def _native_svg_shape_plan(project_root: Path):
+    plans = create_build_plans(
+        "svg-shape",
+        model_name="shape",
+        variant_name="default",
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+    return plans[0]
+
+
+def _native_svg_packaged_objects(
+    artifact: Path,
+) -> dict[str, ET.Element]:
+    assert artifact.is_file()
+    assert zipfile.is_zipfile(artifact)
+
+    with zipfile.ZipFile(artifact) as archive:
+        model_names = [
+            name
+            for name in archive.namelist()
+            if name.startswith("3D/") and name.endswith(".model")
+        ]
+        assert len(model_names) == 1
+
+        model = ET.fromstring(archive.read(model_names[0]))
+
+    objects = model.findall(f".//{{{CORE_NS}}}object")
+    named = {name: object_ for object_ in objects if (name := object_.get("name")) is not None}
+
+    assert len(named) == len(objects)
+    return named
+
+
+@pytest.mark.slow
+def test_shape_builds_complete_3mf_with_native_svg_artwork(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    SHAPE consumes native SVG Artwork through the existing registered
+    Vector dependency, without knowing the source format.
+
+    Authored colors, transforms, and holes survive native registration,
+    SHAPE composition, extrusion, and final 3MF packaging.
+    """
+    monkeypatch.chdir(tmp_path)
+
+    artwork_root, shape_root = _native_svg_acceptance_project(tmp_path)
+
+    plan = _native_svg_shape_plan(tmp_path)
+    execute_dependency_build(plan)
+
+    vector_manifest = artwork_root / "30-vector" / "products.json"
+    assert vector_manifest.is_file()
+
+    vector_data = json.loads(vector_manifest.read_text(encoding="utf-8"))
+    products = vector_data["products"]
+
+    assert len(products) == 2
+    assert {product["artifact_color"]["index"] for product in products} == {1, 2}
+
+    rgb_colors = {
+        tuple(product["artifact_color"]["rgb"][channel] for channel in ("red", "green", "blue"))
+        for product in products
+    }
+    assert rgb_colors == {(255, 0, 0), (0, 0, 255)}
+
+    for product in products:
+        assert (vector_manifest.parent / product["path"]).is_file()
+        assert "printer_color" not in product
+        assert "distance" not in product
+
+    # A SHAPE dependency needs registered Artwork, not standalone
+    # Artwork extrusion or 3MF packaging.
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+    artifact = shape_root / "40-package" / "artifact.3mf"
+    objects = _native_svg_packaged_objects(artifact)
+
+    assert component_name("svg-shape", "base", "test-white") in objects
+
+    artwork_objects = {
+        name: object_
+        for name, object_ in objects.items()
+        if name.startswith("artwork-") and not name.startswith("artwork-fill")
+    }
+
+    assert len(artwork_objects) == 2
+
+    for index in (1, 2):
+        matches = [
+            object_
+            for name, object_ in artwork_objects.items()
+            if name.startswith(f"artwork-{index} - ")
+        ]
+        assert len(matches) == 1
+
+        xml_vertices = matches[0].findall(f".//{{{CORE_NS}}}vertex")
+        xml_triangles = matches[0].findall(f".//{{{CORE_NS}}}triangle")
+
+        assert xml_vertices
+        assert xml_triangles
+
+        assert all(
+            vertex.get(axis) is not None for vertex in xml_vertices for axis in ("x", "y", "z")
+        )
+
+    # The red SVG frame's hole must not be filled by red triangles.
+    # Its center is distinct from the blue rectangle and must remain
+    # uncovered by the red component in the packaged XY geometry.
+    red_product = next(
+        product
+        for product in products
+        if product["artifact_color"]["rgb"]
+        == {
+            "red": 255,
+            "green": 0,
+            "blue": 0,
+        }
+    )
+    red_index = red_product["index"]
+
+    red_object = next(
+        object_
+        for name, object_ in artwork_objects.items()
+        if name.startswith(f"artwork-{red_index} - ")
+    )
+
+    vertices: list[tuple[float, float, float]] = []
+
+    for vertex in red_object.findall(f".//{{{CORE_NS}}}vertex"):
+        x = vertex.get("x")
+        y = vertex.get("y")
+        z = vertex.get("z")
+
+        assert x is not None
+        assert y is not None
+        assert z is not None
+
+        vertices.append((float(x), float(y), float(z)))
+
+    triangles: list[tuple[int, int, int]] = []
+
+    for triangle in red_object.findall(f".//{{{CORE_NS}}}triangle"):
+        v1 = triangle.get("v1")
+        v2 = triangle.get("v2")
+        v3 = triangle.get("v3")
+
+        assert v1 is not None
+        assert v2 is not None
+        assert v3 is not None
+
+        triangles.append((int(v1), int(v2), int(v3)))
+
+    # A hole survives when the mesh has no triangle covering the
+    # centroid of the frame's interior opening. Use the physical
+    # red-component bounding box to identify that interior point.
+    xs = [vertex[0] for vertex in vertices]
+    ys = [vertex[1] for vertex in vertices]
+
+    center_x = (min(xs) + max(xs)) / 2
+    center_y = (min(ys) + max(ys)) / 2
+
+    def contains_xy(
+        point: tuple[float, float],
+        triangle: tuple[int, int, int],
+    ) -> bool:
+        px, py = point
+        a, b, c = (vertices[index] for index in triangle)
+
+        def cross(
+            u: tuple[float, float, float],
+            v: tuple[float, float, float],
+        ) -> float:
+            return (v[0] - u[0]) * (py - u[1]) - (v[1] - u[1]) * (px - u[0])
+
+        d1 = cross(a, b)
+        d2 = cross(b, c)
+        d3 = cross(c, a)
+
+        return not (
+            (d1 < -1e-7 or d2 < -1e-7 or d3 < -1e-7) and (d1 > 1e-7 or d2 > 1e-7 or d3 > 1e-7)
+        )
+
+    horizontal_triangles = [
+        triangle
+        for triangle in triangles
+        if max(vertices[index][2] for index in triangle)
+        - min(vertices[index][2] for index in triangle)
+        < 1e-7
+    ]
+
+    assert horizontal_triangles
+    assert not any(contains_xy((center_x, center_y), triangle) for triangle in horizontal_triangles)
+
+
+@pytest.mark.slow
+def test_native_svg_source_change_invalidates_dependent_shape_products(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """
+    Editing the configured SVG source invalidates registered Artwork
+    and the dependent SHAPE manufacturing path.
+
+    An unchanged subsequent build reuses both producers and consumers
+    without reexecuting stages.
+    """
+    monkeypatch.chdir(tmp_path)
+
+    artwork_root, shape_root = _native_svg_acceptance_project(tmp_path)
+
+    initial_plan = _native_svg_shape_plan(tmp_path)
+    execute_dependency_build(initial_plan)
+
+    vector_manifest = artwork_root / "30-vector" / "products.json"
+    vector_dir = artwork_root / "30-vector"
+    artifact = shape_root / "40-package" / "artifact.3mf"
+
+    assert vector_manifest.is_file()
+    assert artifact.is_file()
+
+    initial_vector = vector_manifest.read_bytes()
+    initial_package = artifact.read_bytes()
+
+    def vector_snapshot() -> dict[str, bytes]:
+        return {
+            str(path.relative_to(vector_dir)): path.read_bytes()
+            for path in sorted(vector_dir.rglob("*"))
+            if path.is_file() and path.suffix.lower() == ".svg"
+        }
+
+    initial_vector_svgs = vector_snapshot()
+
+    # Confirm an unchanged build is completely reusable.
+    unchanged_events = []
+
+    execute_dependency_build(
+        _native_svg_shape_plan(tmp_path),
+        event_sink=unchanged_events.append,
+    )
+
+    assert not [
+        event
+        for event in unchanged_events
+        if event.kind == "stage.started" and event.artifact_id in {"svg-source", "svg-shape"}
+    ]
+
+    # Resolve the configured Artwork source.
+    from lowkey_artifact_builder.config import get_resolver
+
+    artwork_resolver = get_resolver(
+        "svg-source",
+        realization="artwork_default",
+        project_root=tmp_path,
+    )
+
+    configured_source = Path(artwork_resolver("source"))
+
+    managed_source = (
+        configured_source if configured_source.is_absolute() else tmp_path / configured_source
+    )
+
+    assert managed_source.is_file()
+    assert managed_source.suffix.lower() == ".svg"
+
+    # Change source geometry without changing color identity,
+    # printer palette, or SHAPE manufacturing policy.
+    managed_source.write_text(
+        _native_svg_acceptance_source(inner_width=12),
+        encoding="utf-8",
+    )
+
+    changed_events = []
+
+    execute_dependency_build(
+        _native_svg_shape_plan(tmp_path),
+        event_sink=changed_events.append,
+    )
+
+    artwork_started = {
+        event.stage_name
+        for event in changed_events
+        if event.kind == "stage.started"
+        and event.artifact_id == "svg-source"
+        and event.model_name == "artwork"
+    }
+
+    shape_started = {
+        event.stage_name
+        for event in changed_events
+        if event.kind == "stage.started"
+        and event.artifact_id == "svg-shape"
+        and event.model_name == "shape"
+    }
+
+    updated_vector_svgs = vector_snapshot()
+
+    # Source changes invalidate registered Artwork and dependent Shape.
+    assert {"prepare", "raster", "vector"} <= artwork_started
+    assert {"compose", "extrude", "package"} <= shape_started
+
+    # Registered product identity remains stable while geometry changes.
+    assert vector_manifest.read_bytes() == initial_vector
+    assert initial_vector_svgs
+    assert initial_vector_svgs.keys() == updated_vector_svgs.keys()
+    assert updated_vector_svgs != initial_vector_svgs
+
+    # The changed registered geometry propagates into the final 3MF.
+    assert artifact.read_bytes() != initial_package
+    assert zipfile.is_zipfile(artifact)
+
+    # The consumer still requires only registered Artwork.
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()

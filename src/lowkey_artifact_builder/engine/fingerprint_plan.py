@@ -46,7 +46,7 @@ _CONTENT_FINGERPRINT_ALGORITHM = "sha256"
 
 type ProductDependencyFingerprintResolver = Callable[
     [PlannedProductDependency],
-    ProductFingerprint,
+    ProductFingerprint | None,
 ]
 
 # =========================================================
@@ -56,33 +56,24 @@ type ProductDependencyFingerprintResolver = Callable[
 
 def create_required_fingerprints(
     build_plan: BuildPlan,
+    *,
+    product_dependency_fingerprint: (ProductDependencyFingerprintResolver | None) = None,
 ) -> dict[str, ProductFingerprint]:
     """
     Create required fingerprints for every realized stage.
 
-    Stages are processed in realized build-plan order. The BuildPlan is
-    expected to preserve dependency order, so fingerprints required by a
-    stage's declared dependencies must already have been calculated.
+    Stages are processed in realized build-plan order, so required
+    fingerprints of local dependency stages are available before
+    their consumers are fingerprinted.
 
-    Each stage fingerprint contains:
-
-    operation
-        The realized stage identity.
-
-    parameters
-        Values of parameters explicitly declared by the StageSpec,
-        resolved through the BuildPlan's authoritative Resolver.
-
-    inputs
-        Content fingerprints of declared external filesystem inputs and
-        cross-artifact product dependencies, plus required fingerprints
-        of declared dependency stages.
+    External product dependencies use authoritative producer-stage
+    fingerprints when a resolver is supplied. Otherwise, their
+    persistent product files provide the existing content-based
+    fallback.
 
     Filesystem destinations and timestamps do not participate in
-    fingerprint generation, so equivalent build contexts remain portable
-    across workspaces.
+    fingerprint generation.
     """
-
     fingerprints: dict[str, ProductFingerprint] = {}
 
     for stage in build_plan.stages:
@@ -90,6 +81,7 @@ def create_required_fingerprints(
             build_plan=build_plan,
             stage=stage,
             fingerprints=fingerprints,
+            product_dependency_fingerprint=product_dependency_fingerprint,
         )
 
     return fingerprints
@@ -188,11 +180,14 @@ def _create_stage_fingerprint(
     build_plan: BuildPlan,
     stage: PlannedStage,
     fingerprints: dict[str, ProductFingerprint],
+    product_dependency_fingerprint: (ProductDependencyFingerprintResolver | None) = None,
 ) -> ProductFingerprint:
     """
     Create the required fingerprint for one realized stage.
-    """
 
+    External product dependencies may contribute authoritative
+    producer-stage fingerprints supplied by dependency orchestration.
+    """
     parameters = _resolve_stage_parameters(
         build_plan=build_plan,
         stage=stage,
@@ -214,6 +209,7 @@ def _create_stage_fingerprint(
             build_plan=build_plan,
             stage=stage,
             fingerprints=fingerprints,
+            product_dependency_fingerprint=product_dependency_fingerprint,
         )
     )
 
@@ -308,23 +304,20 @@ def _resolve_product_dependency_fingerprints(
     build_plan: BuildPlan,
     stage: PlannedStage,
     fingerprints: dict[str, ProductFingerprint],
+    product_dependency_fingerprint: (ProductDependencyFingerprintResolver | None) = None,
 ) -> dict[str, str]:
     """
     Resolve fingerprints of bound Product dependencies.
 
-    A Product dependency produced by the current BuildPlan derives provenance
-    from the required fingerprint of its producing stage. Required fingerprint
-    construction occurs before execution, so that Product need not already
-    exist on disk.
+    Products produced by the current BuildPlan use the required
+    fingerprint of their producing stage.
 
-    A Product dependency produced outside the current BuildPlan derives
-    provenance from the persistent Product contents. Filesystem paths
-    themselves do not participate in provenance.
+    External products use an authoritative producer fingerprint
+    when supplied by dependency orchestration. Without a resolver,
+    the existing persistent-file content fingerprint is used.
 
-    An unbound declared Product dependency does not participate in the
-    realized stage's provenance.
+    Unbound Product dependencies do not participate in provenance.
     """
-
     inputs: dict[str, str] = {}
 
     for dependency in stage.spec.product_dependencies:
@@ -367,9 +360,23 @@ def _resolve_product_dependency_fingerprints(
                     f"is unavailable"
                 ) from exc
         else:
-            fingerprint = _fingerprint_file(
-                planned_dependency.path,
+            fingerprint = (
+                product_dependency_fingerprint(planned_dependency)
+                if product_dependency_fingerprint is not None
+                else None
             )
+
+            if fingerprint is None:
+                if product_dependency_fingerprint is not None:
+                    raise ValueError(
+                        "Required fingerprint for external Product "
+                        f"dependency {identity!r} of stage "
+                        f"{stage.name!r} is unavailable"
+                    )
+
+                fingerprint = _fingerprint_file(
+                    planned_dependency.path,
+                )
 
         inputs[f"product:{identity}"] = _format_fingerprint(
             fingerprint,
