@@ -312,7 +312,14 @@ def _measurement_svg(
     font_size: float,
 ) -> ET.ElementTree:
     """
-    Build a temporary SVG containing straight text.
+    Build a temporary SVG containing the actual label and a font
+    vertical-reference string.
+
+    Both objects use the same font, size, and baseline.
+
+    The actual label provides its rendered width. The reference
+    provides a consistent ascender/descender envelope independent
+    of the characters in the actual label.
 
     The SVG uses millimeter-equivalent user coordinates so Inkscape
     measurements can be converted into physical font metrics.
@@ -339,6 +346,18 @@ def _measurement_svg(
         },
     ).text = text
 
+    ET.SubElement(
+        root,
+        f"{{{SVG_NS}}}text",
+        {
+            "id": "measure-border-label-reference",
+            "x": "10",
+            "y": f"{REFERENCE_BASELINE_Y:g}",
+            "font-family": font_family,
+            "font-size": f"{font_size:g}",
+        },
+    ).text = "Hgjpqy"
+
     return ET.ElementTree(root)
 
 
@@ -354,18 +373,24 @@ def _measure_at_font_size(
     float,
 ]:
     """
-    Measure text at one SVG/CSS font-size.
+    Measure a label at one SVG/CSS font-size.
 
     Returns:
 
         (
-            width_mm,
-            height_mm,
-            above_baseline_mm,
-            below_baseline_mm,
+            actual_label_width_mm,
+            reference_height_mm,
+            reference_above_baseline_mm,
+            reference_below_baseline_mm,
         )
 
-    The operation invokes Inkscape once.
+    The actual label determines horizontal extent.
+
+    A fixed reference string determines the vertical font envelope,
+    ensuring that labels without descenders reserve the same space
+    as labels containing descenders.
+
+    The operation invokes Inkscape exactly once.
     """
 
     _validate_text(
@@ -398,13 +423,13 @@ def _measure_at_font_size(
             raise BorderLabelError("Could not measure Border Label text using Inkscape.") from exc
 
     try:
-        measurement = bounds["measure-border-label"]
+        actual = bounds["measure-border-label"]
+        reference = bounds["measure-border-label-reference"]
 
-        y = measurement["y"]
+        width = actual["width"]
 
-        width = measurement["width"]
-
-        height = measurement["height"]
+        y = reference["y"]
+        height = reference["height"]
 
     except KeyError as exc:
         raise BorderLabelError(
@@ -416,11 +441,9 @@ def _measure_at_font_size(
         raise BorderLabelError("Inkscape returned invalid Border Label dimensions.")
 
     glyph_top = y
-
     glyph_bottom = y + height
 
     above_baseline = REFERENCE_BASELINE_Y - glyph_top
-
     below_baseline = glyph_bottom - REFERENCE_BASELINE_Y
 
     tolerance = 1e-9
@@ -456,17 +479,26 @@ def measure_label_metrics(
     """
     Measure one participating label and return scale-independent metrics.
 
+    The actual label determines horizontal width.
+
+    A fixed font reference determines the common vertical envelope,
+    including ascender and descender allowances.
+
+    Consequently, labels using the same font share identical
+    font-size and baseline conversion metrics regardless of their
+    characters.
+
     Inkscape is invoked exactly once for this operation.
 
-    Subsequent fitting at different physical glyph heights can therefore
-    be performed arithmetically.
+    Subsequent fitting at different physical glyph heights can
+    therefore be performed arithmetically.
     """
 
     (
         width,
-        height,
-        above_baseline,
-        below_baseline,
+        reference_height,
+        reference_above_baseline,
+        reference_below_baseline,
     ) = _measure_at_font_size(
         text=text,
         font_family=font_family,
@@ -474,10 +506,10 @@ def measure_label_metrics(
     )
 
     metrics = LabelMetrics(
-        width_per_height=(width / height),
-        font_size_per_height=(REFERENCE_FONT_SIZE / height),
-        above_baseline_per_height=(above_baseline / height),
-        below_baseline_per_height=(below_baseline / height),
+        width_per_height=(width / reference_height),
+        font_size_per_height=(REFERENCE_FONT_SIZE / reference_height),
+        above_baseline_per_height=(reference_above_baseline / reference_height),
+        below_baseline_per_height=(reference_below_baseline / reference_height),
     )
 
     _validate_metrics(metrics)
@@ -782,6 +814,17 @@ def write_registered_circular_label_svg(
         raise BorderLabelError(
             "Materialized Border Label does not contain manufacturing path geometry."
         )
+
+    #
+    # Restore the default SVG namespace for OpenSCAD compatibility.
+    #
+    # ElementTree namespace registrations are process-global. Other modules
+    # may have changed the registry since this module was imported.
+    # Register immediately before serializing the manufacturing product.
+    #
+
+    ET.register_namespace("", SVG_NS)
+    ET.register_namespace("xlink", XLINK_NS)
 
     output_tree.write(
         output,

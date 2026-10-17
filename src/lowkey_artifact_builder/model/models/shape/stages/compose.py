@@ -300,30 +300,44 @@ def _validate_registered_artwork_placement(
     placement: ArtworkPlacementCircle,
 ) -> None:
     """
-    Validate transformed Artwork against the registered placement circle.
+    Validate actual transformed Artwork envelope containment.
 
-    The authoritative envelope determines the occupied radial extent.
-    Validation uses the same envelope geometry as automatic fitting.
+    Measure the maximum distance from the Shape interior center to
+    the transformed envelope geometry, rather than using a bounding
+    circle centered on the Artwork.
+
+    This permits asymmetric Artwork to move within the interior
+    while retaining exact radial containment.
     """
-    bounds = registered_artwork_envelope_bounds(artwork)
+    if not math.isfinite(transform.scale) or transform.scale <= 0.0:
+        raise ValueError("Artwork placement requires a positive finite scale.")
 
-    source_center_x = bounds.x + bounds.width / 2.0
-    source_center_y = bounds.y + bounds.height / 2.0
+    root = ET.parse(artwork.envelope).getroot()
+    envelope = next(iter(root), None)
 
-    placed_center_x = source_center_x * transform.scale + transform.translate_x
-    placed_center_y = source_center_y * transform.scale + transform.translate_y
+    if envelope is None:
+        raise ValueError("Registered Artwork envelope requires geometry.")
 
-    center_distance = math.hypot(
-        placed_center_x - placement.center_x,
-        placed_center_y - placement.center_y,
+    # Map the Shape interior center back into source Artwork coordinates.
+    # Uniform scaling preserves distances, so the maximum source-space
+    # distance can be scaled back into registered Shape coordinates.
+    source_center_x = (placement.center_x - transform.translate_x) / transform.scale
+
+    source_center_y = (placement.center_y - transform.translate_y) / transform.scale
+
+    occupied_radius = (
+        _registered_element_radius(
+            envelope,
+            center_x=source_center_x,
+            center_y=source_center_y,
+        )
+        * transform.scale
     )
 
-    occupied_radius = registered_artwork_envelope_radius(artwork) * transform.scale
-
-    if not math.isfinite(center_distance + occupied_radius):
+    if not math.isfinite(occupied_radius):
         raise ValueError("Artwork placement produces non-finite geometry.")
 
-    if center_distance + occupied_radius > placement.radius + 1.0e-9:
+    if occupied_radius > placement.radius + 1.0e-9:
         raise ValueError("Artwork placement exceeds the available Shape interior.")
 
 

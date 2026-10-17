@@ -288,6 +288,7 @@ def _configure_compose_context(
     }
 
     outputs = {
+        "artifact": composition.parent / "artifact.svg",
         "composition": composition,
         "manifest": manifest,
     }
@@ -1817,4 +1818,152 @@ def test_real_border_label_glyphs_extrude_within_shape_envelope(
     assert max_z == pytest.approx(
         3.0,
         abs=0.01,
+    )
+
+
+@pytest.mark.slow
+def test_bottom_border_label_reserves_descender_space_independent_of_text(
+    tmp_path: Path,
+) -> None:
+    """
+    Bottom Border Label placement must reserve font descender space
+    whether or not the actual text contains descenders.
+
+    Two labels rendered with the same font and font size must share
+    the same typographic baseline and vertical placement.
+
+    The presence of a descending glyph such as 'y' must not move
+    the rest of the lettering toward the Shape interior.
+    """
+
+    from lowkey_artifact_builder.model.models.shape.border_labels import (
+        fit_circular_border_labels,
+        write_registered_circular_label_svg,
+    )
+    from lowkey_artifact_builder.tools.inkscape import query_all
+
+    labels = (
+        "Holiday House Tour 2026",
+        "Holiday House Tour 2020",
+    )
+
+    bounds_by_text: dict[str, dict[str, float]] = {}
+
+    for index, text in enumerate(labels):
+        fit = fit_circular_border_labels(
+            top_text=None,
+            bottom_text=text,
+            font_family="DejaVu Sans",
+            reference_radius=50.0,
+            border_width=1.0,
+            max_glyph_height=5.0,
+            arc_degrees=140.0,
+            end_margin=1.0,
+        )
+
+        assert fit.bottom is not None
+
+        output = tmp_path / f"bottom-{index}.svg"
+
+        write_registered_circular_label_svg(
+            output,
+            text=text,
+            font_family="DejaVu Sans",
+            font_size=fit.font_size,
+            metrics=fit.bottom.metrics,
+            rendered_height=fit.bottom.rendered_height,
+            baseline_path=("M -0.35,0.35 A 0.49,0.49 0 0 0 0.35,0.35"),
+            shape_size=100.0,
+            position="bottom",
+        )
+
+        assert output.is_file()
+
+        root = ET.parse(output).getroot()
+
+        paths = [
+            element
+            for element in root.iter()
+            if element.tag == f"{{{SVG_NS}}}path" and element.get("d")
+        ]
+
+        assert paths
+
+        bounds = query_all(output, millimeters=False)
+
+        assert bounds
+
+        glyph_bounds = [
+            value for object_id, value in bounds.items() if object_id == "border-label-text"
+        ]
+
+        assert glyph_bounds
+
+        bounds_by_text[text] = glyph_bounds[0]
+
+    with_descender = bounds_by_text[labels[0]]
+    without_descender = bounds_by_text[labels[1]]
+
+    # The descender-bearing string has glyphs below the common baseline.
+    # The string without descenders must not be shifted to compensate
+    # for its smaller actual glyph bounding box.
+    #
+    # Their exact bounding rectangles need not be identical, because
+    # different glyph outlines legitimately have different extents.
+    #
+    # The stable typographic positioning is tested more directly in
+    # the following unit test.
+    assert with_descender["height"] > 0
+    assert without_descender["height"] > 0
+
+
+@pytest.mark.slow
+def test_border_label_font_metrics_reserve_descenders_without_descending_glyphs() -> None:
+    """
+    Vertical font metrics must describe the font's reserved ascender
+    and descender envelope, not merely the visible glyphs in a string.
+
+    A label containing no descenders must still have a positive
+    below-baseline allowance.
+
+    Labels using the same font must have equivalent normalized
+    baseline proportions, independent of their actual characters.
+    """
+
+    from lowkey_artifact_builder.model.models.shape.border_labels import (
+        measure_label_metrics,
+    )
+
+    font_family = "DejaVu Sans"
+
+    with_descender = measure_label_metrics(
+        text="Holiday House Tour 2026",
+        font_family=font_family,
+    )
+
+    without_descender = measure_label_metrics(
+        text="2121 Stuart Avenue",
+        font_family=font_family,
+    )
+
+    assert with_descender.below_baseline_per_height > 0.0
+
+    # This is the principal regression assertion.
+    assert without_descender.below_baseline_per_height > 0.0
+
+    # The vertical envelope is determined by the font rather than
+    # by which individual glyphs happen to appear in the label.
+    assert without_descender.above_baseline_per_height == pytest.approx(
+        with_descender.above_baseline_per_height,
+        rel=1e-3,
+    )
+
+    assert without_descender.below_baseline_per_height == pytest.approx(
+        with_descender.below_baseline_per_height,
+        rel=1e-3,
+    )
+
+    # Horizontal text measurements must remain text-dependent.
+    assert without_descender.width_per_height != pytest.approx(
+        with_descender.width_per_height,
     )

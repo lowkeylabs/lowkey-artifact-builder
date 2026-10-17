@@ -235,6 +235,13 @@ def realization_3mf_filename(
     return f"{realization_name}.3mf"
 
 
+def realization_svg_filename(
+    realization_name: str,
+) -> str:
+    """Return the Artifact-level convenience SVG filename for a Realization."""
+    return f"{realization_name}.svg"
+
+
 def clean_artifact(
     artifact_id: str,
     *,
@@ -303,6 +310,7 @@ def clean_artifact(
         generated_paths = [
             artifact_dir / model_name / realization,
             artifact_dir / realization_3mf_filename(realization),
+            artifact_dir / realization_svg_filename(realization),
         ]
 
     # -----------------------------------------------------
@@ -316,6 +324,11 @@ def clean_artifact(
 
         generated_paths.extend(
             artifact_dir / realization_3mf_filename(realization_name)
+            for realization_name in realization_names
+        )
+
+        generated_paths.extend(
+            artifact_dir / realization_svg_filename(realization_name)
             for realization_name in realization_names
         )
 
