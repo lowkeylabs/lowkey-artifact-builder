@@ -436,17 +436,13 @@ def get_resolver(
 
         <model>_<variant-local-name>
 
-    Selecting such a Realization identifies both its originating Model and
-    Variant without requiring either identity to be repeated in artifact.toml.
-
     An additional named Realization may select a qualified Variant:
 
         <model>.<variant-local-name>
 
-    The qualified Variant identifies both its Model and Model-scoped Variant.
-
-    Historical artifact configuration declaring explicit [realizations]
-    remains supported.
+    Artifact-local Model Variant tables, such as [shape.ornament],
+    provide sparse overrides shared by all Realizations selecting
+    that Model Variant.
 
     Configuration precedence is:
 
@@ -454,11 +450,13 @@ def get_resolver(
             <
         model
             <
-        variant
+        registered variant
             <
         workspace
             <
         artifact
+            <
+        artifact-local variant
             <
         realization
 
@@ -493,6 +491,14 @@ def get_resolver(
     )
 
     registry = build_model_registry()
+
+    # Validate all declared artifact-local Model Variant tables,
+    # including those not selected by this Realization.
+
+    artifact_variant_tables = _artifact_variant_tables(
+        artifact_document,
+        registry,
+    )
 
     # -----------------------------------------------------
     # Runtime Realization identity
@@ -634,6 +640,14 @@ def get_resolver(
         artifact_document,
     )
 
+    # Select the Artifact-local overrides for the resolved
+    # Model Variant. Other Model Variant tables remain isolated.
+
+    artifact_variant_parameters = artifact_variant_tables.get(
+        (model_name, resolved_variant.name),
+        {},
+    )
+
     if explicit_realizations:
         realization_parameters = _artifact_parameters(
             realization_document,
@@ -689,6 +703,13 @@ def get_resolver(
         provenance,
         artifact_parameters,
         source="artifact",
+    )
+
+    _merge(
+        values,
+        provenance,
+        artifact_variant_parameters,
+        source=f"artifact variant {model_name}.{resolved_variant.name}",
     )
 
     if explicit_realizations:
@@ -2117,50 +2138,149 @@ def _validate_realization_parameters(
     )
 
 
+def _artifact_variant_tables(
+    document: Mapping[str, Any],
+    registry,
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """
+    Extract and validate Artifact-local Model Variant overrides.
+
+    Artifact configuration may contain tables such as:
+
+        [shape.ornament]
+        shape_size = 75
+
+    These tables customize a registered Model Variant for this
+    Artifact only. They do not modify the registered VariantSpec.
+
+    All declared tables are validated, including those belonging
+    to Models or Variants not selected by the current Realization.
+
+    Returns mappings keyed by (model_name, variant_name).
+    """
+
+    tables: dict[tuple[str, str], dict[str, Any]] = {}
+
+    for model_spec in registry.all_models():
+        model_name = model_spec.name
+
+        if model_name not in document:
+            continue
+
+        model_document = document[model_name]
+
+        if not isinstance(model_document, Mapping):
+            raise ConfigError(f"Artifact Model configuration {model_name!r} must be a TOML table.")
+
+        variant_names = {variant.name for variant in model_spec.variants}
+
+        model_parameters = _load_model_parameters(
+            model_name,
+        )
+
+        derivations = _load_model_derivations(
+            model_name,
+        )
+
+        for variant_name, variant_document in model_document.items():
+            if variant_name not in variant_names:
+                raise ConfigError(
+                    f"Unknown Artifact-local Variant "
+                    f"{model_name}.{variant_name!s}: "
+                    f"variant {variant_name!r} is not registered "
+                    f"for model {model_name!r}."
+                )
+
+            if not isinstance(variant_document, Mapping):
+                raise ConfigError(
+                    f"Artifact-local Variant {model_name}.{variant_name} must be a TOML table."
+                )
+
+            # Model and Variant identity is supplied by the table
+            # path, not by fields inside the table.
+
+            reserved = {
+                "model",
+                "variant",
+                "realizations",
+            }
+
+            invalid_identity = reserved.intersection(
+                variant_document,
+            )
+
+            if invalid_identity:
+                names = ", ".join(repr(name) for name in sorted(invalid_identity))
+
+                raise ConfigError(
+                    f"Artifact-local Variant "
+                    f"{model_name}.{variant_name} "
+                    f"must not declare identity field(s): {names}."
+                )
+
+            parameters = _artifact_parameters(
+                variant_document,
+            )
+
+            _validate_realization_parameters(
+                f"{model_name}.{variant_name}",
+                parameters,
+                model_parameters=model_parameters,
+                model_derivations=derivations,
+                model_spec=model_spec,
+            )
+
+            tables[(model_name, variant_name)] = parameters
+
+    return tables
+
+
 def _artifact_parameters(
     document: Mapping[str, Any],
 ) -> dict[str, Any]:
     """
     Extract configurable values from artifact.toml.
 
-    Artifact identity and provenance fields live at the top level and do
-    not participate in normal parameter resolution.
+    Artifact identity and provenance fields do not participate
+    in normal parameter resolution.
 
-    Ordinary artifact parameter overrides may either be stored in a
-    [parameters] table or, for sparse artifact configuration, directly
-    at the top level.
+    Ordinary Artifact parameter overrides may be stored directly
+    at the top level or in a [parameters] table.
 
-    The top-level form keeps artifact.toml concise:
+    Registered Model tables, such as [shape.ornament], are
+    configuration structure and are not ordinary parameters.
 
-        model = "artwork"
-        source = "artifacts/new-york-deli/artifact.png"
-        original = "originals/new-york-deli.png"
-        printer_colors = ["black", "white", "red"]
-
-    A [parameters] table is also accepted. Values in [parameters]
-    override equivalent top-level values.
+    Values in [parameters] override equivalent top-level values.
     """
+
+    registry = build_model_registry()
+
+    model_names = {model.name for model in registry.all_models()}
+
+    reserved = {
+        "model",
+        "variant",
+        "original",
+        "parameters",
+        "realizations",
+    }
+
+    reserved.update(model_names)
 
     parameters: dict[str, Any] = {}
 
     for name, value in document.items():
-        if name in {
-            "model",
-            "variant",
-            "original",
-            "parameters",
-            "realizations",
-        }:
+        if name in reserved:
             continue
 
         parameters[name] = value
 
-    nested = document.get("parameters", {})
+    nested = document.get(
+        "parameters",
+        {},
+    )
 
-    if not isinstance(
-        nested,
-        Mapping,
-    ):
+    if not isinstance(nested, Mapping):
         raise ConfigError("The [parameters] section in artifact.toml must be a TOML table.")
 
     parameters.update(nested)

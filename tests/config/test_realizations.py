@@ -1380,3 +1380,192 @@ def test_canonical_combined_artifact_round_trip_preserves_only_explicit_configur
         "secondary-model_default",
         "large",
     )
+
+
+def test_canonical_shape_ornament_inherits_artifact_variant_overrides(
+    tmp_path: Path,
+) -> None:
+    """
+    The implicit shape_ornament Realization inherits Artifact-local
+    overrides of the registered shape.ornament Variant.
+    """
+
+    write_artifact_config(
+        "fan-shell",
+        {
+            "source": "artifacts/fan-shell/artifact.svg",
+            "original": "originals/fan-shell.svg",
+            "shape": {
+                "ornament": {
+                    "shape_size": 75.0,
+                    "shape_top_border_label_text": "Holiday House Tour 2025",
+                    "shape_bottom_border_label_text": "Fan District RVA",
+                    "shape_svg_enabled": True,
+                    "shape_artwork_offset_y": 7.5,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    assert "shape_ornament" in get_realization_names(
+        "fan-shell",
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "fan-shell",
+        realization="shape_ornament",
+        project_root=tmp_path,
+    )
+
+    assert resolver("model") == "shape"
+    assert resolver("variant") == "ornament"
+    assert resolver("shape_size") == 75.0
+    assert resolver("shape_top_border_label_text") == "Holiday House Tour 2025"
+    assert resolver("shape_bottom_border_label_text") == "Fan District RVA"
+    assert resolver("shape_svg_enabled") is True
+    assert resolver("shape_artwork_offset_y") == 7.5
+
+
+def test_named_shape_realizations_inherit_artifact_variant_overrides(
+    tmp_path: Path,
+) -> None:
+    """
+    Named Realizations inherit the Artifact-local Variant configuration,
+    then apply their own independent overrides.
+    """
+
+    write_artifact_config(
+        "fan-shell",
+        {
+            "shape": {
+                "ornament": {
+                    "shape_size": 75.0,
+                    "shape_top_border_label_text": "Holiday House Tour 2025",
+                    "shape_bottom_border_label_text": "Fan District RVA",
+                    "shape_svg_enabled": True,
+                },
+            },
+            "realizations": {
+                "2121_stuart": {
+                    "variant": "shape.ornament",
+                    "shape_bottom_border_label_text": "2121 Stuart Ave",
+                },
+                "2021_stuart": {
+                    "variant": "shape.ornament",
+                    "shape_bottom_border_label_text": "2021 Stuart Ave",
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    expected_bottom_labels = {
+        "shape_ornament": "Fan District RVA",
+        "2121_stuart": "2121 Stuart Ave",
+        "2021_stuart": "2021 Stuart Ave",
+    }
+
+    for realization, bottom_label in expected_bottom_labels.items():
+        resolver = get_resolver(
+            "fan-shell",
+            realization=realization,
+            project_root=tmp_path,
+        )
+
+        assert resolver("model") == "shape"
+        assert resolver("variant") == "ornament"
+        assert resolver("shape_size") == 75.0
+        assert resolver("shape_svg_enabled") is True
+        assert resolver("shape_top_border_label_text") == "Holiday House Tour 2025"
+        assert resolver("shape_bottom_border_label_text") == bottom_label
+
+    assert (
+        get_resolver(
+            "fan-shell",
+            realization="2121_stuart",
+            project_root=tmp_path,
+        ).source("shape_bottom_border_label_text")
+        == "realization '2121_stuart'"
+    )
+
+
+def test_artifact_variant_overrides_do_not_leak_to_other_variants(
+    tmp_path: Path,
+) -> None:
+    """
+    Ornament-specific overrides do not affect the canonical coaster.
+    """
+
+    write_artifact_config(
+        "fan-shell",
+        {
+            "shape": {
+                "ornament": {
+                    "shape_size": 75.0,
+                    "shape_svg_enabled": True,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    ornament = get_resolver(
+        "fan-shell",
+        realization="shape_ornament",
+        project_root=tmp_path,
+    )
+
+    coaster = get_resolver(
+        "fan-shell",
+        realization="shape_coaster",
+        project_root=tmp_path,
+    )
+
+    assert ornament("shape_size") == 75.0
+    assert ornament("shape_svg_enabled") is True
+
+    assert coaster("shape_size") != 75.0
+    assert coaster("shape_svg_enabled") is False
+
+
+def test_artifact_variant_overrides_do_not_leak_to_other_artifacts(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-local Variant overrides never modify the registered Variant.
+    """
+
+    write_artifact_config(
+        "fan-shell",
+        {
+            "shape": {
+                "ornament": {
+                    "shape_size": 75.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    write_artifact_config(
+        "other",
+        {},
+        project_root=tmp_path,
+    )
+
+    customized = get_resolver(
+        "fan-shell",
+        realization="shape_ornament",
+        project_root=tmp_path,
+    )
+
+    ordinary = get_resolver(
+        "other",
+        realization="shape_ornament",
+        project_root=tmp_path,
+    )
+
+    assert customized("shape_size") == 75.0
+    assert ordinary("shape_size") == 76.0

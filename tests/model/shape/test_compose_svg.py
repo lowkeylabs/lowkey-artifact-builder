@@ -343,6 +343,7 @@ def test_compose_svg_preserves_registered_artwork_colors(
     assert components["artwork-1"].get("transform") == components["artwork-2"].get("transform")
 
 
+@pytest.mark.slow
 def test_compose_svg_includes_registered_border_label_geometry(
     tmp_path: Path,
 ) -> None:

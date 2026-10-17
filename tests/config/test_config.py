@@ -1420,3 +1420,176 @@ def test_get_product_dependency_binding_accepts_sparse_named_binding(
         artifact="consumer",
         realization="shape_coaster",
     )
+
+
+def test_artifact_variant_tables_round_trip_without_materializing_realizations(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-local Variant tables are persistent authored configuration.
+
+    Writing and loading them must not materialize implicit canonical
+    Realizations or change the document structure.
+    """
+
+    expected = {
+        "source": "artifacts/fan-shell/artifact.svg",
+        "original": "originals/fan-shell.svg",
+        "shape": {
+            "ornament": {
+                "shape_size": 75.0,
+                "shape_svg_enabled": True,
+            },
+        },
+        "realizations": {
+            "2121_stuart": {
+                "variant": "shape.ornament",
+                "shape_bottom_border_label_text": "2121 Stuart Ave",
+            },
+        },
+    }
+
+    write_artifact_config(
+        "fan-shell",
+        expected,
+        project_root=tmp_path,
+    )
+
+    actual = load_artifact_config(
+        "fan-shell",
+        project_root=tmp_path,
+    )
+
+    assert actual == expected
+    assert "shape_ornament" not in actual.get("realizations", {})
+
+
+def test_update_artifact_config_preserves_artifact_variant_tables(
+    tmp_path: Path,
+) -> None:
+    """
+    Updating unrelated Artifact configuration preserves authored
+    Variant overrides.
+    """
+
+    write_artifact_config(
+        "fan-shell",
+        {
+            "source": "artifacts/fan-shell/artifact.svg",
+            "shape": {
+                "ornament": {
+                    "shape_size": 75.0,
+                    "shape_svg_enabled": True,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    update_artifact_config(
+        "fan-shell",
+        {
+            "original": "originals/fan-shell.svg",
+        },
+        project_root=tmp_path,
+    )
+
+    actual = load_artifact_config(
+        "fan-shell",
+        project_root=tmp_path,
+    )
+
+    assert actual["shape"]["ornament"] == {
+        "shape_size": 75.0,
+        "shape_svg_enabled": True,
+    }
+    assert actual["original"] == "originals/fan-shell.svg"
+
+
+def test_artifact_variant_rejects_unknown_model_parameter(
+    tmp_path: Path,
+) -> None:
+    """
+    Artifact-local Variant overrides must use parameters recognized
+    by their originating Model.
+    """
+
+    write_artifact_config(
+        "fan-shell",
+        {
+            "shape": {
+                "ornament": {
+                    "not_a_shape_parameter": 123,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="not_a_shape_parameter",
+    ):
+        get_resolver(
+            "fan-shell",
+            realization="shape_ornament",
+            project_root=tmp_path,
+        )
+
+
+def test_artifact_variant_rejects_unknown_variant_name(
+    tmp_path: Path,
+) -> None:
+    """
+    An Artifact-local Variant table cannot invent a new Model Variant.
+    """
+
+    write_artifact_config(
+        "fan-shell",
+        {
+            "shape": {
+                "nonexistent_variant": {
+                    "shape_size": 75.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="nonexistent_variant",
+    ):
+        get_resolver(
+            "fan-shell",
+            realization="shape_ornament",
+            project_root=tmp_path,
+        )
+
+
+def test_artifact_variant_rejects_non_table_configuration(
+    tmp_path: Path,
+) -> None:
+    """
+    Each Artifact-local Variant definition must be a TOML table.
+    """
+
+    write_artifact_config(
+        "fan-shell",
+        {
+            "shape": {
+                "ornament": 75,
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match="ornament",
+    ):
+        get_resolver(
+            "fan-shell",
+            realization="shape_ornament",
+            project_root=tmp_path,
+        )

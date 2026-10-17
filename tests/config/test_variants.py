@@ -662,3 +662,112 @@ def test_explicit_default_variant_selection_uses_default_runtime_realization(
 
     assert resolver.source("variant") == "selection"
     assert resolver.source("realization") == "selection"
+
+
+def test_artifact_variant_overrides_registered_variant_and_artifact_scope(
+    tmp_path: Path,
+    variant_model: ModelSpec,
+) -> None:
+    """
+    Artifact-local Variant overrides win over registered Variant defaults
+    and Artifact-wide parameters for the selected Variant.
+    """
+
+    _write_workspace(
+        tmp_path,
+        parameters={
+            "ridge_width": 4.0,
+        },
+    )
+
+    write_artifact_config(
+        "example",
+        {
+            "ridge_width": 5.0,
+            "example-model": {
+                "ridged": {
+                    "ridge_width": 7.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        realization="example-model_ridged",
+        project_root=tmp_path,
+    )
+
+    assert resolver("variant") == "ridged"
+    assert resolver("ridge_width") == 7.0
+    assert resolver.source("ridge_width") == ("artifact variant example-model.ridged")
+
+
+def test_artifact_variant_overrides_are_sparse(
+    tmp_path: Path,
+    variant_model: ModelSpec,
+) -> None:
+    """
+    Values omitted by an Artifact-local Variant table continue to
+    inherit from the existing configuration layers.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "example-model": {
+                "ridged": {
+                    "ridge_width": 7.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        realization="example-model_ridged",
+        project_root=tmp_path,
+    )
+
+    assert resolver("ridge_width") == 7.0
+    assert resolver("material") == "pla"
+
+    assert resolver.source("ridge_width") == ("artifact variant example-model.ridged")
+    assert resolver.source("material") == "model"
+
+
+def test_artifact_variant_table_is_not_a_resolved_parameter(
+    tmp_path: Path,
+    variant_model: ModelSpec,
+) -> None:
+    """
+    Artifact-local Variant tables are configuration structure,
+    not parameter values.
+    """
+
+    _write_workspace(tmp_path)
+
+    write_artifact_config(
+        "example",
+        {
+            "example-model": {
+                "ridged": {
+                    "ridge_width": 7.0,
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "example",
+        realization="example-model_ridged",
+        project_root=tmp_path,
+    )
+
+    assert not resolver.has("example-model")
+    assert "example-model" not in resolver.names()
