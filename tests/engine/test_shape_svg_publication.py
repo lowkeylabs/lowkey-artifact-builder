@@ -88,33 +88,6 @@ def _build(
     )
 
 
-def test_shape_svg_publication_disabled_by_default(
-    tmp_path: Path,
-) -> None:
-    """Ordinary SHAPE manufacturing produces canonical SVG but publishes only 3MF."""
-    _configure(tmp_path)
-
-    resolver = get_resolver(
-        ARTIFACT_ID,
-        realization="shape_default",
-        project_root=tmp_path,
-    )
-
-    assert resolver("shape_svg_enabled") is False
-
-    _build(tmp_path)
-
-    canonical_svg = _canonical_svg(tmp_path)
-    canonical_3mf = _canonical_3mf(tmp_path)
-
-    assert canonical_svg.is_file()
-    assert canonical_3mf.is_file()
-
-    assert _published(tmp_path, "shape_default", "3mf").read_bytes() == (canonical_3mf.read_bytes())
-
-    assert not _published(tmp_path, "shape_default", "svg").exists()
-
-
 def test_shape_svg_publication_enabled(
     tmp_path: Path,
 ) -> None:

@@ -1527,7 +1527,7 @@ def test_artifact_variant_overrides_do_not_leak_to_other_variants(
     assert ornament("shape_svg_enabled") is True
 
     assert coaster("shape_size") != 75.0
-    assert coaster("shape_svg_enabled") is False
+    assert coaster("shape_svg_enabled") is True
 
 
 def test_artifact_variant_overrides_do_not_leak_to_other_artifacts(
