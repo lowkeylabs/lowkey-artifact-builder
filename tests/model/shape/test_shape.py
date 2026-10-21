@@ -252,6 +252,9 @@ def test_shape_compose_consumes_structural_partition_parameters() -> None:
     font, fitting, border, and path parameters likewise determine registered
     composition geometry.
 
+    Top and Bottom Border Labels independently support font-family and
+    arc-span overrides, inheriting effective shared values when omitted.
+
     Artwork offsets and scale adjust incorporated Artwork placement after
     automatic fitting and therefore belong to registered composition.
 
@@ -274,6 +277,10 @@ def test_shape_compose_consumes_structural_partition_parameters() -> None:
         "shape_border_label_font_family",
         "shape_top_border_label_text",
         "shape_bottom_border_label_text",
+        "shape_top_border_label_font_family",
+        "shape_bottom_border_label_font_family",
+        "shape_top_border_label_arc_degrees",
+        "shape_bottom_border_label_arc_degrees",
         "shape_artwork_offset_x",
         "shape_artwork_offset_y",
         "shape_artwork_scale",

@@ -160,21 +160,15 @@ class LabelFit:
     """
     Fitted information for one participating Border Label.
 
-    ``metrics`` are measured once using Inkscape.
-
-    ``width`` is the physical rendered path length at the fitted common
-    font setting.
-
-    ``rendered_height`` is the actual physical rendered glyph height.
-    It can be smaller than the common glyph-height allocation because
-    different strings can have different glyph bounding heights at one
-    common SVG font size.
+    Each label has its own measured metrics and effective SVG font size.
+    Both labels occupy the same resolved physical glyph-height allocation.
     """
 
     text: str
     metrics: LabelMetrics
     width: float
     rendered_height: float
+    font_size: float
 
 
 @dataclass(frozen=True)
@@ -1141,31 +1135,26 @@ def _circular_labels_fit(
     border_width: float,
     arc_degrees: float,
     end_margin: float,
+    arc_degrees_by_position: Mapping[str, float] | None = None,
+    independent_font_sizes: bool = False,
 ) -> bool:
     """
-    Return whether every participating label fits at ``glyph_height``.
+    Determine whether every participating label fits within its own arc.
 
-    Expected semantic keys are ``top`` and/or ``bottom``.
-
-    Both labels use one common SVG/CSS font-size and one shared circular
-    baseline. A shorter label is not stretched to consume additional path
-    length.
+    Both labels share a physical glyph-height allocation. When independent
+    typography is enabled, each font's metrics determine its SVG font size.
     """
 
     if glyph_height <= 0:
         return False
 
-    (
-        bottom_radius,
-        top_radius,
-        inner_radius,
-    ) = _circular_baseline_radii(
+    bottom_radius, top_radius, inner_radius = _circular_baseline_radii(
         reference_radius=reference_radius,
         border_width=border_width,
         glyph_height=glyph_height,
     )
 
-    if bottom_radius <= 0 or top_radius <= 0 or inner_radius <= 0:
+    if min(bottom_radius, top_radius, inner_radius) <= 0:
         return False
 
     if not math.isclose(
@@ -1176,25 +1165,32 @@ def _circular_labels_fit(
     ):
         raise BorderLabelError("Circular Border Labels must share one baseline radius.")
 
-    baseline_radius = top_radius
+    common_font_size = None if independent_font_sizes else _common_font_size(metrics, glyph_height)
 
-    font_size = _common_font_size(
-        metrics,
-        glyph_height,
-    )
+    for position, label_metrics in metrics.items():
+        if position not in {"top", "bottom"}:
+            raise BorderLabelError(f"Unknown circular Border Label position: {position!r}")
 
-    available = available_arc_length(
-        baseline_radius,
-        arc_degrees,
-        end_margin=end_margin,
-    )
+        effective_arc = (
+            arc_degrees_by_position.get(position, arc_degrees)
+            if arc_degrees_by_position is not None
+            else arc_degrees
+        )
 
-    for name, label_metrics in metrics.items():
-        if name not in {
-            "top",
-            "bottom",
-        }:
-            raise BorderLabelError(f"Unknown circular Border Label position: {name!r}")
+        available = available_arc_length(
+            top_radius,
+            effective_arc,
+            end_margin=end_margin,
+        )
+
+        font_size = (
+            font_size_for_height(
+                label_metrics,
+                glyph_height=glyph_height,
+            )
+            if common_font_size is None
+            else common_font_size
+        )
 
         required = _rendered_width(
             label_metrics,
@@ -1215,24 +1211,27 @@ def _fit_circular_glyph_height(
     max_glyph_height: float,
     arc_degrees: float,
     end_margin: float,
+    arc_degrees_by_position: Mapping[str, float] | None = None,
+    independent_font_sizes: bool = False,
 ) -> float:
     """
-    Find the largest common physical glyph-height allocation that fits
-    every participating label.
-
-    The configured maximum is preferred whenever it fits. Otherwise the
-    algorithm performs an arithmetic binary search using metrics already
-    measured from Inkscape.
+    Find the largest common physical glyph-height allocation fitting all
+    participating labels within their independently available arcs.
     """
 
-    if _circular_labels_fit(
-        metrics=metrics,
-        glyph_height=max_glyph_height,
-        reference_radius=reference_radius,
-        border_width=border_width,
-        arc_degrees=arc_degrees,
-        end_margin=end_margin,
-    ):
+    def fits(candidate: float) -> bool:
+        return _circular_labels_fit(
+            metrics=metrics,
+            glyph_height=candidate,
+            reference_radius=reference_radius,
+            border_width=border_width,
+            arc_degrees=arc_degrees,
+            end_margin=end_margin,
+            arc_degrees_by_position=arc_degrees_by_position,
+            independent_font_sizes=independent_font_sizes,
+        )
+
+    if fits(max_glyph_height):
         return max_glyph_height
 
     low = 0.0
@@ -1242,18 +1241,10 @@ def _fit_circular_glyph_height(
         if high - low <= GLYPH_HEIGHT_TOLERANCE_MM:
             break
 
-        candidate = (low + high) / 2
+        candidate = (low + high) / 2.0
 
-        if _circular_labels_fit(
-            metrics=metrics,
-            glyph_height=candidate,
-            reference_radius=reference_radius,
-            border_width=border_width,
-            arc_degrees=arc_degrees,
-            end_margin=end_margin,
-        ):
+        if fits(candidate):
             low = candidate
-
         else:
             high = candidate
 
@@ -1275,25 +1266,18 @@ def fit_circular_border_labels(
     max_glyph_height: float,
     arc_degrees: float,
     end_margin: float,
+    top_font_family: str | None = None,
+    bottom_font_family: str | None = None,
+    top_arc_degrees: float | None = None,
+    bottom_arc_degrees: float | None = None,
 ) -> CircularBorderLabelFit:
     """
-    Measure and fit participating Border Labels to a circular Shape.
+    Measure and fit participating circular Border Labels.
 
-    Participation is represented by the values supplied by the caller:
+    Position-specific settings inherit shared settings when omitted.
+    Both labels share one physical glyph-height allocation.
 
-    - ``None`` means that semantic label does not participate;
-    - a non-empty string means it participates.
-
-    The caller remains responsible for applying the Shape participation
-    rule before invoking this operation.
-
-    Each participating string is measured once with Inkscape. Fitting
-    after that measurement is purely arithmetic.
-
-    Both participating labels use one common SVG/CSS font-size.
-
-    Returns resolved physical geometry and metrics suitable for Compose
-    to convert into registered Shape geometry.
+    Legacy shared-only callers retain their common-font-size behavior.
     """
 
     _validate_circular_fit_inputs(
@@ -1304,34 +1288,45 @@ def fit_circular_border_labels(
         end_margin=end_margin,
     )
 
-    labels: dict[
-        str,
-        str,
-    ] = {}
+    texts = {
+        "top": top_text,
+        "bottom": bottom_text,
+    }
 
-    if top_text is not None:
-        _validate_text(
-            top_text,
-            font_family,
-        )
+    fonts = {
+        "top": top_font_family if top_font_family is not None else font_family,
+        "bottom": (bottom_font_family if bottom_font_family is not None else font_family),
+    }
 
-        labels["top"] = top_text
+    arcs = {
+        "top": (top_arc_degrees if top_arc_degrees is not None else arc_degrees),
+        "bottom": (bottom_arc_degrees if bottom_arc_degrees is not None else arc_degrees),
+    }
 
-    if bottom_text is not None:
-        _validate_text(
-            bottom_text,
-            font_family,
-        )
+    participating = {position: text for position, text in texts.items() if text is not None}
 
-        labels["bottom"] = bottom_text
-
-    if not labels:
+    if not participating:
         raise BorderLabelError("At least one participating Border Label is required.")
 
-    metrics = measure_participating_labels(
-        labels,
-        font_family=font_family,
-    )
+    metrics: dict[str, LabelMetrics] = {}
+
+    for position, text in participating.items():
+        _validate_text(text, fonts[position])
+
+        _validate_circular_fit_inputs(
+            reference_radius=reference_radius,
+            border_width=border_width,
+            max_glyph_height=max_glyph_height,
+            arc_degrees=arcs[position],
+            end_margin=end_margin,
+        )
+
+        metrics[position] = measure_label_metrics(
+            text=text,
+            font_family=fonts[position],
+        )
+
+    independent_font_sizes = len({fonts[position] for position in participating}) > 1
 
     glyph_height = _fit_circular_glyph_height(
         metrics=metrics,
@@ -1340,12 +1335,45 @@ def fit_circular_border_labels(
         max_glyph_height=max_glyph_height,
         arc_degrees=arc_degrees,
         end_margin=end_margin,
+        arc_degrees_by_position=arcs,
+        independent_font_sizes=independent_font_sizes,
     )
 
-    font_size = _common_font_size(
+    common_font_size = _common_font_size(
         metrics,
         glyph_height,
     )
+
+    def make_fit(position: str) -> LabelFit | None:
+        text = participating.get(position)
+
+        if text is None:
+            return None
+
+        label_metrics = metrics[position]
+
+        font_size = (
+            font_size_for_height(
+                label_metrics,
+                glyph_height=glyph_height,
+            )
+            if independent_font_sizes
+            else common_font_size
+        )
+
+        return LabelFit(
+            text=text,
+            metrics=label_metrics,
+            width=_rendered_width(
+                label_metrics,
+                font_size=font_size,
+            ),
+            rendered_height=_rendered_height(
+                label_metrics,
+                font_size=font_size,
+            ),
+            font_size=font_size,
+        )
 
     (
         bottom_baseline_radius,
@@ -1357,49 +1385,14 @@ def fit_circular_border_labels(
         glyph_height=glyph_height,
     )
 
-    top_fit: LabelFit | None = None
-    bottom_fit: LabelFit | None = None
-
-    if "top" in labels:
-        top_metrics = metrics["top"]
-
-        top_fit = LabelFit(
-            text=labels["top"],
-            metrics=top_metrics,
-            width=_rendered_width(
-                top_metrics,
-                font_size=font_size,
-            ),
-            rendered_height=_rendered_height(
-                top_metrics,
-                font_size=font_size,
-            ),
-        )
-
-    if "bottom" in labels:
-        bottom_metrics = metrics["bottom"]
-
-        bottom_fit = LabelFit(
-            text=labels["bottom"],
-            metrics=bottom_metrics,
-            width=_rendered_width(
-                bottom_metrics,
-                font_size=font_size,
-            ),
-            rendered_height=_rendered_height(
-                bottom_metrics,
-                font_size=font_size,
-            ),
-        )
-
     return CircularBorderLabelFit(
         glyph_height=glyph_height,
-        font_size=font_size,
+        font_size=common_font_size,
         bottom_baseline_radius=bottom_baseline_radius,
         top_baseline_radius=top_baseline_radius,
         inner_boundary_radius=inner_boundary_radius,
-        top=top_fit,
-        bottom=bottom_fit,
+        top=make_fit("top"),
+        bottom=make_fit("bottom"),
     )
 
 

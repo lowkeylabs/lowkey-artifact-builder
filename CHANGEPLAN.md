@@ -168,9 +168,9 @@ explicit set of symbolic text commands useful in decorative labels.
    symbolic-command semantics before implementation.
 2. Add top/bottom font-family and arc-span overrides through the existing
    configuration hierarchy. Preserve shared-parameter compatibility.
-3. Add a deliberately limited whitelist of symbolic commands (initially the
-   centered dot `\\cdot` if supported by the selected font), with defined
-   behavior for unknown commands and missing glyphs.
+3. Add the limited symbolic-command contract defined by SHAPE,
+   initially `\\bullet` (U+2022 BULLET), with explicit handling of unsupported
+   commands, escaped backslashes, and unavailable glyphs.
 4. Test independent overrides, legacy defaults, text fitting, and generated
    SVG/3MF behavior; run the appropriate full quality suite.
 

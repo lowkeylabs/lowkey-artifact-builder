@@ -108,7 +108,22 @@ def _run_compose(
         "shape_artwork_offset_y": offset_y,
         "shape_artwork_scale": scale,
     }
-    context.resolver.side_effect = values.__getitem__
+
+    inherited = {
+        "shape_top_border_label_font_family": "shape_border_label_font_family",
+        "shape_bottom_border_label_font_family": "shape_border_label_font_family",
+        "shape_top_border_label_arc_degrees": "shape_border_label_arc_degrees",
+        "shape_bottom_border_label_arc_degrees": "shape_border_label_arc_degrees",
+    }
+
+    def resolver(name: str) -> object:
+        if name in values:
+            return values[name]
+        if name in inherited:
+            return resolver(inherited[name])
+        raise KeyError(name)
+
+    context.resolver.side_effect = resolver
 
     compose.execute(context)
 

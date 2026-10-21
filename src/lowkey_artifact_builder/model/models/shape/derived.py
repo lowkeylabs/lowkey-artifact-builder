@@ -143,6 +143,58 @@ def derive_shape_bottom_border_label_color(
     )
 
 
+def derive_shape_top_border_label_font_family(
+    resolver: Resolver,
+) -> str:
+    """
+    Derive the Top Border Label font from the resolved shared font.
+
+    Workspace, Artifact, and Realization overrides of the shared font
+    are inherited unless a Top-specific font is explicitly configured.
+    """
+
+    return str(resolver("shape_border_label_font_family"))
+
+
+def derive_shape_bottom_border_label_font_family(
+    resolver: Resolver,
+) -> str:
+    """
+    Derive the Bottom Border Label font from the resolved shared font.
+
+    Workspace, Artifact, and Realization overrides of the shared font
+    are inherited unless a Bottom-specific font is explicitly configured.
+    """
+
+    return str(resolver("shape_border_label_font_family"))
+
+
+def derive_shape_top_border_label_arc_degrees(
+    resolver: Resolver,
+) -> float:
+    """
+    Derive the Top Border Label arc from the resolved shared arc.
+
+    Workspace, Artifact, and Realization overrides of the shared arc
+    are inherited unless a Top-specific arc is explicitly configured.
+    """
+
+    return float(resolver("shape_border_label_arc_degrees"))
+
+
+def derive_shape_bottom_border_label_arc_degrees(
+    resolver: Resolver,
+) -> float:
+    """
+    Derive the Bottom Border Label arc from the resolved shared arc.
+
+    Workspace, Artifact, and Realization overrides of the shared arc
+    are inherited unless a Bottom-specific arc is explicitly configured.
+    """
+
+    return float(resolver("shape_border_label_arc_degrees"))
+
+
 def derive_shape_loop_raise(
     resolver: Resolver,
 ) -> float:
@@ -202,6 +254,10 @@ DERIVED = {
     "shape_inner_ridge_color": derive_shape_inner_ridge_color,
     "shape_top_border_label_color": derive_shape_top_border_label_color,
     "shape_bottom_border_label_color": derive_shape_bottom_border_label_color,
+    "shape_top_border_label_font_family": derive_shape_top_border_label_font_family,
+    "shape_bottom_border_label_font_family": derive_shape_bottom_border_label_font_family,
+    "shape_top_border_label_arc_degrees": derive_shape_top_border_label_arc_degrees,
+    "shape_bottom_border_label_arc_degrees": derive_shape_bottom_border_label_arc_degrees,
     "shape_artwork_fill_color": derive_shape_artwork_fill_color,
     "shape_loop_raise": derive_shape_loop_raise,
     "shape_loop_color": derive_shape_loop_color,
@@ -216,10 +272,14 @@ DERIVED = {
 __all__ = [
     "DERIVED",
     "derive_shape_artwork_fill_color",
+    "derive_shape_bottom_border_label_arc_degrees",
     "derive_shape_bottom_border_label_color",
+    "derive_shape_bottom_border_label_font_family",
     "derive_shape_inner_ridge_color",
     "derive_shape_loop_color",
     "derive_shape_loop_raise",
     "derive_shape_outer_ridge_color",
+    "derive_shape_top_border_label_arc_degrees",
     "derive_shape_top_border_label_color",
+    "derive_shape_top_border_label_font_family",
 ]

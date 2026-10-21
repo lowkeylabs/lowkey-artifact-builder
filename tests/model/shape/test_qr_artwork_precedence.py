@@ -99,6 +99,20 @@ def _compose(tmp_path: Path, *, payload: str) -> tuple[Path, dict]:
         "shape_qr_position": 0.0,
     }
 
+    inherited = {
+        "shape_top_border_label_font_family": "shape_border_label_font_family",
+        "shape_bottom_border_label_font_family": "shape_border_label_font_family",
+        "shape_top_border_label_arc_degrees": "shape_border_label_arc_degrees",
+        "shape_bottom_border_label_arc_degrees": "shape_border_label_arc_degrees",
+    }
+
+    def resolver(name: str) -> object:
+        if name in values:
+            return values[name]
+        if name in inherited:
+            return resolver(inherited[name])
+        raise KeyError(name)
+
     context = Mock(spec=StageContext)
 
     vector = tmp_path / "source" / "vector.json"
@@ -116,7 +130,7 @@ def _compose(tmp_path: Path, *, payload: str) -> tuple[Path, dict]:
         "artifact": directory / "artifact.svg",
     }.__getitem__
 
-    context.resolver.side_effect = values.__getitem__
+    context.resolver.side_effect = resolver
 
     compose.execute(context)
 

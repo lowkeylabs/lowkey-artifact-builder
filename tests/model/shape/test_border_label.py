@@ -274,13 +274,15 @@ def _configure_compose_context(
     values: dict[str, object],
 ) -> None:
     """
-    Configure the minimum Shape Compose stage boundary for this feature test.
+    Configure the Shape Compose stage boundary for Border Label tests.
 
-    Parameters material to Border Label behavior are supplied explicitly.
-    Unrelated optional QR behavior uses its nonparticipating default.
+    Explicit values take precedence over inherited values. Position-specific
+    Border Label typography inherits the corresponding shared setting.
 
-    The resolver remains strict: unexpected parameter requests fail rather
-    than silently manufacturing values.
+    Unrelated optional QR behavior remains nonparticipating.
+
+    Unknown parameters remain errors rather than silently receiving
+    fabricated values.
     """
 
     inputs = {
@@ -297,9 +299,19 @@ def _configure_compose_context(
         "shape_qr_payload": "",
     }
 
+    inherited = {
+        "shape_top_border_label_font_family": ("shape_border_label_font_family"),
+        "shape_bottom_border_label_font_family": ("shape_border_label_font_family"),
+        "shape_top_border_label_arc_degrees": ("shape_border_label_arc_degrees"),
+        "shape_bottom_border_label_arc_degrees": ("shape_border_label_arc_degrees"),
+    }
+
     def resolver(name: str) -> object:
         if name in values:
             return values[name]
+
+        if name in inherited:
+            return resolver(inherited[name])
 
         if name in defaults:
             return defaults[name]
@@ -1967,3 +1979,124 @@ def test_border_label_font_metrics_reserve_descenders_without_descending_glyphs(
     assert without_descender.width_per_height != pytest.approx(
         with_descender.width_per_height,
     )
+
+
+@pytest.mark.slow
+def test_border_labels_support_independent_fonts_and_arc_spans(
+    tmp_path: Path,
+) -> None:
+    """
+    Top and Bottom Border Labels independently resolve typography and arc
+    constraints while sharing one physical glyph-height allocation.
+
+    A more restrictive Bottom arc must be able to constrain the common
+    lettering band without changing the Top label's configured arc.
+
+    Compose persists distinct semantic paths and registered glyph geometry
+    for both labels.
+    """
+
+    structure = tmp_path / "structure.svg"
+    _write_registered_circle_structure(structure)
+
+    shared = {
+        "shape_size": 100.0,
+        "shape_outer_ridge_width": 0.0,
+        "shape_outer_ridge_style": "integrated",
+        "shape_inner_ridge_width": 0.0,
+        "shape_inner_to_outer_ridge_dist": 10.0,
+        "shape_border_label_width": 1.0,
+        "shape_border_label_max_glyph_height": 5.0,
+        "shape_border_label_arc_degrees": 140.0,
+        "shape_border_label_end_margin": 1.0,
+        "shape_border_label_font_family": "DejaVu Sans",
+        "shape_top_border_label_text": "RICHMOND",
+        "shape_bottom_border_label_text": "COMMONWEALTH OF VIRGINIA",
+        "shape_top_border_label_font_family": "DejaVu Sans",
+        "shape_bottom_border_label_font_family": "DejaVu Serif",
+        "shape_top_border_label_arc_degrees": 140.0,
+    }
+
+    def build(
+        name: str,
+        bottom_arc: float,
+    ) -> tuple[ET.Element, dict[str, object]]:
+        directory = tmp_path / name
+        directory.mkdir()
+
+        composition = directory / "composition.svg"
+        manifest = directory / "products.json"
+
+        context = Mock(spec=StageContext)
+
+        _configure_compose_context(
+            context,
+            structure=structure,
+            composition=composition,
+            manifest=manifest,
+            values={
+                **shared,
+                "shape_bottom_border_label_arc_degrees": bottom_arc,
+            },
+        )
+
+        compose.execute(context)
+
+        return (
+            ET.parse(composition).getroot(),
+            json.loads(manifest.read_text(encoding="utf-8")),
+        )
+
+    wide_root, wide_manifest = build("wide", 140.0)
+    narrow_root, narrow_manifest = build("narrow", 55.0)
+
+    def elements(root: ET.Element) -> dict[str, ET.Element]:
+        return {
+            element_id: element
+            for element in root.iter()
+            if (element_id := element.get("id")) is not None
+        }
+
+    wide = elements(wide_root)
+    narrow = elements(narrow_root)
+
+    for registered in (wide, narrow):
+        top_baseline = registered["border-label-top-baseline"]
+        bottom_baseline = registered["border-label-bottom-baseline"]
+
+        assert float(top_baseline.get("r", "nan")) == pytest.approx(
+            float(bottom_baseline.get("r", "nan"))
+        )
+
+        assert "top-border-label-path" in registered
+        assert "bottom-border-label-path" in registered
+        assert "border-label-inner-boundary" in registered
+
+    # The Top arc is unchanged by a Bottom-only configuration change.
+    assert wide["top-border-label-path"].get("d") == (narrow["top-border-label-path"].get("d"))
+
+    # The Bottom arc is independently configured.
+    assert wide["bottom-border-label-path"].get("d") != (
+        narrow["bottom-border-label-path"].get("d")
+    )
+
+    # A narrower Bottom arc reduces the shared available glyph height.
+    wide_inner = float(wide["border-label-inner-boundary"].get("r", "nan"))
+    narrow_inner = float(narrow["border-label-inner-boundary"].get("r", "nan"))
+
+    assert narrow_inner > wide_inner
+
+    # Both semantic labels retain independent manufacturing identities.
+
+    # Both semantic labels retain independent manufacturing identities.
+    for products in (wide_manifest, narrow_manifest):
+        labels = products["border_labels"]
+
+        assert isinstance(labels, dict)
+
+        for position in ("top", "bottom"):
+            product = labels[position]
+
+            assert isinstance(product, dict)
+            assert isinstance(product["path"], str)
+            assert product["path"]

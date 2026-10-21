@@ -118,6 +118,9 @@ def _compose_context(
     physical printer-color policy. Physical fill participation is decided by
     Extrude through shape_artwork_fill_raise, and physical fill color is
     resolved by Package.
+
+    Position-specific Border Label settings inherit their corresponding
+    shared values unless explicitly provided.
     """
 
     context = Mock(spec=StageContext)
@@ -152,9 +155,23 @@ def _compose_context(
         "shape_qr_payload": "",
     }
 
+    inherited = {
+        "shape_top_border_label_font_family": "shape_border_label_font_family",
+        "shape_bottom_border_label_font_family": "shape_border_label_font_family",
+        "shape_top_border_label_arc_degrees": "shape_border_label_arc_degrees",
+        "shape_bottom_border_label_arc_degrees": "shape_border_label_arc_degrees",
+    }
+
+    def resolver(name: str) -> object:
+        if name in values:
+            return values[name]
+        if name in inherited:
+            return resolver(inherited[name])
+        raise KeyError(name)
+
     context.input.side_effect = inputs.__getitem__
     context.output.side_effect = outputs.__getitem__
-    context.resolver.side_effect = values.__getitem__
+    context.resolver.side_effect = resolver
 
     return context
 

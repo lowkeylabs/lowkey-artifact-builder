@@ -305,6 +305,10 @@ def _configure_shape_resolver(
         "shape_border_label_end_margin": 1.0,
         "shape_border_label_font_family": "DejaVu Sans",
         "shape_top_border_label_text": "",
+        "shape_top_border_label_font_family": "DejaVu Sans",
+        "shape_bottom_border_label_font_family": "DejaVu Sans",
+        "shape_top_border_label_arc_degrees": 140.0,
+        "shape_bottom_border_label_arc_degrees": 140.0,
         "shape_bottom_border_label_text": "",
         "shape_artwork_offset_x": 0.0,
         "shape_artwork_offset_y": 0.0,
@@ -2086,6 +2090,10 @@ def test_compose_stage_resolves_only_registered_partition_parameters(
         call("shape_border_label_font_family"),
         call("shape_top_border_label_text"),
         call("shape_bottom_border_label_text"),
+        call("shape_top_border_label_font_family"),
+        call("shape_bottom_border_label_font_family"),
+        call("shape_top_border_label_arc_degrees"),
+        call("shape_bottom_border_label_arc_degrees"),
         call("shape_qr_payload"),
     ]
 

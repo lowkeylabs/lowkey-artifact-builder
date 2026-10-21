@@ -415,6 +415,11 @@ def execute(
     top_border_label_text = str(context.resolver("shape_top_border_label_text"))
     bottom_border_label_text = str(context.resolver("shape_bottom_border_label_text"))
 
+    top_font_override = str(context.resolver("shape_top_border_label_font_family"))
+    bottom_font_override = str(context.resolver("shape_bottom_border_label_font_family"))
+    top_arc_override = float(context.resolver("shape_top_border_label_arc_degrees"))
+    bottom_arc_override = float(context.resolver("shape_bottom_border_label_arc_degrees"))
+
     border_labels: dict[str, dict[str, object] | None] = {
         "top": None,
         "bottom": None,
@@ -436,6 +441,10 @@ def execute(
             top_border_label_text=top_border_label_text,
             bottom_border_label_text=bottom_border_label_text,
             border_label_output_directory=manifest_output.parent,
+            top_border_label_font_family=top_font_override,
+            bottom_border_label_font_family=bottom_font_override,
+            top_border_label_arc_degrees=top_arc_override,
+            bottom_border_label_arc_degrees=bottom_arc_override,
         )
     else:
         shutil.copyfile(
@@ -1142,6 +1151,10 @@ def _compose_ridge(
     top_border_label_text: str = "",
     bottom_border_label_text: str = "",
     border_label_output_directory: Path | None = None,
+    top_border_label_font_family: str | None = None,
+    bottom_border_label_font_family: str | None = None,
+    top_border_label_arc_degrees: float | None = None,
+    bottom_border_label_arc_degrees: float | None = None,
 ) -> dict[str, dict[str, object] | None]:
     """
     Compose structural partition boundaries in registered Shape space.
@@ -1284,6 +1297,10 @@ def _compose_ridge(
             top_text=(top_border_label_text if top_participates else None),
             bottom_text=(bottom_border_label_text if bottom_participates else None),
             output_directory=border_label_output_directory,
+            top_font_family=top_border_label_font_family,
+            bottom_font_family=bottom_border_label_font_family,
+            top_arc_degrees=top_border_label_arc_degrees,
+            bottom_arc_degrees=bottom_border_label_arc_degrees,
         )
 
         border_label_boundary = next(
@@ -1344,29 +1361,16 @@ def _compose_circle_border_labels(
     top_text: str | None,
     bottom_text: str | None,
     output_directory: Path,
+    top_font_family: str | None = None,
+    bottom_font_family: str | None = None,
+    top_arc_degrees: float | None = None,
+    bottom_arc_degrees: float | None = None,
 ) -> dict[str, dict[str, object] | None]:
     """
-    Compose and persist circular Border Label registered geometry.
+    Compose independent circular Border Label geometry.
 
-    The reference boundary is the inside boundary of the Outer Ridge when
-    that feature participates and the complete Shape boundary otherwise.
-
-    Border Label fitting and path construction are performed in physical
-    millimeters. Resolved baseline and inner-boundary radii are converted
-    back into registered Shape coordinates before persistence.
-
-    Top and Bottom labels publish distinct semantic baseline paths only when
-    they participate. The Top path traverses the upper circular span from
-    left to right. The Bottom path traverses the lower circular span in the
-    opposite direction so left-to-right text remains upright.
-
-    Each participating label is additionally materialized as independent
-    registered SVG glyph geometry using the fitted typography and semantic
-    baseline path. Downstream stages therefore consume persistent path
-    geometry rather than rediscovering font or fitting policy.
-
-    Physical Z dimensionalization belongs to Extrude and physical color
-    assignment belongs to Package.
+    Fitting determines a shared physical lettering band. Each label uses
+    its effective font and arc span for persistent glyph geometry.
     """
 
     if reference_boundary.tag != SVG_CIRCLE:
@@ -1374,13 +1378,7 @@ def _compose_circle_border_labels(
             "Border Label composition currently requires circular registered Shape geometry."
         )
 
-    registered_reference_radius = float(
-        reference_boundary.get(
-            "r",
-            "0.0",
-        )
-    )
-
+    registered_reference_radius = float(reference_boundary.get("r", "0.0"))
     physical_reference_radius = registered_reference_radius * shape_size
 
     fit = fit_circular_border_labels(
@@ -1392,75 +1390,49 @@ def _compose_circle_border_labels(
         max_glyph_height=max_glyph_height,
         arc_degrees=arc_degrees,
         end_margin=end_margin,
+        top_font_family=top_font_family,
+        bottom_font_family=bottom_font_family,
+        top_arc_degrees=top_arc_degrees,
+        bottom_arc_degrees=bottom_arc_degrees,
     )
 
-    center_x = float(
-        reference_boundary.get(
-            "cx",
-            "0.0",
+    center_x = float(reference_boundary.get("cx", "0.0"))
+    center_y = float(reference_boundary.get("cy", "0.0"))
+
+    bottom_radius = fit.bottom_baseline_radius / shape_size
+    top_radius = fit.top_baseline_radius / shape_size
+    inner_radius = fit.inner_boundary_radius / shape_size
+
+    for element_id, radius in (
+        ("border-label-bottom-baseline", bottom_radius),
+        ("border-label-top-baseline", top_radius),
+        ("border-label-inner-boundary", inner_radius),
+    ):
+        ET.SubElement(
+            root,
+            SVG_CIRCLE,
+            {
+                "id": element_id,
+                "cx": str(center_x),
+                "cy": str(center_y),
+                "r": str(radius),
+            },
         )
-    )
 
-    center_y = float(
-        reference_boundary.get(
-            "cy",
-            "0.0",
-        )
-    )
-
-    registered_bottom_baseline_radius = fit.bottom_baseline_radius / shape_size
-
-    registered_top_baseline_radius = fit.top_baseline_radius / shape_size
-
-    registered_inner_boundary_radius = fit.inner_boundary_radius / shape_size
-
-    ET.SubElement(
-        root,
-        SVG_CIRCLE,
-        {
-            "id": "border-label-bottom-baseline",
-            "cx": str(center_x),
-            "cy": str(center_y),
-            "r": str(registered_bottom_baseline_radius),
-        },
-    )
-
-    ET.SubElement(
-        root,
-        SVG_CIRCLE,
-        {
-            "id": "border-label-top-baseline",
-            "cx": str(center_x),
-            "cy": str(center_y),
-            "r": str(registered_top_baseline_radius),
-        },
-    )
-
-    ET.SubElement(
-        root,
-        SVG_CIRCLE,
-        {
-            "id": "border-label-inner-boundary",
-            "cx": str(center_x),
-            "cy": str(center_y),
-            "r": str(registered_inner_boundary_radius),
-        },
-    )
-
-    components: dict[
-        str,
-        dict[str, object] | None,
-    ] = {
+    components: dict[str, dict[str, object] | None] = {
         "top": None,
         "bottom": None,
     }
 
     if fit.top is not None:
-        top_baseline_path = top_label_path(
+        effective_arc = top_arc_degrees if top_arc_degrees is not None else arc_degrees
+        effective_font = top_font_family if top_font_family is not None else font_family
+
+        path = top_label_path(
             center_x=center_x,
             center_y=center_y,
-            radius=registered_top_baseline_radius,
-            arc_degrees=arc_degrees,
+            radius=top_radius,
+            arc_degrees=effective_arc,
         )
 
         ET.SubElement(
@@ -1468,7 +1440,7 @@ def _compose_circle_border_labels(
             SVG_PATH,
             {
                 "id": "top-border-label-path",
-                "d": top_baseline_path,
+                "d": path,
             },
         )
 
@@ -1477,25 +1449,26 @@ def _compose_circle_border_labels(
         write_registered_circular_label_svg(
             output_directory / component_name,
             text=fit.top.text,
-            font_family=font_family,
-            font_size=fit.font_size,
+            font_family=effective_font,
+            font_size=fit.top.font_size,
             metrics=fit.top.metrics,
             rendered_height=fit.top.rendered_height,
-            baseline_path=top_baseline_path,
+            baseline_path=path,
             shape_size=shape_size,
             position="top",
         )
 
-        components["top"] = {
-            "path": component_name,
-        }
+        components["top"] = {"path": component_name}
 
     if fit.bottom is not None:
-        bottom_baseline_path = bottom_label_path(
+        effective_arc = bottom_arc_degrees if bottom_arc_degrees is not None else arc_degrees
+        effective_font = bottom_font_family if bottom_font_family is not None else font_family
+
+        path = bottom_label_path(
             center_x=center_x,
             center_y=center_y,
-            radius=registered_bottom_baseline_radius,
-            arc_degrees=arc_degrees,
+            radius=bottom_radius,
+            arc_degrees=effective_arc,
         )
 
         ET.SubElement(
@@ -1503,7 +1476,7 @@ def _compose_circle_border_labels(
             SVG_PATH,
             {
                 "id": "bottom-border-label-path",
-                "d": bottom_baseline_path,
+                "d": path,
             },
         )
 
@@ -1512,18 +1485,16 @@ def _compose_circle_border_labels(
         write_registered_circular_label_svg(
             output_directory / component_name,
             text=fit.bottom.text,
-            font_family=font_family,
-            font_size=fit.font_size,
+            font_family=effective_font,
+            font_size=fit.bottom.font_size,
             metrics=fit.bottom.metrics,
             rendered_height=fit.bottom.rendered_height,
-            baseline_path=bottom_baseline_path,
+            baseline_path=path,
             shape_size=shape_size,
             position="bottom",
         )
 
-        components["bottom"] = {
-            "path": component_name,
-        }
+        components["bottom"] = {"path": component_name}
 
     return components
 

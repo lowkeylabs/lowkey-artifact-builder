@@ -59,6 +59,20 @@ def _compose_qr(
         "shape_qr_position": position,
     }
 
+    inherited = {
+        "shape_top_border_label_font_family": "shape_border_label_font_family",
+        "shape_bottom_border_label_font_family": "shape_border_label_font_family",
+        "shape_top_border_label_arc_degrees": "shape_border_label_arc_degrees",
+        "shape_bottom_border_label_arc_degrees": "shape_border_label_arc_degrees",
+    }
+
+    def resolver(name: str) -> object:
+        if name in values:
+            return values[name]
+        if name in inherited:
+            return resolver(inherited[name])
+        raise KeyError(name)
+
     context = Mock(spec=StageContext)
     context.input.side_effect = {"structure.structure": structure}.__getitem__
     context.has_input.return_value = False
@@ -67,7 +81,7 @@ def _compose_qr(
         "manifest": manifest,
         "artifact": artifact,
     }.__getitem__
-    context.resolver.side_effect = values.__getitem__
+    context.resolver.side_effect = resolver
 
     compose.execute(context)
 

@@ -312,6 +312,14 @@ shape_top_border_label_raise = 1.0
 ## shape_top_border_label_color = "white"
 
 
+# Optional Top Border Label typography overrides.
+# When absent, inherit the effective shared Border Label setting.
+#
+## shape_top_border_label_font_family = "Arial"
+## shape_top_border_label_arc_degrees = 140.0
+
+
+
 #
 # Optional Bottom Border Label text.
 #
@@ -340,6 +348,12 @@ shape_bottom_border_label_raise = 1.0
 #
 
 ## shape_bottom_border_label_color = "white"
+
+# Optional Bottom Border Label typography overrides.
+# When absent, inherit the effective shared Border Label setting.
+#
+## shape_bottom_border_label_font_family = "Arial"
+## shape_bottom_border_label_arc_degrees = 140.0
 
 
 # =========================================================

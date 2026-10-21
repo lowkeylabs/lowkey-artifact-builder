@@ -52,6 +52,9 @@ def _compose_inner_ridge(
 ) -> Path:
     """
     Execute Shape Compose with representative Inner Ridge parameters.
+
+    Position-specific Border Label settings inherit their corresponding
+    shared values. Unknown parameters remain errors.
     """
 
     structure = tmp_path / "structure.svg"
@@ -91,10 +94,24 @@ def _compose_inner_ridge(
         "shape_qr_payload": "",
     }
 
+    inherited = {
+        "shape_top_border_label_font_family": "shape_border_label_font_family",
+        "shape_bottom_border_label_font_family": "shape_border_label_font_family",
+        "shape_top_border_label_arc_degrees": "shape_border_label_arc_degrees",
+        "shape_bottom_border_label_arc_degrees": "shape_border_label_arc_degrees",
+    }
+
+    def resolver(name: str) -> object:
+        if name in values:
+            return values[name]
+        if name in inherited:
+            return resolver(inherited[name])
+        raise KeyError(name)
+
     context.input.side_effect = inputs.__getitem__
     context.has_input.side_effect = inputs.__contains__
     context.output.side_effect = outputs.__getitem__
-    context.resolver.side_effect = values.__getitem__
+    context.resolver.side_effect = resolver
 
     compose.execute(
         context,
