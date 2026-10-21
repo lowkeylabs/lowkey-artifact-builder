@@ -317,7 +317,6 @@ Examples include:
 artwork
 shape
 coin
-laser
 (others)
 ```
 

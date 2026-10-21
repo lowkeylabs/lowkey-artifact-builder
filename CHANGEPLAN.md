@@ -142,58 +142,6 @@ algorithmic or regression risk.
 
 ---
 
-## Phase 1 — Retire the LASER Model
-
-### Purpose
-
-Remove the separate `laser` Model and its obsolete implementation and planning
-contracts. The already-working SHAPE SVG output is the supported path for
-exporting SHAPE planar geometry; LASER is not a prerequisite for future xTool
-Studio packaging.
-
-### Architectural boundaries
-
-- Preserve ARTWORK native SVG ingestion and processing, SHAPE Compose SVG
-  generation and publication, and existing SHAPE/COIN 3MF behavior.
-- Do not replace LASER with another Model or implement XS packaging in this
-  phase.
-- Remove LASER-specific contracts without deleting shared functionality that
-  other Models use. Retain reusable code only when it has a current, justified
-  owner; do not preserve dead abstractions speculatively.
-- Make minimal, explicit updates to normative specifications to describe the
-  remaining supported Models and outputs.
-
-### Work
-
-1. Audit LASER's files, registration/discovery, configuration, dependencies,
-   Products, CLI exposure, tests, and references in permanent documentation.
-   Identify any currently used shared behavior before deleting code.
-2. Remove LASER-owned code, tests, registration, configuration, and obsolete
-   references. Update `ARCHITECTURE.md`, applicable Model definitions, and CLI
-   documentation where they describe LASER as supported.
-3. Preserve and regression-test the working ARTWORK SVG and SHAPE SVG paths;
-   remove stale LASER phases and assertions from the active change plan.
-4. Run focused checks and the complete appropriate test, typing, and lint
-   suites. Reevaluate the remaining CHANGEPLAN against resulting HEAD.
-
-### Acceptance criteria
-
-- `laser` is no longer discoverable, selectable, or buildable as a Model, and
-  no active contract or test requires it.
-- Native SVG ARTWORK processing and SHAPE SVG generation/publication still work.
-- Existing supported 3MF workflows remain functional.
-- No unnecessary replacement Model, packaging layer, or engine change has been
-  introduced.
-- Relevant tests, type checks, and lint checks pass.
-
-### Completion
-
-Complete when LASER has been cleanly retired and the remaining supported
-manufacturing workflows are verified. Remove this phase and reevaluate the
-plan before beginning the next phase.
-
----
-
 ## Phase 2 — Annotate Artifact Configuration
 
 ### Purpose
