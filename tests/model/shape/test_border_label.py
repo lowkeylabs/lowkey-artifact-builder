@@ -2348,3 +2348,159 @@ def test_compose_materializes_symbolic_border_label_glyphs(
                 f"{{{SVG_NS}}}textPath",
             }
         ]
+
+
+def test_border_label_rejects_unavailable_font_before_measurement() -> None:
+    """
+    An unavailable font is rejected rather than silently substituted
+    by Inkscape.
+    """
+
+    from lowkey_artifact_builder.model.models.shape.border_labels import (
+        BorderLabelError,
+        measure_label_metrics,
+    )
+
+    with patch(
+        "lowkey_artifact_builder.model.models.shape.border_labels.query_all",
+        side_effect=AssertionError("Inkscape measurement must not run before font validation."),
+    ) as query:
+        with pytest.raises(
+            BorderLabelError,
+            match=r"(?i)(font|unavailable|not found)",
+        ):
+            measure_label_metrics(
+                text="RICHMOND",
+                font_family="lowkeylabs-nonexistent-font-927451",
+            )
+
+        query.assert_not_called()
+
+
+def test_border_label_rejects_missing_glyph_before_measurement() -> None:
+    """
+    An unavailable Unicode glyph must be rejected explicitly.
+
+    Inkscape must not be allowed to silently substitute a glyph
+    from another font.
+    """
+
+    from lowkey_artifact_builder.model.models.shape.border_labels import (
+        BorderLabelError,
+        measure_label_metrics,
+    )
+
+    with patch(
+        "lowkey_artifact_builder.model.models.shape.border_labels.query_all",
+        side_effect=AssertionError("Inkscape measurement must not run before font validation."),
+    ) as query:
+        with pytest.raises(
+            BorderLabelError,
+            match=r"(?i)(glyph|character|font)",
+        ):
+            measure_label_metrics(
+                text="RICHMOND \U0010ffff",
+                font_family="DejaVu Sans",
+            )
+
+        query.assert_not_called()
+
+
+@pytest.mark.slow
+def test_border_label_symbolic_bullet_uses_effective_font() -> None:
+    """
+    A supported symbolic command must be measurable in the selected
+    effective font without altering the expanded text.
+    """
+
+    from lowkey_artifact_builder.model.models.shape.border_labels import (
+        fit_circular_border_labels,
+    )
+
+    symbolic = fit_circular_border_labels(
+        top_text=r"RICHMOND \bullet VIRGINIA",
+        bottom_text=r"MADE \bullet 2026",
+        font_family="DejaVu Sans",
+        reference_radius=50.0,
+        border_width=1.0,
+        max_glyph_height=5.0,
+        arc_degrees=140.0,
+        end_margin=1.0,
+        top_font_family="DejaVu Sans",
+        bottom_font_family="DejaVu Serif",
+        top_arc_degrees=140.0,
+        bottom_arc_degrees=100.0,
+    )
+
+    literal = fit_circular_border_labels(
+        top_text="RICHMOND • VIRGINIA",
+        bottom_text="MADE • 2026",
+        font_family="DejaVu Sans",
+        reference_radius=50.0,
+        border_width=1.0,
+        max_glyph_height=5.0,
+        arc_degrees=140.0,
+        end_margin=1.0,
+        top_font_family="DejaVu Sans",
+        bottom_font_family="DejaVu Serif",
+        top_arc_degrees=140.0,
+        bottom_arc_degrees=100.0,
+    )
+
+    assert symbolic.top is not None
+    assert symbolic.bottom is not None
+    assert literal.top is not None
+    assert literal.bottom is not None
+
+    assert symbolic.top.text == literal.top.text
+    assert symbolic.bottom.text == literal.bottom.text
+
+    assert symbolic.top.width == pytest.approx(literal.top.width)
+    assert symbolic.bottom.width == pytest.approx(literal.bottom.width)
+    assert symbolic.glyph_height == pytest.approx(literal.glyph_height)
+
+
+@pytest.mark.parametrize(
+    ("position", "invalid_value"),
+    [
+        ("top", "lowkeylabs-nonexistent-font-927451"),
+        ("bottom", "lowkeylabs-nonexistent-font-927451"),
+    ],
+)
+def test_border_label_rejects_unavailable_position_font(
+    position: str,
+    invalid_value: str,
+) -> None:
+    """
+    Each participating Border Label must validate its own effective
+    font rather than falling back to the shared font.
+    """
+
+    from lowkey_artifact_builder.model.models.shape.border_labels import (
+        BorderLabelError,
+        fit_circular_border_labels,
+    )
+
+    overrides = {
+        "top_font_family": "DejaVu Sans",
+        "bottom_font_family": "DejaVu Serif",
+    }
+
+    overrides[f"{position}_font_family"] = invalid_value
+
+    with pytest.raises(
+        BorderLabelError,
+        match=r"(?i)(font|unavailable|not found)",
+    ):
+        fit_circular_border_labels(
+            top_text="RICHMOND",
+            bottom_text="VIRGINIA",
+            font_family="DejaVu Sans",
+            reference_radius=50.0,
+            border_width=1.0,
+            max_glyph_height=5.0,
+            arc_degrees=140.0,
+            end_margin=1.0,
+            top_font_family=overrides["top_font_family"],
+            bottom_font_family=overrides["bottom_font_family"],
+        )

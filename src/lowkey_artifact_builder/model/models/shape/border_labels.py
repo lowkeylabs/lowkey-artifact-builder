@@ -57,11 +57,14 @@ Shape composition.
 from __future__ import annotations
 
 import math
+import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+
+from fontTools.ttLib import TTFont, TTLibError
 
 from lowkey_artifact_builder.tools.inkscape import (
     InkscapeError,
@@ -214,6 +217,82 @@ class CircularBorderLabelFit:
 # =========================================================
 # Validation
 # =========================================================
+
+
+def _validate_font_glyphs(
+    *,
+    text: str,
+    font_family: str,
+) -> None:
+    """
+    Verify that the requested font is installed and contains every
+    character required for Border Label measurement.
+
+    Fontconfig resolves the installed font. The resolved family must
+    match the requested family, preventing silent family substitution.
+
+    FontTools checks the selected font's Unicode character map.
+    Missing glyphs are errors rather than invitations to font fallback.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "fc-match",
+                "--format",
+                "%{family}\n%{file}\n%{index}\n",
+                font_family,
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise BorderLabelError(f"Could not resolve Border Label font: {font_family!r}.") from exc
+
+    lines = result.stdout.splitlines()
+
+    if len(lines) != 3:
+        raise BorderLabelError(f"Could not resolve Border Label font: {font_family!r}.")
+
+    resolved_families, filename, face_index = lines
+
+    requested = font_family.strip().casefold()
+
+    available_families = {family.strip().casefold() for family in resolved_families.split(",")}
+
+    if requested not in available_families:
+        raise BorderLabelError(
+            f"Border Label font is unavailable: {font_family!r}. "
+            f"Fontconfig resolved {resolved_families!r} instead."
+        )
+
+    try:
+        index = int(face_index)
+
+        with TTFont(filename, fontNumber=index, lazy=True) as font:
+            character_map = font.getBestCmap()
+
+    except (OSError, ValueError, TTLibError) as exc:
+        raise BorderLabelError(f"Could not inspect Border Label font: {font_family!r}.") from exc
+
+    if character_map is None:
+        raise BorderLabelError(f"Border Label font has no Unicode character map: {font_family!r}.")
+
+    required = set(text + "Hgjpqy")
+
+    missing = sorted(
+        character
+        for character in required
+        if not character.isspace() and ord(character) not in character_map
+    )
+
+    if missing:
+        characters = ", ".join(f"U+{ord(character):04X}" for character in missing)
+
+        raise BorderLabelError(
+            f"Border Label font {font_family!r} does not contain "
+            f"the required glyph(s): {characters}."
+        )
 
 
 def _validate_text(
@@ -384,6 +463,9 @@ def _measure_at_font_size(
     ensuring that labels without descenders reserve the same space
     as labels containing descenders.
 
+    The requested font and required glyphs are validated before
+    Inkscape measurement to prevent silent font substitution.
+
     The operation invokes Inkscape exactly once.
     """
 
@@ -394,6 +476,11 @@ def _measure_at_font_size(
 
     if font_size <= 0:
         raise BorderLabelError("Border Label font size must be greater than zero.")
+
+    _validate_font_glyphs(
+        text=text,
+        font_family=font_family,
+    )
 
     tree = _measurement_svg(
         text=text,

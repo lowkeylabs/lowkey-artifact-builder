@@ -45,6 +45,7 @@ classifiers = [
 
 dependencies = [
     "click>=8.2",
+    "fonttools>=4.67.0",
     "numpy>=2.5.2",
     "pillow>=12.3.0",
     "pulp[cbc]>=3.3.2",
