@@ -142,54 +142,7 @@ algorithmic or regression risk.
 
 ---
 
-## Phase 3 — Independent SHAPE Border Labels
-
-### Purpose
-
-Allow the top and bottom SHAPE border labels to use independent font families
-and arc spans, while preserving existing shared defaults. Support a small,
-explicit set of symbolic text commands useful in decorative labels.
-
-### Architectural boundaries
-
-- Border labels remain SHAPE-owned features, not a standalone Model.
-- Existing `shape_border_label_font_family` and
-  `shape_border_label_arc_degrees` retain their meaning as shared defaults.
-- Per-position settings override only the corresponding label; omitted
-  overrides preserve current behavior.
-- Symbol expansion, if implemented, is deterministic and occurs before text
-  measurement and placement. Do not introduce a general LaTeX parser.
-- Preserve existing label fit, registration, and manufacturing semantics.
-
-### Work
-
-1. Review the current border-label parameter, resolver, composition, and glyph
-   fitting boundaries; update the SHAPE definition with precise override and
-   symbolic-command semantics before implementation.
-2. Add top/bottom font-family and arc-span overrides through the existing
-   configuration hierarchy. Preserve shared-parameter compatibility.
-3. Add the limited symbolic-command contract defined by SHAPE,
-   initially `\\bullet` (U+2022 BULLET), with explicit handling of unsupported
-   commands, escaped backslashes, and unavailable glyphs.
-4. Test independent overrides, legacy defaults, text fitting, and generated
-   SVG/3MF behavior; run the appropriate full quality suite.
-
-### Acceptance criteria
-
-- Top and bottom labels can use different fonts and arc spans in one SHAPE.
-- Configurations using only the existing shared settings produce equivalent
-  geometry and outputs.
-- Supported symbolic commands render predictably; unsupported commands fail
-  clearly rather than silently changing text.
-- Existing label fitting and other SHAPE features remain functional.
-
-### Completion
-
-Complete when independent settings and the agreed symbolic-command subset are
-specified, implemented, and regression-tested. Remove this phase and
-reevaluate the plan.
-
-## Phase 4 — Outer Ridge Inset
+## Phase 1 — Outer Ridge Inset
 
 ### Purpose
 
@@ -232,7 +185,9 @@ physical dimensions.
 Complete when the inset is specified, implemented, and regression-tested.
 Remove this phase and reevaluate the plan.
 
-## Phase 5 — Separate SVG Cut Boundary from Printable Structure
+---
+
+## Phase 2 — Separate SVG Cut Boundary from Printable Structure
 
 ### Purpose
 
