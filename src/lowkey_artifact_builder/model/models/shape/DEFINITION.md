@@ -2346,7 +2346,7 @@ The Feature provides two independently participating components:
 - `top_border_label`
 - `bottom_border_label`
 
-The two labels occupy the same physical lettering band and share the geometry and font-fitting rules defined below.
+The two labels occupy the same physical lettering band and share the geometric constraints and fitting process defined below, while permitting independently resolved font families and maximum arc spans.
 
 Each participating label remains a distinct semantic component through Shape composition, extrusion, and packaging. The two labels may therefore have independent extrusion dimensions and independent packaged colors.
 
@@ -2354,9 +2354,11 @@ Border Labels do not cause any other Shape Feature to participate.
 
 In particular, Border Labels do not cause the Inner Ridge to participate. Inner Ridge participation remains determined solely by `shape_inner_ridge_width`.
 
+
 #### Parameters
 
-Border Labels use shared parameters for the geometry and typography that define their common lettering band.
+Border Labels use shared parameters for the physical geometry of their
+common lettering band and for typography defaults.
 
 The shared parameters are:
 
@@ -2372,6 +2374,8 @@ The Top Border Label additionally uses:
 
 ```text
 shape_top_border_label_text
+shape_top_border_label_font_family
+shape_top_border_label_arc_degrees
 shape_top_border_label_raise
 shape_top_border_label_color
 ```
@@ -2380,42 +2384,60 @@ The Bottom Border Label additionally uses:
 
 ```text
 shape_bottom_border_label_text
+shape_bottom_border_label_font_family
+shape_bottom_border_label_arc_degrees
 shape_bottom_border_label_raise
 shape_bottom_border_label_color
 ```
 
-The resolved common glyph height is derived from the configured maximum glyph height and the text-fitting rules below. It is not independently configured.
+The shared font-family and arc-span parameters provide defaults for both
+labels. The corresponding position-specific parameters are optional
+overrides.
+
+For each label, an explicitly configured position-specific value takes
+precedence over the resolved shared value. When no position-specific
+override is configured, that label inherits the resolved shared value.
+
+An absent position-specific override is not an independent Model default
+that masks an Artifact-level or Realization-level shared setting.
+
+Each parameter otherwise follows the normal Model, Artifact, and
+Realization configuration precedence.
+
+The resolved common glyph height is derived from the configured maximum
+glyph height and the text-fitting rules below. It is not independently
+configured.
+
+
 
 #### Defaults
 
-The Border Label parameters have the following defaults:
+The Shape Model configuration defines the default values for Border Label
+width, maximum glyph height, shared arc span, end margin, shared font
+family, label text, and label raises.
 
-```text
-shape_border_label_width = 1 mm
-shape_border_label_max_glyph_height = 5 mm
-shape_border_label_arc_degrees = 140 degrees
-shape_border_label_end_margin = 1 mm
-shape_border_label_font_family = "DejaVu Sans"
+The position-specific font-family and arc-span parameters have no
+independent effective defaults. In the absence of explicit overrides,
+they inherit their corresponding resolved shared values.
 
-shape_top_border_label_text = ""
-shape_top_border_label_raise = 1 mm
-shape_top_border_label_color = shape_base_color
+Consequently, changing a shared font-family or arc-span setting at the
+Artifact or Realization level also changes the effective value for each
+label that does not have a position-specific override.
 
-shape_bottom_border_label_text = ""
-shape_bottom_border_label_raise = 1 mm
-shape_bottom_border_label_color = shape_base_color
-```
-
-The default empty Top and Bottom Border Label text means that neither
+The default Top and Bottom Border Label texts are empty, so neither
 Border Label participates by default.
 
 The default Top and Bottom Border Label colors are derived from the
-resolved value of shape_base_color rather than being independent
+resolved value of `shape_base_color`, rather than being independent
 literal color defaults.
 
-An explicitly configured shape_top_border_label_color or
-shape_bottom_border_label_color overrides the corresponding derived
+An explicitly configured `shape_top_border_label_color` or
+`shape_bottom_border_label_color` overrides the corresponding derived
 Base-color default.
+
+Configurable literal Model defaults are authoritative in the Model
+configuration, not duplicated in this Feature contract.
+
 
 #### Participation
 
@@ -2460,31 +2482,59 @@ The outer border extends inward from the reference boundary to the Bottom Border
 
 The inner border extends inward from the Top Border Label baseline toward the Shape interior.
 
+
 #### Common Glyph Height
 
-The Top Border Label and Bottom Border Label share one resolved glyph height and one common font setting.
+The Top Border Label and Bottom Border Label share one resolved physical
+glyph-height allocation, even when they use different font families.
 
-`shape_border_label_max_glyph_height` defines the maximum physical glyph-height allocation permitted for the common lettering band.
+`shape_border_label_max_glyph_height` defines the maximum physical
+glyph-height allocation permitted for the common lettering band.
 
 It must be greater than zero when either Border Label participates.
 
-The resolved glyph height must not exceed `shape_border_label_max_glyph_height`.
+The resolved common glyph height must not exceed
+`shape_border_label_max_glyph_height`.
 
-Both labels are measured before fitting.
+Each participating label is measured using its own resolved font family
+and expanded text.
 
-The common font setting is chosen so that both participating labels fit within their permitted paths.
+A candidate common glyph height determines the physical lettering-band
+geometry and the baseline paths for both labels.
 
-If both labels fit at the configured maximum glyph height, the configured maximum is used.
+For each participating label, the font size needed to render its glyphs
+at that candidate physical height is derived from that label's measured
+font metrics.
 
-If either label does not fit, the common glyph height is reduced until both participating labels fit.
+Different font families or text strings may therefore require different
+intermediate font-size values for the same physical glyph-height
+allocation.
 
-The more constrained participating label therefore determines the common fitted height.
+The candidate common glyph height is accepted only when every
+participating label fits its own permitted baseline path, including its
+effective maximum arc span and the shared end margins.
+
+If all participating labels fit at the configured maximum glyph height,
+that maximum is used.
+
+Otherwise, the common glyph height is reduced until every participating
+label fits.
+
+The more constrained participating label therefore determines the
+common fitted height.
 
 A shorter label is not stretched to consume its complete available path.
 
-When only one Border Label participates, the common glyph height is fitted using that participating label.
+When only one Border Label participates, the common glyph height is
+fitted using that participating label.
 
-Rendered glyph bounds may differ between the Top and Bottom Border Labels because different character strings can have different font metrics. Both labels nevertheless use the same resolved common font setting and fit within the same physical glyph-height allocation.
+Rendered glyph bounds may differ between the labels because their text
+and font metrics may differ. Both labels nevertheless fit within the
+same physical glyph-height allocation.
+
+Independent font families do not create independent lettering bands,
+baseline offsets, Inner Ridge positions, or Artwork-fitting boundaries.
+
 
 #### Baseline Paths
 
@@ -2553,11 +2603,17 @@ The Bottom Border Label path traverses in the opposite direction from the Top Bo
 
 The rendered glyphs extend outward from the Bottom Border Label baseline into the same common lettering band occupied by the Top Border Label.
 
+
 #### Font Measurement
 
-Border Label fitting uses rendered font measurements rather than assuming that an SVG or CSS font size is equal to physical glyph height.
+Border Label fitting uses rendered font measurements rather than
+assuming that an SVG or CSS font size is equal to physical glyph height.
 
-Text measurement produces scale-independent font metrics sufficient to determine:
+Each participating label is measured using its resolved font family and
+its text after supported symbolic commands have been expanded.
+
+Text measurement produces scale-independent font metrics sufficient to
+determine:
 
 - rendered text width;
 - rendered glyph height;
@@ -2565,70 +2621,198 @@ Text measurement produces scale-independent font metrics sufficient to determine
 - glyph extent above the text baseline;
 - glyph extent below the text baseline.
 
-These metrics may be measured once for each participating label and subsequently scaled arithmetically while fitting.
+These metrics may be measured once for each participating label and
+subsequently scaled arithmetically while fitting.
 
-Baseline-relative glyph measurements are used to place rendered glyph bounds correctly within the common lettering band.
+Baseline-relative glyph measurements are used to place rendered glyph
+bounds correctly within the common lettering band.
 
-Font-size values used by an SVG or other intermediate representation are implementation details and are not Shape physical parameters.
+Different participating labels may have different intermediate font-size
+values because their resolved fonts and measured glyph metrics may
+differ.
+
+Font-size values used by an SVG or other intermediate representation
+are implementation details and are not Shape physical parameters.
+
+A participating label must use a font that can render its expanded text.
+Missing required glyphs or an unavailable font must produce an explicit
+error rather than silently substituting characters or font families.
+
 
 #### Maximum Label Span
 
-`shape_border_label_arc_degrees` defines the maximum permitted span for each Border Label.
+The maximum permitted span of each Border Label is independently
+resolved.
 
-It must be greater than zero and less than 180 degrees.
-
-For a circular Shape, this represents:
+The shared parameter:
 
 ```text
-Top Border Label:
-    -70 degrees through +70 degrees
-    around top-dead-center
-
-Bottom Border Label:
-    corresponding centered span
-    around bottom-dead-center
+shape_border_label_arc_degrees
 ```
 
-The same conceptual maximum-span constraint applies to non-circular Shape perimeters. The exact mapping of that span onto square and polygon perimeter paths may be implemented by the geometry-specific path representation while preserving the literal Shape-perimeter requirement.
+provides the default maximum span for both labels.
+
+The position-specific parameters:
+
+```text
+shape_top_border_label_arc_degrees
+shape_bottom_border_label_arc_degrees
+```
+
+optionally override that span for their respective labels.
+
+When a position-specific override is absent, the corresponding label
+uses the resolved shared arc span.
+
+Each participating label's effective arc span must be greater than zero
+and less than 180 degrees.
+
+For a circular Shape, the Top Border Label's permitted path is centered
+on top-dead-center, and the Bottom Border Label's permitted path is
+centered on bottom-dead-center.
+
+Each permitted path extends symmetrically by half of that label's
+effective arc span on either side of its center axis.
+
+For example, an effective arc span of 140 degrees permits a path
+extending 70 degrees to either side of the corresponding center axis.
+
+The Top and Bottom Border Labels may have different effective arc spans.
+
+A label's arc-span override affects only that label's permitted path.
+It does not directly change the other label's maximum span.
+
+Because both labels share one fitted glyph-height allocation, a more
+restrictive span for either participating label may indirectly reduce
+the common fitted glyph height.
+
+The same conceptual maximum-span constraint applies to non-circular
+Shape perimeters. The exact mapping of that span onto square and
+polygon perimeter paths may be implemented by the geometry-specific
+path representation while preserving the literal Shape-perimeter
+requirement.
+
+
 
 #### End Margin
 
-`shape_border_label_end_margin` reserves unused physical path length at both ends of the maximum permitted label path.
+`shape_border_label_end_margin` reserves unused physical path length at
+both ends of each participating label's maximum permitted path.
 
 It must be greater than or equal to zero.
 
-For a circular Shape, the usable path length is:
+The same resolved end margin applies to both labels, regardless of their
+effective arc spans or font families.
+
+For a circular Shape, each participating label has usable path length:
 
 ```text
 baseline radius
-× radians(shape_border_label_arc_degrees)
+× radians(effective arc span for that label)
 - 2 × shape_border_label_end_margin
 ```
 
-The equivalent physical end-margin constraint applies to non-circular Shape paths.
+The effective arc span is resolved independently for the Top and Bottom
+Border Labels.
 
-End margins constrain fitting but are not included in the angular or path extent occupied by the rendered text itself.
+The equivalent physical end-margin constraint applies to non-circular
+Shape paths.
+
+End margins constrain fitting but are not included in the angular or
+path extent occupied by the rendered text itself.
+
+
+
+#### Symbolic Text Commands
+
+Border Label text supports a limited set of symbolic commands for
+incorporating typographic symbols into curved labels.
+
+Symbolic commands are expanded deterministically into Unicode characters
+before font measurement, text fitting, or glyph geometry generation.
+
+Initially, the following command is supported:
+
+| Command | Expansion | Description |
+|---|---|---|
+| `\bullet` | U+2022 (`•`) | Typographic bullet |
+
+For example, `FIRST \bullet SECOND` expands to `FIRST • SECOND`.
+
+Symbolic text processing follows these rules:
+
+1. Commands are recognized in both top and bottom Border Label text.
+2. Each supported command expands to its corresponding Unicode character.
+3. Expansion does not introduce or remove surrounding whitespace. Operators
+   control spacing explicitly in the authored text.
+4. Expanded characters use the effective font family of their respective
+   Border Label and participate in ordinary font measurement, text fitting,
+   and glyph geometry generation.
+5. Symbols are positioned using the same baseline and curved-text placement
+   rules as ordinary characters. No independent symbol scaling, alignment,
+   or positioning is introduced.
+6. Unsupported symbolic commands are rejected explicitly rather than
+   rendered literally or silently ignored.
+7. Missing glyphs in the effective font are reported explicitly. Font
+   substitution or fallback is not permitted.
+8. A doubled backslash (`\\`) represents a literal backslash rather than
+   the beginning of a symbolic command.
+
+Symbolic commands do not constitute a general-purpose LaTeX interpreter,
+markup language, or mathematical typesetting system.
+
+The initial implementation uses typographic glyphs exclusively. Future
+extensions may support independently defined vector symbols, including
+SVG geometry, within Border Labels. Such extensions must preserve the
+existing participation, fitting, baseline, and component-identity contracts.
+SVG resource handling, sizing, alignment, and placement semantics are
+outside the scope of this phase.
+
 
 #### Text Fitting
 
-Each participating label must fit within the usable length of its corresponding baseline path.
+Each participating label must fit within the usable length of its own
+baseline path.
 
 The fitting process:
 
-1. measures each participating label using the configured font family;
-2. determines the common font setting corresponding to the candidate glyph-height allocation;
-3. derives the Top and Bottom baseline paths for that candidate height;
-4. determines the usable path length after the maximum-span and end-margin constraints;
-5. determines the rendered path length required by each participating label;
-6. accepts the candidate only when every participating label fits.
+1. Expands supported symbolic commands in each participating label's
+   text and rejects unsupported commands.
+2. Resolves each participating label's effective font family and
+   maximum arc span.
+3. Measures each expanded text string using its resolved font family
+   and verifies that the required glyphs are available.
+4. Selects a candidate common physical glyph-height allocation, not
+   exceeding `shape_border_label_max_glyph_height`.
+5. Derives the Top and Bottom baseline paths for that candidate common
+   height.
+6. Determines each participating label's usable path length from its
+   effective maximum arc span and the shared end margin.
+7. Determines the intermediate font size and rendered path length
+   required by each participating label at the candidate physical
+   glyph height.
+8. Accepts the candidate only when every participating label fits its
+   own permitted path.
 
 The configured maximum glyph height is preferred whenever it fits.
 
-Otherwise, the fitting process reduces the common glyph height until all participating labels fit.
+Otherwise, the fitting process reduces the common glyph height until
+all participating labels fit.
 
-Fitting changes glyph height uniformly. It does not horizontally stretch, compress, or otherwise distort either label to fill its available path.
+Each label is scaled uniformly according to its own measured font
+metrics. Fitting does not horizontally stretch, compress, or otherwise
+distort either label to fill its available path.
 
-A configuration that cannot produce a positive usable glyph height is invalid.
+The labels may use different intermediate font sizes while sharing the
+same physical glyph-height allocation.
+
+A configuration that cannot produce a positive usable glyph height is
+invalid.
+
+When both labels inherit the shared font family and arc span, their
+effective configuration and fitting behavior preserve the existing
+shared-parameter semantics.
+
 
 #### Relationship to Inner Ridge
 
@@ -2743,7 +2927,10 @@ Border Label participation does not determine Inner Ridge participation.
 
 Border Labels must preserve distinct component identity through Extrude and Package.
 
+
 #### Border Label Invariants
+
+A conforming Border Label Feature satisfies the following:
 
 1. The Top Border Label and Bottom Border Label are distinct Shape-owned components.
 2. Each Border Label participates independently according to whether its text is present.
@@ -2751,34 +2938,41 @@ Border Labels must preserve distinct component identity through Extrude and Pack
 4. Both labels use the same outer reference boundary.
 5. The reference boundary is the inside boundary of a participating Outer Ridge, otherwise the outside boundary of Base.
 6. Both labels share one border width.
-7. Both labels share one fitted glyph-height allocation.
-8. Both labels use one common font setting.
-9. The common glyph height never exceeds the configured maximum.
-10. The common glyph height is reduced when necessary until every participating label fits.
-11. A shorter label is not stretched to fill its available path.
-12. The Bottom Border Label baseline is one border width inward from the reference boundary.
-13. The Top Border Label baseline is one border width plus the resolved common glyph height inward from the reference boundary.
-14. The two baseline paths bound the same physical lettering band.
-15. The Top Border Label and Bottom Border Label traverse their paths in opposite directions so both read normally from left to right.
-16. Border Label paths follow the literal Shape perimeter.
-17. Circular Border Label paths are concentric circular arcs.
-18. Square and polygon Border Label paths follow their corresponding inset Shape perimeters.
-19. Font fitting uses rendered font metrics rather than treating font size as physical glyph height.
-20. Baseline-relative glyph measurements are preserved when positioning rendered text.
-21. Maximum span constrains the available path.
-22. Physical end margins are reserved at both ends of the maximum permitted path.
-23. Border Label fitting does not horizontally stretch or compress text.
-24. Border Labels remain distinct semantic components through Extrude and Package.
-25. Top and Bottom Border Label raises are independently controlled by Extrude-stage parameters.
-26. Top and Bottom Border Label colors are independently controlled by Package-stage parameters.
-27. Changing only a Border Label color does not require recomputing earlier geometry.
-28. Border Labels do not determine Inner Ridge participation.
-29. When Inner Ridge participates, its inside boundary determines the incorporated Artwork region.
-30. When Border Labels participate without Inner Ridge, the inner Border Label boundary determines the incorporated Artwork region.
-31. With `shape_raise_style = "raised"`, Border Labels layer on Base without reducing the Base X/Y footprint.
-32. With `shape_raise_style = "inlaid"`, participating Border Labels span `Z = 0` through `Z = shape_base_raise` and occupy nonoverlapping physical partitions removed from the Base.
-33. Border Label raise parameters retain their resolved values but do not determine the physical Z extent of inlaid Border Labels.
-34. When neither Border Label participates, Border Labels do not alter existing Shape geometry or products.
+7. Both labels share one fitted physical glyph-height allocation.
+8. Each label resolves its font family independently, inheriting the resolved shared font family when no position-specific override is configured.
+9. Each label resolves its maximum arc span independently, inheriting the resolved shared arc span when no position-specific override is configured.
+10. Position-specific font-family and arc-span overrides affect only their corresponding labels, except for indirect effects through common glyph-height fitting.
+11. The common glyph height never exceeds the configured maximum.
+12. The common glyph height is reduced when necessary until every participating label fits.
+13. A shorter label is not stretched to fill its available path.
+14. Different participating labels may use different intermediate font sizes while sharing the same physical glyph-height allocation.
+15. The Bottom Border Label baseline is one border width inward from the reference boundary.
+16. The Top Border Label baseline is one border width plus the resolved common glyph height inward from the reference boundary.
+17. The two baseline paths bound the same physical lettering band.
+18. The Top Border Label and Bottom Border Label traverse their paths in opposite directions so both read normally from left to right.
+19. Border Label paths follow the literal Shape perimeter.
+20. Circular Border Label paths are concentric circular arcs.
+21. Square and polygon Border Label paths follow their corresponding inset Shape perimeters.
+22. Font fitting uses rendered font metrics rather than treating font size as physical glyph height.
+23. Baseline-relative glyph measurements are preserved when positioning rendered text.
+24. Each label's effective maximum span constrains its available path.
+25. Physical end margins are reserved at both ends of each label's maximum permitted path.
+26. Border Label fitting does not horizontally stretch or compress text.
+27. Supported symbolic commands are expanded before measurement, fitting, and rendering.
+28. Unknown symbolic commands and missing required glyphs produce explicit errors.
+29. Symbolic text processing is limited to the defined commands and does not provide general LaTeX or markup interpretation.
+30. Border Labels remain distinct semantic components through Extrude and Package.
+31. Top and Bottom Border Label raises are independently controlled by Extrude-stage parameters.
+32. Top and Bottom Border Label colors are independently controlled by Package-stage parameters.
+33. Changing only a Border Label color does not require recomputing earlier geometry.
+34. Border Labels do not determine Inner Ridge participation.
+35. When Inner Ridge participates, its inside boundary determines the incorporated Artwork region.
+36. When Border Labels participate without Inner Ridge, the inner Border Label boundary determines the incorporated Artwork region.
+37. With `shape_raise_style = "raised"`, Border Labels layer on Base without reducing the Base X/Y footprint.
+38. With `shape_raise_style = "inlaid"`, participating Border Labels span `Z = 0` through `Z = shape_base_raise` and occupy nonoverlapping physical partitions removed from the Base.
+39. Border Label raise parameters retain their resolved values but do not determine the physical Z extent of inlaid Border Labels.
+40. When neither Border Label participates, Border Labels do not alter existing Shape geometry or products.
+41. With no position-specific font-family or arc-span overrides, the existing shared-parameter behavior is preserved.
 
 
 ### Loop
