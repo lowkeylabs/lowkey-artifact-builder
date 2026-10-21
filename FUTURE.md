@@ -186,3 +186,34 @@ speculative phase sequences here; re-evaluate priorities after each completed
 CHANGEPLAN phase.
 
 
+
+## Configuration Authoring and Simplification
+
+### Goal
+
+Extend LAB's basic parameter annotation capability into a comprehensive configuration-authoring workflow that helps operators understand, customize, and simplify Artifact and Realization configuration.
+
+### Potential capabilities
+
+- Generate complete, commented configuration snapshots for every available Variant and every effective Realization, including inherited parameter values.
+- Provide inactive, configuration-ready Realization templates for available Variants without creating actual Realizations.
+- Remove generated annotations through an explicit `--unannotate` operation.
+- Simplify active configuration through a `--clean` or `--prune` operation that removes redundant parameter overrides.
+- Optionally preview configuration changes before applying them.
+
+### Essential invariants
+
+- Existing Model definitions, Variant definitions, and configuration resolution remain authoritative.
+- Generated references do not change active configuration.
+- Removing an override is permitted only when its removal preserves current effective configuration.
+- Configuration simplification must preserve required declarations, user-authored content, and valid TOML structure.
+- Removing redundant overrides deliberately restores inheritance and may change behavior if inherited defaults change later.
+- No new configuration precedence or persistence semantics are introduced merely for annotation or cleanup.
+
+### Unresolved questions
+
+- Whether configuration snapshots should include value provenance and explanatory metadata.
+- Whether simplification should be called `--clean`, `--prune`, or something else, given the existing `artifact clean` command.
+- How to preserve user formatting and comments during configuration rewriting.
+- Whether full configuration templates should include all registered Variants or only those relevant to the selected Artifact.
+

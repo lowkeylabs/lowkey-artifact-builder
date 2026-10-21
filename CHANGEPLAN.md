@@ -192,7 +192,58 @@ Complete when LASER has been cleanly retired and the remaining supported
 manufacturing workflows are verified. Remove this phase and reevaluate the
 plan before beginning the next phase.
 
-## Phase 2 — Independent SHAPE Border Labels
+---
+
+## Phase 2 — Annotate Artifact Configuration
+
+### Purpose
+
+Extend `artifact config <artifact-id>` with `--annotate` to append a commented reference of available Model configuration parameters to the Artifact's `artifact.toml`.
+
+The reference allows operators to discover exact parameter names, inspect Model defaults and available settings, and copy selected assignments into the appropriate configuration section for customization without consulting Model source files.
+
+Annotation is optional and must not change effective configuration or manufacturing behavior.
+
+### Architectural boundaries
+
+- Use existing Model parameter definitions and configuration machinery as the authoritative source. Do not introduce a separate parameter catalog or duplicate configuration semantics.
+- Include parameters applicable to the Artifact's configured Models, without assuming every Artifact has only one Model or Realization.
+- Generate one parameter reference per applicable Model, without duplicating parameters for individual Variants or Realizations.
+- Use Model defaults rather than effective Realization values. Preserve the distinction between defaults, resolved values, and authored overrides.
+- The generated section is informational only. Users are responsible for copying selected assignments into the appropriate configuration scope. Annotation does not perform override placement or activation.
+- Preserve existing Artifact configuration, Realization definitions, and user-authored comments.
+- Annotation is a reusable application operation exposed through the existing CONFIG CLI, not a new Model, Stage, Product, or build operation.
+- Do not change configuration precedence, persistence semantics, Product identity, or manufacturing dependencies.
+- Do not implement full Variant or Realization configuration snapshots, configuration templates, annotation removal, or override simplification in this phase. Those capabilities belong in `FUTURE.md`.
+
+### Work
+
+1. Review existing Artifact TOML structure, Model parameter discovery, and persistence utilities. Identify the authoritative source for parameter names and defaults.
+2. Implement generation of a commented parameter reference containing exact parameter names, Model default values, and available descriptions or constraints where supported by existing metadata.
+3. Add `artifact config <artifact-id> --annotate`, writing a clearly delimited generated section at the bottom of the Artifact's `artifact.toml`. Repeated execution refreshes that section rather than appending duplicates.
+4. Preserve all content outside the generated section. Ensure generated comments do not affect TOML parsing or effective configuration. Do not implement automatic parameter placement or activation.
+5. Add focused tests for parameter discovery, formatting, regeneration, preservation of existing configuration, and CLI behavior. Run the appropriate complete quality suite.
+
+### Acceptance criteria
+
+- `artifact config <artifact-id> --annotate` generates a readable, commented parameter reference at the bottom of the selected Artifact's `artifact.toml`.
+- The reference includes applicable, currently supported Model parameters with exact names and correctly formatted Model defaults, grouped by Model.
+- Existing Model documentation and constraints are reused where available without requiring a parallel manually maintained schema.
+- Operators can copy and edit referenced parameters in the appropriate configuration section to create valid overrides.
+- Running `--annotate` repeatedly produces one current generated reference section without accumulating duplicates.
+- Existing active configuration, user-authored content, effective resolved values, and manufacturing behavior remain unchanged.
+- Invalid or unavailable Artifact targets produce clear operator errors without partial file modifications.
+- Relevant tests, type checks, and lint checks pass.
+
+### Completion
+
+Complete when Artifact configuration annotation is implemented, idempotent, preserves existing configuration semantics, and is documented in the CLI README.
+
+Remove this phase and reevaluate the remaining CHANGEPLAN against current HEAD.
+
+---
+
+## Phase 3 — Independent SHAPE Border Labels
 
 ### Purpose
 
@@ -239,7 +290,7 @@ Complete when independent settings and the agreed symbolic-command subset are
 specified, implemented, and regression-tested. Remove this phase and
 reevaluate the plan.
 
-## Phase 3 — Outer Ridge Inset
+## Phase 4 — Outer Ridge Inset
 
 ### Purpose
 
@@ -282,7 +333,7 @@ physical dimensions.
 Complete when the inset is specified, implemented, and regression-tested.
 Remove this phase and reevaluate the plan.
 
-## Phase 4 — Separate SVG Cut Boundary from Printable Structure
+## Phase 5 — Separate SVG Cut Boundary from Printable Structure
 
 ### Purpose
 
