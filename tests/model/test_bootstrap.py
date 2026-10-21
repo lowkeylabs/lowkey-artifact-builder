@@ -116,3 +116,22 @@ def test_bootstrap_returns_independent_registries() -> None:
     assert first is not second
 
     assert first.get_model("artwork") is second.get_model("artwork")
+
+
+
+
+def test_retired_laser_model_is_not_registered() -> None:
+    """
+    LASER is retired as a built-in Model.
+
+    ARTWORK, SHAPE, and COIN remain available through
+    ordinary Model discovery.
+    """
+    registry = build_model_registry()
+
+    assert not registry.has_model("laser")
+
+    for model_name in ("artwork", "shape", "coin"):
+        assert registry.has_model(model_name)
+
+
