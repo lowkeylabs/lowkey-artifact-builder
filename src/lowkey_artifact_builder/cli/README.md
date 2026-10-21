@@ -350,9 +350,16 @@ artifact config baird-lilo
 
 ```
 
-CONFIG presents the authored Artifact configuration and effective
+CONFIG presents the authored Artifact configuration and effective Realization catalog.
 
-Realization catalog.
+To append a commented reference of available Model parameters to an existing Artifact's `artifact.toml`:
+
+```text
+artifact config baird-lilo --annotate
+```
+
+The reference groups parameters by Model and includes their exact names and explicit Model defaults. Parameters without explicit defaults are shown as `None`, which must be replaced with a valid TOML value before use. The generated section is informational only: operators may copy selected assignments into the appropriate configuration section to customize them. Running `--annotate` again refreshes the reference without duplicating it. Annotation preserves existing configuration and does not execute manufacturing work.
+
 
 For one selected Realization:
 
