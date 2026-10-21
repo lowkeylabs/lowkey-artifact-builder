@@ -6,8 +6,8 @@ Continue refining `lowkey-artifact-builder` around the manufacturing value
 chain established by the current repository HEAD.
 The operator's ordinary goal is:
 
-> Move customer artwork to a *correct, printable 3MF* with the fewest
-> necessary decisions, actions, and computations.
+> Move customer artwork to a correct, manufacturing-ready Product with the
+> fewest necessary decisions, actions, and computations.
 
 The normal production path is intentionally short:
 
@@ -20,9 +20,9 @@ managed Artifact
       ↓
 artifact build
       ↓
-correct printable 3MF
+manufacturing-ready Product
       ↓
-slicer / share / upload / print
+slicer / xTool Studio / share / manufacture
 ```
 
 `create` and `build` define the ordinary value chain. `show`, `config`,
@@ -30,9 +30,15 @@ slicer / share / upload / print
 inspection, customization, correction, color selection, or maintenance. These
 support commands must not become mandatory ceremony before routine
 manufacturing.
-This CHANGEPLAN contains remaining work rather than a history of completed
-implementation. Completed behavior should normally be credited from HEAD and
-removed from the plan rather than retained as historical checklists.
+
+This CHANGEPLAN contains actionable remaining work, not a history of completed
+implementation or a catalog of speculative capabilities. Completed behavior
+should be credited from HEAD and removed from the plan. Longer-term goals and
+unresolved design ideas belong in `FUTURE.md`; that document is not normative.
+Before promoting an item from `FUTURE.md`, reevaluate current HEAD and the
+permanent specifications and establish a sufficiently understood behavioral
+boundary. Phases may be removed, reordered, combined, or rewritten after each
+completed implementation slice. Phase numbering is local to the current plan.
 
 ## Planning and development rules
 
@@ -42,29 +48,21 @@ intended operator-facing command model. This CHANGEPLAN describes temporary
 remaining work and must not redefine permanent architecture.
 At the beginning of a thread and before each meaningful implementation slice:
 
-1. reload and follow `prompts/NEW_THREAD.md`;
-2. compare CHANGEPLAN with current HEAD, `ARCHITECTURE.md`, applicable Model
-
-   definitions, and the relevant CLI documentation;
-
-3. credit behavior HEAD already satisfies;
-4. identify the next unmet behavioral boundary rather than assuming the plan
-
-   is still current;
-
-5. resolve known semantic or architectural questions before encoding behavior
-
+1. Reload and follow `prompts/NEW_THREAD.md`.
+2. Compare CHANGEPLAN with current HEAD, `ARCHITECTURE.md`, applicable Model
+   definitions, and relevant CLI documentation.
+3. Credit behavior HEAD already satisfies.
+4. Identify the next unmet behavioral boundary rather than assuming the plan
+   is still current.
+5. Resolve known semantic or architectural questions before encoding behavior
    in tests, while allowing test-first exploration to discover or clarify
-   uncertain seams and ownership boundaries;
-
-6. organize TDD around major behavioral seams or boundaries, using one test or
-
+   uncertain seams and ownership boundaries.
+6. Organize TDD around major behavioral seams or boundaries, using one test or
    a small coherent test set to drive a substantial implementation slice rather
-   than creating single-test/single-change cycles;
-
-7. implement the smallest correct change at the layer that owns the behavior;
-8. run focused tests and then the appropriate complete quality suite; and
-9. reevaluate the plan against the resulting HEAD.
+   than creating single-test/single-change cycles.
+7. Implement the smallest correct change at the layer that owns the behavior.
+8. Run focused tests and then the appropriate complete quality suite.
+9. Reevaluate the plan against the resulting HEAD.
 
 Tests should protect useful behavioral boundaries rather than inventory
 implementation details. High-level CLI/application seams should be protected
@@ -114,6 +112,11 @@ semantics merely to simplify CLI presentation. If work exposes a genuine
 architectural mismatch, resolve that mismatch explicitly against the permanent
 specifications before proceeding.
 
+Manufacturing-specific representations and operations must not be smuggled into
+the generic engine or inferred solely from visual color. Preserve established
+logical color identities, component registration, and existing SHAPE SVG and
+3MF behavior unless an explicit Model contract change requires otherwise.
+
 ## TDD cycles
 
 TDD remains test-first. Before implementing a meaningful new behavior, write a
@@ -137,7 +140,3 @@ Add narrower tests when they help discover an uncertain boundary, protect an
 independently meaningful contract, reproduce a defect, or address a specific
 algorithmic or regression risk.
 
-
-(THIS IS A SCAFFOLD DOCUMENT and contains good boilderplate.
-TO USE: copy this to CHANGEPLAN.md, then add phases here,
-including purpose, acceptance criteria and completion)
