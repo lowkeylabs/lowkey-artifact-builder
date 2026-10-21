@@ -139,4 +139,3 @@ that separately inventory implementation details.
 Add narrower tests when they help discover an uncertain boundary, protect an
 independently meaningful contract, reproduce a defect, or address a specific
 algorithmic or regression risk.
-

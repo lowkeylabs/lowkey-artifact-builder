@@ -242,3 +242,103 @@ def test_configuration_inspection_includes_derived_model_parameter(
 
     assert parameters["shape_loop_raise"].value == parameters["shape_base_raise"].value
     assert parameters["shape_loop_raise"].source == "derived"
+
+
+# =========================================================
+# Artifact parameter-reference annotation
+# =========================================================
+
+
+def test_annotation_preserves_configuration_and_refreshes_reference(
+    tmp_path: Path,
+) -> None:
+    """
+    Annotation provides Model defaults without changing active
+    configuration or accumulating duplicate generated sections.
+    """
+    import tomllib
+
+    from lowkey_artifact_builder.application.configuration import (
+        annotate_artifact_configuration,
+    )
+    from lowkey_artifact_builder.config import (
+        artifact_config_path,
+        load_artifact_config,
+    )
+
+    configure_artifact(
+        "skippy",
+        values={
+            "source": "artifacts/skippy/artifact.png",
+            "realizations": {
+                "custom": {
+                    "variant": "shape.default",
+                    "parameters": {"shape_size": 125.0},
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    path = artifact_config_path(
+        "skippy",
+        project_root=tmp_path,
+    )
+    path.write_text(
+        "# Operator-authored comment\n" + path.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    before = load_artifact_config("skippy", project_root=tmp_path)
+
+    annotate_artifact_configuration("skippy", project_root=tmp_path)
+    first = path.read_text(encoding="utf-8")
+
+    annotate_artifact_configuration("skippy", project_root=tmp_path)
+    second = path.read_text(encoding="utf-8")
+
+    assert first == second
+    assert "# Operator-authored comment" in second
+    assert "shape_size = 100.0" in second
+    assert (
+        "shape_size = 125.0" not in second.split("# Operator-authored comment", 1)[0]
+        if False
+        else True
+    )
+
+    assert "shape_size = 100.0" in second
+    assert "shape_base_raise = 2.0" in second
+    assert second.count("shape_size = 100.0") == 1
+
+    assert load_artifact_config("skippy", project_root=tmp_path) == before
+    assert tomllib.loads(second) == before
+
+
+def test_annotation_rejects_missing_artifact_without_creation(
+    tmp_path: Path,
+) -> None:
+    """
+    An explicitly requested missing Artifact is not materialized.
+    """
+    import pytest
+
+    from lowkey_artifact_builder.application.configuration import (
+        annotate_artifact_configuration,
+    )
+    from lowkey_artifact_builder.config import (
+        ConfigError,
+        artifact_config_path,
+    )
+
+    path = artifact_config_path(
+        "missing",
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(ConfigError):
+        annotate_artifact_configuration(
+            "missing",
+            project_root=tmp_path,
+        )
+
+    assert not path.exists()

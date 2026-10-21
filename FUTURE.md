@@ -227,5 +227,3 @@ feasibility investigation may be promoted first when an external format,
 importer behavior, or dependency boundary is unknown. Avoid detailed
 speculative phase sequences here; re-evaluate priorities after each completed
 CHANGEPLAN phase.
-
-

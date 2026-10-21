@@ -3697,7 +3697,7 @@ the existing 3MF Product.
 SVG freshness and publication are tracked independently of unrelated
 extrusion and 3MF packaging changes.
 
-SVG Export provides a direct planar representation of SHAPE. 
+SVG Export provides a direct planar representation of SHAPE.
 
 ## Final Product
 

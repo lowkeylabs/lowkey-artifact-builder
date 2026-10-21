@@ -334,4 +334,3 @@ printed or engraved ridges and other artwork in xTool Studio.
 Complete when the SVG separation contract is implemented and verified, with
 any unresolved XS-specific packaging requirement recorded in `FUTURE.md`.
 Remove this phase and reevaluate the plan.
-

@@ -671,3 +671,37 @@ def test_config_realization_inspection_uses_application_configuration(
     assert displayed == [
         configuration,
     ]
+
+
+# =========================================================
+# Artifact configuration annotation
+# =========================================================
+
+
+def test_config_annotate_writes_reference_without_building(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """
+    CONFIG exposes annotation as an optional operation and delegates
+    the work below the presentation layer.
+    """
+    from lowkey_artifact_builder.config import configure_artifact
+
+    configure_artifact(
+        "skippy",
+        values={"source": "artifacts/skippy/artifact.png"},
+        project_root=tmp_path,
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    result = _invoke("skippy", "--annotate")
+
+    assert result.exit_code == 0, result.output
+
+    path = tmp_path / "artifacts" / "skippy" / "artifact.toml"
+    contents = path.read_text(encoding="utf-8")
+
+    assert "shape_size = 100.0" in contents
+    assert "shape_geometry" in contents

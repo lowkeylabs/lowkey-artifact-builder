@@ -27,10 +27,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import tomlkit
+
 from lowkey_artifact_builder.config import (
     ConfigError,
+    artifact_config_path,
     get_realization_names,
     get_resolver,
+)
+from lowkey_artifact_builder.config.config import (
+    _load_artifact_document,
+    _load_model_parameters,
+    _write_artifact_document_atomic,
 )
 from lowkey_artifact_builder.model import (
     build_model_registry,
@@ -180,12 +188,123 @@ def inspect_realization_configuration(
 
 
 # =========================================================
-# Exports
+# Artifact configuration annotation
 # =========================================================
 
+
+def annotate_artifact_configuration(
+    artifact_id: str,
+    *,
+    project_root: Path | None = None,
+) -> Path:
+    """
+    Append or refresh a commented Model parameter reference.
+
+    The reference includes each registered Model once, regardless
+    of how many Realizations select that Model.
+
+    Parameter names come from the Model registry. Values come from
+    explicit Model defaults, not effective Realization configuration.
+
+    Missing Model defaults are represented as None in comments.
+
+    Existing active configuration and user-authored comments are
+    preserved. Repeated annotation replaces the generated reference.
+    """
+
+    root = project_root if project_root is not None else Path.cwd()
+
+    path = artifact_config_path(
+        artifact_id,
+        project_root=root,
+    )
+
+    if not path.is_file():
+        raise ConfigError(f"Artifact {artifact_id!r} is not defined.")
+
+    begin_marker = "# BEGIN MODEL PARAMETER REFERENCE"
+    end_marker = "# END MODEL PARAMETER REFERENCE"
+
+    document = _load_artifact_document(path)
+    original_text = tomlkit.dumps(document)
+
+    begin = original_text.find(begin_marker)
+    end = original_text.find(end_marker)
+
+    if (begin == -1) != (end == -1):
+        raise ConfigError(
+            "Artifact configuration contains an incomplete generated Model parameter reference."
+        )
+
+    if begin != -1:
+        if end < begin:
+            raise ConfigError(
+                "Artifact configuration contains an invalid generated Model parameter reference."
+            )
+
+        # The generated section owns the blank lines immediately
+        # preceding its begin marker.
+        section_start = begin
+
+        while section_start > 0 and original_text[section_start - 1] in "\r\n":
+            section_start -= 1
+
+        section_end = end + len(end_marker)
+
+        if original_text.startswith("\r\n", section_end):
+            section_end += 2
+        elif original_text.startswith("\n", section_end):
+            section_end += 1
+
+        original_text = original_text[:section_start] + original_text[section_end:]
+
+    # Preserve the retained document and its authored comments.
+    document = tomlkit.parse(original_text)
+
+    # Ensure a blank line before the generated section.
+    if original_text and not original_text.endswith("\n"):
+        document.add(tomlkit.nl())
+
+    document.add(tomlkit.nl())
+    document.add(tomlkit.comment("BEGIN MODEL PARAMETER REFERENCE"))
+    document.add(tomlkit.comment("Reference only. Uncomment and customize valid TOML values."))
+
+    registry = build_model_registry()
+
+    for model in registry.all_models():
+        defaults = _load_model_parameters(model.name)
+
+        document.add(tomlkit.nl())
+        document.add(tomlkit.comment(f"Model: {model.name}"))
+
+        for name in model.parameters:
+            value = defaults.get(name)
+
+            if value is None:
+                rendered = "None"
+            else:
+                rendered = tomlkit.dumps({"value": value}).partition("=")[2].strip()
+
+            document.add(tomlkit.comment(f"{name} = {rendered}"))
+
+    document.add(tomlkit.nl())
+    document.add(tomlkit.comment("END MODEL PARAMETER REFERENCE"))
+
+    _write_artifact_document_atomic(
+        path,
+        document,
+    )
+
+    return path
+
+
+# =========================================================
+# Exports
+# =========================================================
 
 __all__ = [
     "ConfigurationParameter",
     "RealizationConfiguration",
+    "annotate_artifact_configuration",
     "inspect_realization_configuration",
 ]

@@ -22,6 +22,7 @@ from pathlib import Path
 import click
 
 from lowkey_artifact_builder.application.configuration import (
+    annotate_artifact_configuration,
     inspect_realization_configuration,
 )
 from lowkey_artifact_builder.cli.bindings import (
@@ -68,11 +69,17 @@ from lowkey_artifact_builder.config import (
     metavar="NAME=VALUE",
     help="Customize a parameter for the selected Realization.",
 )
+@click.option(
+    "--annotate",
+    is_flag=True,
+    help="Append or refresh commented Model parameter references.",
+)
 def cli(
     artifact_ids: tuple[str, ...],
     realization: str | None,
     create: bool,
     parameters: tuple[str, ...],
+    annotate: bool,
 ) -> None:
     """
     Manage configuration for an existing artifact.
@@ -94,11 +101,19 @@ def cli(
 
     project_root = Path.cwd()
 
+    if annotate and (realization is not None or create or parameters):
+        raise click.UsageError(
+            "--annotate cannot be combined with --realization, --create, or --parameters."
+        )
+
     # =====================================================
     # Bulk Realization configuration
     # =====================================================
 
     if not artifact_ids:
+        if annotate:
+            raise click.UsageError("--annotate requires exactly one artifact ID.")
+
         if realization is None:
             raise click.UsageError("Artifact configuration requires an artifact ID.")
 
@@ -160,6 +175,22 @@ def cli(
 
     if not existing:
         raise click.ClickException(f"Artifact {artifact_id!r} is not defined.")
+
+    # =====================================================
+    # Model parameter annotation
+    # =====================================================
+
+    if annotate:
+        try:
+            path = annotate_artifact_configuration(
+                artifact_id,
+                project_root=project_root,
+            )
+        except ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        click.echo(f"Annotated {path.relative_to(project_root)}")
+        return
 
     # =====================================================
     # Realization configuration
