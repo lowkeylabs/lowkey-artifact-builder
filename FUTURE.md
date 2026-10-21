@@ -176,16 +176,6 @@ permit invalid overlaps as a diagnostic shortcut.
 **Unresolved:** Whether current error reporting is sufficient and what
 additional diagnostic information can be obtained reliably and cheaply.
 
-## Promotion to CHANGEPLAN
-
-Promote an item only when its intended behavior is sufficiently clear to write
-meaningful acceptance criteria and a coherent implementation slice. A brief
-feasibility investigation may be promoted first when an external format,
-importer behavior, or dependency boundary is unknown. Avoid detailed
-speculative phase sequences here; re-evaluate priorities after each completed
-CHANGEPLAN phase.
-
-
 
 ## Configuration Authoring and Simplification
 
@@ -216,4 +206,26 @@ Extend LAB's basic parameter annotation capability into a comprehensive configur
 - Whether simplification should be called `--clean`, `--prune`, or something else, given the existing `artifact clean` command.
 - How to preserve user formatting and comments during configuration rewriting.
 - Whether full configuration templates should include all registered Variants or only those relevant to the selected Artifact.
+
+
+### MCP-Assisted Configuration Discovery
+
+**Goal:** Allow AI clients to discover and explain LAB's supported configuration parameters, defaults, constraints, and effective values through an optional Model Context Protocol (MCP) interface.
+
+**Preserve:** Existing Model definitions, configuration resolution, and application operations remain authoritative. MCP is an adapter, not a new Model, required build dependency, or independent configuration system. Parameter discovery and validation should be reusable by the CLI and other interfaces.
+
+**Potential capabilities:** List Models and parameters; describe individual parameters; inspect effective configuration and provenance; validate proposed changes. Configuration modification and build operations may be considered later.
+
+**Unresolved:** Whether existing parameter metadata is sufficient for useful descriptions, which reusable application operations are needed, and how an MCP server would be installed and connected to supported clients. Do not implement MCP before establishing a demonstrated need beyond basic annotation.
+
+
+## Promotion to CHANGEPLAN
+
+Promote an item only when its intended behavior is sufficiently clear to write
+meaningful acceptance criteria and a coherent implementation slice. A brief
+feasibility investigation may be promoted first when an external format,
+importer behavior, or dependency boundary is unknown. Avoid detailed
+speculative phase sequences here; re-evaluate priorities after each completed
+CHANGEPLAN phase.
+
 

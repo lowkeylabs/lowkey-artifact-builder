@@ -89,6 +89,9 @@ Do not propose repeating work that HEAD already satisfies.
 If HEAD has evolved in a way that makes part of `CHANGEPLAN.md` obsolete,
 identify that explicitly.
 
+If FUTURE.md exists, review it when reevaluating the roadmap or considering new capabilities. Treat it as non-normative design intent, not as an implementation plan or a source of requirements for the current TDD slice.
+
+
 ## Selecting the Next Slice
 
 Before proposing work:
