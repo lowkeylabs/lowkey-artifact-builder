@@ -2100,3 +2100,251 @@ def test_border_labels_support_independent_fonts_and_arc_spans(
             assert isinstance(product, dict)
             assert isinstance(product["path"], str)
             assert product["path"]
+
+
+@pytest.mark.parametrize(
+    ("authored", "expected"),
+    [
+        (r"FIRST \bullet SECOND", "FIRST • SECOND"),
+        (r"\bullet", "•"),
+        (r"A\bullet B", "A• B"),
+        (r"A \bullet\bullet B", "A •• B"),
+        (r"A\\bullet B", r"A\bullet B"),
+    ],
+)
+@pytest.mark.slow
+def test_border_label_symbolic_commands_expand_before_fitting(
+    authored: str,
+    expected: str,
+) -> None:
+    """
+    Supported symbolic commands expand before font measurement and fitting.
+
+    Expansion preserves surrounding authored whitespace. A doubled
+    backslash escapes the following text rather than introducing a command.
+    """
+
+    from lowkey_artifact_builder.model.models.shape.border_labels import (
+        fit_circular_border_labels,
+    )
+
+    fitted = fit_circular_border_labels(
+        top_text=authored,
+        bottom_text=None,
+        font_family="DejaVu Sans",
+        reference_radius=50.0,
+        border_width=1.0,
+        max_glyph_height=5.0,
+        arc_degrees=140.0,
+        end_margin=1.0,
+    )
+
+    assert fitted.top is not None
+    assert fitted.top.text == expected
+    assert fitted.bottom is None
+    assert fitted.glyph_height > 0.0
+    assert fitted.glyph_height <= 5.0
+
+
+@pytest.mark.slow
+def test_border_label_symbolic_commands_preserve_independent_typography() -> None:
+    """
+    Top and Bottom independently expand symbolic text while sharing
+    one physical glyph-height allocation.
+
+    Position-specific fonts and arc spans remain effective.
+    """
+
+    from lowkey_artifact_builder.model.models.shape.border_labels import (
+        fit_circular_border_labels,
+    )
+
+    symbolic = fit_circular_border_labels(
+        top_text=r"RICHMOND \bullet VIRGINIA",
+        bottom_text=r"MADE \bullet 2026",
+        font_family="DejaVu Sans",
+        reference_radius=50.0,
+        border_width=1.0,
+        max_glyph_height=5.0,
+        arc_degrees=140.0,
+        end_margin=1.0,
+        top_font_family="DejaVu Sans",
+        bottom_font_family="DejaVu Serif",
+        top_arc_degrees=140.0,
+        bottom_arc_degrees=100.0,
+    )
+
+    literal = fit_circular_border_labels(
+        top_text="RICHMOND • VIRGINIA",
+        bottom_text="MADE • 2026",
+        font_family="DejaVu Sans",
+        reference_radius=50.0,
+        border_width=1.0,
+        max_glyph_height=5.0,
+        arc_degrees=140.0,
+        end_margin=1.0,
+        top_font_family="DejaVu Sans",
+        bottom_font_family="DejaVu Serif",
+        top_arc_degrees=140.0,
+        bottom_arc_degrees=100.0,
+    )
+
+    assert symbolic.top is not None
+    assert symbolic.bottom is not None
+    assert literal.top is not None
+    assert literal.bottom is not None
+
+    assert symbolic.top.text == "RICHMOND • VIRGINIA"
+    assert symbolic.bottom.text == "MADE • 2026"
+
+    assert symbolic.glyph_height == pytest.approx(literal.glyph_height)
+    assert symbolic.top.width == pytest.approx(literal.top.width)
+    assert symbolic.bottom.width == pytest.approx(literal.bottom.width)
+
+
+@pytest.mark.parametrize(
+    "authored",
+    [
+        r"FIRST \unknown SECOND",
+        r"FIRST \cdot SECOND",
+        r"FIRST \bulletx SECOND",
+    ],
+)
+def test_border_label_rejects_unsupported_symbolic_commands(
+    authored: str,
+) -> None:
+    """
+    Unsupported symbolic commands are configuration errors.
+
+    They must not be passed through to the font renderer as literal
+    text or silently discarded.
+    """
+
+    from lowkey_artifact_builder.model.models.shape.border_labels import (
+        BorderLabelError,
+        fit_circular_border_labels,
+    )
+
+    with pytest.raises(
+        BorderLabelError,
+        match=r"(?i)(unsupported|unknown|command)",
+    ):
+        fit_circular_border_labels(
+            top_text=authored,
+            bottom_text=None,
+            font_family="DejaVu Sans",
+            reference_radius=50.0,
+            border_width=1.0,
+            max_glyph_height=5.0,
+            arc_degrees=140.0,
+            end_margin=1.0,
+        )
+
+
+@pytest.mark.slow
+def test_compose_materializes_symbolic_border_label_glyphs(
+    tmp_path: Path,
+) -> None:
+    """
+    Symbolic commands produce the same manufacturing glyph geometry
+    as their literal Unicode equivalents.
+
+    Compose expands text before measuring, fitting, and converting
+    glyphs to registered SVG paths.
+    """
+
+    structure = tmp_path / "structure.svg"
+    _write_registered_circle_structure(structure)
+
+    def build(
+        name: str,
+        top_text: str,
+    ) -> tuple[ET.Element, dict[str, object]]:
+        directory = tmp_path / name
+        directory.mkdir()
+
+        composition = directory / "composition.svg"
+        manifest = directory / "products.json"
+
+        context = Mock(spec=StageContext)
+
+        _configure_compose_context(
+            context,
+            structure=structure,
+            composition=composition,
+            manifest=manifest,
+            values={
+                "shape_size": 100.0,
+                "shape_outer_ridge_width": 0.0,
+                "shape_outer_ridge_style": "integrated",
+                "shape_inner_ridge_width": 0.0,
+                "shape_inner_to_outer_ridge_dist": 10.0,
+                "shape_border_label_width": 1.0,
+                "shape_border_label_max_glyph_height": 5.0,
+                "shape_border_label_arc_degrees": 140.0,
+                "shape_border_label_end_margin": 1.0,
+                "shape_border_label_font_family": "DejaVu Sans",
+                "shape_top_border_label_text": top_text,
+                "shape_bottom_border_label_text": "",
+            },
+        )
+
+        compose.execute(context)
+
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+
+        border_labels = data["border_labels"]
+        assert isinstance(border_labels, dict)
+
+        product = border_labels["top"]
+        assert isinstance(product, dict)
+
+        glyph_path = manifest.parent / product["path"]
+        assert glyph_path.is_file()
+
+        return ET.parse(glyph_path).getroot(), data
+
+    symbolic_root, symbolic_manifest = build(
+        "symbolic",
+        r"RICHMOND \bullet VIRGINIA",
+    )
+    literal_root, literal_manifest = build(
+        "literal",
+        "RICHMOND • VIRGINIA",
+    )
+
+    def glyph_paths(root: ET.Element) -> list[str]:
+        return [
+            path_data
+            for element in root.iter()
+            if element.tag == f"{{{SVG_NS}}}path"
+            if (path_data := element.get("d"))
+        ]
+
+    symbolic_paths = glyph_paths(symbolic_root)
+    literal_paths = glyph_paths(literal_root)
+
+    assert symbolic_paths
+    assert literal_paths
+
+    assert symbolic_paths == literal_paths
+
+    symbolic_labels = symbolic_manifest["border_labels"]
+    literal_labels = literal_manifest["border_labels"]
+
+    assert isinstance(symbolic_labels, dict)
+    assert isinstance(literal_labels, dict)
+
+    assert symbolic_labels["bottom"] is None
+    assert literal_labels["bottom"] is None
+
+    for root in (symbolic_root, literal_root):
+        assert not [
+            element
+            for element in root.iter()
+            if element.tag
+            in {
+                f"{{{SVG_NS}}}text",
+                f"{{{SVG_NS}}}textPath",
+            }
+        ]

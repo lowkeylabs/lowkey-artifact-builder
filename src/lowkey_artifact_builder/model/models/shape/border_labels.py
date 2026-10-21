@@ -1256,6 +1256,51 @@ def _fit_circular_glyph_height(
     return low
 
 
+def _expand_symbolic_text(text: str) -> str:
+    """
+    Expand supported Border Label symbolic commands.
+
+    Supported syntax:
+    - \\bullet produces U+2022 BULLET.
+    - \\\\ produces one literal backslash.
+
+    All other backslash commands are rejected. Expansion preserves
+    authored whitespace and is performed exactly once before measurement.
+    """
+    result: list[str] = []
+    index = 0
+
+    while index < len(text):
+        if text[index] != "\\":
+            result.append(text[index])
+            index += 1
+            continue
+
+        if index + 1 < len(text) and text[index + 1] == "\\":
+            result.append("\\")
+            index += 2
+            continue
+
+        if text.startswith(r"\bullet", index):
+            end = index + len(r"\bullet")
+
+            if end == len(text) or not text[end].isalpha():
+                result.append("\u2022")
+                index = end
+                continue
+
+        end = index + 1
+
+        while end < len(text) and text[end].isalpha():
+            end += 1
+
+        command = text[index:end]
+
+        raise BorderLabelError(f"Unsupported Border Label symbolic command: {command!r}.")
+
+    return "".join(result)
+
+
 def fit_circular_border_labels(
     *,
     top_text: str | None,
@@ -1276,6 +1321,9 @@ def fit_circular_border_labels(
 
     Position-specific settings inherit shared settings when omitted.
     Both labels share one physical glyph-height allocation.
+
+    Symbolic commands are expanded once before measurement and fitting.
+    The expanded text is retained for manufacturing geometry.
 
     Legacy shared-only callers retain their common-font-size behavior.
     """
@@ -1303,7 +1351,11 @@ def fit_circular_border_labels(
         "bottom": (bottom_arc_degrees if bottom_arc_degrees is not None else arc_degrees),
     }
 
-    participating = {position: text for position, text in texts.items() if text is not None}
+    participating = {
+        position: _expand_symbolic_text(text)
+        for position, text in texts.items()
+        if text is not None
+    }
 
     if not participating:
         raise BorderLabelError("At least one participating Border Label is required.")
