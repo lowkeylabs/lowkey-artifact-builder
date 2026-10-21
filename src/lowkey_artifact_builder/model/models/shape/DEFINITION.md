@@ -3637,7 +3637,7 @@ manufacturing Product representing the registered SHAPE composition.
 It is controlled by:
 
 ```text
-shape_svg_enabled = false
+shape_svg_enabled = true
 ```
 
 The parameter is Boolean and follows the normal Model, Artifact,
@@ -3697,10 +3697,7 @@ the existing 3MF Product.
 SVG freshness and publication are tracked independently of unrelated
 extrusion and 3MF packaging changes.
 
-SVG Export provides a direct planar representation of SHAPE. It does
-not replace the separate LASER Model, which owns additional
-two-dimensional manufacturing representation policies.
-
+SVG Export provides a direct planar representation of SHAPE. 
 
 ## Final Product
 
