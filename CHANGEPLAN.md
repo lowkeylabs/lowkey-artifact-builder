@@ -162,7 +162,7 @@ Both fill colors default to the effective Base color. The resulting SVG and 3MF 
 - Inner Ridge and Border Label positioning remain relative to the appropriate participating boundaries. Inset must not silently change their established spacing semantics.
 - The exposed perimeter outside an inset Outer Ridge retains `shape_base_color`.
 - Introduce `shape_border_fill_color` for the region between the Outer Ridge and Inner Ridge, and `shape_artwork_region_fill_color` for the central region. Both default to the resolved `shape_base_color`, not a fixed color literal.
-- Surface regions are SHAPE-owned physical components, not merely SVG paint attributes. Their colors are resolved through existing SHAPE packaging policy.
+- Surface regions are SHAPE-owned geometric regions with independently configurable physical colors, not merely SVG paint attributes. Their printable component partitioning follows the existing raised and inlaid dimensionalization policies, permitting equivalent same-color regions to share material where appropriate.
 - Fill regions cover their complete geometric interiors, independently of Artwork or Border Label participation. Foreground components retain their independently configured colors.
 - Enclosed spaces within lettering and Artwork geometry, including glyph counters such as those in A and D, remain filled with the appropriate background region material rather than becoming unintended holes.
 - Preserve the existing `shape_artwork_fill_color` Feature and its participation semantics. Artwork Region Fill is a distinct capability and does not replace or redefine Artwork Fill.
