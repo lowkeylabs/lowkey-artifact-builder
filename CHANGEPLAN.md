@@ -142,48 +142,69 @@ algorithmic or regression risk.
 
 ---
 
-## Phase 1 — Outer Ridge Inset
+## Phase 1 — SHAPE Ridge Inset and Surface Regions
 
 ### Purpose
 
-Allow the SHAPE Outer Ridge to be inset from the outside base boundary,
-exposing an optional perimeter of base material without changing the base's
-physical dimensions.
+Extend SHAPE's perimeter geometry and surface-color capabilities to support:
+
+- An optional Outer Ridge inset that exposes a perimeter of Base material without changing the Shape's physical dimensions.
+- An independently colored Border Fill occupying the complete region between the Outer Ridge and Inner Ridge.
+- An independently colored Artwork Region Fill occupying the complete central region, regardless of whether Artwork participates.
+
+Both fill colors default to the effective Base color. The resulting SVG and 3MF Products must preserve consistent geometry, component identity, and manufacturing semantics.
 
 ### Architectural boundaries
 
-- The SHAPE base boundary remains authoritative for overall size and physical
-  extent; the Outer Ridge is a distinct feature.
-- A zero inset preserves current geometry.
-- Inner Ridge and border-label positioning must remain coherent with the
-  resulting Outer Ridge geometry.
-- Invalid combinations of inset, ridge widths, and available space fail
-  clearly rather than generating degenerate geometry.
-- Do not introduce generalized structure offsets or a new composition system.
+- The SHAPE Base boundary remains authoritative for overall size and physical extent. Outer Ridge inset does not change `shape_size` or the registered Shape envelope.
+- Outer Ridge inset is measured inward from the Base boundary to the Outer Ridge's outer edge. Ridge width is measured inward from that edge. For polygon geometry, both distances are perpendicular to the corresponding edges.
+- A zero inset preserves existing Outer Ridge geometry. A zero-width Outer Ridge does not participate regardless of its configured inset.
+- Inner Ridge and Border Label positioning remain relative to the appropriate participating boundaries. Inset must not silently change their established spacing semantics.
+- The exposed perimeter outside an inset Outer Ridge retains `shape_base_color`.
+- Introduce `shape_border_fill_color` for the region between the Outer Ridge and Inner Ridge, and `shape_artwork_region_fill_color` for the central region. Both default to the resolved `shape_base_color`, not a fixed color literal.
+- Surface regions are SHAPE-owned physical components, not merely SVG paint attributes. Their colors are resolved through existing SHAPE packaging policy.
+- Fill regions cover their complete geometric interiors, independently of Artwork or Border Label participation. Foreground components retain their independently configured colors.
+- Enclosed spaces within lettering and Artwork geometry, including glyph counters such as those in A and D, remain filled with the appropriate background region material rather than becoming unintended holes.
+- Preserve the existing `shape_artwork_fill_color` Feature and its participation semantics. Artwork Region Fill is a distinct capability and does not replace or redefine Artwork Fill.
+- Raised and inlaid dimensionalization must preserve the intended assembled geometry without unintended overlapping printable volumes or gaps.
+- Preserve logical Artwork color identity, component registration, existing ridge styles, and established SHAPE manufacturing behavior.
+- Invalid combinations of inset, ridge widths, region boundaries, and available space fail explicitly rather than generating degenerate geometry.
+- Do not introduce generalized structure offsets, a new composition system, or manufacturing-specific behavior in the generic engine.
 
 ### Work
 
-1. Inspect existing Structure and Compose ownership of base, ridge, and label
-   boundaries. Define the inset measurement and constraints in SHAPE's
-   permanent specification.
-2. Add a backward-compatible inset parameter and apply it at the geometry
-   boundary that owns ridge placement.
-3. Verify zero-inset compatibility, nonzero inset, related feature placement,
-   and consistency between SVG and 3MF outputs.
+1. **Specify geometry and participation.** Inspect existing Structure, Compose, Extrude, and Package ownership of Base, Outer Ridge, Border Labels, Inner Ridge, Artwork, and fill geometry. Update SHAPE's permanent definition with the inset measurement, surface-region boundaries, participation rules, and dimensionalization semantics. Define boundary fallback behavior when either ridge is absent.
+
+2. **Implement Outer Ridge inset.** Add the backward-compatible `shape_outer_ridge_inset` parameter, defaulting to zero. Apply the inset at the SHAPE geometry boundary that owns ridge placement. Preserve the complete Base boundary and update dependent ridge and label references without changing their established spacing relationships.
+
+3. **Implement Border Fill.** Add `shape_border_fill_color`, defaulting to the resolved `shape_base_color`. Define the complete Border Fill region from the applicable outer and inner boundaries. Preserve the background behind independently colored Border Labels, including enclosed glyph counters. The region must not depend on label participation.
+
+4. **Implement Artwork Region Fill.** Add `shape_artwork_region_fill_color`, defaulting to the resolved `shape_base_color`. Define the complete central surface region independently of incorporated Artwork participation. Preserve background material between Artwork components and within enclosed Artwork geometry. Keep this region distinct from the existing Artwork Fill Feature.
+
+5. **Preserve physical manufacturing semantics.** Carry the new region identities through registered composition, physical extrusion, and packaging. Ensure raised and inlaid styles produce valid, nonoverlapping printable components with the intended assembled geometry. Apply physical colors through existing packaging mechanisms rather than assigning them during registered composition.
+
+6. **Validate compatibility and outputs.** Use coherent TDD slices to verify zero-inset and default-color compatibility, nonzero inset geometry, independent fill colors, missing-ridge boundary behavior, dependent feature placement, enclosed foreground spaces, and SVG/3MF consistency. Run focused tests and the appropriate complete quality suite.
 
 ### Acceptance criteria
 
-- An inset Outer Ridge is visibly separated from the base perimeter by the
-  configured physical distance.
-- Base dimensions do not change; the default remains unchanged.
-- Dependent ridges and labels remain correctly placed, or invalid settings
-  produce explicit errors.
-- SVG and 3MF representations agree on the intended geometry.
+- A nonzero Outer Ridge inset exposes the configured physical width of Base material around the perimeter without changing overall Shape dimensions.
+- A zero inset preserves existing Outer Ridge geometry and manufacturing behavior.
+- Inner Ridge and Border Labels remain correctly positioned relative to their applicable reference boundaries.
+- Border Fill covers the complete region between the applicable ridge boundaries, including areas behind labels and enclosed spaces within glyphs.
+- Artwork Region Fill covers the complete central region even when no Artwork is incorporated, including gaps and enclosed spaces within participating Artwork.
+- Border Fill and Artwork Region Fill can use distinct colors independently of Base, ridges, labels, and incorporated Artwork.
+- When either fill color is unspecified, its effective color follows the resolved Base color. Existing configurations retain equivalent geometry, colors, and manufacturing output.
+- The existing Artwork Fill Feature retains its independent behavior and configuration.
+- Missing or nonparticipating ridges use explicitly defined boundary fallbacks without introducing unintended geometry.
+- Raised and inlaid manufacturing representations preserve complete assembled geometry, valid component partitioning, and independently assignable physical colors.
+- Invalid dimensions and impossible region configurations produce explicit errors.
+- SVG and 3MF outputs agree on region boundaries, registration, and intended physical component identities.
 
 ### Completion
 
-Complete when the inset is specified, implemented, and regression-tested.
-Remove this phase and reevaluate the plan.
+Complete when Outer Ridge inset and both surface-fill capabilities are specified in SHAPE's permanent definition, implemented through the existing SHAPE manufacturing pipeline, and regression-tested for geometry, color defaults, independent color assignment, enclosed regions, and SVG/3MF consistency.
+
+Remove this phase and reevaluate the remaining CHANGEPLAN against HEAD.
 
 ---
 
