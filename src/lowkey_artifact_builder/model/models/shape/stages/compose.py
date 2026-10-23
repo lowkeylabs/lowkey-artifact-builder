@@ -716,8 +716,6 @@ def _write_artifact_svg(
         transform = artwork_transform
 
         for component in artwork.components:
-            component_root = ET.parse(component.path).getroot()
-
             rgb = component.artifact_color
             fill = f"#{rgb['red']:02x}{rgb['green']:02x}{rgb['blue']:02x}"
 
@@ -735,8 +733,11 @@ def _write_artifact_svg(
                 },
             )
 
-            for element in component_root:
-                component_group.append(ET.fromstring(ET.tostring(element, encoding="unicode")))
+            _append_registered_svg(
+                component_group,
+                component.path,
+                fill=fill,
+            )
 
     # QR is independent of Artwork. Its light background must cover
     # the entire quiet zone, and its dark modules remain a distinct
@@ -793,6 +794,8 @@ def _write_artifact_svg(
 def _append_registered_svg(
     destination: ET.Element,
     source: Path,
+    *,
+    fill: str | None = None,
 ) -> None:
     """
     Append persistent registered SVG geometry to an output group.
@@ -800,6 +803,9 @@ def _append_registered_svg(
     The producer's root SVG is a registered coordinate container.
     Its children are copied without recomputing geometry, placement,
     typography, or component identity.
+
+    When an authoritative fill is supplied, normalize copied SVG
+    geometry to that color. Source files remain unchanged.
 
     The resulting canonical SVG is self-contained.
     """
@@ -812,7 +818,34 @@ def _append_registered_svg(
         raise ValueError(f"Registered SVG component contains no geometry: {source}")
 
     for element in source_root:
-        destination.append(ET.fromstring(ET.tostring(element, encoding="unicode")))
+        copied = ET.fromstring(ET.tostring(element, encoding="unicode"))
+
+        if fill is not None:
+            for descendant in copied.iter():
+                style = descendant.get("style")
+
+                if style is not None:
+                    declarations = [
+                        declaration.strip()
+                        for declaration in style.split(";")
+                        if declaration.strip()
+                    ]
+
+                    declarations = [
+                        declaration
+                        for declaration in declarations
+                        if declaration.partition(":")[0].strip().lower() != "fill"
+                    ]
+
+                    if declarations:
+                        descendant.set("style", ";".join(declarations))
+                    else:
+                        descendant.attrib.pop("style", None)
+
+                if "fill" in descendant.attrib:
+                    descendant.set("fill", fill)
+
+        destination.append(copied)
 
 
 def _svg_boundary_path(element: ET.Element) -> str:

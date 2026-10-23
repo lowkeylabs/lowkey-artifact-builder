@@ -552,3 +552,91 @@ def test_compose_svg_qr_precedence_preserves_artwork_registration(
     ]
 
     assert masking, "QR precedence must exclude the complete QR footprint from exported Artwork."
+
+
+def test_compose_svg_artwork_color_overrides_conflicting_source_fill(
+    tmp_path: Path,
+) -> None:
+    """
+    Canonical SHAPE SVG must use registered Artwork RGB even when
+    incorporated SVG geometry declares a conflicting fill.
+
+    Source geometry, transforms, and fill rules remain unchanged.
+    """
+    artwork_manifest = _write_artwork(tmp_path / "artwork")
+
+    # Simulate registered SVG layers with Inkscape-authored black fills.
+    for name in ("left", "right"):
+        source = artwork_manifest.parent / f"{name}.svg"
+
+        source.write_text(
+            (
+                f'<svg xmlns="{SVG}" viewBox="0 0 16 16">'
+                '<g id="source-group">'
+                '<path id="source-path" '
+                'style="fill:#000000;fill-rule:evenodd" '
+                'd="M 2 3 H 8 V 13 H 2 Z"/>'
+                "</g>"
+                "</svg>"
+            ),
+            encoding="utf-8",
+        )
+
+    artifact, _, _ = _run_compose(
+        tmp_path / "output",
+        artwork_manifest=artwork_manifest,
+    )
+
+    root = _svg_root(artifact)
+
+    expected_colors = {
+        "artwork-1": "#f0f0f0",
+        "artwork-2": "#141414",
+    }
+
+    components = {
+        element.get("id"): element
+        for element in root.iter(f"{{{SVG}}}g")
+        if element.get("id") in expected_colors
+    }
+
+    assert set(components) == set(expected_colors)
+
+    for component_id, expected_color in expected_colors.items():
+        group = components[component_id]
+
+        assert group.get("fill") == expected_color
+
+        paths = list(group.iter(f"{{{SVG}}}path"))
+        assert len(paths) == 1
+
+        path = paths[0]
+
+        style = dict(
+            declaration.strip().split(":", 1)
+            for declaration in path.get("style", "").split(";")
+            if ":" in declaration
+        )
+
+        # A source path's explicit fill must not override
+        # the registered Artifact color.
+        effective_fill = style.get(
+            "fill",
+            path.get("fill", group.get("fill")),
+        )
+
+        assert effective_fill == expected_color
+
+        # Recoloring must not alter geometry or fill rules.
+        assert path.get("d") == "M 2 3 H 8 V 13 H 2 Z"
+
+        assert (
+            style.get(
+                "fill-rule",
+                path.get("fill-rule"),
+            )
+            == "evenodd"
+        )
+
+    # Both components retain the same registered placement.
+    assert components["artwork-1"].get("transform") == components["artwork-2"].get("transform")
