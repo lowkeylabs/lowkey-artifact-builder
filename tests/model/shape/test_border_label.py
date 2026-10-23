@@ -25,6 +25,7 @@ from lowkey_artifact_builder.model.models.shape.stages import (
     extrude,
     package,
 )
+from tests.support.model_parameters import model_test_resolver
 
 SVG_NS = "http://www.w3.org/2000/svg"
 
@@ -227,10 +228,9 @@ def _configure_extrude_context(
     """
     Configure the Shape Extrude boundary for Border Label feature tests.
 
-    Parameters material to the behavior under test are supplied explicitly.
-    Unrelated optional Shape Extrude features use their ordinary
-    nonparticipating defaults so adding such a feature does not require
-    Border Label tests to enumerate its parameter contract.
+    Production Model configuration supplies defaults and derived
+    parameters. Explicit test values override those defaults without
+    requiring tests to enumerate unrelated Extrude features.
     """
 
     inputs = {
@@ -242,23 +242,11 @@ def _configure_extrude_context(
         "manifest": manifest,
     }
 
-    defaults = {
-        "shape_hole_diameter": 0.0,
-        "shape_loop_inner_diameter": 0.0,
-    }
-
-    def resolver(
-        name: str,
-    ) -> object:
-        if name in values:
-            return values[name]
-
-        if name in defaults:
-            return defaults[name]
-
-        raise KeyError(
-            name,
-        )
+    resolver = model_test_resolver(
+        "shape",
+        overrides=values,
+        project_root=manifest.parent,
+    )
 
     context.input.side_effect = inputs.__getitem__
     context.output.side_effect = outputs.__getitem__
@@ -276,13 +264,10 @@ def _configure_compose_context(
     """
     Configure the Shape Compose stage boundary for Border Label tests.
 
-    Explicit values take precedence over inherited values. Position-specific
-    Border Label typography inherits the corresponding shared setting.
+    Production Model configuration supplies defaults, inheritance, and
+    derived parameters. Explicit test values override those defaults.
 
-    Unrelated optional QR behavior remains nonparticipating.
-
-    Unknown parameters remain errors rather than silently receiving
-    fabricated values.
+    Unknown parameter names remain configuration errors.
     """
 
     inputs = {
@@ -295,28 +280,11 @@ def _configure_compose_context(
         "manifest": manifest,
     }
 
-    defaults: dict[str, object] = {
-        "shape_qr_payload": "",
-    }
-
-    inherited = {
-        "shape_top_border_label_font_family": ("shape_border_label_font_family"),
-        "shape_bottom_border_label_font_family": ("shape_border_label_font_family"),
-        "shape_top_border_label_arc_degrees": ("shape_border_label_arc_degrees"),
-        "shape_bottom_border_label_arc_degrees": ("shape_border_label_arc_degrees"),
-    }
-
-    def resolver(name: str) -> object:
-        if name in values:
-            return values[name]
-
-        if name in inherited:
-            return resolver(inherited[name])
-
-        if name in defaults:
-            return defaults[name]
-
-        raise KeyError(name)
+    resolver = model_test_resolver(
+        "shape",
+        overrides=values,
+        project_root=composition.parent,
+    )
 
     context.input.side_effect = inputs.__getitem__
     context.output.side_effect = outputs.__getitem__

@@ -11,6 +11,7 @@ import pytest
 
 from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.model.models.shape.stages import compose
+from tests.support.model_parameters import model_test_resolver
 
 
 def _compose_qr(
@@ -40,38 +41,28 @@ def _compose_qr(
         encoding="utf-8",
     )
 
-    values = {
-        "shape_size": 100.0,
-        "shape_outer_ridge_width": ridge_width,
-        "shape_outer_ridge_style": "integrated",
-        "shape_inner_ridge_width": 0.0,
-        "shape_inner_to_outer_ridge_dist": 10.0,
-        "shape_border_label_width": 1.0,
-        "shape_border_label_max_glyph_height": 5.0,
-        "shape_border_label_arc_degrees": 140.0,
-        "shape_border_label_end_margin": 1.0,
-        "shape_border_label_font_family": "DejaVu Sans",
-        "shape_top_border_label_text": "",
-        "shape_bottom_border_label_text": "",
-        "shape_qr_payload": "https://lowkeylabs.com",
-        "shape_qr_size": qr_size,
-        "shape_qr_alignment": alignment,
-        "shape_qr_position": position,
-    }
-
-    inherited = {
-        "shape_top_border_label_font_family": "shape_border_label_font_family",
-        "shape_bottom_border_label_font_family": "shape_border_label_font_family",
-        "shape_top_border_label_arc_degrees": "shape_border_label_arc_degrees",
-        "shape_bottom_border_label_arc_degrees": "shape_border_label_arc_degrees",
-    }
-
-    def resolver(name: str) -> object:
-        if name in values:
-            return values[name]
-        if name in inherited:
-            return resolver(inherited[name])
-        raise KeyError(name)
+    resolver = model_test_resolver(
+        "shape",
+        overrides={
+            "shape_size": 100.0,
+            "shape_outer_ridge_width": ridge_width,
+            "shape_outer_ridge_style": "integrated",
+            "shape_inner_ridge_width": 0.0,
+            "shape_inner_to_outer_ridge_dist": 10.0,
+            "shape_border_label_width": 1.0,
+            "shape_border_label_max_glyph_height": 5.0,
+            "shape_border_label_arc_degrees": 140.0,
+            "shape_border_label_end_margin": 1.0,
+            "shape_border_label_font_family": "DejaVu Sans",
+            "shape_top_border_label_text": "",
+            "shape_bottom_border_label_text": "",
+            "shape_qr_payload": "https://lowkeylabs.com",
+            "shape_qr_size": qr_size,
+            "shape_qr_alignment": alignment,
+            "shape_qr_position": position,
+        },
+        project_root=tmp_path,
+    )
 
     context = Mock(spec=StageContext)
     context.input.side_effect = {"structure.structure": structure}.__getitem__

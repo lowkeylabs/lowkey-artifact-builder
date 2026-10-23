@@ -18,6 +18,7 @@ import pytest
 
 from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.model.models.shape.stages import compose
+from tests.support.model_parameters import model_test_resolver
 
 SVG_NS = "http://www.w3.org/2000/svg"
 
@@ -78,50 +79,43 @@ def _run_compose(
     artifact = directory / "artifact.svg"
 
     context = Mock(spec=StageContext)
+
     inputs = {
         "structure.structure": structure,
         "artwork.vector.manifest": artwork_manifest,
     }
+
     context.input.side_effect = inputs.__getitem__
     context.has_input.side_effect = inputs.__contains__
+
     context.output.side_effect = {
         "composition": composition,
         "manifest": manifest,
         "artifact": artifact,
     }.__getitem__
 
-    values = {
-        "shape_size": shape_size,
-        "shape_outer_ridge_width": 0.0,
-        "shape_outer_ridge_style": "integrated",
-        "shape_inner_ridge_width": 0.0,
-        "shape_inner_to_outer_ridge_dist": 10.0,
-        "shape_border_label_width": 1.0,
-        "shape_border_label_max_glyph_height": 5.0,
-        "shape_border_label_arc_degrees": 140.0,
-        "shape_border_label_end_margin": 1.0,
-        "shape_border_label_font_family": "DejaVu Sans",
-        "shape_top_border_label_text": "",
-        "shape_bottom_border_label_text": "",
-        "shape_qr_payload": "",
-        "shape_artwork_offset_x": offset_x,
-        "shape_artwork_offset_y": offset_y,
-        "shape_artwork_scale": scale,
-    }
-
-    inherited = {
-        "shape_top_border_label_font_family": "shape_border_label_font_family",
-        "shape_bottom_border_label_font_family": "shape_border_label_font_family",
-        "shape_top_border_label_arc_degrees": "shape_border_label_arc_degrees",
-        "shape_bottom_border_label_arc_degrees": "shape_border_label_arc_degrees",
-    }
-
-    def resolver(name: str) -> object:
-        if name in values:
-            return values[name]
-        if name in inherited:
-            return resolver(inherited[name])
-        raise KeyError(name)
+    resolver = model_test_resolver(
+        "shape",
+        overrides={
+            "shape_size": shape_size,
+            "shape_outer_ridge_width": 0.0,
+            "shape_outer_ridge_style": "integrated",
+            "shape_inner_ridge_width": 0.0,
+            "shape_inner_to_outer_ridge_dist": 10.0,
+            "shape_border_label_width": 1.0,
+            "shape_border_label_max_glyph_height": 5.0,
+            "shape_border_label_arc_degrees": 140.0,
+            "shape_border_label_end_margin": 1.0,
+            "shape_border_label_font_family": "DejaVu Sans",
+            "shape_top_border_label_text": "",
+            "shape_bottom_border_label_text": "",
+            "shape_qr_payload": "",
+            "shape_artwork_offset_x": offset_x,
+            "shape_artwork_offset_y": offset_y,
+            "shape_artwork_scale": scale,
+        },
+        project_root=directory,
+    )
 
     context.resolver.side_effect = resolver
 

@@ -403,6 +403,7 @@ def execute(
 
     shape_size = float(context.resolver("shape_size"))
     ridge_width = float(context.resolver("shape_outer_ridge_width"))
+    ridge_inset = float(context.resolver("shape_outer_ridge_inset"))
     ridge_style = str(context.resolver("shape_outer_ridge_style"))
     inner_ridge_width = float(context.resolver("shape_inner_ridge_width"))
     inner_to_outer_ridge_dist = float(context.resolver("shape_inner_to_outer_ridge_dist"))
@@ -431,6 +432,7 @@ def execute(
             composition_output,
             shape_size=shape_size,
             ridge_width=ridge_width,
+            ridge_inset=ridge_inset,
             inner_ridge_width=inner_ridge_width,
             inner_to_outer_ridge_dist=inner_to_outer_ridge_dist,
             border_label_width=border_label_width,
@@ -563,6 +565,10 @@ def _write_artifact_svg(
         raise ValueError("Canonical Shape SVG requires a registered Shape boundary.")
 
     outer_ridge_inner = boundaries.get("ridge-inner-boundary")
+    outer_ridge_outer = boundaries.get(
+        "ridge-outer-boundary",
+        shape_boundary,
+    )
 
     if outer_ridge_inner is not None:
         ET.SubElement(
@@ -571,7 +577,9 @@ def _write_artifact_svg(
             {
                 "id": "outer-ridge",
                 "d": (
-                    _svg_boundary_path(shape_boundary) + " " + _svg_boundary_path(outer_ridge_inner)
+                    _svg_boundary_path(outer_ridge_outer)
+                    + " "
+                    + _svg_boundary_path(outer_ridge_inner)
                 ),
                 "fill": "black",
                 "fill-rule": "evenodd",
@@ -1174,6 +1182,7 @@ def _compose_ridge(
     *,
     shape_size: float,
     ridge_width: float,
+    ridge_inset: float = 0.0,
     inner_ridge_width: float = 0.0,
     inner_to_outer_ridge_dist: float = 10.0,
     border_label_width: float = 1.0,
@@ -1192,48 +1201,26 @@ def _compose_ridge(
     """
     Compose structural partition boundaries in registered Shape space.
 
-    The complete Shape boundary remains unchanged. Physical widths,
-    positioning distances, and Border Label fitting dimensions are converted
-    into registered-space geometry.
+    The complete Shape boundary remains unchanged.
 
-    Structural features are composed from the Shape perimeter inward:
+    A participating Outer Ridge has an outside boundary inset from the
+    Shape perimeter and an inside boundary inset by the additional
+    physical ridge width.
 
-        Outer Ridge
-        Border Labels
-        Inner Ridge
+    Border Labels and the Inner Ridge use the Outer Ridge inside boundary
+    as their positioning reference when the Outer Ridge participates.
 
-    Outer-ridge existence is determined solely by outer-ridge width. Zero
-    width preserves the registered Shape boundary without creating an outer
-    ridge partition.
-
-    Top and Bottom Border Labels participate independently according to
-    whether their text contains non-whitespace content. When either
-    participates, the Border Label reference boundary is the inside boundary
-    of the Outer Ridge when it participates and the complete Shape boundary
-    otherwise.
-
-    Participating Border Labels are also materialized as persistent registered
-    path geometry while the fitted typography and semantic baseline geometry
-    are available. Downstream stages therefore consume ordinary registered
-    geometry without rediscovering typography or fitting policy.
-
-    Inner-ridge existence is determined solely by inner-ridge width. When
-    Border Labels participate, their inside boundary establishes the Inner
-    Ridge positioning reference. Otherwise, the Outer Ridge inside boundary
-    establishes that reference when present, falling back to the complete
-    Shape boundary.
-
-    Integrated and separate outer-ridge styles share these registered
-    boundaries. Their different physical component partitioning belongs
-    downstream.
-
-    Border Label composition currently supports circular registered Shape
-    geometry. Existing square and polygon behavior remains unchanged when
-    Border Labels do not participate.
+    Zero-width Outer Ridges remain absent regardless of inset.
     """
 
-    if ridge_width < 0.0:
-        raise ValueError("shape_outer_ridge_width must be nonnegative.")
+    if not math.isfinite(shape_size) or shape_size <= 0.0:
+        raise ValueError("shape_size must be positive and finite.")
+
+    if not math.isfinite(ridge_inset) or ridge_inset < 0.0:
+        raise ValueError("shape_outer_ridge_inset must be nonnegative and finite.")
+
+    if not math.isfinite(ridge_width) or ridge_width < 0.0:
+        raise ValueError("shape_outer_ridge_width must be nonnegative and finite.")
 
     if inner_ridge_width < 0.0:
         raise ValueError("shape_inner_ridge_width must be nonnegative.")
@@ -1241,70 +1228,89 @@ def _compose_ridge(
     if inner_to_outer_ridge_dist < 0.0:
         raise ValueError("shape_inner_to_outer_ridge_dist must be nonnegative.")
 
-    tree = ET.parse(
-        structure_input,
-    )
-
+    tree = ET.parse(structure_input)
     root = tree.getroot()
 
-    circle = root.find(
-        SVG_CIRCLE,
-    )
-
-    square = root.find(
-        SVG_RECT,
-    )
-
-    polygon = root.find(
-        SVG_POLYGON,
-    )
+    circle = root.find(SVG_CIRCLE)
+    square = root.find(SVG_RECT)
+    polygon = root.find(SVG_POLYGON)
 
     outer_boundary = circle if circle is not None else square if square is not None else polygon
 
     if outer_boundary is None:
         raise ValueError("Ridge composition requires supported registered Shape structure.")
 
-    outer_boundary.set(
-        "id",
-        "shape-boundary",
-    )
+    outer_boundary.set("id", "shape-boundary")
 
     if ridge_width > 0.0:
-        registered_inset = ridge_width / shape_size
+        registered_outer_inset = ridge_inset / shape_size
+        registered_inner_inset = (ridge_inset + ridge_width) / shape_size
 
-        if circle is not None:
-            _compose_circle_ridge(
-                root,
-                circle,
-                registered_inset=registered_inset,
+        def compose_offset(
+            destination_root: ET.Element,
+            boundary: ET.Element,
+            offset: float,
+        ) -> ET.Element:
+            if boundary.tag == SVG_CIRCLE:
+                _compose_circle_ridge(
+                    destination_root,
+                    boundary,
+                    registered_inset=offset,
+                )
+            elif boundary.tag == SVG_RECT:
+                _compose_square_ridge(
+                    destination_root,
+                    boundary,
+                    registered_inset=offset,
+                )
+            else:
+                _compose_polygon_ridge(
+                    destination_root,
+                    boundary,
+                    registered_inset=offset,
+                )
+
+            return next(
+                element
+                for element in destination_root
+                if element.get("id") == "ridge-inner-boundary"
             )
 
-        elif square is not None:
-            _compose_square_ridge(
-                root,
-                square,
-                registered_inset=registered_inset,
+        # Only register an additional outside boundary when the inset
+        # is positive. With zero inset, the complete Shape boundary
+        # remains the existing Outer Ridge outside boundary.
+        if ridge_inset > 0.0:
+            temporary_root = ET.Element(root.tag)
+            temporary_boundary = ET.fromstring(ET.tostring(outer_boundary))
+            temporary_root.append(temporary_boundary)
+
+            ridge_outer = compose_offset(
+                temporary_root,
+                temporary_boundary,
+                registered_outer_inset,
             )
 
-        else:
-            assert polygon is not None
+            if artwork_placement_circle(ridge_outer).radius <= 1.0e-12:
+                raise ValueError("Outer Ridge inset leaves no usable Shape interior.")
 
-            _compose_polygon_ridge(
-                root,
-                polygon,
-                registered_inset=registered_inset,
-            )
+            ridge_outer.set("id", "ridge-outer-boundary")
+            root.append(ridge_outer)
+
+        ridge_inner = compose_offset(
+            root,
+            outer_boundary,
+            registered_inner_inset,
+        )
+
+        if artwork_placement_circle(ridge_inner).radius <= 1.0e-12:
+            raise ValueError("Outer Ridge inset and width leave no Shape interior.")
 
     top_participates = bool(top_border_label_text.strip())
-
     bottom_participates = bool(bottom_border_label_text.strip())
 
     border_labels_participate = top_participates or bottom_participates
 
-    border_labels: dict[
-        str,
-        dict[str, object] | None,
-    ] = {
+    border_labels: dict[str, dict[str, object] | None] = {
         "top": None,
         "bottom": None,
     }
@@ -1349,11 +1355,9 @@ def _compose_ridge(
     if inner_ridge_width > 0.0:
         registered_width = inner_ridge_width / shape_size
 
-        if border_labels_participate:
-            registered_distance = 0.0
-
-        else:
-            registered_distance = inner_to_outer_ridge_dist / shape_size
+        registered_distance = (
+            0.0 if border_labels_participate else inner_to_outer_ridge_dist / shape_size
+        )
 
         _compose_inner_ridge(
             root,
@@ -1362,16 +1366,7 @@ def _compose_ridge(
             registered_width=registered_width,
         )
 
-    #
-    # ElementTree namespace registration is process-global. Establish the SVG
-    # default namespace at the serialization boundary rather than relying on
-    # namespace state established when this module was imported.
-    #
-
-    ET.register_namespace(
-        "",
-        SVG_NAMESPACE,
-    )
+    ET.register_namespace("", SVG_NAMESPACE)
 
     tree.write(
         output,

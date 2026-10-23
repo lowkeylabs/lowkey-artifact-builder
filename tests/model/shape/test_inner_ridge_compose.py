@@ -14,6 +14,7 @@ from unittest.mock import Mock
 import pytest
 
 from lowkey_artifact_builder.model.models.shape.stages import compose
+from tests.support.model_parameters import model_test_resolver
 
 # =========================================================
 # Helpers
@@ -53,8 +54,9 @@ def _compose_inner_ridge(
     """
     Execute Shape Compose with representative Inner Ridge parameters.
 
-    Position-specific Border Label settings inherit their corresponding
-    shared values. Unknown parameters remain errors.
+    Model defaults and derivations come from the authoritative
+    configuration engine. Explicit overrides preserve the geometry
+    required by these tests.
     """
 
     structure = tmp_path / "structure.svg"
@@ -78,35 +80,25 @@ def _compose_inner_ridge(
         "artifact": artifact,
     }
 
-    values = {
-        "shape_size": 100.0,
-        "shape_outer_ridge_width": outer_ridge_width,
-        "shape_outer_ridge_style": "integrated",
-        "shape_inner_ridge_width": inner_ridge_width,
-        "shape_inner_to_outer_ridge_dist": inner_to_outer_ridge_dist,
-        "shape_border_label_width": 1.0,
-        "shape_border_label_max_glyph_height": 5.0,
-        "shape_border_label_arc_degrees": 140.0,
-        "shape_border_label_end_margin": 1.0,
-        "shape_border_label_font_family": "DejaVu Sans",
-        "shape_top_border_label_text": "",
-        "shape_bottom_border_label_text": "",
-        "shape_qr_payload": "",
-    }
-
-    inherited = {
-        "shape_top_border_label_font_family": "shape_border_label_font_family",
-        "shape_bottom_border_label_font_family": "shape_border_label_font_family",
-        "shape_top_border_label_arc_degrees": "shape_border_label_arc_degrees",
-        "shape_bottom_border_label_arc_degrees": "shape_border_label_arc_degrees",
-    }
-
-    def resolver(name: str) -> object:
-        if name in values:
-            return values[name]
-        if name in inherited:
-            return resolver(inherited[name])
-        raise KeyError(name)
+    resolver = model_test_resolver(
+        "shape",
+        overrides={
+            "shape_size": 100.0,
+            "shape_outer_ridge_width": outer_ridge_width,
+            "shape_outer_ridge_style": "integrated",
+            "shape_inner_ridge_width": inner_ridge_width,
+            "shape_inner_to_outer_ridge_dist": inner_to_outer_ridge_dist,
+            "shape_border_label_width": 1.0,
+            "shape_border_label_max_glyph_height": 5.0,
+            "shape_border_label_arc_degrees": 140.0,
+            "shape_border_label_end_margin": 1.0,
+            "shape_border_label_font_family": "DejaVu Sans",
+            "shape_top_border_label_text": "",
+            "shape_bottom_border_label_text": "",
+            "shape_qr_payload": "",
+        },
+        project_root=tmp_path,
+    )
 
     context.input.side_effect = inputs.__getitem__
     context.has_input.side_effect = inputs.__contains__

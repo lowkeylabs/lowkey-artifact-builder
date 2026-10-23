@@ -16,6 +16,7 @@ import pytest
 
 from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.model.models.shape.stages import compose, extrude
+from tests.support.model_parameters import model_test_resolver
 
 # =========================================================
 # Helpers
@@ -119,8 +120,8 @@ def _compose_context(
     Extrude through shape_artwork_fill_raise, and physical fill color is
     resolved by Package.
 
-    Position-specific Border Label settings inherit their corresponding
-    shared values unless explicitly provided.
+    Shape parameter defaults and derivations come from the authoritative
+    configuration engine. Only test-specific values are overridden.
     """
 
     context = Mock(spec=StageContext)
@@ -136,38 +137,12 @@ def _compose_context(
         "artifact": composition_path.parent / "artifact.svg",
     }
 
-    values = {
-        "shape_size": 100.0,
-        "shape_outer_ridge_width": 0.0,
-        "shape_outer_ridge_style": "integrated",
-        "shape_inner_ridge_width": 0.0,
-        "shape_inner_to_outer_ridge_dist": 10.0,
-        "shape_border_label_width": 1.0,
-        "shape_border_label_max_glyph_height": 5.0,
-        "shape_border_label_arc_degrees": 140.0,
-        "shape_border_label_end_margin": 1.0,
-        "shape_border_label_font_family": "DejaVu Sans",
-        "shape_top_border_label_text": "",
-        "shape_bottom_border_label_text": "",
-        "shape_artwork_offset_x": 0.0,
-        "shape_artwork_offset_y": 0.0,
-        "shape_artwork_scale": 1.0,
-        "shape_qr_payload": "",
-    }
-
-    inherited = {
-        "shape_top_border_label_font_family": "shape_border_label_font_family",
-        "shape_bottom_border_label_font_family": "shape_border_label_font_family",
-        "shape_top_border_label_arc_degrees": "shape_border_label_arc_degrees",
-        "shape_bottom_border_label_arc_degrees": "shape_border_label_arc_degrees",
-    }
-
-    def resolver(name: str) -> object:
-        if name in values:
-            return values[name]
-        if name in inherited:
-            return resolver(inherited[name])
-        raise KeyError(name)
+    resolver = model_test_resolver(
+        "shape",
+        overrides={
+            "shape_border_label_font_family": "DejaVu Sans",
+        },
+    )
 
     context.input.side_effect = inputs.__getitem__
     context.output.side_effect = outputs.__getitem__
@@ -1418,11 +1393,11 @@ def _physical_fill_extrude_context(
     """
     Configure Shape extrusion for Artwork-fill dimensionalization tests.
 
-    Parameters material to Artwork-fill behavior are explicit.
+    Model defaults and derivations come from the authoritative
+    configuration engine. Only parameters material to the Artwork-fill
+    test behavior are overridden.
 
-    Unrelated optional Shape Extrude features resolve to their ordinary
-    nonparticipating defaults so adding another optional Feature does not
-    require Artwork-fill tests to enumerate that Feature's parameter contract.
+    Unrelated optional Shape features retain their production defaults.
     """
 
     context = Mock(
@@ -1438,33 +1413,13 @@ def _physical_fill_extrude_context(
         "manifest": output_manifest,
     }
 
-    values = {
-        "shape_size": 100.0,
-        "shape_base_raise": 2.0,
-        "shape_raise_style": "raised",
-        "shape_outer_ridge_raise": 1.0,
-        "shape_outer_ridge_style": "integrated",
-        "shape_artwork_raise": 0.6,
-        "shape_artwork_fill_raise": artwork_fill_raise,
-    }
-
-    nonparticipating_defaults = {
-        "shape_hole_diameter": 0.0,
-        "shape_loop_inner_diameter": 0.0,
-    }
-
-    def resolver(
-        name: str,
-    ) -> object:
-        if name in values:
-            return values[name]
-
-        if name in nonparticipating_defaults:
-            return nonparticipating_defaults[name]
-
-        raise KeyError(
-            name,
-        )
+    resolver = model_test_resolver(
+        "shape",
+        overrides={
+            "shape_artwork_raise": 0.6,
+            "shape_artwork_fill_raise": artwork_fill_raise,
+        },
+    )
 
     context.input.side_effect = inputs.__getitem__
     context.output.side_effect = outputs.__getitem__

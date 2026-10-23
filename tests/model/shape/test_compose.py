@@ -19,6 +19,7 @@ from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.engine.bootstrap import build_stage_registry
 from lowkey_artifact_builder.model.models.shape import stages
 from lowkey_artifact_builder.model.models.shape.stages import compose
+from tests.support.model_parameters import model_test_resolver
 
 # =========================================================
 # Helpers
@@ -288,36 +289,40 @@ def _configure_shape_resolver(
     """
     Configure representative Shape parameters for registered composition.
 
-    Optional Inner Ridge behavior defaults to disabled so tests remain focused
-    on the behavior they explicitly configure.
+    Model defaults and derivations come from the authoritative
+    configuration engine.
+
+    Explicit overrides preserve the geometry and optional-feature
+    behavior expected by these tests.
+
+    Return a Mock so tests can inspect resolver calls.
     """
 
-    values = {
-        "shape_size": shape_size,
-        "shape_outer_ridge_width": ridge_width,
-        "shape_outer_ridge_style": ridge_style,
-        "shape_inner_ridge_width": inner_ridge_width,
-        "shape_inner_to_outer_ridge_dist": inner_to_outer_ridge_dist,
-        "shape_artwork_fill_color": fill_color,
-        "shape_border_label_width": 1.0,
-        "shape_border_label_max_glyph_height": 5.0,
-        "shape_border_label_arc_degrees": 140.0,
-        "shape_border_label_end_margin": 1.0,
-        "shape_border_label_font_family": "DejaVu Sans",
-        "shape_top_border_label_text": "",
-        "shape_top_border_label_font_family": "DejaVu Sans",
-        "shape_bottom_border_label_font_family": "DejaVu Sans",
-        "shape_top_border_label_arc_degrees": 140.0,
-        "shape_bottom_border_label_arc_degrees": 140.0,
-        "shape_bottom_border_label_text": "",
-        "shape_artwork_offset_x": 0.0,
-        "shape_artwork_offset_y": 0.0,
-        "shape_artwork_scale": 1.0,
-        "shape_qr_payload": "",
-    }
+    production_resolver = model_test_resolver(
+        "shape",
+        overrides={
+            "shape_size": shape_size,
+            "shape_outer_ridge_width": ridge_width,
+            "shape_outer_ridge_style": ridge_style,
+            "shape_inner_ridge_width": inner_ridge_width,
+            "shape_inner_to_outer_ridge_dist": inner_to_outer_ridge_dist,
+            "shape_artwork_fill_color": fill_color,
+            "shape_border_label_width": 1.0,
+            "shape_border_label_max_glyph_height": 5.0,
+            "shape_border_label_arc_degrees": 140.0,
+            "shape_border_label_end_margin": 1.0,
+            "shape_border_label_font_family": "DejaVu Sans",
+            "shape_top_border_label_text": "",
+            "shape_bottom_border_label_text": "",
+            "shape_artwork_offset_x": 0.0,
+            "shape_artwork_offset_y": 0.0,
+            "shape_artwork_scale": 1.0,
+            "shape_qr_payload": "",
+        },
+    )
 
     resolver = Mock(
-        side_effect=values.__getitem__,
+        side_effect=production_resolver,
     )
 
     context.resolver = resolver
@@ -2080,6 +2085,7 @@ def test_compose_stage_resolves_only_registered_partition_parameters(
     assert resolver.call_args_list == [
         call("shape_size"),
         call("shape_outer_ridge_width"),
+        call("shape_outer_ridge_inset"),
         call("shape_outer_ridge_style"),
         call("shape_inner_ridge_width"),
         call("shape_inner_to_outer_ridge_dist"),

@@ -132,6 +132,18 @@ shape_outer_ridge_width = 0.0
 
 
 #
+# Physical distance from the complete Shape boundary inward to the
+# outside edge of a participating Outer Ridge, in millimeters.
+#
+# For polygon geometry, the inset is measured perpendicular to each edge.
+#
+# Zero preserves existing Outer Ridge placement.
+# This setting has no geometric effect when Outer Ridge width is zero.
+#
+
+shape_outer_ridge_inset = 0.0
+
+#
 # Physical Z displacement of the outer-ridge top relative to
 # the top of the base, in millimeters.
 #

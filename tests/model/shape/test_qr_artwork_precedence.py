@@ -15,6 +15,7 @@ import pytest
 
 from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.model.models.shape.stages import compose, extrude
+from tests.support.model_parameters import model_test_resolver
 
 SVG = "http://www.w3.org/2000/svg"
 
@@ -77,41 +78,31 @@ def _compose(tmp_path: Path, *, payload: str) -> tuple[Path, dict]:
 
     manifest = directory / "products.json"
 
-    values = {
-        "shape_size": 100.0,
-        "shape_outer_ridge_width": 0.0,
-        "shape_outer_ridge_style": "integrated",
-        "shape_inner_ridge_width": 0.0,
-        "shape_inner_to_outer_ridge_dist": 10.0,
-        "shape_border_label_width": 1.0,
-        "shape_border_label_max_glyph_height": 5.0,
-        "shape_border_label_arc_degrees": 140.0,
-        "shape_border_label_end_margin": 1.0,
-        "shape_border_label_font_family": "DejaVu Sans",
-        "shape_top_border_label_text": "",
-        "shape_bottom_border_label_text": "",
-        "shape_artwork_offset_x": 0.0,
-        "shape_artwork_offset_y": 0.0,
-        "shape_artwork_scale": 1.0,
-        "shape_qr_payload": payload,
-        "shape_qr_size": 30.0,
-        "shape_qr_alignment": "centered",
-        "shape_qr_position": 0.0,
-    }
-
-    inherited = {
-        "shape_top_border_label_font_family": "shape_border_label_font_family",
-        "shape_bottom_border_label_font_family": "shape_border_label_font_family",
-        "shape_top_border_label_arc_degrees": "shape_border_label_arc_degrees",
-        "shape_bottom_border_label_arc_degrees": "shape_border_label_arc_degrees",
-    }
-
-    def resolver(name: str) -> object:
-        if name in values:
-            return values[name]
-        if name in inherited:
-            return resolver(inherited[name])
-        raise KeyError(name)
+    resolver = model_test_resolver(
+        "shape",
+        overrides={
+            "shape_size": 100.0,
+            "shape_outer_ridge_width": 0.0,
+            "shape_outer_ridge_style": "integrated",
+            "shape_inner_ridge_width": 0.0,
+            "shape_inner_to_outer_ridge_dist": 10.0,
+            "shape_border_label_width": 1.0,
+            "shape_border_label_max_glyph_height": 5.0,
+            "shape_border_label_arc_degrees": 140.0,
+            "shape_border_label_end_margin": 1.0,
+            "shape_border_label_font_family": "DejaVu Sans",
+            "shape_top_border_label_text": "",
+            "shape_bottom_border_label_text": "",
+            "shape_artwork_offset_x": 0.0,
+            "shape_artwork_offset_y": 0.0,
+            "shape_artwork_scale": 1.0,
+            "shape_qr_payload": payload,
+            "shape_qr_size": 30.0,
+            "shape_qr_alignment": "centered",
+            "shape_qr_position": 0.0,
+        },
+        project_root=tmp_path,
+    )
 
     context = Mock(spec=StageContext)
 
