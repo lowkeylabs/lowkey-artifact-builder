@@ -236,8 +236,8 @@ def _resolve_shape_component_colors(
     Resolve physical printer colors for Shape-owned components.
 
     The structural Base establishes the inherited Shape color. Outer Ridge,
-    Inner Ridge, Border Labels, Artwork Fill, and Loop inherit that color
-    unless an explicit Package-time override is configured.
+    Inner Ridge, Border Labels, Artwork Fill, Border Fill, and Loop inherit
+    that color unless an explicit Package-time override is configured.
 
     QR dark and light resolve their own configured physical colors.
     Neither inherits the Base color.
@@ -256,6 +256,7 @@ def _resolve_shape_component_colors(
         "top-border-label",
         "bottom-border-label",
         "artwork-fill",
+        "border-fill",
         "loop",
         "qr-dark",
         "qr-light",
@@ -367,6 +368,22 @@ def _resolve_shape_component_colors(
             artwork_fill_color = base_color
 
         colors["artwork-fill"] = artwork_fill_color
+
+    if "border-fill" in component_names:
+        if context.resolver.has(
+            "shape_border_fill_color",
+        ):
+            border_fill_color_name = context.resolver(
+                "shape_border_fill_color",
+            )
+            border_fill_color = resolve_palette(
+                (border_fill_color_name,),
+                context.resolver.colors,
+            )[0]
+        else:
+            border_fill_color = base_color
+
+        colors["border-fill"] = border_fill_color
 
     if "loop" in component_names:
         if context.resolver.has(

@@ -341,6 +341,76 @@ def _validate_registered_artwork_placement(
         raise ValueError("Artwork placement exceeds the available Shape interior.")
 
 
+def _registered_border_fill_region(
+    composition: Path,
+) -> RegisteredArtworkFillRegion | None:
+    """
+    Resolve the registered Border Fill region from existing
+    structural partition boundaries.
+
+    The outside reference is the inside edge of a participating
+    Outer Ridge, or the complete Shape boundary otherwise.
+
+    The inside reference is the outside edge of a participating
+    Inner Ridge. When no Inner Ridge participates, the Border
+    Label inner boundary is used when available.
+
+    Without an inside reference, Border Fill has no positive area.
+
+    No independent offsets or physical dimensions are introduced.
+    """
+    root = ET.parse(composition).getroot()
+
+    boundaries = {element.get("id"): element for element in root if element.get("id") is not None}
+
+    outer_boundary = boundaries.get(
+        "ridge-inner-boundary",
+    )
+
+    if outer_boundary is None:
+        outer_boundary = boundaries.get(
+            "shape-boundary",
+        )
+
+    if outer_boundary is None:
+        raise ValueError("Border Fill requires a registered Shape boundary.")
+
+    inner_boundary = boundaries.get(
+        "inner-ridge-outer-boundary",
+    )
+
+    if inner_boundary is None:
+        inner_boundary = boundaries.get(
+            "border-label-inner-boundary",
+        )
+
+    if inner_boundary is None:
+        return None
+
+    outer_radius = artwork_placement_circle(
+        outer_boundary,
+    ).radius
+
+    inner_radius = artwork_placement_circle(
+        inner_boundary,
+    ).radius
+
+    if not (
+        math.isfinite(outer_radius)
+        and math.isfinite(inner_radius)
+        and outer_radius > inner_radius
+        and inner_radius > 0.0
+    ):
+        raise ValueError(
+            "Border Fill requires distinct, positive registered outer and inner boundaries."
+        )
+
+    return RegisteredArtworkFillRegion(
+        outer_boundary=outer_boundary,
+        inner_boundary=inner_boundary,
+    )
+
+
 def _registered_qr_footprint(
     qr: RegisteredQR,
     *,
@@ -389,6 +459,9 @@ def execute(
 
     Structural geometry and optional Artwork are composed in registered
     space. Artwork adjustments are applied after automatic fitting.
+
+    Border Fill is resolved from the registered structural boundaries,
+    independently of Border Label participation.
 
     A participating QR Code is generated as separate registered dark/light
     geometry without requiring Artwork.
@@ -454,6 +527,10 @@ def execute(
             composition_output,
         )
 
+    border_fill = _registered_border_fill_region(
+        composition_output,
+    )
+
     artwork: RegisteredArtwork | None = None
     artwork_transform: RegisteredArtworkTransform | None = None
     artwork_fill: RegisteredArtworkFillRegion | None = None
@@ -495,6 +572,7 @@ def execute(
         manifest_output,
         composition=composition_output,
         border_labels=border_labels,
+        border_fill=border_fill,
         artwork=artwork,
         artwork_transform=artwork_transform,
         artwork_fill=artwork_fill,
@@ -506,6 +584,7 @@ def execute(
         artifact_output,
         composition=composition_output,
         border_labels=border_labels,
+        border_fill=border_fill,
         artwork=artwork,
         artwork_transform=artwork_transform,
         qr=qr,
@@ -518,6 +597,7 @@ def _write_artifact_svg(
     *,
     composition: Path,
     border_labels: dict[str, dict[str, object] | None],
+    border_fill: RegisteredArtworkFillRegion | None = None,
     artwork: RegisteredArtwork | None,
     artwork_transform: RegisteredArtworkTransform | None,
     qr: RegisteredQR | None,
@@ -527,6 +607,7 @@ def _write_artifact_svg(
     Write the canonical, physically dimensioned Shape SVG.
 
     Registered structural boundaries become filled planar ridge regions.
+    Border Fill is represented by its registered annular geometry.
     Border Labels and QR components reuse persistent registered geometry.
 
     Artwork retains its component identities, RGB colors, and common
@@ -609,6 +690,23 @@ def _write_artifact_svg(
                     _svg_boundary_path(inner_ridge_outer)
                     + " "
                     + _svg_boundary_path(inner_ridge_inner)
+                ),
+                "fill": "black",
+                "fill-rule": "evenodd",
+                "stroke": "none",
+            },
+        )
+
+    if border_fill is not None:
+        ET.SubElement(
+            structural_group,
+            SVG_PATH,
+            {
+                "id": "border-fill",
+                "d": (
+                    _svg_boundary_path(border_fill.outer_boundary)
+                    + " "
+                    + _svg_boundary_path(border_fill.inner_boundary)
                 ),
                 "fill": "black",
                 "fill-rule": "evenodd",
@@ -922,6 +1020,7 @@ def _write_composition_manifest(
     *,
     composition: Path,
     border_labels: dict[str, dict[str, object] | None] | None = None,
+    border_fill: RegisteredArtworkFillRegion | None = None,
     artwork: RegisteredArtwork | None = None,
     artwork_transform: RegisteredArtworkTransform | None = None,
     artwork_fill: RegisteredArtworkFillRegion | None = None,
@@ -930,6 +1029,10 @@ def _write_composition_manifest(
 ) -> None:
     """
     Write the persistent registered Shape composition manifest.
+
+    Border Fill and Artwork Fill retain independent registered
+    region identities. Neither assigns a physical color or changes
+    the structural boundaries.
 
     Registered Artwork and QR retain independent component identities.
 
@@ -969,6 +1072,9 @@ def _write_composition_manifest(
     manifest: dict[str, Any] = {
         "composition": composition.name,
         "border_labels": border_labels,
+        "border_fill": (
+            _registered_artwork_fill_manifest(border_fill) if border_fill is not None else None
+        ),
         "artwork": artwork_manifest,
         "artwork_fill": (
             _registered_artwork_fill_manifest(artwork_fill) if artwork_fill is not None else None

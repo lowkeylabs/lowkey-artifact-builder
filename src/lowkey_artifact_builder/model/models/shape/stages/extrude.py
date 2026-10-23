@@ -61,6 +61,9 @@ INNER_RIDGE_COMPONENT_PATH = "inner-ridge.stl"
 ARTWORK_FILL_COMPONENT_NAME = "artwork-fill"
 ARTWORK_FILL_COMPONENT_PATH = "artwork-fill.stl"
 
+BORDER_FILL_COMPONENT_NAME = "border-fill"
+BORDER_FILL_COMPONENT_PATH = "border-fill.stl"
+
 TOP_BORDER_LABEL_COMPONENT_NAME = "top-border-label"
 TOP_BORDER_LABEL_COMPONENT_PATH = "top-border-label.stl"
 
@@ -286,6 +289,10 @@ def execute(
             composition_manifest,
         )
 
+        border_fill = _load_border_fill(
+            composition_manifest,
+        )
+
         border_labels = _load_border_labels(
             composition_manifest,
         )
@@ -445,8 +452,20 @@ def execute(
                     )
                 )
 
-        inlaid_planar_subtraction = _build_planar_union_scad(
+        base_planar_geometries = list(
             inlaid_planar_geometries,
+        )
+
+        if border_fill is not None:
+            base_planar_geometries.append(
+                _build_artwork_fill_planar_geometry_scad(
+                    border_fill,
+                    shape_size=shape_size,
+                )
+            )
+
+        base_planar_subtraction = _build_planar_union_scad(
+            base_planar_geometries,
         )
 
         if ridge is None:
@@ -456,7 +475,7 @@ def execute(
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
                 hole=hole,
-                planar_subtraction=inlaid_planar_subtraction,
+                planar_subtraction=base_planar_subtraction,
             )
 
         elif isinstance(
@@ -472,7 +491,7 @@ def execute(
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
                 shape_outer_ridge_style=shape_outer_ridge_style,
                 hole=hole,
-                planar_subtraction=inlaid_planar_subtraction,
+                planar_subtraction=base_planar_subtraction,
             )
 
         elif isinstance(
@@ -488,7 +507,7 @@ def execute(
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
                 shape_outer_ridge_style=shape_outer_ridge_style,
                 hole=hole,
-                planar_subtraction=inlaid_planar_subtraction,
+                planar_subtraction=base_planar_subtraction,
             )
 
         elif isinstance(
@@ -504,7 +523,7 @@ def execute(
                 shape_outer_ridge_raise=shape_outer_ridge_raise,
                 shape_outer_ridge_style=shape_outer_ridge_style,
                 hole=hole,
-                planar_subtraction=inlaid_planar_subtraction,
+                planar_subtraction=base_planar_subtraction,
             )
 
         else:
@@ -595,6 +614,15 @@ def execute(
                 shape_artwork_fill_raise=shape_artwork_fill_raise,
                 hole=hole,
                 exclusions=artwork.get("exclusions", []) if artwork is not None else [],
+            )
+
+        if border_fill is not None:
+            components += _render_border_fill_component(
+                border_fill,
+                manifest.parent,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+                hole=hole,
             )
 
         if qr is not None:
@@ -904,6 +932,70 @@ def _render_artwork_fill_component(
         (
             ARTWORK_FILL_COMPONENT_NAME,
             ARTWORK_FILL_COMPONENT_PATH,
+        ),
+    )
+
+
+def _render_border_fill_component(
+    fill: RegisteredArtworkFill,
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    hole: HoleGeometry | None,
+) -> tuple[tuple[str, str], ...]:
+    """
+    Render registered Border Fill as an independent physical component.
+
+    Border Fill occupies the full Base thickness, regardless of
+    the Shape raise style.
+
+    Compose determines its planar boundaries. Extrude applies
+    physical dimensions and subtracts the participating Shape Hole.
+    """
+
+    output_path = output_directory / BORDER_FILL_COMPONENT_PATH
+
+    planar_geometry = _build_artwork_fill_planar_geometry_scad(
+        fill,
+        shape_size=shape_size,
+    )
+
+    geometry = (
+        "linear_extrude(\n"
+        f"    height = {shape_base_raise:g},\n"
+        "    center = false\n"
+        ")\n"
+        f"{planar_geometry}"
+    )
+
+    geometry = _build_hole_subtracted_geometry_scad(
+        geometry,
+        hole=hole,
+    )
+
+    source = (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"{geometry}"
+    )
+
+    render_stl_source(
+        source,
+        output_path,
+    )
+
+    _require_component(
+        output_path,
+        component_name=BORDER_FILL_COMPONENT_NAME,
+    )
+
+    return (
+        (
+            BORDER_FILL_COMPONENT_NAME,
+            BORDER_FILL_COMPONENT_PATH,
         ),
     )
 
@@ -1461,6 +1553,7 @@ def _render_circle_ridge_components(
             shape_base_raise=shape_base_raise,
             shape_outer_ridge_raise=shape_outer_ridge_raise,
             hole=hole,
+            planar_subtraction=planar_subtraction,
         )
 
     return _render_separate_circle_ridge_components(
@@ -1531,6 +1624,7 @@ def _render_square_ridge_components(
             shape_base_raise=shape_base_raise,
             shape_outer_ridge_raise=shape_outer_ridge_raise,
             hole=hole,
+            planar_subtraction=planar_subtraction,
         )
 
     return _render_separate_square_ridge_components(
@@ -1601,6 +1695,7 @@ def _render_polygon_ridge_components(
             shape_base_raise=shape_base_raise,
             shape_outer_ridge_raise=shape_outer_ridge_raise,
             hole=hole,
+            planar_subtraction=planar_subtraction,
         )
 
     return _render_separate_polygon_ridge_components(
@@ -1623,6 +1718,7 @@ def _render_integrated_polygon_ridge_components(
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
     hole: HoleGeometry | None = None,
+    planar_subtraction: str | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1642,6 +1738,7 @@ def _render_integrated_polygon_ridge_components(
         shape_size=shape_size,
         shape_base_raise=shape_base_raise,
         hole=hole,
+        planar_subtraction=planar_subtraction,
     )
 
     render_stl_source(
@@ -1812,6 +1909,7 @@ def _render_integrated_circle_ridge_components(
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
     hole: HoleGeometry | None = None,
+    planar_subtraction: str | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -1831,6 +1929,7 @@ def _render_integrated_circle_ridge_components(
         shape_base_raise=shape_base_raise,
         shape_outer_ridge_raise=shape_outer_ridge_raise,
         hole=hole,
+        planar_subtraction=planar_subtraction,
     )
 
     render_stl_source(
@@ -2001,6 +2100,7 @@ def _render_integrated_square_ridge_components(
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
     hole: HoleGeometry | None = None,
+    planar_subtraction: str | None = None,
 ) -> tuple[
     tuple[str, str],
     ...,
@@ -2024,6 +2124,7 @@ def _render_integrated_square_ridge_components(
         shape_base_raise=shape_base_raise,
         shape_outer_ridge_raise=shape_outer_ridge_raise,
         hole=hole,
+        planar_subtraction=planar_subtraction,
     )
 
     render_stl_source(
@@ -3977,12 +4078,16 @@ def _build_integrated_circle_base_scad(
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
     hole: HoleGeometry | None = None,
+    planar_subtraction: str | None = None,
 ) -> str:
     """
     Build OpenSCAD source for the base material of an integrated circle ridge.
 
-    A participating Shape Hole is subtracted from the native constructive
-    base geometry before STL materialization.
+    Optional planar subtraction removes independently materialized surface
+    components from the Base across its full physical height.
+
+    A participating Shape Hole is independently subtracted from the native
+    constructive base geometry before STL materialization.
     """
 
     if shape_outer_ridge_raise >= 0.0:
@@ -3991,6 +4096,7 @@ def _build_integrated_circle_base_scad(
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
             hole=hole,
+            planar_subtraction=planar_subtraction,
         )
 
     outer_x = ridge.outer.cx * shape_size
@@ -4019,6 +4125,19 @@ def _build_integrated_circle_base_scad(
         "        }\n"
         "}\n"
     )
+
+    if planar_subtraction is not None:
+        geometry = (
+            "difference() {\n"
+            f"{_indent_scad(geometry, 4)}"
+            "    linear_extrude(\n"
+            "        height = shape_base_raise,\n"
+            "        center = false\n"
+            "    ) {\n"
+            f"{_indent_scad(planar_subtraction, 8)}"
+            "    }\n"
+            "}\n"
+        )
 
     return (
         f"shape_size = {shape_size:g};\n"
@@ -4049,6 +4168,7 @@ def _build_integrated_square_base_scad(
     shape_base_raise: float,
     shape_outer_ridge_raise: float,
     hole: HoleGeometry | None = None,
+    planar_subtraction: str | None = None,
 ) -> str:
     """
     Build OpenSCAD source for the base material of an integrated square ridge.
@@ -4057,14 +4177,13 @@ def _build_integrated_square_base_scad(
     Shape footprint through shape_base_raise.
 
     For negative ridge raise, the interior occupies the complete base height
-    while the perimeter occupies only the reduced assembled ridge height:
+    while the perimeter occupies only the reduced assembled ridge height.
 
-        interior  -> Z=0 through shape_base_raise
-        perimeter -> Z=0 through
-                     shape_base_raise + shape_outer_ridge_raise
+    Optional planar subtraction removes independently materialized surface
+    components from the Base across its full physical height.
 
-    A participating Shape Hole is subtracted from the native constructive
-    base geometry before STL materialization.
+    A participating Shape Hole is independently subtracted from the native
+    constructive base geometry before STL materialization.
     """
 
     if shape_outer_ridge_raise >= 0.0:
@@ -4073,6 +4192,7 @@ def _build_integrated_square_base_scad(
             shape_size=shape_size,
             shape_base_raise=shape_base_raise,
             hole=hole,
+            planar_subtraction=planar_subtraction,
         )
 
     boundaries = _build_square_boundary_modules(
@@ -4098,6 +4218,19 @@ def _build_integrated_square_base_scad(
         "        }\n"
         "}\n"
     )
+
+    if planar_subtraction is not None:
+        geometry = (
+            "difference() {\n"
+            f"{_indent_scad(geometry, 4)}"
+            "    linear_extrude(\n"
+            "        height = shape_base_raise,\n"
+            "        center = false\n"
+            "    ) {\n"
+            f"{_indent_scad(planar_subtraction, 8)}"
+            "    }\n"
+            "}\n"
+        )
 
     return (
         f"shape_size = {shape_size:g};\n"
@@ -4722,6 +4855,62 @@ def _load_artwork_fill(
         dict,
     ):
         raise ValueError("Registered Shape composition Artwork fill requires an inner boundary.")
+
+    return RegisteredArtworkFill(
+        outer_boundary=outer_boundary,
+        inner_boundary=inner_boundary,
+    )
+
+
+def _load_border_fill(
+    composition_manifest: Path,
+) -> RegisteredArtworkFill | None:
+    """
+    Load persistent registered Border Fill geometry.
+
+    Compose owns the Border Fill boundaries. Extrude consumes
+    those registered boundaries without reconstructing their
+    positions from Shape configuration.
+    """
+
+    data = json.loads(
+        composition_manifest.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    border_fill = data.get(
+        "border_fill",
+    )
+
+    if border_fill is None:
+        return None
+
+    if not isinstance(
+        border_fill,
+        dict,
+    ):
+        raise ValueError("Registered Shape composition Border Fill must be an object.")
+
+    outer_boundary = border_fill.get(
+        "outer_boundary",
+    )
+
+    inner_boundary = border_fill.get(
+        "inner_boundary",
+    )
+
+    if not isinstance(
+        outer_boundary,
+        dict,
+    ):
+        raise ValueError("Registered Shape composition Border Fill requires an outer boundary.")
+
+    if not isinstance(
+        inner_boundary,
+        dict,
+    ):
+        raise ValueError("Registered Shape composition Border Fill requires an inner boundary.")
 
     return RegisteredArtworkFill(
         outer_boundary=outer_boundary,

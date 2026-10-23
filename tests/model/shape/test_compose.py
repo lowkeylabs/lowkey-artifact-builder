@@ -1924,6 +1924,7 @@ def test_compose_stage_manifest_declares_structural_composition(
         "composition": "composition.svg",
         "artwork": None,
         "artwork_fill": None,
+        "border_fill": None,
         "border_labels": {
             "top": None,
             "bottom": None,
