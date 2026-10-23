@@ -631,3 +631,91 @@ def test_compose_svg_artwork_color_overrides_conflicting_source_fill(
 
     # Both components retain the same registered placement.
     assert components["artwork-1"].get("transform") == components["artwork-2"].get("transform")
+
+
+@pytest.mark.parametrize(
+    "outer_ridge_width",
+    [0.0, 2.0],
+    ids=["without-outer-ridge", "with-outer-ridge"],
+)
+def test_compose_svg_separates_cut_contour_from_printable_structure(
+    tmp_path: Path,
+    outer_ridge_width: float,
+) -> None:
+    """
+    The canonical SHAPE SVG exposes one independently identifiable
+    outside cut contour, separate from printable structure.
+
+    Outer Ridge participation must not determine whether the
+    outside cut contour exists.
+    """
+    artifact, _, _ = _run_compose(
+        tmp_path / "output",
+        shape_size=100.0,
+        outer_ridge_width=outer_ridge_width,
+    )
+
+    root = _svg_root(artifact)
+
+    assert root.get("width") == "100mm"
+    assert root.get("height") == "100mm"
+    assert root.get("viewBox") == "-0.5 -0.5 1 1"
+
+    structure = next(
+        (element for element in root if element.get("id") == "structure"),
+        None,
+    )
+    assert structure is not None
+
+    contours = [element for element in root.iter() if element.get("id") == "cut-contour"]
+
+    assert len(contours) == 1
+
+    contour = contours[0]
+
+    # CUT is represented by a closed, unfilled geometric path,
+    # not by a filled region that would be engraved.
+    assert contour.tag == f"{{{SVG}}}path"
+
+    path_data = contour.get("d", "").strip()
+
+    assert path_data.startswith("M ")
+    assert path_data.endswith("Z")
+
+    assert contour.get("fill") == "none"
+    assert contour.get("stroke") not in (None, "none")
+
+    # The contour must be independently selectable rather than
+    # nested inside the printable structure group.
+    assert contour not in list(structure.iter())
+
+    # The cut boundary must be based on the complete Base
+    # envelope, not on an inset Outer Ridge boundary.
+    #
+    # The circular registered Base has radius 0.5.
+    # Its left and right extrema are therefore +/-0.5.
+    assert "M -0.5 0 " in path_data
+    assert "0.5 0 " in path_data
+
+    ridges = [element for element in structure.iter() if element.get("id") == "outer-ridge"]
+
+    if outer_ridge_width > 0.0:
+        assert len(ridges) == 1
+
+        ridge = ridges[0]
+
+        # The ridge remains printable planar geometry.
+        assert ridge.tag == f"{{{SVG}}}path"
+        assert ridge.get("fill") not in (
+            None,
+            "none",
+            "transparent",
+        )
+        assert ridge.get("fill-rule") == "evenodd"
+
+    else:
+        assert not ridges
+
+    # The outside contour must not be duplicated as a
+    # second visible structural outline.
+    assert not any(element.get("id") == "shape-boundary" for element in structure.iter())

@@ -616,6 +616,9 @@ def _write_artifact_svg(
     """
     Write the canonical, physically dimensioned Shape SVG.
 
+    The authoritative Shape boundary is emitted as an independent,
+    closed outside CUT contour, separate from printable structure.
+
     Registered structural boundaries become filled planar ridge regions.
     Border Fill is represented by its registered annular geometry.
     Artwork Region Fill is represented by the registered Shape interior.
@@ -641,12 +644,6 @@ def _write_artifact_svg(
         },
     )
 
-    structural_group = ET.SubElement(
-        root,
-        SVG_GROUP,
-        {"id": "structure"},
-    )
-
     boundaries = {
         element.get("id"): element for element in composition_root if element.get("id") is not None
     }
@@ -655,6 +652,29 @@ def _write_artifact_svg(
 
     if shape_boundary is None:
         raise ValueError("Canonical Shape SVG requires a registered Shape boundary.")
+
+    # The outside CUT contour follows the authoritative Shape Base
+    # boundary, independently of Outer Ridge participation.
+    #
+    # It is a standalone, unfilled path rather than part of the
+    # printable structure group.
+    ET.SubElement(
+        root,
+        SVG_PATH,
+        {
+            "id": "cut-contour",
+            "d": _svg_boundary_path(shape_boundary),
+            "fill": "none",
+            "stroke": "black",
+            "stroke-width": f"{0.1 / shape_size:g}",
+        },
+    )
+
+    structural_group = ET.SubElement(
+        root,
+        SVG_GROUP,
+        {"id": "structure"},
+    )
 
     outer_ridge_inner = boundaries.get("ridge-inner-boundary")
     outer_ridge_outer = boundaries.get(
@@ -678,12 +698,6 @@ def _write_artifact_svg(
                 "stroke": "none",
             },
         )
-    else:
-        outline = ET.fromstring(ET.tostring(shape_boundary, encoding="unicode"))
-        outline.set("fill", "none")
-        outline.set("stroke", "black")
-        outline.set("stroke-width", f"{0.1 / shape_size:g}")
-        structural_group.append(outline)
 
     inner_ridge_outer = boundaries.get("inner-ridge-outer-boundary")
     inner_ridge_inner = boundaries.get("inner-ridge-inner-boundary")
