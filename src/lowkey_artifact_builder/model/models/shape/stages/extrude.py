@@ -646,6 +646,9 @@ def execute(
                 shape_size=shape_size,
                 shape_base_raise=shape_base_raise,
                 hole=hole,
+                planar_subtraction=_build_planar_union_scad(
+                    inlaid_planar_geometries,
+                ),
             )
 
         if qr is not None:
@@ -1005,6 +1008,7 @@ def _render_border_fill_component(
     shape_size: float,
     shape_base_raise: float,
     hole: HoleGeometry | None,
+    planar_subtraction: str | None = None,
 ) -> tuple[tuple[str, str], ...]:
     """
     Render registered Border Fill as an independent physical component.
@@ -1013,7 +1017,8 @@ def _render_border_fill_component(
     the Shape raise style.
 
     Compose determines its planar boundaries. Extrude applies
-    physical dimensions and subtracts the participating Shape Hole.
+    physical dimensions, subtracts participating inlaid foreground
+    geometry, and applies the participating Shape Hole.
     """
 
     output_path = output_directory / BORDER_FILL_COMPONENT_PATH
@@ -1022,6 +1027,14 @@ def _render_border_fill_component(
         fill,
         shape_size=shape_size,
     )
+
+    if planar_subtraction is not None:
+        planar_geometry = (
+            "difference() {\n"
+            f"{_indent_scad(planar_geometry, 4)}"
+            f"{_indent_scad(planar_subtraction, 4)}"
+            "}\n"
+        )
 
     geometry = (
         "linear_extrude(\n"
