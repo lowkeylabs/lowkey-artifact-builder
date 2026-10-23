@@ -15,6 +15,7 @@ products whose locations are determined by the declared vector manifest.
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
@@ -1141,3 +1142,124 @@ def test_vector_native_svg_preserves_registered_authored_geometry(
     assert any(path.get("fill-rule") == "evenodd" for path in red_paths)
 
     assert len(red_paths) >= 2
+
+
+def test_vector_png_layers_render_using_registered_artifact_colors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    PNG-derived registered SVG layers must render using their
+    authoritative Artifact RGB, not the tracing tool's black fill.
+
+    Vectorization must preserve color identity and geometry registration.
+    """
+    svg_ns = "http://www.w3.org/2000/svg"
+
+    raster_directory = tmp_path / "raster"
+    first = raster_directory / "first.png"
+    second = raster_directory / "second.png"
+
+    _write_raster(first, box=(3, 4, 10, 12))
+    _write_raster(second, box=(11, 6, 17, 15))
+
+    raster_manifest = raster_directory / "products.json"
+
+    _write_raster_manifest(
+        raster_manifest,
+        [
+            {
+                "index": 1,
+                "path": first.name,
+                "artifact_color": {
+                    "index": 1,
+                    "rgb": _color(201, 152, 55),
+                },
+            },
+            {
+                "index": 2,
+                "path": second.name,
+                "artifact_color": {
+                    "index": 2,
+                    "rgb": _color(249, 249, 247),
+                },
+            },
+        ],
+    )
+
+    envelope = tmp_path / "prepare" / "envelope.svg"
+    _write_prepared_envelope(envelope)
+
+    output_manifest = tmp_path / "vector" / "products.json"
+
+    context = StubContext(
+        inputs={
+            "raster.manifest": raster_manifest,
+            "prepare.envelope": envelope,
+        },
+        outputs={"manifest": output_manifest},
+        resolver=_resolver(),
+    )
+
+    def fake_trace_mask(
+        source: Path,
+        output: Path,
+        *,
+        crop: vector.RasterCrop,
+    ) -> None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            (
+                f'<svg xmlns="{svg_ns}" viewBox="0 0 {crop.size} {crop.size}">'
+                '<g id="g1">'
+                '<path id="path1" style="fill:#000000" '
+                'd="M 1 1 H 5 V 5 H 1 Z"/>'
+                "</g></svg>"
+            ),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(vector, "_trace_mask", fake_trace_mask)
+
+    vector.execute(context)  # type: ignore[arg-type]
+
+    manifest = json.loads(output_manifest.read_text(encoding="utf-8"))
+
+    assert len(manifest["products"]) == 2
+
+    expected = {
+        1: "#c99837",
+        2: "#f9f9f7",
+    }
+
+    for product in manifest["products"]:
+        index = product["index"]
+        rgb = product["artifact_color"]["rgb"]
+        expected_fill = expected[index]
+
+        assert expected_fill == (f"#{rgb['red']:02x}{rgb['green']:02x}{rgb['blue']:02x}")
+
+        layer = output_manifest.parent / product["path"]
+        root = ET.parse(layer).getroot()
+
+        paths = list(root.iter(f"{{{svg_ns}}}path"))
+        assert len(paths) == 1
+
+        path = paths[0]
+        style = dict(
+            declaration.strip().split(":", 1)
+            for declaration in path.get("style", "").split(";")
+            if ":" in declaration
+        )
+
+        # A path-level fill takes precedence over an inherited fill.
+        # It must not override the registered Artifact color.
+        assert (
+            style.get(
+                "fill",
+                path.get("fill", expected_fill),
+            ).lower()
+            == expected_fill
+        )
+
+        assert path.get("d") == "M 1 1 H 5 V 5 H 1 Z"

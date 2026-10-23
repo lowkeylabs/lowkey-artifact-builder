@@ -185,7 +185,7 @@ def execute(
     Execute the artwork vector stage.
 
     PNG-derived Raster products are cropped and traced into registered
-    SVG layers.
+    SVG layers using their authoritative Artifact colors.
 
     Native SVG products preserve authored vector geometry and are
     registered directly without bitmap tracing.
@@ -221,7 +221,7 @@ def execute(
             )
             return
 
-        # Existing PNG-derived Raster workflow.
+        # PNG-derived Raster workflow.
 
         registration, layers = _load_raster_manifest(
             raster_manifest,
@@ -247,6 +247,11 @@ def execute(
                 layer.path,
                 output,
                 crop=crop,
+            )
+
+            _apply_artifact_color(
+                output,
+                layer.artifact_color,
             )
 
             vector_layers.append((layer, output))
@@ -1326,6 +1331,66 @@ def _trace_mask(
         tree,
         output,
     )
+
+
+def _apply_artifact_color(
+    path: Path,
+    rgb: tuple[int, int, int],
+) -> None:
+    """
+    Apply the registered Artifact color to PNG-derived vector geometry.
+
+    Inkscape traces monochrome masks and ordinarily assigns black fills.
+    These tracing colors are not authoritative.
+
+    Replace geometry-level fills with the registered Artifact RGB while
+    preserving path data, transforms, fill rules, and unrelated styles.
+
+    Native SVG products do not use this function because their authored
+    styling is preserved separately.
+    """
+
+    color = f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
+
+    tree = load(path)
+
+    geometry_tags = {
+        f"{{{SVG_NS}}}path",
+        f"{{{SVG_NS}}}rect",
+        f"{{{SVG_NS}}}circle",
+        f"{{{SVG_NS}}}ellipse",
+        f"{{{SVG_NS}}}polygon",
+        f"{{{SVG_NS}}}polyline",
+    }
+
+    for element in tree.getroot().iter():
+        if element.tag not in geometry_tags:
+            continue
+
+        style = element.get("style")
+
+        if style is not None:
+            declarations = [
+                declaration.strip() for declaration in style.split(";") if declaration.strip()
+            ]
+
+            declarations = [
+                declaration
+                for declaration in declarations
+                if declaration.split(":", 1)[0].strip().lower() != "fill"
+            ]
+
+            if declarations:
+                element.set(
+                    "style",
+                    ";".join(declarations),
+                )
+            else:
+                element.attrib.pop("style", None)
+
+        element.set("fill", color)
+
+    save(tree, path)
 
 
 def _remove_raster_images(
