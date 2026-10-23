@@ -68,6 +68,31 @@ def derive_shape_artwork_fill_color(
     return None
 
 
+def derive_shape_artwork_region_fill_color(
+    resolver: Resolver,
+) -> str:
+    """
+    Derive the Artwork Region Fill color from the resolved base color.
+
+    By default, Artwork Region Fill uses the same semantic printing
+    color as the Shape base.
+
+    Because the base color is resolved through the artifact Resolver,
+    workspace or artifact overrides of shape_base_color are reflected
+    in the derived Artwork Region Fill color.
+
+    An explicitly configured shape_artwork_region_fill_color value
+    overrides this derivation through normal configuration resolution.
+
+    Shape configuration validity is enforced separately by the model's
+    configuration validators.
+    """
+
+    return resolver(
+        "shape_base_color",
+    )
+
+
 def derive_shape_inner_ridge_color(
     resolver: Resolver,
 ) -> str:
@@ -278,6 +303,7 @@ DERIVED = {
     "shape_outer_ridge_color": derive_shape_outer_ridge_color,
     "shape_inner_ridge_color": derive_shape_inner_ridge_color,
     "shape_border_fill_color": derive_shape_border_fill_color,
+    "shape_artwork_region_fill_color": derive_shape_artwork_region_fill_color,
     "shape_top_border_label_color": derive_shape_top_border_label_color,
     "shape_bottom_border_label_color": derive_shape_bottom_border_label_color,
     "shape_top_border_label_font_family": derive_shape_top_border_label_font_family,
@@ -298,6 +324,7 @@ DERIVED = {
 __all__ = [
     "DERIVED",
     "derive_shape_artwork_fill_color",
+    "derive_shape_artwork_region_fill_color",
     "derive_shape_border_fill_color",
     "derive_shape_bottom_border_label_arc_degrees",
     "derive_shape_bottom_border_label_color",

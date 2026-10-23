@@ -463,6 +463,9 @@ def execute(
     Border Fill is resolved from the registered structural boundaries,
     independently of Border Label participation.
 
+    Artwork Region Fill uses the authoritative registered Shape interior,
+    independently of whether Artwork participates.
+
     A participating QR Code is generated as separate registered dark/light
     geometry without requiring Artwork.
 
@@ -531,6 +534,10 @@ def execute(
         composition_output,
     )
 
+    artwork_region_fill = registered_interior_region(
+        composition_output,
+    )
+
     artwork: RegisteredArtwork | None = None
     artwork_transform: RegisteredArtworkTransform | None = None
     artwork_fill: RegisteredArtworkFillRegion | None = None
@@ -573,6 +580,7 @@ def execute(
         composition=composition_output,
         border_labels=border_labels,
         border_fill=border_fill,
+        artwork_region_fill=artwork_region_fill,
         artwork=artwork,
         artwork_transform=artwork_transform,
         artwork_fill=artwork_fill,
@@ -585,6 +593,7 @@ def execute(
         composition=composition_output,
         border_labels=border_labels,
         border_fill=border_fill,
+        artwork_region_fill=artwork_region_fill,
         artwork=artwork,
         artwork_transform=artwork_transform,
         qr=qr,
@@ -598,6 +607,7 @@ def _write_artifact_svg(
     composition: Path,
     border_labels: dict[str, dict[str, object] | None],
     border_fill: RegisteredArtworkFillRegion | None = None,
+    artwork_region_fill: ET.Element | None = None,
     artwork: RegisteredArtwork | None,
     artwork_transform: RegisteredArtworkTransform | None,
     qr: RegisteredQR | None,
@@ -608,6 +618,7 @@ def _write_artifact_svg(
 
     Registered structural boundaries become filled planar ridge regions.
     Border Fill is represented by its registered annular geometry.
+    Artwork Region Fill is represented by the registered Shape interior.
     Border Labels and QR components reuse persistent registered geometry.
 
     Artwork retains its component identities, RGB colors, and common
@@ -710,6 +721,18 @@ def _write_artifact_svg(
                 ),
                 "fill": "black",
                 "fill-rule": "evenodd",
+                "stroke": "none",
+            },
+        )
+
+    if artwork_region_fill is not None:
+        ET.SubElement(
+            structural_group,
+            SVG_PATH,
+            {
+                "id": "artwork-region-fill",
+                "d": _svg_boundary_path(artwork_region_fill),
+                "fill": "black",
                 "stroke": "none",
             },
         )
@@ -1021,6 +1044,7 @@ def _write_composition_manifest(
     composition: Path,
     border_labels: dict[str, dict[str, object] | None] | None = None,
     border_fill: RegisteredArtworkFillRegion | None = None,
+    artwork_region_fill: ET.Element | None = None,
     artwork: RegisteredArtwork | None = None,
     artwork_transform: RegisteredArtworkTransform | None = None,
     artwork_fill: RegisteredArtworkFillRegion | None = None,
@@ -1076,6 +1100,11 @@ def _write_composition_manifest(
             _registered_artwork_fill_manifest(border_fill) if border_fill is not None else None
         ),
         "artwork": artwork_manifest,
+        "artwork_region_fill": (
+            {"boundary": _registered_element_manifest(artwork_region_fill)}
+            if artwork_region_fill is not None
+            else None
+        ),
         "artwork_fill": (
             _registered_artwork_fill_manifest(artwork_fill) if artwork_fill is not None else None
         ),

@@ -236,8 +236,9 @@ def _resolve_shape_component_colors(
     Resolve physical printer colors for Shape-owned components.
 
     The structural Base establishes the inherited Shape color. Outer Ridge,
-    Inner Ridge, Border Labels, Artwork Fill, Border Fill, and Loop inherit
-    that color unless an explicit Package-time override is configured.
+    Inner Ridge, Border Labels, Artwork Fill, Artwork Region Fill, Border Fill,
+    and Loop inherit that color unless an explicit Package-time override
+    is configured.
 
     QR dark and light resolve their own configured physical colors.
     Neither inherits the Base color.
@@ -256,6 +257,7 @@ def _resolve_shape_component_colors(
         "top-border-label",
         "bottom-border-label",
         "artwork-fill",
+        "artwork-region-fill",
         "border-fill",
         "loop",
         "qr-dark",
@@ -369,6 +371,22 @@ def _resolve_shape_component_colors(
 
         colors["artwork-fill"] = artwork_fill_color
 
+    if "artwork-region-fill" in component_names:
+        if context.resolver.has(
+            "shape_artwork_region_fill_color",
+        ):
+            artwork_region_fill_color_name = context.resolver(
+                "shape_artwork_region_fill_color",
+            )
+            artwork_region_fill_color = resolve_palette(
+                (artwork_region_fill_color_name,),
+                context.resolver.colors,
+            )[0]
+        else:
+            artwork_region_fill_color = base_color
+
+        colors["artwork-region-fill"] = artwork_region_fill_color
+
     if "border-fill" in component_names:
         if context.resolver.has(
             "shape_border_fill_color",
@@ -405,6 +423,7 @@ def _resolve_shape_component_colors(
         qr_dark_color_name = context.resolver(
             "shape_qr_dark_color",
         )
+
         colors["qr-dark"] = resolve_palette(
             (qr_dark_color_name,),
             context.resolver.colors,
@@ -414,6 +433,7 @@ def _resolve_shape_component_colors(
         qr_light_color_name = context.resolver(
             "shape_qr_light_color",
         )
+
         colors["qr-light"] = resolve_palette(
             (qr_light_color_name,),
             context.resolver.colors,

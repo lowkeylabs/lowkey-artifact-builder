@@ -1924,6 +1924,14 @@ def test_compose_stage_manifest_declares_structural_composition(
         "composition": "composition.svg",
         "artwork": None,
         "artwork_fill": None,
+        "artwork_region_fill": {
+            "boundary": {
+                "type": "circle",
+                "cx": 0.0,
+                "cy": 0.0,
+                "r": 0.45,
+            },
+        },
         "border_fill": None,
         "border_labels": {
             "top": None,

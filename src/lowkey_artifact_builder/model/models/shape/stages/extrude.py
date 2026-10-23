@@ -61,6 +61,9 @@ INNER_RIDGE_COMPONENT_PATH = "inner-ridge.stl"
 ARTWORK_FILL_COMPONENT_NAME = "artwork-fill"
 ARTWORK_FILL_COMPONENT_PATH = "artwork-fill.stl"
 
+ARTWORK_REGION_FILL_COMPONENT_NAME = "artwork-region-fill"
+ARTWORK_REGION_FILL_COMPONENT_PATH = "artwork-region-fill.stl"
+
 BORDER_FILL_COMPONENT_NAME = "border-fill"
 BORDER_FILL_COMPONENT_PATH = "border-fill.stl"
 
@@ -293,6 +296,8 @@ def execute(
             composition_manifest,
         )
 
+        artwork_region_fill = _load_artwork_region_fill(composition_manifest)
+
         border_labels = _load_border_labels(
             composition_manifest,
         )
@@ -456,6 +461,14 @@ def execute(
             inlaid_planar_geometries,
         )
 
+        if artwork_region_fill is not None:
+            base_planar_geometries.append(
+                _build_registered_fill_boundary_scad(
+                    artwork_region_fill,
+                    shape_size=shape_size,
+                )
+            )
+
         if border_fill is not None:
             base_planar_geometries.append(
                 _build_artwork_fill_planar_geometry_scad(
@@ -614,6 +627,16 @@ def execute(
                 shape_artwork_fill_raise=shape_artwork_fill_raise,
                 hole=hole,
                 exclusions=artwork.get("exclusions", []) if artwork is not None else [],
+            )
+
+        if artwork_region_fill is not None:
+            components += _render_artwork_region_fill_component(
+                artwork_region_fill,
+                manifest.parent,
+                shape_size=shape_size,
+                shape_base_raise=shape_base_raise,
+                hole=hole,
+                planar_subtraction=_build_planar_union_scad(inlaid_planar_geometries),
             )
 
         if border_fill is not None:
@@ -874,6 +897,45 @@ def _render_inner_ridge_component(
             INNER_RIDGE_COMPONENT_PATH,
         ),
     )
+
+
+def _render_artwork_region_fill_component(
+    boundary: dict[str, object],
+    output_directory: Path,
+    *,
+    shape_size: float,
+    shape_base_raise: float,
+    hole: HoleGeometry | None,
+    planar_subtraction: str | None,
+) -> tuple[tuple[str, str], ...]:
+    """Render the registered interior as a full-depth independent component."""
+    output_path = output_directory / ARTWORK_REGION_FILL_COMPONENT_PATH
+    planar_geometry = _build_registered_fill_boundary_scad(
+        boundary,
+        shape_size=shape_size,
+    )
+    if planar_subtraction is not None:
+        planar_geometry = (
+            "difference() {\n"
+            f"{_indent_scad(planar_geometry, 4)}"
+            f"{_indent_scad(planar_subtraction, 4)}"
+            "}\n"
+        )
+
+    geometry = (
+        f"linear_extrude(\n    height = shape_base_raise,\n    center = false\n)\n{planar_geometry}"
+    )
+    geometry = _build_hole_subtracted_geometry_scad(geometry, hole=hole)
+    source = (
+        f"shape_size = {shape_size:g};\n"
+        f"shape_base_raise = {shape_base_raise:g};\n"
+        f"{_build_hole_parameters_scad(hole)}"
+        "\n"
+        f"{geometry}"
+    )
+    render_stl_source(source, output_path)
+    _require_component(output_path, component_name=ARTWORK_REGION_FILL_COMPONENT_NAME)
+    return ((ARTWORK_REGION_FILL_COMPONENT_NAME, ARTWORK_REGION_FILL_COMPONENT_PATH),)
 
 
 def _render_artwork_fill_component(
@@ -4805,6 +4867,24 @@ def _composition_has_artwork(
         )
         is not None
     )
+
+
+def _load_artwork_region_fill(
+    composition_manifest: Path,
+) -> dict[str, object] | None:
+    """Load the Compose-owned registered interior boundary."""
+    data = json.loads(composition_manifest.read_text(encoding="utf-8"))
+    region = data.get("artwork_region_fill")
+    if region is None:
+        return None
+    if not isinstance(region, dict):
+        raise ValueError("Registered Artwork Region Fill must be an object.")
+    boundary = region.get("boundary")
+    if not isinstance(boundary, dict):
+        raise ValueError("Registered Artwork Region Fill boundary must be an object.")
+    if boundary.get("type") not in {"circle", "rect", "polygon", "path"}:
+        raise ValueError("Unsupported registered Artwork Region Fill boundary type.")
+    return boundary
 
 
 def _load_artwork_fill(
