@@ -332,8 +332,12 @@ Z = shape_base_raise
 Base thickness therefore belongs to physical dimensionalization rather
 than to the registered two-dimensional structural representation.
 
-With `shape_raise_style = "raised"`, the Base retains the existing component
-relationships defined by this document and the participating Feature contracts.
+With `shape_raise_style = "raised"`, the complete assembled Base envelope
+retains the existing component relationships defined by this document and
+participating Feature contracts. Where Surface Regions have distinct colors,
+that envelope is partitioned into nonoverlapping Base-colored and Surface
+Region material through the Base thickness. Raised foreground components
+retain their established placement above the corresponding background.
 
 With `shape_raise_style = "inlaid"`, `shape_base_raise` remains the complete
 physical thickness of the Shape. Participating inlaid component regions are
@@ -904,10 +908,11 @@ is assigned during Shape Package and defaults to the resolved
 
 When Artwork fill does not exist, no Artwork-fill component is produced.
 With `shape_raise_style = "raised"`, incorporated Artwork may still rise above
-the Base according to `shape_artwork_raise`, and the remainder of the interior
-region remains at the Base top. With `shape_raise_style = "inlaid"`, incorporated
-Artwork remains a full-depth partition while the remainder of the interior region
-remains Base material through the complete Base thickness.
+the background surface according to `shape_artwork_raise`, and the remainder
+of the interior region remains at the Base-top elevation. With
+`shape_raise_style = "inlaid"`, incorporated Artwork remains a full-depth
+partition while the remainder of the interior region retains its resolved
+Artwork Region Fill or Base material through the complete Base thickness.
 
 Artwork fill is a distinct semantic component from the structural base
 even when its resolved color is equal to the base color.
@@ -964,6 +969,7 @@ shape_raise_style
 shape_base_raise
 shape_base_color
 shape_outer_ridge_width
+shape_outer_ridge_inset
 shape_outer_ridge_raise
 shape_outer_ridge_style
 shape_outer_ridge_color
@@ -974,6 +980,8 @@ shape_inner_ridge_color
 shape_artwork_raise
 shape_artwork_fill_raise
 shape_artwork_fill_color
+shape_border_fill_color
+shape_artwork_region_fill_color
 ```
 
 `shape_geometry` selects the structural geometry.
@@ -1125,6 +1133,7 @@ The dimensional parameters are:
 shape_size
 shape_base_raise
 shape_outer_ridge_width
+shape_outer_ridge_inset
 shape_outer_ridge_raise
 shape_inner_ridge_width
 shape_inner_ridge_raise
@@ -1158,14 +1167,17 @@ shape_base_color
 shape_outer_ridge_color
 shape_inner_ridge_color
 shape_artwork_fill_color
+shape_border_fill_color
+shape_artwork_region_fill_color
 ```
 
 `printer_colors` provides the candidate physical printer colors used by
 Shape Package to resolve the logical Artifact-color layers of
 incorporated Artwork.
 
-`shape_base_color` and `shape_artwork_fill_color` provide model-wide
-physical color policy for Shape-owned components.
+`shape_base_color`, `shape_artwork_fill_color`, `shape_border_fill_color`,
+and `shape_artwork_region_fill_color` provide model-wide physical color
+policy for Shape-owned components.
 `shape_outer_ridge_color` and `shape_inner_ridge_color` are Feature
 packaging parameters whose semantics are defined by their respective
 Feature contracts.
@@ -1184,12 +1196,14 @@ Physical Shape components are packaged after dimensionalization.
 
 Package is the physical color-assignment boundary for Shape.
 
-Shape-owned Base and Artwork-fill components retain semantic component identity
-through dimensionalization. Package applies their physical printing colors according
-to `shape_base_color` and `shape_artwork_fill_color`.
+Shape-owned Base, Artwork-fill, and Surface Region components retain the
+semantic identity needed through dimensionalization. Package applies their
+physical printing colors according to `shape_base_color`,
+`shape_artwork_fill_color`, `shape_border_fill_color`, and
+`shape_artwork_region_fill_color`.
 
-The resolved Artwork-fill color defaults to the resolved base color when
-no explicit Artwork-fill color is configured.
+The resolved Artwork-fill and both Surface Region colors default to the
+resolved Base color when no corresponding explicit color is configured.
 
 Registered Artwork enters Shape with logical Artifact-color identity,
 and that identity is preserved through Compose and Extrude. Package
@@ -1294,6 +1308,100 @@ consumers, but do not require changes to upstream Artwork products
 or Shape Structure.
 
 
+### Surface Regions
+
+Surface Regions are Shape-owned background regions defined by the participating
+perimeter boundaries. Their existence does not depend on incorporated Artwork
+or Border Label text. They do not create or change ridge participation.
+
+The two independently configurable physical colors are:
+
+```text
+shape_border_fill_color
+shape_artwork_region_fill_color
+```
+
+Each defaults to the resolved `shape_base_color`; an explicit value overrides
+that derived default. These are Package-stage physical color assignments,
+not registered geometry or Artwork logical-color assignments. Changing only
+either color does not change registered composition or extrusion geometry.
+
+#### Region Boundaries
+
+The Border Fill outer reference is the inside boundary of a participating
+Outer Ridge, or the complete Shape boundary when no Outer Ridge participates.
+The Border Fill inner reference is the outside boundary of a participating
+Inner Ridge. If no Inner Ridge participates but Border Labels participate,
+the inner reference is the Border Label region's inner boundary. If neither
+participates, the Border Fill has no positive-area region.
+
+The Border Fill is the band between these two references, excluding the
+physical footprint of any participating ridge. It exists as a geometric
+region whenever the references enclose positive area, whether or not labels
+are present. A zero-distance pair of references creates no Border Fill
+component; it does not create a degenerate printable region.
+
+The Artwork Region Fill is the complete registered Shape interior region
+established by the existing Inner Ridge, Border Label, and Outer Ridge
+interior-boundary rules. When none of those Features participates, it is the
+complete Shape interior. It exists independently of incorporated Artwork.
+
+The two regions are disjoint in their planar interiors. Together with the
+participating ridge bands and the exposed Base perimeter, they cover the
+Shape surface without unintended gaps. Region boundaries are derived from
+existing registered Feature boundaries, not from independent offsets.
+A configured geometry that produces crossed boundaries, negative area, or
+an impossible nondegenerate region is invalid.
+
+#### Physical Components and Foreground Precedence
+
+Surface Regions represent printable material, not merely SVG paint. In the
+raised style, their background material occupies `Z = 0` through
+`Z = shape_base_raise` within their respective X/Y regions. Raised Artwork,
+Border Labels, QR geometry, and other participating foreground components
+retain their existing Z placement above that surface. The assembled Base envelope remains complete, but its material is
+partitioned rather than duplicated wherever Surface Regions have distinct
+colors. The exposed perimeter outside an inset Outer Ridge remains Base
+material.
+
+In the inlaid style, region material occupies `Z = 0` through
+`Z = shape_base_raise`, partitioned from the Base and other inlaid components.
+Foreground Artwork, Border Labels, QR dark/light regions, and ridges take
+precedence within their own occupied X/Y footprints; their full-depth
+material replaces the background there. The same occupied footprints must
+not be duplicated as overlapping printable volumes.
+
+In either style, enclosed empty spaces within glyphs and incorporated
+Artwork, including counters, remain background-region material rather than
+through-holes. The complete background region is defined independently of
+foreground participation. A participating Hole remains subtractive across
+all intersecting components.
+
+A Surface Region may resolve to the same physical color as the Base or
+another adjacent region. Equivalent same-color material may be represented
+by shared printable geometry when that preserves required semantic and
+manufacturing identity; equal colors must not introduce duplicate volumes.
+
+The existing Artwork Fill controlled by `shape_artwork_fill_raise` and
+`shape_artwork_fill_color` remains a separate optional feature. When it
+participates, its existing envelope-based X/Y region and raised-style Z
+height are preserved. In the raised style, Artwork Fill is layered above the Artwork Region Fill
+at `Z = shape_base_raise`; it does not subtract the full-depth background
+underneath it. In the inlaid style, its full-depth material replaces the
+background over its occupied footprint. Neither style duplicates physical
+volumes.
+The new Artwork Region Fill neither activates Artwork Fill nor changes its
+participation, raise, or color semantics.
+
+Surface Region identities are retained through registered composition and
+physical dimensionalization for Package color assignment. The canonical SVG represents their actual planar boundaries and the
+foreground footprints needed to distinguish their material partitions,
+without treating them as an opaque, unpartitioned solid Base or introducing
+extra construction geometry. A raised foreground layered above a Surface
+Region does not remove the underlying full-depth region from the 3MF; SVG
+may express its visible foreground footprint without implying a physical
+through-cut.
+
 ### Outer Ridge
 
 The Outer Ridge Feature provides an optional perimeter ridge within the complete assembled Shape envelope.
@@ -1306,6 +1414,7 @@ The ridge is controlled by:
 
 ```text
 shape_outer_ridge_width
+shape_outer_ridge_inset
 shape_outer_ridge_raise
 shape_outer_ridge_style
 shape_outer_ridge_color
@@ -1324,10 +1433,24 @@ For polygon geometry, the ridge follows the configured regular polygon
 after its side count, rotation, and registered normalization have been
 applied.
 
-Ridge width is measured inward from the outer Shape boundary.
+Ridge width is measured inward from the Outer Ridge outer boundary.
 
-For polygon geometry, ridge width is the perpendicular distance from
-each outer polygon edge to its corresponding inner ridge edge.
+The optional `shape_outer_ridge_inset` is measured inward from the complete
+Shape/Base boundary to the Outer Ridge outer boundary. Its default is `0 mm`.
+The inset must be finite and nonnegative. A zero inset preserves the existing
+Outer Ridge boundaries. An inset does not change `shape_size` or the complete
+Shape envelope.
+
+The exposed perimeter between the complete Shape boundary and an inset Outer
+Ridge is Base material and retains `shape_base_color`. This perimeter exists
+only when an Outer Ridge participates; a nonzero inset alone does not create
+a ridge or a separate perimeter component.
+
+For polygon geometry, both the inset and ridge width are perpendicular
+distances between corresponding parallel polygon edges. The ridge outer
+boundary is inset from the complete Shape boundary by
+`shape_outer_ridge_inset`; its inner boundary is a further
+`shape_outer_ridge_width` inward.
 
 The inner ridge boundary therefore consists of edges parallel to the
 corresponding outer polygon edges.
@@ -1358,7 +1481,7 @@ shape_outer_ridge_width = 0
 
 A negative outer-ridge width is invalid.
 
-When the ridge does not exist, ridge raise, style, and color do not
+When the ridge does not exist, ridge inset, raise, style, and color do not
 alter the produced ridge geometry.
 
 `shape_outer_ridge_raise` does not determine whether a ridge exists.
@@ -1409,8 +1532,11 @@ A ridge raise less than:
 
 is invalid because it would imply a negative physical ridge height.
 
-`shape_outer_ridge_width` is a physical dimension measured in
-millimeters.
+`shape_outer_ridge_width` and `shape_outer_ridge_inset` are physical
+dimensions measured in millimeters. A participating ridge requires a
+nondegenerate outer and inner boundary after both offsets. Invalid inset
+and width combinations, including those that collapse the interior, are
+rejected explicitly.
 
 When ridge geometry must participate in registered composition before
 physical dimensionalization, its physical width is converted to a
@@ -1421,8 +1547,9 @@ shape_outer_ridge_width
 shape_size
 ```
 
-For example, a 5 mm ridge on a 100 mm Shape occupies 0.05 registered
-Shape units inward from the corresponding outer boundary.
+For example, a 5 mm ridge with a 2 mm inset on a 100 mm Shape
+starts 0.02 registered Shape units inside the Shape boundary and extends
+a further 0.05 registered units inward.
 
 For polygon geometry, this registered inset is measured perpendicular to
 each polygon edge rather than by subtracting the same value from each
@@ -1468,12 +1595,12 @@ shape_outer_ridge_style = integrated
 
 the ridge is structurally integrated with the base.
 
-The base retains the complete Shape X/Y envelope.
-
-The ridge occupies the perimeter region between:
+The complete assembled Base envelope retains the Shape X/Y extent;
+Base-colored material is limited by any independently colored Surface
+Regions. The ridge occupies the perimeter region between:
 
 ```text
-the complete Shape outer boundary
+the inset Outer Ridge outer boundary
 ```
 
 and:
@@ -1509,7 +1636,8 @@ When:
 shape_outer_ridge_raise > 0
 ```
 
-the base retains the complete Shape X/Y envelope through:
+the assembled Base envelope, including its Surface Region material
+partitions, retains the complete Shape X/Y extent through:
 
 ```text
 Z = shape_base_raise
@@ -1553,8 +1681,8 @@ shape_outer_ridge_raise = 0
 the ridge top is flush with the top of the base.
 
 The ridge's registered X/Y region continues to exist, but there is no
-physical ridge-color volume above the base. The complete dimensionalized
-structure is therefore base material through:
+physical ridge-color volume above the base. The complete dimensionalized ridge structure is therefore background
+material (Base color or the applicable Surface Region color) through:
 
 ```text
 Z = shape_base_raise
@@ -1623,18 +1751,22 @@ shape_outer_ridge_style = separate
 
 the ridge is an independently printable structural component.
 
-The ridge retains the complete Shape outer boundary.
+The ridge retains its own outer boundary inset from the complete Shape
+boundary by `shape_outer_ridge_inset`. The exposed outer perimeter remains
+Base material.
 
-Its inner boundary is inset from that outer boundary by:
+Its inner boundary is inset from the ridge outer boundary by:
 
 ```text
 shape_outer_ridge_width
 ```
 
-The base outer boundary becomes the ridge inner boundary.
-
-The base and ridge therefore occupy adjacent, nonoverlapping X/Y
-regions.
+The assembled Base envelope occupies the exposed outer perimeter and the region
+inside the ridge inner boundary, with Surface Region material partitions
+inside that boundary. The separate ridge occupies the intervening band.
+The Base and separate ridge therefore occupy complementary, nonoverlapping
+X/Y regions; with a nonzero inset the Base may have disconnected X/Y
+regions but retains the complete assembled Shape envelope.
 
 With `shape_raise_style = "raised"`, the separately printable Base occupies:
 
@@ -1723,7 +1855,7 @@ Its default color is the base color.
 
 #### Ridge Equivalence
 
-For otherwise identical Shape parameters, changing:
+For otherwise identical Shape parameters, including the same inset, changing:
 
 ```text
 shape_outer_ridge_style
@@ -1754,7 +1886,7 @@ For example, for a 100 mm square with:
 shape_outer_ridge_width = 5
 ```
 
-both ridge styles have:
+both ridge styles at zero inset have:
 
 ```text
 complete outer envelope = 100 mm × 100 mm
@@ -1776,7 +1908,8 @@ base outer envelope = 90 mm × 90 mm
 ```
 
 because the independently printable ridge occupies the surrounding 5 mm
-perimeter region.
+perimeter region. With a positive inset, the Base additionally retains the
+exposed outer perimeter; the ridge no longer reaches the Shape boundary.
 
 The union of the separate base and separate ridge corresponds to the
 same intended assembled structural geometry as the integrated
@@ -1863,9 +1996,16 @@ space into which registered Artwork is fitted.
 
 #### Interaction With Base
 
-Without a separately printable Outer Ridge, the Base occupies the complete Shape X/Y envelope.
+Without a separately printable Outer Ridge, the assembled Base envelope
+occupies the complete Shape X/Y extent. Its Base-colored material excludes
+any differently colored Surface Region partitions.
 
-With a separately printable Outer Ridge, the Base occupies the region inside the ridge's inner boundary. The separately printable ridge therefore reduces the X/Y extent of the Base component without reducing the complete assembled Shape envelope.
+With a separately printable Outer Ridge, the assembled Base envelope occupies
+the region inside the ridge's inner boundary and, when inset is positive,
+the exposed outer perimeter. The latter remains Base-colored; the former
+is partitioned by participating Surface Regions.
+The separately printable ridge partitions the Base without reducing the
+complete assembled Shape envelope.
 
 The Base may be assigned a printing color. The Outer Ridge defaults to the Base color but may be assigned a different color independently.
 
@@ -1874,8 +2014,8 @@ The Base may be assigned a printing color. The Outer Ridge defaults to the Base 
 A conforming Outer Ridge Feature satisfies the following:
 
 1. An Outer Ridge follows the selected Shape boundary.
-2. Outer-Ridge width is measured inward from the complete Shape boundary.
-3. For polygon geometry, Outer-Ridge width is the perpendicular distance between corresponding outer and inner polygon edges.
+2. Outer-Ridge inset is measured inward from the complete Shape boundary to the ridge outer boundary; ridge width is measured inward from that ridge outer boundary.
+3. For polygon geometry, both inset and width are perpendicular distances between corresponding polygon edges.
 4. The Outer Ridge lies within the Shape boundary and does not increase `shape_size`.
 5. Outer-Ridge existence is determined solely by `shape_outer_ridge_width`.
 6. Zero Outer-Ridge width disables the Outer Ridge.
@@ -1888,9 +2028,9 @@ A conforming Outer Ridge Feature satisfies the following:
 13. Outer-Ridge raise may be negative down to `-shape_base_raise`.
 14. With shape_raise_style = "raised", Outer-Ridge raise less than `-shape_base_raise` is invalid.
 15. An existing Outer Ridge may be integrated with the Base or partitioned as a separately printable structural component.
-16. With an integrated Outer Ridge, the Base retains the complete Shape X/Y envelope.
-17. With a separate Outer Ridge, the ridge retains the complete Shape outer boundary and the Base outer boundary becomes the ridge inner boundary.
-18. A separate Outer Ridge and its Base occupy adjacent, nonoverlapping X/Y regions.
+16. With an integrated Outer Ridge, the assembled Base envelope retains the complete Shape X/Y extent, with nonoverlapping Surface Region material partitions where applicable.
+17. With a separate Outer Ridge, its outer boundary is inset from the Shape boundary and the assembled Base envelope occupies both the region inside its inner boundary and any exposed outer perimeter, subject to Surface Region material partitions.
+18. A separate Outer Ridge and its Base occupy complementary, nonoverlapping X/Y regions.
 19. With `shape_raise_style = "raised"`, a separate Outer Ridge occupies Z from zero through `shape_base_raise + shape_outer_ridge_raise`.
 20. Integrated and separate ridge styles preserve the same complete Shape envelope, ridge boundaries, registered interior region, and intended assembled ridge height for otherwise identical Shape parameters.
 21. The innermost existing ridge boundary defines the available registered interior region; when no ridge exists, the registered Shape boundary defines the interior region.
@@ -1908,6 +2048,10 @@ A conforming Outer Ridge Feature satisfies the following:
 33. Inlaid Outer-Ridge material occupies a nonoverlapping physical partition of the Shape rather than layering on or overlapping the Base.
 34. An inlaid Outer Ridge remains a distinct printable component through the complete Base thickness regardless of whether `shape_outer_ridge_style` resolves to `integrated` or `separate`.
 35. `shape_outer_ridge_raise` and `shape_outer_ridge_style` retain their resolved values and raised-style meanings but do not change the full-depth Z extent or nonoverlapping Base partition of an inlaid Outer Ridge.
+36. The default `shape_outer_ridge_inset` is zero and preserves existing geometry.
+37. A positive inset exposes Base material outside a participating Outer Ridge without changing the complete Shape envelope.
+38. Zero ridge width disables the ridge regardless of inset.
+39. Invalid inset and ridge-width combinations are rejected rather than producing collapsed or overlapping regions.
 
 ### Inner Ridge
 
@@ -2117,7 +2261,7 @@ shape_base_raise + shape_inner_ridge_raise
 
 With `shape_raise_style = "raised"`, the Inner Ridge layers on top of the Base.
 
-The Base remains present beneath the Inner Ridge and retains its complete X/Y extent.
+The assembled background remains present beneath the Inner Ridge and retains its complete X/Y extent, partitioned into Base and Surface Region material as applicable.
 
 The Inner Ridge therefore behaves structurally like an integrated ridge rather than partitioning a separate X/Y region from the Base.
 
@@ -2874,7 +3018,7 @@ The Top Border Label and Bottom Border Label are distinct Shape-owned extrusion 
 The two raises are independent.
 
 With `shape_raise_style = "raised"`, Border Label extrusion layers on the Base
-and does not remove or partition the Base in X/Y. The Base remains underneath
+and does not remove or partition the Base in X/Y. The applicable Base or Border Fill background material remains underneath
 the complete Border Label region.
 
 With `shape_raise_style = "inlaid"`, each participating Border Label is
@@ -3859,15 +4003,18 @@ The exported SVG:
 
 - combines participating registered Artwork, ridges, border labels,
   and applicable planar Shape Features;
-- excludes the solid Shape Base while permitting explicit structural
-  boundary outlines;
+- excludes an opaque, unpartitioned solid Shape Base while permitting
+  explicit structural boundary outlines and planar geometry for the
+  independently colored Surface Regions;
 - preserves registered placement, orientation, semantic component
   identity, and logical Artwork-color separation;
 - uses physical millimeter dimensions derived from `shape_size`;
 - contains portable vector geometry without external resources,
   unresolved fonts, or editor-specific dependencies;
 - avoids construction geometry, unintended opaque backgrounds,
-  duplicate filled regions, and oversized default strokes.
+  duplicate filled regions, and oversized default strokes; the visible
+  foreground footprints do not imply full-depth subtraction of raised-style
+  background material.
 
 Structural outlines use explicit physical stroke widths.
 
@@ -3983,10 +4130,13 @@ A conforming initial Shape implementation satisfies the following:
 57. Shape Extrude owns physical geometry and component participation and does not assign physical colors to Shape-owned components.
 58. Shape Package applies physical color policy for Shape-owned components.
 59. Shape Package resolves incorporated Artwork Artifact-color identity to physical printer colors using `printer_colors`.
-60. Changing only `printer_colors`, `shape_base_color`, `shape_artwork_fill_color`, or Feature-specific packaging color parameters does not by itself change Shape Structure, Compose, or Extrude geometry.
+60. Changing only `printer_colors`, `shape_base_color`, `shape_artwork_fill_color`, `shape_border_fill_color`, `shape_artwork_region_fill_color`, or Feature-specific packaging color parameters does not by itself change Shape Structure, Compose, or Extrude geometry.
 61. Changing `shape_artwork_fill_raise` changes Artwork-fill participation and therefore affects Shape Extrude and downstream Package; with raised style it also changes fill physical height.
 62. The initial inlaid Shape contract applies to incorporated Artwork, Artwork fill, Outer Ridge, Inner Ridge, Border Labels, and Loop.
 63. Hole remains subtractive through every intersecting physical component under either raise style.
+64. Border Fill and Artwork Region Fill have independent physical colors derived by default from the resolved Base color.
+65. Surface Regions are complete background regions independent of Artwork and Border Label participation; participating foreground material replaces, rather than removes without replacement, the applicable inlaid background.
+66. A zero Outer Ridge inset preserves established geometry; positive inset exposes Base material without changing the Shape envelope.
 
 ## Scope
 
