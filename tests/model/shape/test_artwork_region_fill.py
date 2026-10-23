@@ -11,30 +11,44 @@ import pytest
 
 from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.model.models.shape.stages import compose, extrude, package
-from tests.support.model_parameters import model_test_resolver
+from tests.support.model_parameters import (
+    configure_mock_resolver,
+    model_test_resolver,
+)
 
 SVG_NS = "http://www.w3.org/2000/svg"
 
 
 def _compose(
-    tmp_path: Path, *, outer_width: float = 0.0, inner_width: float = 0.0
+    tmp_path: Path,
+    *,
+    outer_width: float = 0.0,
+    inner_width: float = 0.0,
 ) -> tuple[Path, Path, Path]:
     structure = tmp_path / "structure.svg"
     composition = tmp_path / "composition.svg"
     manifest = tmp_path / "products.json"
     artifact = tmp_path / "artifact.svg"
+
     structure.write_text(
         f'<svg xmlns="{SVG_NS}" viewBox="-0.5 -0.5 1 1">'
         '<circle id="shape-boundary" cx="0" cy="0" r="0.5"/></svg>',
         encoding="utf-8",
     )
+
     inputs = {"structure.structure": structure}
-    outputs = {"composition": composition, "manifest": manifest, "artifact": artifact}
+    outputs = {
+        "composition": composition,
+        "manifest": manifest,
+        "artifact": artifact,
+    }
+
     context = Mock(spec=StageContext)
     context.input.side_effect = inputs.__getitem__
     context.has_input.side_effect = inputs.__contains__
     context.output.side_effect = outputs.__getitem__
-    context.resolver.side_effect = model_test_resolver(
+
+    resolver = model_test_resolver(
         "shape",
         overrides={
             "shape_size": 100.0,
@@ -49,7 +63,11 @@ def _compose(
         },
         project_root=tmp_path,
     )
+
+    configure_mock_resolver(context, resolver)
+
     compose.execute(context)
+
     return composition, manifest, artifact
 
 
@@ -119,19 +137,25 @@ def test_extrude_partitions_full_depth_region_from_base(
     """The central region is independently printable and is removed from Base."""
     composition, composition_manifest, _ = _compose(tmp_path)
     output = tmp_path / "extrude" / "products.json"
+
     inputs = {
         "compose.composition": composition,
         "compose.manifest": composition_manifest,
     }
+
     context = Mock(spec=StageContext)
     context.input.side_effect = inputs.__getitem__
     context.has_input.side_effect = inputs.__contains__
     context.output.return_value = output
-    context.resolver.side_effect = model_test_resolver(
+
+    resolver = model_test_resolver(
         "shape",
         overrides={"shape_raise_style": raise_style},
         project_root=tmp_path,
     )
+
+    configure_mock_resolver(context, resolver)
+
     sources: dict[str, str] = {}
 
     def fake_render(source: str, target: Path) -> None:
@@ -140,9 +164,12 @@ def test_extrude_partitions_full_depth_region_from_base(
         target.write_bytes(b"test-stl")
 
     monkeypatch.setattr(extrude, "render_stl_source", fake_render)
+
     extrude.execute(context)
+
     data = json.loads(output.read_text(encoding="utf-8"))
     components = {item["name"]: item["path"] for item in data["components"]}
+
     assert components["artwork-region-fill"] == "artwork-region-fill.stl"
     assert "base" in components
     assert "artwork-region-fill.stl" in sources
@@ -167,24 +194,36 @@ def test_package_resolves_region_color(
         )
         for name in ("base", "artwork-region-fill")
     )
+
     overrides = {"shape_base_color": "black"}
+
     if override is not None:
         overrides["shape_artwork_region_fill_color"] = override
+
     context = Mock(spec=StageContext)
-    context.resolver.side_effect = model_test_resolver(
+
+    resolver = model_test_resolver(
         "shape",
         overrides=overrides,
         project_root=tmp_path,
     )
+
+    configure_mock_resolver(context, resolver)
+
     black = Mock(name="black")
     red = Mock(name="red")
     palette = {"black": black, "red": red}
+
     with patch.object(
         package,
         "resolve_palette",
         side_effect=lambda names, _colors: tuple(palette[name] for name in names),
     ):
-        colors = package._resolve_shape_component_colors(components, context=context)
+        colors = package._resolve_shape_component_colors(
+            components,
+            context=context,
+        )
+
     assert colors["base"] is black
     assert colors["artwork-region-fill"] is (red if override else black)
 

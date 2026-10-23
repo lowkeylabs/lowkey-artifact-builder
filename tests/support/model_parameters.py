@@ -54,3 +54,21 @@ def model_test_resolver(
         overrides,
         provenance="test",
     )
+
+
+def configure_mock_resolver(
+    context: Any,
+    resolver: Resolver,
+) -> None:
+    """
+    Attach a production-backed Resolver to a mocked StageContext.
+
+    Delegate the complete Resolver interface while preserving
+    Mock call tracking for parameter-resolution assertions.
+
+    Tests may override the wrapped Mock's side_effect when
+    exercising parameter-specific failure behavior.
+    """
+    from unittest.mock import Mock
+
+    context.resolver = Mock(wraps=resolver)

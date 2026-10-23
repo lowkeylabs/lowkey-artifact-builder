@@ -24,7 +24,10 @@ from lowkey_artifact_builder.model.models.shape.stages import (
     compose,
     extrude,
 )
-from tests.support.model_parameters import model_test_resolver
+from tests.support.model_parameters import (
+    configure_mock_resolver,
+    model_test_resolver,
+)
 
 SVG = "http://www.w3.org/2000/svg"
 
@@ -66,7 +69,7 @@ def _compose(
     context.has_input.side_effect = inputs.__contains__
     context.output.side_effect = outputs.__getitem__
 
-    context.resolver.side_effect = model_test_resolver(
+    resolver = model_test_resolver(
         "shape",
         overrides={
             "shape_size": 100.0,
@@ -80,6 +83,7 @@ def _compose(
         },
         project_root=directory,
     )
+    configure_mock_resolver(context, resolver)
 
     compose.execute(context)
     return composition, manifest
@@ -109,7 +113,7 @@ def _extrude(
     context.has_input.side_effect = inputs.__contains__
     context.output.return_value = output
 
-    context.resolver.side_effect = model_test_resolver(
+    resolver = model_test_resolver(
         "shape",
         overrides={
             "shape_size": 100.0,
@@ -124,6 +128,7 @@ def _extrude(
         },
         project_root=directory,
     )
+    configure_mock_resolver(context, resolver)
 
     sources: dict[str, str] = {}
 
@@ -388,11 +393,12 @@ def test_border_label_partitioning_reaches_border_fill(
         "shape_qr_payload": "",
     }
 
-    context.resolver.side_effect = model_test_resolver(
+    resolver = model_test_resolver(
         "shape",
         overrides=parameters,
         project_root=directory,
     )
+    configure_mock_resolver(context, resolver)
 
     compose.execute(context)
 
@@ -415,7 +421,7 @@ def test_border_label_partitioning_reaches_border_fill(
     extrusion_context.has_input.side_effect = extrusion_inputs.__contains__
     extrusion_context.output.return_value = extrusion_manifest
 
-    extrusion_context.resolver.side_effect = model_test_resolver(
+    extrusion_resolver = model_test_resolver(
         "shape",
         overrides={
             **parameters,
@@ -424,6 +430,7 @@ def test_border_label_partitioning_reaches_border_fill(
         },
         project_root=directory,
     )
+    configure_mock_resolver(extrusion_context, extrusion_resolver)
 
     rendered_sources: dict[str, str] = {}
 

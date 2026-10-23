@@ -289,8 +289,8 @@ def _configure_shape_resolver(
     """
     Configure representative Shape parameters for registered composition.
 
-    Model defaults and derivations come from the authoritative
-    configuration engine.
+    Model defaults, derivations, and color definitions come from the
+    authoritative configuration engine.
 
     Explicit overrides preserve the geometry and optional-feature
     behavior expected by these tests.
@@ -324,6 +324,7 @@ def _configure_shape_resolver(
     resolver = Mock(
         side_effect=production_resolver,
     )
+    resolver.color.side_effect = production_resolver.color
 
     context.resolver = resolver
 
@@ -2050,18 +2051,17 @@ def test_compose_stage_preserves_registered_shape_geometry(
     assert circle.get("r") == "0.5"
 
 
-def test_compose_stage_resolves_only_registered_partition_parameters(
+def test_compose_stage_resolves_geometry_and_svg_appearance_parameters(
     tmp_path: Path,
 ) -> None:
     """
-    Registered composition resolves only parameters needed for partitioning.
+    Registered composition resolves geometry and canonical SVG appearance.
 
-    Shape size and ridge widths establish registered geometry. Outer-ridge
-    style establishes structural partition policy. Inner-ridge distance
-    establishes its position relative to the applicable outer reference
-    boundary.
+    Shape dimensions, ridge geometry, and label parameters establish
+    registered composition. Logical color parameters provide the visual
+    appearance of canonical SVG components.
 
-    Physical Z dimensions and printing colors remain downstream.
+    Physical Z dimensions and printer-color assignment remain downstream.
     """
 
     structure_input = tmp_path / "structure.svg"
@@ -2110,6 +2110,14 @@ def test_compose_stage_resolves_only_registered_partition_parameters(
         call("shape_top_border_label_arc_degrees"),
         call("shape_bottom_border_label_arc_degrees"),
         call("shape_qr_payload"),
+        call("shape_outer_ridge_color"),
+        call("shape_inner_ridge_color"),
+        call("shape_border_fill_color"),
+        call("shape_artwork_region_fill_color"),
+        call("shape_top_border_label_color"),
+        call("shape_bottom_border_label_color"),
+        call("shape_qr_light_color"),
+        call("shape_qr_dark_color"),
     ]
 
 

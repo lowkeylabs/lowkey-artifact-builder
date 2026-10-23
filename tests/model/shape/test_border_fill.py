@@ -17,7 +17,10 @@ from lowkey_artifact_builder.model.models.shape.stages import (
     extrude,
     package,
 )
-from tests.support.model_parameters import model_test_resolver
+from tests.support.model_parameters import (
+    configure_mock_resolver,
+    model_test_resolver,
+)
 
 SVG_NS = "http://www.w3.org/2000/svg"
 
@@ -34,7 +37,6 @@ def _compose_border_fill(
 
     No Artwork or Border Labels participate.
     """
-
     structure = tmp_path / "structure.svg"
     composition = tmp_path / "composition.svg"
     manifest = tmp_path / "products.json"
@@ -67,7 +69,7 @@ def _compose_border_fill(
     context.has_input.side_effect = inputs.__contains__
     context.output.side_effect = outputs.__getitem__
 
-    context.resolver.side_effect = model_test_resolver(
+    resolver = model_test_resolver(
         "shape",
         overrides={
             "shape_size": 100.0,
@@ -82,6 +84,8 @@ def _compose_border_fill(
         },
         project_root=tmp_path,
     )
+
+    configure_mock_resolver(context, resolver)
 
     compose.execute(context)
 
@@ -175,7 +179,6 @@ def test_package_resolves_border_fill_color_independently(
     Changing the Border Fill color does not change Base color
     or physical component identity.
     """
-
     components = (
         package.PhysicalComponent(
             name="base",
@@ -193,7 +196,7 @@ def test_package_resolves_border_fill_color_independently(
 
     context = Mock(spec=StageContext)
 
-    context.resolver.side_effect = model_test_resolver(
+    resolver = model_test_resolver(
         "shape",
         overrides={
             "shape_base_color": "black",
@@ -201,6 +204,8 @@ def test_package_resolves_border_fill_color_independently(
         },
         project_root=tmp_path,
     )
+
+    configure_mock_resolver(context, resolver)
 
     black = Mock()
     black.name = "black"
@@ -237,7 +242,6 @@ def test_package_border_fill_inherits_base_color(
     Inheritance follows the effective Base color, including
     an explicitly configured Base override.
     """
-
     components = (
         package.PhysicalComponent(
             name="base",
@@ -255,13 +259,15 @@ def test_package_border_fill_inherits_base_color(
 
     context = Mock(spec=StageContext)
 
-    context.resolver.side_effect = model_test_resolver(
+    resolver = model_test_resolver(
         "shape",
         overrides={
             "shape_base_color": "black",
         },
         project_root=tmp_path,
     )
+
+    configure_mock_resolver(context, resolver)
 
     black = Mock()
     black.name = "black"
@@ -309,7 +315,7 @@ def test_extrude_materializes_registered_border_fill(
     context.has_input.side_effect = inputs.__contains__
     context.output.return_value = extrusion_manifest
 
-    original_resolver = model_test_resolver(
+    resolver = model_test_resolver(
         "shape",
         overrides={
             "shape_size": 100.0,
@@ -325,7 +331,7 @@ def test_extrude_materializes_registered_border_fill(
         project_root=tmp_path,
     )
 
-    context.resolver.side_effect = original_resolver
+    configure_mock_resolver(context, resolver)
 
     rendered_sources: dict[str, str] = {}
 

@@ -14,7 +14,10 @@ from unittest.mock import Mock
 import pytest
 
 from lowkey_artifact_builder.model.models.shape.stages import compose
-from tests.support.model_parameters import model_test_resolver
+from tests.support.model_parameters import (
+    configure_mock_resolver,
+    model_test_resolver,
+)
 
 # =========================================================
 # Helpers
@@ -103,7 +106,8 @@ def _compose_inner_ridge(
     context.input.side_effect = inputs.__getitem__
     context.has_input.side_effect = inputs.__contains__
     context.output.side_effect = outputs.__getitem__
-    context.resolver.side_effect = resolver
+
+    configure_mock_resolver(context, resolver)
 
     compose.execute(
         context,

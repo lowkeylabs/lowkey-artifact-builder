@@ -18,7 +18,10 @@ import pytest
 
 from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.model.models.shape.stages import compose
-from tests.support.model_parameters import model_test_resolver
+from tests.support.model_parameters import (
+    configure_mock_resolver,
+    model_test_resolver,
+)
 
 SVG_NS = "http://www.w3.org/2000/svg"
 
@@ -117,7 +120,7 @@ def _run_compose(
         project_root=directory,
     )
 
-    context.resolver.side_effect = resolver
+    configure_mock_resolver(context, resolver)
 
     compose.execute(context)
 

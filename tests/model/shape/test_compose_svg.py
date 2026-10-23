@@ -79,6 +79,7 @@ def _run_compose(
     outer_ridge_width: float = 0.0,
     top_label: str = "",
     bottom_label: str = "",
+    color_overrides: dict[str, str] | None = None,
     qr_payload: str = "",
     qr_size: float = 20.0,
 ) -> tuple[Path, Path, Path]:
@@ -134,11 +135,15 @@ def _run_compose(
             "shape_artwork_offset_x": offset_x,
             "shape_artwork_offset_y": offset_y,
             "shape_artwork_scale": scale,
+            **(color_overrides or {}),
         },
         project_root=directory,
     )
 
+    # Preserve production parameter resolution and color-catalog
+    # lookup through the mocked StageContext.
     context.resolver.side_effect = resolver
+    context.resolver.color.side_effect = resolver.color
 
     compose.execute(context)
 
@@ -719,3 +724,129 @@ def test_compose_svg_separates_cut_contour_from_printable_structure(
     # The outside contour must not be duplicated as a
     # second visible structural outline.
     assert not any(element.get("id") == "shape-boundary" for element in structure.iter())
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    ("color_overrides", "expected"),
+    [
+        pytest.param(
+            {
+                "shape_base_color": "test-white",
+                "shape_outer_ridge_color": "test-red",
+                "shape_top_border_label_color": "test-yellow",
+                "shape_bottom_border_label_color": "test-white",
+                "shape_border_fill_color": "test-green",
+                "shape_artwork_region_fill_color": "test-blue",
+            },
+            {
+                "outer-ridge": "#ff0000",
+                "border-fill": "#00ff00",
+                "artwork-region-fill": "#0000ff",
+                "top-border-label": "#ffff00",
+                "bottom-border-label": "#ffffff",
+            },
+            id="distinct-synthetic-colors-a",
+        ),
+        pytest.param(
+            {
+                "shape_base_color": "test-white",
+                "shape_outer_ridge_color": "test-blue",
+                "shape_top_border_label_color": "test-green",
+                "shape_bottom_border_label_color": "test-black",
+                "shape_border_fill_color": "test-yellow",
+                "shape_artwork_region_fill_color": "test-red",
+            },
+            {
+                "outer-ridge": "#0000ff",
+                "border-fill": "#ffff00",
+                "artwork-region-fill": "#ff0000",
+                "top-border-label": "#00ff00",
+                "bottom-border-label": "#000000",
+            },
+            id="distinct-synthetic-colors-b",
+        ),
+    ],
+)
+def test_compose_svg_uses_resolved_shape_component_colors(
+    tmp_path: Path,
+    color_overrides: dict[str, str],
+    expected: dict[str, str],
+) -> None:
+    """
+    Canonical SHAPE SVG must reflect the resolved catalog RGB colors
+    of Shape-owned components instead of hardcoded black fills.
+
+    Background regions must precede foreground components in SVG
+    painter order.
+
+    Recoloring must preserve independent component identity,
+    registered Artwork colors, and the outside CUT contour.
+    """
+    artwork_manifest = _write_artwork(tmp_path / "artwork")
+
+    artifact, _, _ = _run_compose(
+        tmp_path / "output",
+        artwork_manifest=artwork_manifest,
+        shape_size=100.0,
+        outer_ridge_width=2.0,
+        top_label="TOP",
+        bottom_label="BOTTOM",
+        color_overrides=color_overrides,
+    )
+
+    root = _svg_root(artifact)
+
+    components = {
+        element.get("id"): element for element in root.iter() if element.get("id") is not None
+    }
+
+    # Every participating Shape-owned component retains its
+    # identity and receives its resolved catalog RGB color.
+    for component_id, expected_color in expected.items():
+        assert component_id in components
+
+        component = components[component_id]
+
+        assert component.get("fill") == expected_color, (
+            f"{component_id} must use its resolved Shape color"
+        )
+
+    # SVG painter order: regions behind ridges, labels, and artwork.
+    ordered_ids = [
+        element.get("id")
+        for element in root.iter()
+        if element.get("id")
+        in {
+            "border-fill",
+            "artwork-region-fill",
+            "outer-ridge",
+            "top-border-label",
+            "bottom-border-label",
+            "artwork",
+        }
+    ]
+
+    assert ordered_ids.index("border-fill") < ordered_ids.index("outer-ridge")
+    assert ordered_ids.index("artwork-region-fill") < ordered_ids.index("outer-ridge")
+    assert ordered_ids.index("outer-ridge") < ordered_ids.index("top-border-label")
+    assert ordered_ids.index("top-border-label") < ordered_ids.index("artwork")
+
+    # Registered Artwork colors are not Shape-owned color
+    # assignments and must remain unchanged.
+    assert components["artwork-1"].get("fill") == "#f0f0f0"
+    assert components["artwork-2"].get("fill") == "#141414"
+
+    # CUT remains an independent, unfilled path.
+    contour = components["cut-contour"]
+
+    assert contour.tag == f"{{{SVG}}}path"
+    assert contour.get("fill") == "none"
+    assert contour.get("stroke") not in (None, "none")
+
+    structure = components["structure"]
+
+    assert contour not in list(structure.iter())
+
+    # Recoloring must not introduce an opaque solid Base.
+    assert "base" not in components

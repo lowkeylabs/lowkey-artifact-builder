@@ -16,7 +16,10 @@ import pytest
 
 from lowkey_artifact_builder.engine import StageContext
 from lowkey_artifact_builder.model.models.shape.stages import compose, extrude
-from tests.support.model_parameters import model_test_resolver
+from tests.support.model_parameters import (
+    configure_mock_resolver,
+    model_test_resolver,
+)
 
 # =========================================================
 # Helpers
@@ -123,7 +126,6 @@ def _compose_context(
     Shape parameter defaults and derivations come from the authoritative
     configuration engine. Only test-specific values are overridden.
     """
-
     context = Mock(spec=StageContext)
 
     inputs = {
@@ -146,7 +148,8 @@ def _compose_context(
 
     context.input.side_effect = inputs.__getitem__
     context.output.side_effect = outputs.__getitem__
-    context.resolver.side_effect = resolver
+
+    configure_mock_resolver(context, resolver)
 
     return context
 
@@ -1399,7 +1402,6 @@ def _physical_fill_extrude_context(
 
     Unrelated optional Shape features retain their production defaults.
     """
-
     context = Mock(
         spec=StageContext,
     )
@@ -1423,7 +1425,8 @@ def _physical_fill_extrude_context(
 
     context.input.side_effect = inputs.__getitem__
     context.output.side_effect = outputs.__getitem__
-    context.resolver.side_effect = resolver
+
+    configure_mock_resolver(context, resolver)
 
     return context
 
@@ -1720,7 +1723,7 @@ def test_artwork_fill_physical_geometry_is_independent_of_ridge_style(
             artwork_fill_raise=0.6,
         )
 
-        original_resolver = context.resolver.side_effect
+        original_resolver = context.resolver._mock_wraps
 
         def resolver(
             name: str,
@@ -2007,7 +2010,7 @@ def test_artwork_fill_extrusion_does_not_resolve_physical_color(
         artwork_fill_raise=0.6,
     )
 
-    original_resolver = context.resolver.side_effect
+    original_resolver = context.resolver._mock_wraps
 
     def resolver(
         name: str,
@@ -2172,7 +2175,7 @@ def test_artwork_fill_extrusion_is_independent_of_invalid_physical_color(
         artwork_fill_raise=0.6,
     )
 
-    original_resolver = context.resolver.side_effect
+    original_resolver = context.resolver._mock_wraps
 
     def resolver(name: str) -> object:
         if name == "shape_artwork_fill_color":

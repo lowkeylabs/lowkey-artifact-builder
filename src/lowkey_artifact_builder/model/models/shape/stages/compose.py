@@ -588,6 +588,28 @@ def execute(
         shape_size=shape_size,
     )
 
+    # SVG presentation colors come from the shared catalog,
+    # not from physical printer-color assignments.
+    def svg_color(parameter: str) -> str:
+        name = str(context.resolver(parameter))
+        entry = context.resolver.color(name)
+        red, green, blue = entry["rgb"]
+        return f"#{red:02x}{green:02x}{blue:02x}"
+
+    svg_colors = {
+        component: svg_color(parameter)
+        for component, parameter in {
+            "outer-ridge": "shape_outer_ridge_color",
+            "inner-ridge": "shape_inner_ridge_color",
+            "border-fill": "shape_border_fill_color",
+            "artwork-region-fill": "shape_artwork_region_fill_color",
+            "top-border-label": "shape_top_border_label_color",
+            "bottom-border-label": "shape_bottom_border_label_color",
+            "qr-light": "shape_qr_light_color",
+            "qr-dark": "shape_qr_dark_color",
+        }.items()
+    }
+
     _write_artifact_svg(
         artifact_output,
         composition=composition_output,
@@ -598,6 +620,7 @@ def execute(
         artwork_transform=artwork_transform,
         qr=qr,
         shape_size=shape_size,
+        svg_colors=svg_colors,
     )
 
 
@@ -612,6 +635,7 @@ def _write_artifact_svg(
     artwork_transform: RegisteredArtworkTransform | None,
     qr: RegisteredQR | None,
     shape_size: float,
+    svg_colors: dict[str, str],
 ) -> None:
     """
     Write the canonical, physically dimensioned Shape SVG.
@@ -676,6 +700,37 @@ def _write_artifact_svg(
         {"id": "structure"},
     )
 
+    # Background regions precede ridges in SVG painter order.
+
+    if border_fill is not None:
+        ET.SubElement(
+            structural_group,
+            SVG_PATH,
+            {
+                "id": "border-fill",
+                "d": (
+                    _svg_boundary_path(border_fill.outer_boundary)
+                    + " "
+                    + _svg_boundary_path(border_fill.inner_boundary)
+                ),
+                "fill": svg_colors["border-fill"],
+                "fill-rule": "evenodd",
+                "stroke": "none",
+            },
+        )
+
+    if artwork_region_fill is not None:
+        ET.SubElement(
+            structural_group,
+            SVG_PATH,
+            {
+                "id": "artwork-region-fill",
+                "d": _svg_boundary_path(artwork_region_fill),
+                "fill": svg_colors["artwork-region-fill"],
+                "stroke": "none",
+            },
+        )
+
     outer_ridge_inner = boundaries.get("ridge-inner-boundary")
     outer_ridge_outer = boundaries.get(
         "ridge-outer-boundary",
@@ -693,7 +748,7 @@ def _write_artifact_svg(
                     + " "
                     + _svg_boundary_path(outer_ridge_inner)
                 ),
-                "fill": "black",
+                "fill": svg_colors["outer-ridge"],
                 "fill-rule": "evenodd",
                 "stroke": "none",
             },
@@ -716,37 +771,8 @@ def _write_artifact_svg(
                     + " "
                     + _svg_boundary_path(inner_ridge_inner)
                 ),
-                "fill": "black",
+                "fill": svg_colors["inner-ridge"],
                 "fill-rule": "evenodd",
-                "stroke": "none",
-            },
-        )
-
-    if border_fill is not None:
-        ET.SubElement(
-            structural_group,
-            SVG_PATH,
-            {
-                "id": "border-fill",
-                "d": (
-                    _svg_boundary_path(border_fill.outer_boundary)
-                    + " "
-                    + _svg_boundary_path(border_fill.inner_boundary)
-                ),
-                "fill": "black",
-                "fill-rule": "evenodd",
-                "stroke": "none",
-            },
-        )
-
-    if artwork_region_fill is not None:
-        ET.SubElement(
-            structural_group,
-            SVG_PATH,
-            {
-                "id": "artwork-region-fill",
-                "d": _svg_boundary_path(artwork_region_fill),
-                "fill": "black",
                 "stroke": "none",
             },
         )
@@ -770,7 +796,7 @@ def _write_artifact_svg(
             SVG_GROUP,
             {
                 "id": f"{position}-border-label",
-                "fill": "black",
+                "fill": svg_colors[f"{position}-border-label"],
                 "stroke": "none",
             },
         )
@@ -901,7 +927,7 @@ def _write_artifact_svg(
                 SVG_GROUP,
                 {
                     "id": name,
-                    "fill": "white" if name == "qr-light" else "black",
+                    "fill": svg_colors[name],
                     "stroke": "none",
                 },
             )
