@@ -326,13 +326,13 @@ shape_label_color = "black"
 # Optional physical printing-color override for the Top Border Label.
 #
 # When not explicitly configured, the Top Border Label inherits the
-# resolved physical printing color of the Shape base.
+# resolved physical printing color of the shape_label_color.
 #
 # This parameter affects physical color assignment during packaging
 # only. It does not determine Border Label participation or geometry.
 #
 
-## shape_top_border_label_color = "white"
+## shape_top_border_label_color = shape_label_color
 
 
 # Optional Top Border Label typography overrides.
@@ -364,13 +364,13 @@ shape_bottom_border_label_raise = 1.0
 # Optional physical printing-color override for the Bottom Border Label.
 #
 # When not explicitly configured, the Bottom Border Label inherits the
-# resolved physical printing color of the Shape base.
+# resolved physical printing color of the shape_label_color.
 #
 # This parameter affects physical color assignment during packaging
 # only. It does not determine Border Label participation or geometry.
 #
 
-## shape_bottom_border_label_color = "white"
+## shape_bottom_border_label_color = shape_label_color
 
 # Optional Bottom Border Label typography overrides.
 # When absent, inherit the effective shared Border Label setting.

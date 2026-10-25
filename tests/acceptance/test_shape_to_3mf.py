@@ -424,6 +424,196 @@ def test_shape_ridge_preserves_distinct_component_colors(
 
 
 @pytest.mark.slow
+@pytest.mark.parametrize(
+    ("color_overrides", "expected_top", "expected_bottom"),
+    [
+        pytest.param(
+            {"shape_label_color": "test-red"},
+            "test-red",
+            "test-red",
+            id="shared-label-color",
+        ),
+        pytest.param(
+            {
+                "shape_label_color": "test-red",
+                "shape_top_border_label_color": "test-green",
+            },
+            "test-green",
+            "test-red",
+            id="top-label-override",
+        ),
+    ],
+)
+def test_shape_shared_label_color_survives_3mf_packaging(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    color_overrides: dict[str, str],
+    expected_top: str,
+    expected_bottom: str,
+) -> None:
+    """
+    SHAPE shared label colors survive complete 3MF manufacturing.
+
+    Both Border Labels inherit shape_label_color unless independently
+    overridden. Package preserves their component identities and
+    assigns the expected physical materials.
+
+    The Base color remains independent of label colors.
+    """
+    project_root = tmp_path
+    monkeypatch.chdir(project_root)
+
+    artifact_id = "shared-label-shape"
+
+    # -----------------------------------------------------
+    # Configure Shape with two physical Border Labels
+    # -----------------------------------------------------
+
+    write_artifact_config(
+        artifact_id,
+        {
+            "realizations": {
+                "shape_default": {
+                    "shape_geometry": "circle",
+                    "shape_size": 100.0,
+                    "shape_base_color": "test-white",
+                    "shape_border_label_font_family": "DejaVu Sans",
+                    "shape_outer_ridge_width": 2.0,
+                    "shape_top_border_label_text": "TOP",
+                    "shape_bottom_border_label_text": "BOTTOM",
+                    "shape_top_border_label_raise": 1.0,
+                    "shape_bottom_border_label_raise": 1.0,
+                    **color_overrides,
+                },
+            },
+        },
+        project_root=project_root,
+    )
+
+    # -----------------------------------------------------
+    # Build through normal Shape manufacturing
+    # -----------------------------------------------------
+
+    plans = create_build_plans(
+        artifact_id,
+        model_name="shape",
+        variant_name="default",
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    assert plan.model_name == "shape"
+    assert plan.realization_name == "shape_default"
+
+    execute_dependency_build(plan)
+
+    package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
+
+    artifact_product = next(
+        product for product in package_stage.products if product.spec.name == "artifact"
+    )
+
+    artifact = artifact_product.path
+
+    assert artifact.is_file()
+    assert artifact.stat().st_size > 0
+    assert zipfile.is_zipfile(artifact)
+
+    # -----------------------------------------------------
+    # Inspect packaged 3MF objects and materials
+    # -----------------------------------------------------
+
+    with zipfile.ZipFile(artifact) as archive:
+        names = set(archive.namelist())
+
+        assert "[Content_Types].xml" in names
+
+        model_names = [name for name in names if name.startswith("3D/") and name.endswith(".model")]
+
+        assert len(model_names) == 1
+
+        model = ET.fromstring(archive.read(model_names[0]))
+
+    objects = model.findall(f".//{{{CORE_NS}}}object")
+
+    materials = model.findall(f".//{{{CORE_NS}}}basematerials")
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    # -----------------------------------------------------
+    # Verify distinct component identities and colors
+    # -----------------------------------------------------
+
+    expected_components = {
+        "base": ("test-white", "#FFFFFF"),
+        "top-border-label": (
+            expected_top,
+            {
+                "test-red": "#FF0000",
+                "test-green": "#00FF00",
+            }[expected_top],
+        ),
+        "bottom-border-label": (
+            expected_bottom,
+            {
+                "test-red": "#FF0000",
+                "test-green": "#00FF00",
+            }[expected_bottom],
+        ),
+    }
+
+    component_objects = {}
+
+    for identity, (color_name, expected_rgb) in expected_components.items():
+        name = component_name(
+            artifact_id,
+            identity,
+            color_name,
+        )
+
+        assert name in objects_by_name, (
+            f"Missing packaged component {name!r}; "
+            f"available objects: {sorted(str(n) for n in objects_by_name)}"
+        )
+
+        object_ = objects_by_name[name]
+        component_objects[identity] = object_
+
+        material_id = object_.get("pid")
+
+        assert material_id is not None
+        assert material_id in materials_by_id
+
+        material = materials_by_id[material_id]
+
+        color = material.find(f"{{{CORE_NS}}}base")
+
+        assert color is not None
+        assert color.get("name") == color_name
+        assert color.get("displaycolor") == expected_rgb
+
+        assert object_.get("pindex") == "0"
+
+        # Each component must contain manufactured mesh geometry.
+        assert object_.findall(f".//{{{CORE_NS}}}vertex")
+        assert object_.findall(f".//{{{CORE_NS}}}triangle")
+
+    # -----------------------------------------------------
+    # Shared material does not merge component identities
+    # -----------------------------------------------------
+
+    object_ids = {object_.get("id") for object_ in component_objects.values()}
+
+    assert None not in object_ids
+    assert len(object_ids) == 3
+
+
+@pytest.mark.slow
 def test_shape_component_colors_do_not_change_geometry(
     tmp_path: Path,
     monkeypatch,
