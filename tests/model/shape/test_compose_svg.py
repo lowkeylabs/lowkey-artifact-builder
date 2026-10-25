@@ -850,3 +850,112 @@ def test_compose_svg_uses_resolved_shape_component_colors(
 
     # Recoloring must not introduce an opaque solid Base.
     assert "base" not in components
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    ("color_overrides", "expected_top", "expected_bottom"),
+    [
+        pytest.param(
+            {
+                "shape_base_color": "test-white",
+                "shape_label_color": "test-black",
+            },
+            "#000000",
+            "#000000",
+            id="shared-test-black-independent-of-base",
+        ),
+        pytest.param(
+            {
+                "shape_base_color": "test-blue",
+                "shape_label_color": "test-red",
+            },
+            "#ff0000",
+            "#ff0000",
+            id="shared-label-color",
+        ),
+        pytest.param(
+            {
+                "shape_label_color": "test-red",
+                "shape_top_border_label_color": "test-green",
+            },
+            "#00ff00",
+            "#ff0000",
+            id="top-override",
+        ),
+        pytest.param(
+            {
+                "shape_label_color": "test-red",
+                "shape_bottom_border_label_color": "test-blue",
+            },
+            "#ff0000",
+            "#0000ff",
+            id="bottom-override",
+        ),
+    ],
+)
+def test_compose_svg_inherits_shared_shape_label_color(
+    tmp_path: Path,
+    color_overrides: dict[str, str],
+    expected_top: str,
+    expected_bottom: str,
+) -> None:
+    """
+    Canonical SHAPE SVG uses the effective shared label color
+    unless a position-specific label color is overridden.
+
+    Synthetic catalog colors establish manufacturing behavior
+    independently of the mutable physical filament library.
+
+    Color selection preserves registered label geometry,
+    component identities, and the outside cut contour.
+    """
+    artifact, _, manifest_path = _run_compose(
+        tmp_path / "output",
+        shape_size=100.0,
+        outer_ridge_width=2.0,
+        top_label="TOP",
+        bottom_label="BOTTOM",
+        color_overrides=color_overrides,
+    )
+
+    root = _svg_root(artifact)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    expected = {
+        "top": expected_top,
+        "bottom": expected_bottom,
+    }
+
+    for position, expected_color in expected.items():
+        component_id = f"{position}-border-label"
+
+        exported = [element for element in root.iter() if element.get("id") == component_id]
+
+        assert len(exported) == 1
+
+        component = exported[0]
+
+        assert component.get("fill") == expected_color
+        assert list(component.iter(f"{{{SVG}}}path"))
+
+        # Registered glyph geometry remains available and
+        # independently identifiable.
+        registered = manifest["border_labels"][position]
+
+        assert registered is not None
+
+        source = manifest_path.parent / registered["path"]
+
+        assert source.is_file()
+        assert list(ET.parse(source).getroot().iter(f"{{{SVG}}}path"))
+
+    # Label-color changes do not alter the physical envelope.
+    assert root.get("width") == "100mm"
+    assert root.get("height") == "100mm"
+
+    # The outside cut contour remains independent.
+    contours = [element for element in root.iter() if element.get("id") == "cut-contour"]
+
+    assert len(contours) == 1
+    assert contours[0].get("fill") == "none"
