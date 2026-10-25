@@ -142,56 +142,50 @@ algorithmic or regression risk.
 
 ---
 
-## Phase 2 — Separate SVG Cut Boundary from Printable Structure
+## Phase 1 — Shared SHAPE Label Color
 
 ### Purpose
 
-Make the outside SHAPE boundary independently identifiable in the existing
-SHAPE SVG so an operator can assign a laser CUT operation separately from
-printed or engraved ridges and other artwork in xTool Studio.
+Introduce `shape_label_color` as the common default color for SHAPE labels, with an explicit default of black.
+
+Existing label-specific color parameters derive their defaults from `shape_label_color` unless explicitly overridden. Future SHAPE label features should follow the same convention.
+
+This allows operators to configure the default label color once while preserving independent color customization for individual labels.
 
 ### Architectural boundaries
 
-- Preserve a single authoritative base boundary and the existing physical
-  coordinate system, size, and registration of all SVG components.
-- Separate cut-contour identity from printable ridge geometry. A cut contour
-  must not accidentally become a printed outline or filled graphic.
-- Preserve existing SHAPE SVG and 3MF geometry and behavior except for the
-  intentional SVG organization change.
-- Do not assume SVG grouping alone is sufficient for xTool Studio operation
-  assignment. Verify importer behavior before choosing an export contract.
-- Do not implement `.xs` packaging in this phase. Whether XS needs separate
-  SVG documents or independently configured project objects remains future
-  investigation.
+- SHAPE owns label-color semantics. Do not introduce label-specific policy into the generic engine or configuration infrastructure.
+- `shape_label_color` is an ordinary Model parameter with an explicit default of the existing catalog's black color.
+- Existing label-specific color parameters, including `shape_top_border_label_color` and `shape_bottom_border_label_color`, derive their defaults from the effective `shape_label_color`.
+- Explicit label-specific color overrides take precedence through normal configuration resolution.
+- `shape_label_color` is independent of `shape_base_color`. Changing the Base color must not implicitly change label colors.
+- Preserve existing logical color identities, color-catalog resolution, and downstream physical printer-color assignment.
+- Preserve label geometry, typography, registration, component identities, and existing SVG and 3MF manufacturing behavior except for the intentional change in default label colors.
+- Do not introduce new label features, generalized text styling, or additional configuration inheritance mechanisms.
 
 ### Work
 
-1. Inspect current SHAPE SVG serialization, including the `structure` group,
-   Outer Ridge fill, and no-Outer-Ridge fallback. Define the cut-contour and
-   printable-component contract in SHAPE's specification.
-2. Emit an independently identifiable, closed outside cut contour, separate
-   from printable structure, without changing registration or duplicating
-   unintended visible geometry.
-3. Validate the result with representative SHAPE SVGs and an xTool Studio
-   import/operation-assignment test; adjust the representation based on
-   observed behavior rather than assumptions about SVG groups.
-4. Regression-test SVG output and unaffected 3MF workflows; run the
-   appropriate full quality suite.
+1. Update SHAPE's permanent `DEFINITION.md` to establish the shared label-color contract, its default, and the precedence of label-specific overrides.
+2. Declare `shape_label_color` with an explicit default of black, using the existing logical color catalog.
+3. Update existing label-specific color derivations to resolve through `shape_label_color` rather than `shape_base_color`.
+4. Add focused behavioral tests covering the shared default, configuration inheritance, explicit overrides, and independence from Base color.
+5. Verify that SVG and 3MF manufacturing outputs consume the resulting effective label colors without changing geometry or component identities.
+6. Run focused tests and the appropriate complete quality suite.
 
 ### Acceptance criteria
 
-- The outside boundary can be distinguished from printable ridges and artwork
-  without reconstructing its geometry.
-- xTool Studio can assign CUT to the outside contour separately from the
-  intended print/engrave components, or a documented importer limitation
-  identifies the remaining packaging requirement.
-- The cut contour and artwork retain exact relative placement and physical
-  size, including SHAPEs without an Outer Ridge.
-- No unintended printed outline, duplicate cut path, or regression in existing
-  SHAPE manufacturing output is introduced.
+- `shape_label_color` is available through ordinary SHAPE parameter resolution and configuration.
+- Its default resolves to the existing catalog's black color.
+- With no label-specific overrides, both Top and Bottom Border Labels inherit the effective `shape_label_color`.
+- Changing `shape_label_color` changes the effective colors of both labels without requiring separate overrides.
+- Explicitly configuring either label's color overrides the shared default for that label only.
+- Changing `shape_base_color` does not change effective label colors unless an explicit configuration dependency requires it.
+- Existing SVG and 3MF outputs reflect the resolved label colors without changes to label geometry, registration, or component identity.
+- Future SHAPE label features can derive their default colors from `shape_label_color` without introducing another shared color mechanism.
 
 ### Completion
 
-Complete when the SVG separation contract is implemented and verified, with
-any unresolved XS-specific packaging requirement recorded in `FUTURE.md`.
+Complete when the shared label-color contract is specified, implemented, and regression-tested across configuration resolution and manufacturing output.
+
 Remove this phase and reevaluate the plan.
+

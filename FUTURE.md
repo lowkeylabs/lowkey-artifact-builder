@@ -20,19 +20,23 @@ manufacturing experience develops.
 
 ## Composition and placement
 
-### Artwork placement beyond its fitting region
+### Artwork placement, scaling, and boundary policies
 
-**Goal:** Allow incorporated Artwork to extend beyond the region used to fit or
-initially position it. For example, a Cobra Kai graphic may cross the Inner
-Ridge while remaining within the permitted SHAPE envelope.
+**Goal:** Allow incorporated Artwork to be explicitly scaled beyond its initial fitting region, including across Inner Ridges, Outer Ridges, labels, and potentially the outside SHAPE boundary.
 
-**Preserve:** A clear distinction among the fitting region, any permitted
-placement boundary, and any actual clipping boundary. Avoid unintended
-cropping or changes to Artwork geometry. Overlap behavior must be explicit and
-manufacturing-correct for each supported output.
+**Initial behavior considered:** Preserve existing Artwork placement and fitting semantics while allowing explicit scaling. Artwork may overlap internal SHAPE components but is clipped at the nominal outside SHAPE boundary. The Base dimensions, `shape_size`, and outside cut contour remain unchanged.
 
-**Unresolved:** Placement limits, clipping policy, interaction with ridges and
-labels, and whether existing composition mechanisms suffice.
+**Potential boundary policies:**
+
+- `clip`: Trim Artwork at the nominal SHAPE boundary without modifying the Base or cut contour.
+- `extend`: Permit Artwork to protrude beyond the Base while retaining the nominal SHAPE boundary. The assembled manufacturing envelope may exceed `shape_size`.
+- `expand`: Deliberately enlarge the Base and outside cut boundary to accommodate the Artwork.
+
+**Preserve:** Distinguish the initial fitting region, transformed Artwork extent, nominal SHAPE boundary, actual clipping boundary, and assembled manufacturing envelope. Preserve Artwork aspect ratio, registered transforms, logical component identities, and manufacturing-correct overlap behavior. Do not automatically resize the Base merely because Artwork extends beyond it.
+
+**Unresolved:** Configuration interface, clipping and protrusion rules, precedence relative to ridges and labels, physical support for protruding components, cut-contour semantics, and compatibility with SVG and 3MF manufacturing outputs. Determine whether existing composition mechanisms suffice before introducing new infrastructure.
+
+**Status:** Deferred. The three policies are conceptual alternatives, not committed configuration parameters or an approved implementation design.
 
 ### Deterministic planar composition
 
