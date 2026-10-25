@@ -433,6 +433,70 @@ determine color assignment.
 A color assigned to geometry that does not produce a corresponding
 physical component has no effect on the produced artifact.
 
+
+### Label Color
+
+SHAPE defines a shared semantic printing color for labels:
+
+```text
+shape_label_color
+```
+
+The default label color is:
+
+```text
+black
+```
+
+The default is explicit and independent of `shape_base_color`.
+
+Individual SHAPE label Features may define their own color
+parameters. When no label-specific color is explicitly configured,
+the effective color is derived from the resolved
+`shape_label_color`.
+
+For the existing Border Labels:
+
+```text
+shape_top_border_label_color = shape_label_color
+shape_bottom_border_label_color = shape_label_color
+```
+
+These defaults are derived from the effective shared label color,
+not from an independent literal default.
+
+An explicitly configured label-specific color takes precedence
+over its derived default through ordinary configuration
+resolution.
+
+Consequently:
+
+- Changing `shape_label_color` changes the effective color of
+  every label that has not explicitly overridden its color.
+- Changing one label-specific color does not affect other labels
+  or the shared label color.
+- Changing `shape_base_color` does not implicitly change label
+  colors.
+- Label-color resolution does not determine label participation,
+  geometry, typography, or physical dimensions.
+
+All label colors use the existing shared color catalog and
+resolution mechanism.
+
+SHAPE owns label-color semantics. Label colors are physical
+manufacturing color policy and must preserve existing component
+identities and registered geometry.
+
+Downstream manufacturing outputs use the effective resolved
+label-specific colors according to their established color
+assignment contracts.
+
+Future SHAPE label Features that provide individual color
+parameters derive their defaults from `shape_label_color`
+unless their normative Feature contract explicitly specifies
+otherwise.
+
+
 ## Artwork
 
 Artwork is optional.
@@ -968,6 +1032,7 @@ shape_size
 shape_raise_style
 shape_base_raise
 shape_base_color
+shape_label_color
 shape_outer_ridge_width
 shape_outer_ridge_inset
 shape_outer_ridge_raise
@@ -1064,6 +1129,14 @@ Its default is:
 
 ```text
 white
+```
+
+`shape_label_color` selects the color for labels.
+
+Its default is:
+
+```text
+black
 ```
 
 For `shape_raise_style = "raised"`, `shape_artwork_raise` determines the
@@ -2571,13 +2644,24 @@ label that does not have a position-specific override.
 The default Top and Bottom Border Label texts are empty, so neither
 Border Label participates by default.
 
-The default Top and Bottom Border Label colors are derived from the
-resolved value of `shape_base_color`, rather than being independent
-literal color defaults.
+The default Top and Bottom Border Label colors are derived from
+the resolved shared label color:
+
+```text
+shape_top_border_label_color = shape_label_color
+shape_bottom_border_label_color = shape_label_color
+```
+
+The position-specific label colors have no independent literal
+defaults. In the absence of explicit overrides, both inherit the
+resolved `shape_label_color`, whose Model default is `black`.
 
 An explicitly configured `shape_top_border_label_color` or
-`shape_bottom_border_label_color` overrides the corresponding derived
-Base-color default.
+`shape_bottom_border_label_color` overrides the corresponding
+derived shared-label-color default.
+
+Changing `shape_base_color` does not implicitly change either
+Border Label color.
 
 Configurable literal Model defaults are authoritative in the Model
 configuration, not duplicated in this Feature contract.
@@ -3035,21 +3119,35 @@ determine the manufactured Z extent of inlaid labels.
 
 Extrusion owns Border Label physical Z geometry but does not assign physical color.
 
+
 #### Packaging and Color
 
-The Top Border Label and Bottom Border Label remain distinct components through Package.
+The Top Border Label and Bottom Border Label remain distinct
+components through Package.
 
-`shape_top_border_label_color` determines the packaged color of the Top Border Label.
+Their physical printing colors are controlled by:
 
-`shape_bottom_border_label_color` determines the packaged color of the Bottom Border Label.
+```text
+shape_top_border_label_color
+shape_bottom_border_label_color
+```
 
-The colors are resolved independently.
+Each color defaults to the resolved `shape_label_color` unless
+explicitly overridden by its position-specific color parameter.
+
+The two effective colors are resolved independently. Overriding
+one Border Label color does not change the other Border Label
+color or the shared `shape_label_color`.
 
 Physical color is a Package-stage concern.
 
-Structure, Compose, and Extrude preserve the semantic identity of each Border Label component without assigning its packaged physical color.
+Structure, Compose, and Extrude preserve the semantic identity
+of each Border Label component without assigning its packaged
+physical color.
 
-Changing only a Border Label color must not invalidate or recompute earlier Border Label geometry or extrusion products.
+Changing only `shape_label_color` or either position-specific
+Border Label color must not invalidate or recompute earlier
+Border Label geometry or extrusion products.
 
 #### Feature Interactions
 
@@ -3107,8 +3205,11 @@ A conforming Border Label Feature satisfies the following:
 29. Symbolic text processing is limited to the defined commands and does not provide general LaTeX or markup interpretation.
 30. Border Labels remain distinct semantic components through Extrude and Package.
 31. Top and Bottom Border Label raises are independently controlled by Extrude-stage parameters.
-32. Top and Bottom Border Label colors are independently controlled by Package-stage parameters.
-33. Changing only a Border Label color does not require recomputing earlier geometry.
+32. Top and Bottom Border Label colors are independently controlled
+    by Package-stage parameters and default to the resolved
+    `shape_label_color` unless explicitly overridden.
+33. Changing only `shape_label_color` or either position-specific
+    Border Label color does not require recomputing earlier geometry.
 34. Border Labels do not determine Inner Ridge participation.
 35. When Inner Ridge participates, its inside boundary determines the incorporated Artwork region.
 36. When Border Labels participate without Inner Ridge, the inner Border Label boundary determines the incorporated Artwork region.
