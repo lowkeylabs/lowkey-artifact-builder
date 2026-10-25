@@ -147,50 +147,26 @@ def derive_shape_top_border_label_color(
     resolver: Resolver,
 ) -> str:
     """
-    Derive the Top Border Label color from the resolved base color.
+    Derive the Top Border Label color from the resolved
+    shared Shape label color.
 
-    By default, the Top Border Label uses the same semantic printing
-    color as the Shape base.
-
-    Because the base color is resolved through the artifact Resolver,
-    workspace or artifact overrides of shape_base_color are reflected
-    in the derived Border Label color.
-
-    An explicitly configured shape_top_border_label_color value
-    overrides this derivation through normal configuration resolution.
-
-    Shape configuration validity is enforced separately by the model's
-    configuration validators.
+    An explicitly configured Top Border Label color
+    overrides this derivation.
     """
-
-    return resolver(
-        "shape_base_color",
-    )
+    return resolver("shape_label_color")
 
 
 def derive_shape_bottom_border_label_color(
     resolver: Resolver,
 ) -> str:
     """
-    Derive the Bottom Border Label color from the resolved base color.
+    Derive the Bottom Border Label color from the resolved
+    shared Shape label color.
 
-    By default, the Bottom Border Label uses the same semantic printing
-    color as the Shape base.
-
-    Because the base color is resolved through the artifact Resolver,
-    workspace or artifact overrides of shape_base_color are reflected
-    in the derived Border Label color.
-
-    An explicitly configured shape_bottom_border_label_color value
-    overrides this derivation through normal configuration resolution.
-
-    Shape configuration validity is enforced separately by the model's
-    configuration validators.
+    An explicitly configured Bottom Border Label color
+    overrides this derivation.
     """
-
-    return resolver(
-        "shape_base_color",
-    )
+    return resolver("shape_label_color")
 
 
 def derive_shape_top_border_label_font_family(

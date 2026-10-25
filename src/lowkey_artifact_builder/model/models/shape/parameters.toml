@@ -312,6 +312,17 @@ shape_top_border_label_raise = 1.0
 
 
 #
+# Shared semantic printing color for Shape labels.
+#
+# Top and Bottom Border Labels inherit this resolved color
+# unless their position-specific colors are overridden.
+#
+# Independent of shape_base_color.
+#
+
+shape_label_color = "black"
+
+#
 # Optional physical printing-color override for the Top Border Label.
 #
 # When not explicitly configured, the Top Border Label inherits the

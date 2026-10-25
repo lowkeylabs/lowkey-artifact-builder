@@ -293,3 +293,122 @@ def test_shape_explicit_loop_color_overrides_derivation(
     )
 
     assert resolver("shape_loop_color") == "black"
+
+
+# =========================================================
+# Shared label-color derivation
+# =========================================================
+
+
+def test_shape_label_color_defaults_to_black(
+    tmp_path: Path,
+) -> None:
+    """
+    The shared Shape label color has an explicit black Model default.
+    """
+
+    resolver = get_resolver(
+        "shape-example",
+        model="shape",
+        project_root=tmp_path,
+    )
+
+    assert resolver("shape_label_color") == "black"
+    assert resolver("shape_top_border_label_color") == "black"
+    assert resolver("shape_bottom_border_label_color") == "black"
+
+
+def test_shape_border_labels_inherit_effective_shared_label_color(
+    tmp_path: Path,
+) -> None:
+    """
+    Both Border Labels inherit the resolved shared label color.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "parameters": {
+                "shape_label_color": "red",
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert resolver("shape_label_color") == "red"
+    assert resolver("shape_top_border_label_color") == "red"
+    assert resolver("shape_bottom_border_label_color") == "red"
+
+
+@pytest.mark.parametrize(
+    ("override", "expected_top", "expected_bottom"),
+    [
+        ("shape_top_border_label_color", "white", "red"),
+        ("shape_bottom_border_label_color", "red", "white"),
+    ],
+)
+def test_shape_border_label_color_override_is_independent(
+    tmp_path: Path,
+    override: str,
+    expected_top: str,
+    expected_bottom: str,
+) -> None:
+    """
+    A position-specific override affects only its own Border Label.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "parameters": {
+                "shape_label_color": "red",
+                override: "white",
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert resolver("shape_label_color") == "red"
+    assert resolver("shape_top_border_label_color") == expected_top
+    assert resolver("shape_bottom_border_label_color") == expected_bottom
+
+
+def test_shape_label_colors_are_independent_of_base_color(
+    tmp_path: Path,
+) -> None:
+    """
+    Changing the Shape base color does not change label defaults.
+    """
+
+    write_artifact_config(
+        "shape-example",
+        {
+            "model": "shape",
+            "parameters": {
+                "shape_base_color": "red",
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    resolver = get_resolver(
+        "shape-example",
+        project_root=tmp_path,
+    )
+
+    assert resolver("shape_base_color") == "red"
+    assert resolver("shape_label_color") == "black"
+    assert resolver("shape_top_border_label_color") == "black"
+    assert resolver("shape_bottom_border_label_color") == "black"

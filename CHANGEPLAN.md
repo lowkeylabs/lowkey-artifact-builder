@@ -188,4 +188,3 @@ This allows operators to configure the default label color once while preserving
 Complete when the shared label-color contract is specified, implemented, and regression-tested across configuration resolution and manufacturing output.
 
 Remove this phase and reevaluate the plan.
-
