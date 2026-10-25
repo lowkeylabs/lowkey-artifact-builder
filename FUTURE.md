@@ -20,130 +20,83 @@ manufacturing experience develops.
 
 ## Composition and placement
 
-### Artwork placement, scaling, and boundary policies
-
-**Goal:** Allow incorporated Artwork to be explicitly scaled beyond its initial fitting region, including across Inner Ridges, Outer Ridges, labels, and potentially the outside SHAPE boundary.
-
-**Initial behavior considered:** Preserve existing Artwork placement and fitting semantics while allowing explicit scaling. Artwork may overlap internal SHAPE components but is clipped at the nominal outside SHAPE boundary. The Base dimensions, `shape_size`, and outside cut contour remain unchanged.
-
-**Potential boundary policies:**
-
-- `clip`: Trim Artwork at the nominal SHAPE boundary without modifying the Base or cut contour.
-- `extend`: Permit Artwork to protrude beyond the Base while retaining the nominal SHAPE boundary. The assembled manufacturing envelope may exceed `shape_size`.
-- `expand`: Deliberately enlarge the Base and outside cut boundary to accommodate the Artwork.
-
-**Preserve:** Distinguish the initial fitting region, transformed Artwork extent, nominal SHAPE boundary, actual clipping boundary, and assembled manufacturing envelope. Preserve Artwork aspect ratio, registered transforms, logical component identities, and manufacturing-correct overlap behavior. Do not automatically resize the Base merely because Artwork extends beyond it.
-
-**Unresolved:** Configuration interface, clipping and protrusion rules, precedence relative to ridges and labels, physical support for protruding components, cut-contour semantics, and compatibility with SVG and 3MF manufacturing outputs. Determine whether existing composition mechanisms suffice before introducing new infrastructure.
-
-**Status:** Deferred. The three policies are conceptual alternatives, not committed configuration parameters or an approved implementation design.
-
-### Deterministic planar composition
-
-**Goal:** Support meaningful front-to-back ordering of Artwork, ridges, labels,
-QR codes, and future reusable components, yielding the intended visible design.
-
-**Preserve:** Semantic component identity and logical colors; consistent
-registration across outputs; deterministic overlap behavior. Planar visibility
-ordering is distinct from physical extrusion height. Opaque vector overlaps
-must not silently produce conflicting manufactured regions.
-
-**Unresolved:** Whether fixed semantic precedence suffices or configurable
-ordering is needed; when clipping, geometric subtraction, or raster compositing
-is appropriate; and which existing operations can be reused.
-
-### Reusable SVG decorations
-
-**Goal:** Incorporate externally authored SVG motifs—stars, diamonds,
-flourishes, serifs, and other small decorative elements—at arbitrary locations,
-including multiple placements of the same motif with independent translation,
-scale, and rotation.
-
-**Preserve:** Reuse of ARTWORK's established SVG processing where appropriate;
-source geometry and authored color identity unless deliberately overridden;
-independent instance identity and reliable registration. Do not create a
-competing SVG interpretation pipeline merely for decorations.
-
-**Unresolved:** The smallest useful placement interface, source references,
-color overrides, stroke handling, and how placement interacts with ordering.
-
 ### Multiple ARTWORK and BANNER instances
 
-**Goal:** Eventually compose several independently positioned reusable ARTWORK
+****Goal:**** Eventually compose several independently positioned reusable ARTWORK
 and BANNER sources into one SHAPE. A quartered coat of arms with different
 images, a central crest, and a motto banner is a motivating example.
 
-**Preserve:** Reusable source Products, independent instance transforms,
+****Preserve:**** Reusable source Products, independent instance transforms,
 explicit clipping where required, deterministic ordering, and dependency
 correctness. Existing single-Artwork workflows must remain usable.
 
-**Unresolved:** Instance configuration, dependency representation, clipping,
+****Unresolved:**** Instance configuration, dependency representation, clipping,
 registration, and any necessary infrastructure changes. **Do not implement a
 full quadrant-placement or generic instance framework prematurely.**
 
 ### Standalone BANNER Model
 
-**Goal:** Create reusable parametric ribbons or scrolls with integrated text,
+****Goal:**** Create reusable parametric ribbons or scrolls with integrated text,
 including suitable curves, folds, typography, and visual regions, for use in
 SHAPE and other compositions.
 
-**Preserve:** BANNER is conceptually a standalone reusable Model, analogous to
+****Preserve:**** BANNER is conceptually a standalone reusable Model, analogous to
 ARTWORK—not a replacement for SHAPE-owned top/bottom border labels or ridges.
 Its output should participate in composition without special-purpose
 manufacturing pipelines.
 
-**Unresolved:** Geometry and typography contract, parameters, Products,
+****Unresolved:**** Geometry and typography contract, parameters, Products,
 registration, and integration. No detailed BANNER implementation is planned.
 
 ## Representation, color, and manufacturing outputs
 
 ### Raster Artwork alongside vector geometry
 
-**Goal:** Allow a choice of raster or vector representation for incorporated
+****Goal:**** Allow a choice of raster or vector representation for incorporated
 Artwork, supporting photographic or grayscale bitmap engraving and full-color
 printing while retaining vector ridges, labels, cut contours, and decorations.
 
-**Preserve:** Artwork placement, physical size, orientation, registration,
+****Preserve:**** Artwork placement, physical size, orientation, registration,
 transparency, and intentional clipping across representations. SVG can contain
 embedded raster images, but compatibility with a particular importer must be
 verified. Do not silently convert a requested raster representation into a
 limited-color vector approximation.
 
-**Unresolved:** Where representation selection belongs, which Artwork Products
+****Unresolved:**** Where representation selection belongs, which Artwork Products
 are required, mixed-content SVG import behavior in xTool Studio, and explicit
 policies for outputs that cannot consume raster content.
 
 ### Device-independent design colors
 
-**Goal:** Support designs with more logical/display colors than the five
+****Goal:**** Support designs with more logical/display colors than the five
 physical toolheads of a Prusa XL, including full-color SVG, raster engraving,
 and inkjet print-and-cut workflows.
 
-**Preserve:** The existing distinction between logical Artifact-color identity
+****Preserve:**** The existing distinction between logical Artifact-color identity
 and physical printer-color assignment. A device-specific limit must not become
 a universal limit on authored geometry. Color appearance, semantic component
 identity, and manufacturing operation are separate concerns; SVG fill colors
 alone must not determine CUT, SCORE, ENGRAVE, or PRINT operations.
 
-**Unresolved:** Whether PNG color-count defaults should be decoupled from
+****Unresolved:**** Whether PNG color-count defaults should be decoupled from
 `printer_colors` for non-3MF workflows, and how output-specific assignments and
 compatibility failures should be expressed. Retain current 3MF behavior unless
 an explicit change is justified.
 
 ### xTool Studio XS packaging
 
-**Goal:** Produce an xTool Studio `.xs` project from LAB-composed geometry, with
+****Goal:**** Produce an xTool Studio `.xs` project from LAB-composed geometry, with
 independently configurable objects for printing, engraving, scoring, and
 cutting as supported by the target software and machine.
 
-**Preserve:** One authoritative composed design, physical dimensions, common
+****Preserve:**** One authoritative composed design, physical dimensions, common
 coordinate system, object/component identity, and exact print/cut registration.
 The outside cut boundary must be independently assignable from printable
 ridges and Artwork. SHAPE remains authoritative for its geometry; packaging
 must not reimplement SHAPE composition. Retiring the LASER Model does not imply
 removing existing SHAPE SVG output.
 
-**Unresolved:** Actual `.xs` file structure, whether one SVG with groups is
+****Unresolved:**** Actual `.xs` file structure, whether one SVG with groups is
 sufficient or separate embedded objects/documents are needed, machine-operation
 metadata, and xTool Studio import behavior. Inspect real `.xs` projects
 containing independently configured PRINT and CUT objects before designing
@@ -151,35 +104,34 @@ packaging. Do not assume the XS format or its capabilities.
 
 ### Print-and-cut and decal products
 
-**Goal:** Reuse a composed SHAPE design for full-color inkjet printing on
+****Goal:**** Reuse a composed SHAPE design for full-color inkjet printing on
 suitable adhesive media followed by laser contour cutting, as demonstrated in
 the xTool M2 workflow. Support future decals, stickers, and printed transfers
 without requiring a new design Model.
 
-**Preserve:** Separation of printable artwork from the nonprinting cut contour;
+****Preserve:**** Separation of printable artwork from the nonprinting cut contour;
 shared size, origin, and registration; full authored colors and optional raster
 content. The SHAPE outside boundary is a natural initial cut contour. Ridges
 and labels may be printed rather than physically extruded. Keep existing
 working SVG-based workflows functional.
 
-**Unresolved:** Whether the existing SVG plus improved component separation is
+****Unresolved:**** Whether the existing SVG plus improved component separation is
 sufficient, or whether output-specific packaging, bleed, safe margins, print
 resolution, transparency, and contour-cut options are needed. Non-PVC media
 must still be checked for laser-safe coatings, adhesive, and backing.
 
 ### Optional SVG overlap diagnostics
 
-**Goal:** Make native-SVG color-overlap failures easier to diagnose, for example
+****Goal:**** Make native-SVG color-overlap failures easier to diagnose, for example
 by reporting conflicting source object IDs and useful intersection location or
 extent information.
 
-**Preserve:** Existing strict rejection of prohibited positive-area overlap
+****Preserve:**** Existing strict rejection of prohibited positive-area overlap
 between different logical colors; do not silently change SVG geometry or
 permit invalid overlaps as a diagnostic shortcut.
 
-**Unresolved:** Whether current error reporting is sufficient and what
+****Unresolved:**** Whether current error reporting is sufficient and what
 additional diagnostic information can be obtained reliably and cheaply.
-
 
 ## Configuration Authoring and Simplification
 
@@ -211,17 +163,15 @@ Extend LAB's basic parameter annotation capability into a comprehensive configur
 - How to preserve user formatting and comments during configuration rewriting.
 - Whether full configuration templates should include all registered Variants or only those relevant to the selected Artifact.
 
-
 ### MCP-Assisted Configuration Discovery
 
-**Goal:** Allow AI clients to discover and explain LAB's supported configuration parameters, defaults, constraints, and effective values through an optional Model Context Protocol (MCP) interface.
+****Goal:**** Allow AI clients to discover and explain LAB's supported configuration parameters, defaults, constraints, and effective values through an optional Model Context Protocol (MCP) interface.
 
-**Preserve:** Existing Model definitions, configuration resolution, and application operations remain authoritative. MCP is an adapter, not a new Model, required build dependency, or independent configuration system. Parameter discovery and validation should be reusable by the CLI and other interfaces.
+****Preserve:**** Existing Model definitions, configuration resolution, and application operations remain authoritative. MCP is an adapter, not a new Model, required build dependency, or independent configuration system. Parameter discovery and validation should be reusable by the CLI and other interfaces.
 
-**Potential capabilities:** List Models and parameters; describe individual parameters; inspect effective configuration and provenance; validate proposed changes. Configuration modification and build operations may be considered later.
+****Potential capabilities:**** List Models and parameters; describe individual parameters; inspect effective configuration and provenance; validate proposed changes. Configuration modification and build operations may be considered later.
 
-**Unresolved:** Whether existing parameter metadata is sufficient for useful descriptions, which reusable application operations are needed, and how an MCP server would be installed and connected to supported clients. Do not implement MCP before establishing a demonstrated need beyond basic annotation.
-
+****Unresolved:**** Whether existing parameter metadata is sufficient for useful descriptions, which reusable application operations are needed, and how an MCP server would be installed and connected to supported clients. Do not implement MCP before establishing a demonstrated need beyond basic annotation.
 
 ## Promotion to CHANGEPLAN
 
@@ -231,3 +181,4 @@ feasibility investigation may be promoted first when an external format,
 importer behavior, or dependency boundary is unknown. Avoid detailed
 speculative phase sequences here; re-evaluate priorities after each completed
 CHANGEPLAN phase.
+
