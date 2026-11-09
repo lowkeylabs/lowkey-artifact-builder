@@ -215,7 +215,8 @@ rgb = [219, 214, 220]
 [colors.white]
 manufacturer = "eSUN"
 filament = "White"
-rgb = [227, 228, 212]
+#rgb = [227, 228, 212]
+rgb = [255,255,255]
 
 
 [colors.milky-white]
