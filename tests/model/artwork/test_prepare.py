@@ -1296,3 +1296,143 @@ def test_trace_single_color_produces_declared_svg(
 
     # Foreground touching the left boundary must not be inset.
     assert "0 18" in path_data or "0 23" in path_data
+
+
+@pytest.mark.parametrize(
+    ("foreground_rgb", "expected_fill"),
+    [
+        ((255, 0, 0), "#ff0000"),
+        ((0, 0, 255), "#0000ff"),
+        ((35, 140, 85), "#238c55"),
+        ((0, 0, 0), "#000000"),
+    ],
+)
+def test_trace_single_color_preserves_source_rgb(
+    tmp_path: Path,
+    foreground_rgb: tuple[int, int, int],
+    expected_fill: str,
+) -> None:
+    """
+    Single-color tracing preserves the authored foreground RGB.
+
+    Transparent pixels do not contribute colors. Foreground
+    color is independent of physical printer-color assignment.
+    """
+    import xml.etree.ElementTree as ET
+
+    source = tmp_path / "source.png"
+    output = tmp_path / "trace.svg"
+
+    image = np.zeros(
+        (40, 40, 4),
+        dtype=np.uint8,
+    )
+
+    image[8:32, 8:32] = (
+        *foreground_rgb,
+        255,
+    )
+
+    # Transparent pixels may contain arbitrary RGB values.
+    # They must not affect foreground color discovery.
+    image[0:4, 0:4, :3] = (255, 255, 0)
+
+    Image.fromarray(
+        image,
+        mode="RGBA",
+    ).save(source)
+
+    prepare._trace_single_color(
+        source,
+        output,
+    )
+
+    root = ET.parse(output).getroot()
+
+    paths = root.findall("{http://www.w3.org/2000/svg}path")
+
+    assert len(paths) == 1
+
+    assert paths[0].get("fill") == expected_fill
+    assert paths[0].get("fill-rule") == "nonzero"
+
+    assert root.get("viewBox") == "0 0 40 40"
+
+
+def test_prepare_single_color_preserves_source_rgb_through_clipping(
+    tmp_path: Path,
+) -> None:
+    """
+    Prepare preserves single-color source RGB through the
+    complete PNG preparation and clipping pipeline.
+
+    No Inkscape tracing or physical printer-color assignment
+    is required for this operation.
+    """
+    import xml.etree.ElementTree as ET
+
+    source = tmp_path / "source.png"
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    image = np.zeros(
+        (64, 64, 4),
+        dtype=np.uint8,
+    )
+
+    # A green foreground region with an enclosed transparent hole.
+    image[8:56, 8:56] = (35, 140, 85, 255)
+    image[24:40, 24:40] = (0, 0, 0, 0)
+
+    Image.fromarray(
+        image,
+        mode="RGBA",
+    ).save(source)
+
+    context = StubContext(
+        inputs={
+            "source": source,
+        },
+        outputs={
+            "trace": trace,
+            "envelope": envelope,
+        },
+        resolver=_resolver(
+            artifact_color_count=1,
+            envelope_mode="alpha",
+        ),
+    )
+
+    prepare.execute(context)  # type: ignore[arg-type]
+
+    assert trace.is_file()
+    assert envelope.is_file()
+
+    root = ET.parse(trace).getroot()
+
+    namespace = "{http://www.w3.org/2000/svg}"
+
+    artwork = root.find(f"{namespace}g[@id='artwork']")
+
+    assert artwork is not None
+    assert artwork.get("clip-path") == "url(#artwork-envelope)"
+
+    paths = artwork.findall(f"{namespace}path")
+
+    assert len(paths) == 1
+
+    path = paths[0]
+
+    assert path.get("fill") == "#238c55"
+    assert path.get("fill-rule") == "nonzero"
+
+    path_data = path.get("d")
+
+    assert path_data is not None
+
+    # Outer foreground boundary and interior hole.
+    assert path_data.count("M ") == 2
+    assert path_data.count("Z") == 2
+
+    # The SVG retains the source coordinate system.
+    assert root.get("viewBox") == "0 0 64 64"

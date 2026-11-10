@@ -1926,19 +1926,27 @@ def _trace_single_color(
     output: Path,
 ) -> None:
     """
-    Trace meaningful foreground occupancy into one compound SVG path.
+    Trace a single foreground color into one compound SVG path.
 
     Preserve exact raster pixel boundaries, disconnected regions,
     enclosed holes, and source coordinate registration.
 
     The source alpha channel determines foreground occupancy.
-    Pixels below DEFAULT_ALPHA_THRESHOLD are excluded.
+    Pixels below DEFAULT_ALPHA_THRESHOLD are excluded, including
+    their RGB values.
+
+    All meaningful foreground pixels must share one RGB color.
+    Preserve that authored color as the SVG path fill rather than
+    substituting a physical printer color or a default black fill.
+
+    Background pixels are represented by SVG transparency; no
+    background geometry or fill is generated.
 
     The resulting path uses the nonzero fill rule with oriented
     boundary loops to distinguish filled regions from holes.
 
-    Single-color tracing does not perform brightness-based subject
-    extraction or infer a foreground color from source RGB values.
+    This operation does not perform brightness-based subject
+    extraction, automatic color quantization, or multicolor tracing.
     """
     source = Path(source)
     output = Path(output).resolve()
@@ -1973,6 +1981,26 @@ def _trace_single_color(
 
     if not np.any(foreground):
         raise PrepareError("Single-color tracing requires meaningful foreground pixels.")
+
+    # Only meaningful foreground pixels contribute to Artifact color.
+    # Fully transparent background RGB values are irrelevant.
+    foreground_rgb = rgba[:, :, :3][foreground]
+
+    unique_colors = np.unique(
+        foreground_rgb,
+        axis=0,
+    )
+
+    if len(unique_colors) != 1:
+        raise PrepareError(
+            "Single-color tracing requires exactly one foreground "
+            f"RGB color; found {len(unique_colors)}. "
+            "Use multicolor tracing or provide uniform foreground artwork."
+        )
+
+    red, green, blue = (int(channel) for channel in unique_colors[0])
+
+    fill_color = f"#{red:02x}{green:02x}{blue:02x}"
 
     edges = _boundary_edges(
         foreground,
@@ -2019,7 +2047,7 @@ def _trace_single_color(
         _svg_tag("path"),
         {
             "d": " ".join(paths),
-            "fill": "#000000",
+            "fill": fill_color,
             "fill-rule": "nonzero",
         },
     )
