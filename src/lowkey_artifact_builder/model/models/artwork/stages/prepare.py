@@ -263,12 +263,13 @@ def execute(
         )
         return
 
-    # PNG processing selects the tracing strategy from the
-    # effective Artifact color count.
-
-    artifact_color_count = context.resolver(
-        "artifact_color_count",
-    )
+    # PNG tracing count is source-driven unless explicitly configured.
+    try:
+        configured_color_count = context.resolver(
+            "artifact_color_count",
+        )
+    except KeyError:
+        configured_color_count = None
 
     image = _load_source_image(
         source,
@@ -291,6 +292,45 @@ def execute(
         image,
         envelope,
     )
+
+    discovered_color_count = _discover_png_color_count(
+        prepared,
+    )
+
+    if configured_color_count is None:
+        artifact_color_count = discovered_color_count
+
+        logger.info(
+            "ARTWORK: Automatically discovered %d foreground colors (artifact_color_count=%d).",
+            discovered_color_count,
+            artifact_color_count,
+        )
+
+    else:
+        if (
+            isinstance(configured_color_count, bool)
+            or not isinstance(configured_color_count, int)
+            or configured_color_count < 1
+        ):
+            raise PrepareError("artifact_color_count must be a positive integer.")
+
+        artifact_color_count = configured_color_count
+
+        if artifact_color_count == discovered_color_count:
+            logger.info(
+                "ARTWORK: Explicit artifact_color_count=%d matches "
+                "%d discovered foreground colors.",
+                artifact_color_count,
+                discovered_color_count,
+            )
+
+        else:
+            logger.warning(
+                "ARTWORK: Explicit artifact_color_count=%d overrides "
+                "%d discovered foreground colors.",
+                artifact_color_count,
+                discovered_color_count,
+            )
 
     temporary_path: Path | None = None
 
@@ -1321,6 +1361,67 @@ def _assign_native_svg_path_ids(
         )
 
         reserved_ids.add(generated_id)
+
+
+def _discover_png_color_count(
+    image: Image.Image,
+) -> int:
+    """
+    Discover meaningful foreground RGB colors in prepared PNG artwork.
+
+    Transparent pixels do not contribute colors. Fully opaque pixels
+    provide authoritative color evidence. Partially transparent pixels
+    matching an established color within the antialias tolerance do
+    not create additional colors.
+
+    This is source-color discovery, not physical printer-color
+    assignment or general-purpose color quantization.
+    """
+    rgba = np.asarray(
+        image.convert("RGBA"),
+        dtype=np.uint8,
+    )
+
+    meaningful = rgba[:, :, 3] >= DEFAULT_ALPHA_THRESHOLD
+
+    if not np.any(meaningful):
+        raise PrepareError("Cannot discover Artifact colors: no meaningful foreground pixels.")
+
+    rgb = rgba[:, :, :3][meaningful]
+    alpha = rgba[:, :, 3][meaningful]
+
+    maximum_alpha = int(np.max(alpha))
+
+    # Start with the strongest available color evidence.
+    strongest = np.unique(
+        rgb[alpha == maximum_alpha],
+        axis=0,
+    )
+
+    representatives = [color.astype(np.float64) for color in strongest]
+
+    # Examine lower-opacity colors for additional authored colors.
+    # Small RGB variations near established colors are incidental
+    # antialiasing, not additional Artifact colors.
+    tolerance = 24.0
+
+    remaining = np.unique(
+        rgb[alpha < maximum_alpha],
+        axis=0,
+    )
+
+    for color in remaining:
+        candidate = color.astype(np.float64)
+
+        if any(
+            np.linalg.norm(candidate - representative) <= tolerance
+            for representative in representatives
+        ):
+            continue
+
+        representatives.append(candidate)
+
+    return len(representatives)
 
 
 def _prepare_source_image(

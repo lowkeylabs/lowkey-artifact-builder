@@ -1703,7 +1703,6 @@ def test_trace_single_color_rejects_distinct_maximum_opacity_colors(
     assert not output.exists()
 
 
-
 def test_prepare_single_color_excludes_opaque_exterior_background(
     tmp_path: Path,
 ) -> None:
@@ -1758,15 +1757,11 @@ def test_prepare_single_color_excludes_opaque_exterior_background(
 
     assert root.get("viewBox") == "0 0 64 64"
 
-    artwork = root.find(
-        f"{namespace}g[@id='artwork']"
-    )
+    artwork = root.find(f"{namespace}g[@id='artwork']")
 
     assert artwork is not None
 
-    paths = artwork.findall(
-        f"{namespace}path"
-    )
+    paths = artwork.findall(f"{namespace}path")
 
     assert len(paths) == 1
 
@@ -1842,3 +1837,206 @@ def test_prepare_single_color_alpha_mode_does_not_infer_white_background(
     assert not trace.exists()
 
 
+# =========================================================
+# Automatic Artifact color-count resolution
+# =========================================================
+
+
+@pytest.mark.parametrize(
+    ("foreground_colors", "expected_count"),
+    [
+        ([(255, 0, 0)], 1),
+        ([(255, 0, 0), (0, 0, 255)], 2),
+    ],
+)
+def test_prepare_automatically_discovers_png_color_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    foreground_colors: list[tuple[int, int, int]],
+    expected_count: int,
+) -> None:
+    """
+    Without an explicit artifact_color_count, PNG preparation
+    discovers the meaningful source foreground count.
+
+    One color selects single-color tracing; multiple colors
+    select multicolor tracing. The automatic decision is logged
+    at INFO level.
+    """
+    import logging
+
+    source = tmp_path / "source.png"
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    image = np.zeros((64, 64, 4), dtype=np.uint8)
+
+    image[8:56, 8:56] = (*foreground_colors[0], 255)
+
+    if len(foreground_colors) > 1:
+        image[32:56, 8:56] = (*foreground_colors[1], 255)
+
+    Image.fromarray(image, mode="RGBA").save(source)
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={"trace": trace, "envelope": envelope},
+        resolver=StubResolver(
+            {
+                "artwork_envelope_mode": "alpha",
+            }
+        ),
+    )
+
+    selected_counts: list[int] = []
+
+    def trace_single(
+        source_path: Path,
+        output_path: Path,
+    ) -> None:
+        assert source_path.is_file()
+        selected_counts.append(1)
+        output_path.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg"/>',
+            encoding="utf-8",
+        )
+
+    def trace_multi(
+        source_path: Path,
+        output_path: Path,
+        *,
+        colors: int,
+    ) -> None:
+        assert source_path.is_file()
+        selected_counts.append(colors)
+        output_path.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg"/>',
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        prepare,
+        "_trace_single_color",
+        trace_single,
+    )
+    monkeypatch.setattr(
+        prepare,
+        "_trace_multicolor",
+        trace_multi,
+    )
+    monkeypatch.setattr(
+        prepare,
+        "_clip_trace_to_envelope",
+        lambda trace_path, artwork_envelope: None,
+    )
+
+    with caplog.at_level(logging.INFO):
+        prepare.execute(context)  # type: ignore[arg-type]
+
+    assert selected_counts == [expected_count]
+    assert trace.is_file()
+    assert envelope.is_file()
+
+    messages = [
+        record.getMessage().lower() for record in caplog.records if record.levelno == logging.INFO
+    ]
+
+    assert any(
+        str(expected_count) in message and ("discover" in message or "automatic" in message)
+        for message in messages
+    )
+
+
+@pytest.mark.parametrize(
+    ("explicit_count", "expected_level"),
+    [
+        (2, "INFO"),
+        (3, "WARNING"),
+    ],
+)
+def test_prepare_logs_explicit_png_color_count_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    explicit_count: int,
+    expected_level: str,
+) -> None:
+    """
+    An explicit PNG tracing count takes precedence over
+    automatic discovery.
+
+    Matching overrides log at INFO. Mismatching overrides
+    log at WARNING and identify both the discovered and
+    selected counts.
+    """
+    import logging
+
+    source = tmp_path / "source.png"
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    image = np.zeros((64, 64, 4), dtype=np.uint8)
+
+    image[8:32, 8:56] = (255, 0, 0, 255)
+    image[32:56, 8:56] = (0, 0, 255, 255)
+
+    Image.fromarray(image, mode="RGBA").save(source)
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={"trace": trace, "envelope": envelope},
+        resolver=StubResolver(
+            {
+                "artwork_envelope_mode": "alpha",
+                "artifact_color_count": explicit_count,
+            }
+        ),
+    )
+
+    selected_counts: list[int] = []
+
+    def trace_multi(
+        source_path: Path,
+        output_path: Path,
+        *,
+        colors: int,
+    ) -> None:
+        assert source_path.is_file()
+        selected_counts.append(colors)
+        output_path.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg"/>',
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        prepare,
+        "_trace_multicolor",
+        trace_multi,
+    )
+    monkeypatch.setattr(
+        prepare,
+        "_clip_trace_to_envelope",
+        lambda trace_path, artwork_envelope: None,
+    )
+
+    with caplog.at_level(logging.INFO):
+        prepare.execute(context)  # type: ignore[arg-type]
+
+    assert selected_counts == [explicit_count]
+    assert trace.is_file()
+    assert envelope.is_file()
+
+    matching_records = [
+        record
+        for record in caplog.records
+        if record.levelname == expected_level
+        and "artifact_color_count" in record.getMessage().lower()
+    ]
+
+    assert matching_records
+
+    assert any(str(explicit_count) in record.getMessage() for record in matching_records)
+
+    if explicit_count != 2:
+        assert any("2" in record.getMessage() for record in matching_records)
