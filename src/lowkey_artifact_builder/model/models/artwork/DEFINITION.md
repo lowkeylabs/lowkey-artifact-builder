@@ -331,6 +331,16 @@ An enclosed Artwork region is not excluded solely because its color also occurs 
 
 Envelope derivation affects interpretation of the source Artwork. It does not alter the registered coordinate system or the semantics of downstream Artwork products.
 
+Meaningful source Artwork may touch any boundary of the source raster.
+Envelope derivation must preserve such Artwork without requiring
+transparent padding or imposing an inset from the source boundary.
+
+Shrink-wrap does not guarantee semantic subject extraction from
+complex opaque backgrounds. When the exterior background cannot
+be reliably distinguished from Artwork, preparation warns that the
+derived envelope may be inaccurate and recommends removing the
+background or replacing it with transparency or a uniform color.
+
 For SVG sources, envelope derivation operates on the supported interpreted vector geometry, including its occupied regions, holes, and transparency. It must preserve the distinction between enclosed Artwork regions and exterior background.
 
 SVG interpretation supports document dimensions, `viewBox`, transforms, paths, fills, and transparency where these can be normalized into the registered Artwork contract.

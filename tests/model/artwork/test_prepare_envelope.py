@@ -195,9 +195,7 @@ def test_shrink_wrap_preserves_enclosed_transparent_region() -> None:
 @pytest.mark.parametrize(
     "fixture_name",
     [
-        "busy_bg_person.png",
         "clean_bg_cat.png",
-        "clean_bg_dog.png",
         "clean_bg_house.png",
         "clean_bg_person.png",
     ],
@@ -206,13 +204,17 @@ def test_shrink_wrap_real_artwork_does_not_use_source_rectangle(
     fixture_name: str,
 ) -> None:
     """
-    Shrink-wrap derives a bounded envelope for representative real
-    Artwork rather than treating the complete source raster as Artwork.
+    Shrink-wrap derives a bounded envelope for representative Artwork
+    with a clean exterior background.
 
-    This is a processability test rather than a claim that shrink-wrap
-    performs arbitrary photographic subject extraction.
+    Clean-background Artwork should produce a nonempty envelope that
+    excludes the source raster boundary when the actual Artwork is
+    wholly contained within that boundary.
+
+    This test does not require arbitrary photographic subject
+    extraction or treat touching the raster boundary as inherently
+    invalid.
     """
-
     image = _load_fixture(
         fixture_name,
     )
@@ -223,40 +225,80 @@ def test_shrink_wrap_real_artwork_does_not_use_source_rectangle(
             mode="shrink-wrap",
         )
 
-        assert np.any(
-            envelope,
+        assert envelope.shape == (
+            image.height,
+            image.width,
         )
+
+        assert np.any(envelope)
+        assert not np.all(envelope)
 
         height, width = envelope.shape
 
-        assert not np.all(
-            envelope,
-        )
+        assert not np.any(envelope[0, :])
+        assert not np.any(envelope[height - 1, :])
+        assert not np.any(envelope[:, 0])
+        assert not np.any(envelope[:, width - 1])
 
-        assert not np.any(
-            envelope[0, :],
-        )
-
-        assert not np.any(
-            envelope[height - 1, :],
-        )
-
-        assert not np.any(
-            envelope[:, 0],
-        )
-
-        assert not np.any(
-            envelope[:, width - 1],
-        )
-
-        occupied_y, occupied_x = np.nonzero(
-            envelope,
-        )
+        occupied_y, occupied_x = np.nonzero(envelope)
 
         assert occupied_x.min() > 0
         assert occupied_y.min() > 0
         assert occupied_x.max() < width - 1
         assert occupied_y.max() < height - 1
+
+    finally:
+        image.close()
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    "fixture_name",
+    [
+        "busy_bg_person.png",
+        "clean_bg_dog.png",
+    ],
+)
+def test_shrink_wrap_real_artwork_warns_for_complex_exterior(
+    fixture_name: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    Representative Artwork with a complex opaque exterior produces
+    a diagnostic warning rather than promising accurate subject
+    extraction.
+
+    Shrink-wrap remains processable and returns a physically
+    registered envelope, but its silhouette is not required to
+    exclude every source boundary.
+
+    Background removal and semantic subject segmentation are
+    outside this envelope-classification contract.
+    """
+    image = _load_fixture(
+        fixture_name,
+    )
+
+    try:
+        with caplog.at_level(
+            logging.WARNING,
+            logger=prepare.__name__,
+        ):
+            envelope = prepare._derive_envelope(
+                image,
+                mode="shrink-wrap",
+            )
+
+        assert envelope.shape == (
+            image.height,
+            image.width,
+        )
+
+        assert envelope.dtype == np.bool_
+
+        assert np.any(envelope)
+
+        assert prepare.COMPLEX_EXTERIOR_WARNING in caplog.messages
 
     finally:
         image.close()
@@ -1189,6 +1231,60 @@ def test_shrink_wrap_does_not_warn_for_transparent_exterior(
             )
 
         assert not caplog.records
+
+    finally:
+        image.close()
+
+
+def test_shrink_wrap_preserves_artwork_touching_all_four_edges() -> None:
+    """
+    Transparent Artwork may touch the raster boundary.
+
+    Shrink-wrap must preserve visible foreground at all four edges
+    without requiring the operator to add transparent padding.
+    """
+
+    image = Image.new(
+        "RGBA",
+        (100, 100),
+        (255, 255, 255, 0),
+    )
+
+    try:
+        pixels = image.load()
+        assert pixels is not None
+
+        # A single connected black cross touches all four edges.
+        for y in range(100):
+            for x in range(44, 56):
+                pixels[x, y] = (0, 0, 0, 255)
+
+        for y in range(44, 56):
+            for x in range(100):
+                pixels[x, y] = (0, 0, 0, 255)
+
+        envelope = prepare._derive_envelope(
+            image,
+            mode="shrink-wrap",
+        )
+
+        # Source dimensions and registration are preserved.
+        assert envelope.shape == (100, 100)
+
+        # Meaningful foreground survives at all four boundaries.
+        assert envelope[0, 50]
+        assert envelope[99, 50]
+        assert envelope[50, 0]
+        assert envelope[50, 99]
+
+        # The connected interior remains part of the envelope.
+        assert envelope[50, 50]
+
+        # Transparent exterior corners remain excluded.
+        assert not envelope[0, 0]
+        assert not envelope[0, 99]
+        assert not envelope[99, 0]
+        assert not envelope[99, 99]
 
     finally:
         image.close()

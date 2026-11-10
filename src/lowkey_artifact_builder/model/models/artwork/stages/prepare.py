@@ -496,10 +496,7 @@ def _derive_envelope(
 
 def _shrink_wrap_foreground_mask(
     image: Image.Image,
-) -> tuple[
-    np.ndarray,
-    np.ndarray,
-]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Return shrink-wrap foreground and known exterior background.
 
@@ -507,14 +504,19 @@ def _shrink_wrap_foreground_mask(
     ordinary exterior connectivity. This preserves legitimate concavities
     and narrow crevices in the Artwork boundary.
 
+    Transparent boundary pixels establish exterior background directly.
+    Meaningful boundary pixels are used to infer an additional opaque
+    background color only when they provide sufficiently consistent
+    evidence of an exterior background.
+
     A second geometric pass identifies exterior-connected background
     intrusions that enter through a narrow passage and penetrate
-    disproportionately deeply into the Artwork domain. Those intrusions are
-    removed from the exterior classification so subsequent envelope
+    disproportionately deeply into the Artwork domain. Those intrusions
+    are removed from exterior classification so subsequent envelope
     construction can bridge and fill them.
 
-    The geometric correction affects only exterior classification. It does
-    not directly modify source Artwork pixels.
+    The geometric correction affects only exterior classification. It
+    does not directly modify source Artwork pixels.
     """
 
     rgba = np.asarray(
@@ -530,85 +532,87 @@ def _shrink_wrap_foreground_mask(
     if height < 1 or width < 1:
         raise PrepareError("Shrink-wrap source image cannot be empty.")
 
-    alpha = rgba[
-        :,
-        :,
-        3,
-    ]
-
+    alpha = rgba[:, :, 3]
     meaningful = alpha >= DEFAULT_ALPHA_THRESHOLD
-
-    if _has_complex_opaque_exterior(
-        rgba,
-        meaningful,
-    ):
-        logger.warning(
-            COMPLEX_EXTERIOR_WARNING,
-        )
-
     transparent = ~meaningful
+
+    if _has_complex_opaque_exterior(rgba, meaningful):
+        logger.warning(COMPLEX_EXTERIOR_WARNING)
 
     #
     # Collect the rectangular source boundary.
     #
     boundary_rgba = np.concatenate(
         (
-            rgba[
-                0,
-                :,
-                :,
-            ],
-            rgba[
-                height - 1,
-                :,
-                :,
-            ],
-            rgba[
-                :,
-                0,
-                :,
-            ],
-            rgba[
-                :,
-                width - 1,
-                :,
-            ],
+            rgba[0, :, :],
+            rgba[height - 1, :, :],
+            rgba[:, 0, :],
+            rgba[:, width - 1, :],
         ),
         axis=0,
     )
 
-    boundary_meaningful = (
-        boundary_rgba[
-            :,
-            3,
-        ]
-        >= DEFAULT_ALPHA_THRESHOLD
-    )
+    boundary_meaningful = boundary_rgba[:, 3] >= DEFAULT_ALPHA_THRESHOLD
 
-    if np.any(
+    #
+    # Infer a possible opaque exterior background color.
+    #
+    # Transparent pixels themselves establish exterior background.
+    # Opaque pixels touching the boundary are not necessarily
+    # background: they may be legitimate Artwork.
+    #
+    # In particular, a black cross on transparent background can
+    # touch all four boundaries. Its black pixels must not become
+    # background merely because they appear at the raster edge.
+    #
+    boundary_rgb = boundary_rgba[
         boundary_meaningful,
-    ):
-        #
-        # Infer ordinary exterior background color from meaningful pixels
-        # on the rectangular source boundary.
-        #
+        :3,
+    ].astype(np.float64)
+
+    boundary_count = len(boundary_rgba)
+    meaningful_count = len(boundary_rgb)
+
+    meaningful_fraction = meaningful_count / boundary_count
+
+    #
+    # Require a substantial meaningful boundary before treating its
+    # color as an exterior-background candidate.
+    #
+    # This avoids interpreting sparse boundary-touching Artwork as
+    # background while retaining inference for predominantly opaque
+    # source images.
+    #
+    infer_opaque_background = meaningful_count > 0 and meaningful_fraction >= 0.5
+
+    if infer_opaque_background:
         background_rgb = np.median(
-            boundary_rgba[
-                boundary_meaningful,
-                :3,
-            ].astype(
-                np.float64,
-            ),
+            boundary_rgb,
             axis=0,
         )
 
-        rgb = rgba[
-            :,
-            :,
-            :3,
-        ].astype(
-            np.float64,
+        #
+        # Check whether the inferred color is representative of the
+        # meaningful boundary rather than an arbitrary foreground
+        # color appearing at a few edge locations.
+        #
+        boundary_difference = boundary_rgb - background_rgb
+
+        boundary_distance = np.sqrt(
+            np.sum(
+                boundary_difference * boundary_difference,
+                axis=1,
+            )
         )
+
+        consistent_fraction = float(
+            np.mean(boundary_distance <= DEFAULT_SHRINK_WRAP_BACKGROUND_DISTANCE)
+        )
+
+        infer_opaque_background = consistent_fraction >= 0.5
+
+    if infer_opaque_background:
+        rgb = rgba[:, :, :3].astype(np.float64)
 
         difference = rgb - background_rgb
 
@@ -625,91 +629,36 @@ def _shrink_wrap_foreground_mask(
 
     else:
         #
-        # RGB values beneath transparent pixels are not reliable. For a
-        # transparent crop, visible near-white pixels may nevertheless be
-        # connected to the transparent exterior and therefore constitute
+        # RGB values beneath transparent pixels are not reliable.
+        #
+        # Visible near-white pixels may nevertheless be connected
+        # to the transparent exterior and therefore constitute
         # clean exterior background.
         #
-        rgb = rgba[
-            :,
-            :,
-            :3,
-        ]
+        rgb = rgba[:, :, :3]
 
         background_like = (
             meaningful
-            & (
-                rgb[
-                    :,
-                    :,
-                    0,
-                ]
-                >= DEFAULT_SHRINK_WRAP_WHITE_MINIMUM
-            )
-            & (
-                rgb[
-                    :,
-                    :,
-                    1,
-                ]
-                >= DEFAULT_SHRINK_WRAP_WHITE_MINIMUM
-            )
-            & (
-                rgb[
-                    :,
-                    :,
-                    2,
-                ]
-                >= DEFAULT_SHRINK_WRAP_WHITE_MINIMUM
-            )
+            & (rgb[:, :, 0] >= DEFAULT_SHRINK_WRAP_WHITE_MINIMUM)
+            & (rgb[:, :, 1] >= DEFAULT_SHRINK_WRAP_WHITE_MINIMUM)
+            & (rgb[:, :, 2] >= DEFAULT_SHRINK_WRAP_WHITE_MINIMUM)
         )
 
     background_candidate = transparent | background_like
 
     #
-    # First determine exterior background using the unmodified connectivity
-    # domain. This is intentionally the detailed behavior: narrow exterior
-    # crevices remain reachable at this stage.
+    # First determine exterior background using the unmodified
+    # connectivity domain. Narrow exterior crevices remain reachable.
     #
     boundary_seed = np.zeros(
-        (
-            height,
-            width,
-        ),
+        (height, width),
         dtype=bool,
     )
 
-    boundary_seed[
-        0,
-        :,
-    ] = background_candidate[
-        0,
-        :,
-    ]
-
-    boundary_seed[
-        height - 1,
-        :,
-    ] = background_candidate[
-        height - 1,
-        :,
-    ]
-
-    boundary_seed[
-        :,
-        0,
-    ] |= background_candidate[
-        :,
-        0,
-    ]
-
-    boundary_seed[
-        :,
-        width - 1,
-    ] |= background_candidate[
-        :,
-        width - 1,
-    ]
+    boundary_seed[0, :] = background_candidate[0, :]
+    boundary_seed[height - 1, :] = background_candidate[height - 1, :]
+    boundary_seed[:, 0] |= background_candidate[:, 0]
+    boundary_seed[:, width - 1] |= background_candidate[:, width - 1]
 
     exterior = np.asarray(
         ndimage.binary_propagation(
@@ -720,12 +669,8 @@ def _shrink_wrap_foreground_mask(
     )
 
     #
-    # Construct a second exterior classification in which small breaks in
-    # visible Artwork temporarily act as closed barriers.
-    #
-    # The difference between the ordinary exterior and this protected
-    # exterior identifies background reached only through such narrow
-    # passages.
+    # Construct a second exterior classification in which small
+    # breaks in visible Artwork temporarily act as closed barriers.
     #
     foreground_candidate = meaningful & ~background_like
 
@@ -747,44 +692,14 @@ def _shrink_wrap_foreground_mask(
     )
 
     protected_seed = np.zeros(
-        (
-            height,
-            width,
-        ),
+        (height, width),
         dtype=bool,
     )
 
-    protected_seed[
-        0,
-        :,
-    ] = protected_background[
-        0,
-        :,
-    ]
-
-    protected_seed[
-        height - 1,
-        :,
-    ] = protected_background[
-        height - 1,
-        :,
-    ]
-
-    protected_seed[
-        :,
-        0,
-    ] |= protected_background[
-        :,
-        0,
-    ]
-
-    protected_seed[
-        :,
-        width - 1,
-    ] |= protected_background[
-        :,
-        width - 1,
-    ]
+    protected_seed[0, :] = protected_background[0, :]
+    protected_seed[height - 1, :] = protected_background[height - 1, :]
+    protected_seed[:, 0] |= protected_background[:, 0]
+    protected_seed[:, width - 1] |= protected_background[:, width - 1]
 
     protected_exterior = np.asarray(
         ndimage.binary_propagation(
@@ -795,27 +710,17 @@ def _shrink_wrap_foreground_mask(
     )
 
     #
-    # Pixels reachable normally but not through the protected connectivity
-    # domain are potential narrow-mouth concavities.
+    # Pixels reachable normally but not through protected
+    # connectivity are potential narrow-mouth concavities.
     #
     intrusion = np.asarray(
         exterior & ~protected_exterior,
         dtype=bool,
     )
 
-    #
-    # Analyze each potential intrusion independently.
-    #
-    # Closing contributes a thin bridge at the mouth itself. We do not want
-    # that bridge alone to cause an ordinary shallow crevice to be repaired.
-    # Only a connected intrusion whose depth is disproportionately large
-    # relative to the closing scale is removed from exterior classification.
-    #
     label_result = cast(
         tuple[Any, int],
-        ndimage.label(
-            intrusion,
-        ),
+        ndimage.label(intrusion),
     )
 
     intrusion_labels = np.asarray(
@@ -829,57 +734,27 @@ def _shrink_wrap_foreground_mask(
 
     minimum_deep_intrusion = DEFAULT_ENVELOPE_CLOSE_PIXELS * 4
 
-    for label in range(
-        1,
-        intrusion_count + 1,
-    ):
+    for label in range(1, intrusion_count + 1):
         region = intrusion_labels == label
 
-        coordinates = np.argwhere(
-            region,
-        )
+        coordinates = np.argwhere(region)
 
         if coordinates.size == 0:
             continue
 
         #
-        # Estimate geometric depth using the larger span of the connected
-        # intrusion. For the narrow-passage cases targeted here, the mouth
-        # width is bounded by the closing scale while the intrusion extends
-        # substantially farther along its penetration axis.
+        # Estimate geometric depth using the larger span of the
+        # connected intrusion.
         #
-        minimum_y = int(
-            coordinates[
-                :,
-                0,
-            ].min()
-        )
-        maximum_y = int(
-            coordinates[
-                :,
-                0,
-            ].max()
-        )
-        minimum_x = int(
-            coordinates[
-                :,
-                1,
-            ].min()
-        )
-        maximum_x = int(
-            coordinates[
-                :,
-                1,
-            ].max()
-        )
+        minimum_y = int(coordinates[:, 0].min())
+        maximum_y = int(coordinates[:, 0].max())
+        minimum_x = int(coordinates[:, 1].min())
+        maximum_x = int(coordinates[:, 1].max())
 
         span_y = maximum_y - minimum_y + 1
         span_x = maximum_x - minimum_x + 1
 
-        depth = max(
-            span_x,
-            span_y,
-        )
+        depth = max(span_x, span_y)
 
         if depth >= minimum_deep_intrusion:
             repaired_exterior[region] = False
@@ -947,8 +822,13 @@ def _build_envelope(
            background.
         5. Retain the primary physical envelope.
 
-    excluded identifies known exterior background that envelope morphology
-    must not reintroduce. Ordinary enclosed holes remain fillable.
+    Meaningful foreground may touch any source raster boundary.
+    Morphological closing must preserve that foreground without
+    requiring transparent padding in the source Artwork.
+
+    excluded identifies known exterior background that envelope
+    morphology must not reintroduce. Ordinary enclosed holes remain
+    fillable.
     """
 
     if foreground.ndim != 2:
@@ -974,35 +854,78 @@ def _build_envelope(
             dtype=bool,
         )
 
+    #
+    # Remove insignificant connected foreground components.
+    #
     cleaned = _remove_small_components(
         foreground,
         minimum_pixels=DEFAULT_ENVELOPE_MIN_PIXELS,
     )
 
-    if not np.any(
-        cleaned,
-    ):
+    if not np.any(cleaned):
         raise PrepareError("No meaningful foreground remains after envelope cleanup.")
 
+    #
+    # Construct the closing element.
+    #
     structure = _disk_structure(
         DEFAULT_ENVELOPE_CLOSE_PIXELS,
     )
 
-    closed = np.asarray(
+    #
+    # Morphological closing may erode foreground touching the source
+    # raster boundary because pixels outside the array are treated
+    # as background.
+    #
+    # Pad the mask before closing, then crop the result back to its
+    # original dimensions. This preserves boundary-touching Artwork
+    # without changing source dimensions or registration.
+    #
+    padding = DEFAULT_ENVELOPE_CLOSE_PIXELS
+
+    padded = np.pad(
+        cleaned,
+        pad_width=padding,
+        mode="constant",
+        constant_values=False,
+    )
+
+    padded_closed = np.asarray(
         ndimage.binary_closing(
-            cleaned,
+            padded,
             structure=structure,
         ),
         dtype=bool,
     )
 
+    closed = np.asarray(
+        padded_closed[
+            padding:-padding,
+            padding:-padding,
+        ],
+        dtype=bool,
+    )
+
     #
-    # Morphological closing may bridge small breaks across known exterior
-    # background. Restore that classification before determining enclosed
-    # regions.
+    # Morphological closing may bridge small breaks across known
+    # exterior background. Restore that classification before
+    # determining enclosed regions.
     #
+
     closed &= ~protected
 
+    #
+    # Preserve meaningful source foreground at the raster boundary,
+    # but do not allow closing to introduce new boundary pixels.
+    #
+    closed[0, :] = cleaned[0, :]
+    closed[-1, :] = cleaned[-1, :]
+    closed[:, 0] = cleaned[:, 0]
+    closed[:, -1] = cleaned[:, -1]
+
+    #
+    # Fill enclosed regions in the resulting silhouette.
+    #
     filled = np.asarray(
         ndimage.binary_fill_holes(
             closed,
@@ -1011,19 +934,25 @@ def _build_envelope(
     )
 
     #
-    # Hole filling operates only on mask topology and cannot distinguish a
-    # genuine interior hole from source pixels already known to be exterior
-    # background. Preserve the source classification explicitly.
+    # Hole filling operates only on mask topology and cannot
+    # distinguish a genuine interior hole from source pixels
+    # already known to be exterior background.
+    #
+    # Preserve the source classification explicitly.
     #
     filled &= ~protected
 
+    #
+    # Retain the primary physical envelope.
+    #
     envelope = _retain_primary_envelope(
         filled,
     )
 
     #
-    # Keep the invariant explicit at the returned boundary as well:
-    # classified exterior background can never belong to the envelope.
+    # Keep the invariant explicit at the returned boundary:
+    # classified exterior background can never belong to
+    # the envelope.
     #
     envelope &= ~protected
 
