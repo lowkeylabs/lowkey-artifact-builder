@@ -1112,3 +1112,187 @@ def test_prepare_svg_rejects_embedded_raster_content(
         match=r"(?i)(unsupported|embedded|raster|image)",
     ):
         prepare.execute(context)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("color_count", "expected_mode"),
+    [
+        (1, "single"),
+        (2, "multicolor"),
+        (3, "multicolor"),
+    ],
+)
+def test_prepare_selects_tracing_mode_from_color_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    color_count: int,
+    expected_mode: str,
+) -> None:
+    """
+    Prepare selects single-scan tracing for one Artifact color
+    and multicolor tracing for two or more Artifact colors.
+
+    Both operations produce the same declared trace Product.
+    """
+    source = tmp_path / "source.png"
+    _write_source(source)
+
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={
+            "trace": trace,
+            "envelope": envelope,
+        },
+        resolver=_resolver(
+            artifact_color_count=color_count,
+            envelope_mode="shrink-wrap",
+        ),
+    )
+
+    observed: list[tuple[str, int | None]] = []
+
+    def write_trace(
+        output: Path,
+    ) -> None:
+        output.write_text(
+            (
+                '<svg xmlns="http://www.w3.org/2000/svg" '
+                'viewBox="0 0 40 40">'
+                '<rect x="8" y="8" width="24" height="24" '
+                'fill="#000000"/>'
+                "</svg>"
+            ),
+            encoding="utf-8",
+        )
+
+    def fake_single(
+        source: Path,
+        output: Path,
+    ) -> None:
+        assert source.is_file()
+        observed.append(("single", None))
+        write_trace(output)
+
+    def fake_multicolor(
+        source: Path,
+        output: Path,
+        *,
+        colors: int,
+    ) -> None:
+        assert source.is_file()
+        observed.append(("multicolor", colors))
+        write_trace(output)
+
+    monkeypatch.setattr(
+        prepare,
+        "_trace_single_color",
+        fake_single,
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        prepare,
+        "_trace_multicolor",
+        fake_multicolor,
+    )
+
+    monkeypatch.setattr(
+        prepare,
+        "_clip_trace_to_envelope",
+        lambda trace_path, artwork_envelope: None,
+    )
+
+    prepare.execute(context)  # type: ignore[arg-type]
+
+    assert observed == [
+        (
+            expected_mode,
+            None if color_count == 1 else color_count,
+        ),
+    ]
+
+    assert trace.is_file()
+    assert envelope.is_file()
+
+
+def test_trace_single_color_produces_declared_svg(
+    tmp_path: Path,
+) -> None:
+    """
+    Single-color tracing produces one compound SVG foreground path.
+
+    Preserve disconnected regions, interior holes, exact pixel-edge
+    geometry, and source registration, including boundary contact.
+    """
+    import xml.etree.ElementTree as ET
+
+    source = tmp_path / "source.png"
+    output = tmp_path / "trace.svg"
+
+    # Transparent 40x40 raster with:
+    # - one 20x20 foreground square,
+    # - one 8x8 transparent interior hole,
+    # - one disconnected 5x5 foreground square,
+    # - one region touching the left raster boundary.
+    image = np.zeros(
+        (40, 40, 4),
+        dtype=np.uint8,
+    )
+
+    image[8:28, 8:28] = (0, 0, 0, 255)
+    image[14:22, 14:22] = (0, 0, 0, 0)
+    image[32:37, 32:37] = (0, 0, 0, 255)
+    image[18:23, 0:4] = (0, 0, 0, 255)
+
+    Image.fromarray(
+        image,
+        mode="RGBA",
+    ).save(source)
+
+    prepare._trace_single_color(
+        source,
+        output,
+    )
+
+    assert output.is_file()
+
+    tree = ET.parse(output)
+    root = tree.getroot()
+
+    assert root.tag == "{http://www.w3.org/2000/svg}svg"
+    assert root.get("width") == "40"
+    assert root.get("height") == "40"
+    assert root.get("viewBox") == "0 0 40 40"
+
+    paths = root.findall("{http://www.w3.org/2000/svg}path")
+
+    assert len(paths) == 1
+
+    path = paths[0]
+
+    assert path.get("fill") == "#000000"
+    assert path.get("fill-rule") == "nonzero"
+
+    path_data = path.get("d")
+
+    assert path_data is not None
+
+    # Three foreground components and one enclosed hole
+    # must produce four closed boundary loops.
+    assert path_data.count("M ") == 4
+    assert path_data.count("Z") == 4
+
+    # Exact pixel boundaries, rather than OpenCV pixel-center
+    # contours, must remain represented in the SVG.
+    assert "8 8" in path_data
+    assert "28 28" in path_data
+    assert "14 14" in path_data
+    assert "22 22" in path_data
+    assert "32 32" in path_data
+    assert "37 37" in path_data
+
+    # Foreground touching the left boundary must not be inset.
+    assert "0 18" in path_data or "0 23" in path_data

@@ -1,23 +1,37 @@
 """
 Artwork prepare stage.
 
-The prepare stage analyzes materialized raster artwork before converting
-it into a multicolor SVG trace.
+The prepare stage analyzes materialized source Artwork and produces
+manufacturing-ready SVG geometry and a physical Artwork envelope.
 
-Preparation establishes the physical artwork envelope and preserves
-source color information for tracing. Pixels outside the physical
-envelope are excluded from the prepared raster.
+PNG sources are normalized and traced according to the effective
+Artifact color count:
+
+    1 color:
+        Single-color tracing of meaningful foreground occupancy
+        into one compound SVG path.
+
+    2 or more colors:
+        Inkscape multicolor tracing, preserving source color
+        regions for downstream Artwork registration.
+
+Native SVG sources preserve authored vector geometry and colors
+without raster tracing.
 
 The stage produces:
 
     trace.svg
-        Multicolor SVG trace of the prepared source Artwork.
+        SVG geometry representing prepared source Artwork.
 
     envelope.svg
-        SVG containing only the closed outer boundary of the Artwork.
+        SVG containing the physical Artwork envelope boundary.
 
-Filesystem layout and configuration resolution are responsibilities of
-the build engine. This implementation consumes only the inputs,
+For PNG sources, the physical envelope constrains the resulting
+trace geometry. Pixels outside that envelope are excluded from
+the prepared raster.
+
+Filesystem layout and configuration resolution are responsibilities
+of the build engine. This implementation consumes only the inputs,
 parameters, and outputs supplied through StageContext.
 """
 # File: src/lowkey_artifact_builder/model/models/artwork/stages/prepare.py
@@ -180,14 +194,17 @@ def execute(
     """
     Execute the Artwork prepare stage.
 
-    PNG sources are normalized and traced into multicolor SVG geometry.
+    PNG sources are normalized and traced into SVG geometry.
+
+    Single-color PNG tracing uses meaningful foreground alpha
+    to construct one compound SVG path. Multicolor PNG tracing
+    uses Inkscape to derive source color regions.
 
     SVG sources preserve their authored vector geometry and colors,
     without invoking PNG tracing.
 
     Both source formats produce trace.svg and envelope.svg.
     """
-
     source = context.input(
         "source",
     )
@@ -246,7 +263,8 @@ def execute(
         )
         return
 
-    # Existing PNG processing remains unchanged.
+    # PNG processing selects the tracing strategy from the
+    # effective Artifact color count.
 
     artifact_color_count = context.resolver(
         "artifact_color_count",
@@ -292,11 +310,18 @@ def execute(
             format="PNG",
         )
 
-        _trace_multicolor(
-            temporary_path,
-            trace_output,
-            colors=artifact_color_count,
-        )
+        if artifact_color_count == 1:
+            _trace_single_color(
+                temporary_path,
+                trace_output,
+            )
+
+        else:
+            _trace_multicolor(
+                temporary_path,
+                trace_output,
+                colors=artifact_color_count,
+            )
 
         _clip_trace_to_envelope(
             trace_output,
@@ -1303,13 +1328,16 @@ def _prepare_source_image(
     envelope: np.ndarray,
 ) -> Image.Image:
     """
-    Prepare source Artwork for multicolor tracing.
+    Normalize raster source Artwork for subsequent SVG tracing.
 
-    Source RGBA values are preserved within the physical Artwork
-    envelope. Pixels outside the envelope are fully transparent.
+    Preserve source RGBA values within the physical Artwork envelope.
+    Make pixels outside that envelope fully transparent.
 
-    Prepare does not assign physical printer colors or synthesize a
-    configured Artwork fill color.
+    The resulting raster supports both single-color foreground
+    tracing and Inkscape multicolor tracing.
+
+    Prepare does not assign physical printer colors or synthesize
+    a configured Artwork fill color.
     """
 
     rgba = np.asarray(
@@ -1886,6 +1914,130 @@ def _local_name(
         "}",
         1,
     )[-1]
+
+
+# =========================================================
+# Single color tracing
+# =========================================================
+
+
+def _trace_single_color(
+    source: Path,
+    output: Path,
+) -> None:
+    """
+    Trace meaningful foreground occupancy into one compound SVG path.
+
+    Preserve exact raster pixel boundaries, disconnected regions,
+    enclosed holes, and source coordinate registration.
+
+    The source alpha channel determines foreground occupancy.
+    Pixels below DEFAULT_ALPHA_THRESHOLD are excluded.
+
+    The resulting path uses the nonzero fill rule with oriented
+    boundary loops to distinguish filled regions from holes.
+
+    Single-color tracing does not perform brightness-based subject
+    extraction or infer a foreground color from source RGB values.
+    """
+    source = Path(source)
+    output = Path(output).resolve()
+
+    _require_source(source)
+
+    if source.suffix.lower() != ".png":
+        raise PrepareError(f"Single-color tracing requires a PNG source: {source}")
+
+    _require_svg_output(
+        source,
+        output,
+        label="Trace",
+    )
+
+    try:
+        with Image.open(source) as image:
+            rgba = np.asarray(
+                image.convert("RGBA"),
+                dtype=np.uint8,
+            )
+
+    except (OSError, ValueError) as exc:
+        raise PrepareError(f"Could not load source artwork: {source}") from exc
+
+    height, width = rgba.shape[:2]
+
+    foreground = np.asarray(
+        rgba[:, :, 3] >= DEFAULT_ALPHA_THRESHOLD,
+        dtype=bool,
+    )
+
+    if not np.any(foreground):
+        raise PrepareError("Single-color tracing requires meaningful foreground pixels.")
+
+    edges = _boundary_edges(
+        foreground,
+    )
+
+    loops = _boundary_loops(
+        edges,
+    )
+
+    if not loops:
+        raise PrepareError("Could not trace single-color foreground geometry.")
+
+    paths: list[str] = []
+
+    for loop in loops:
+        simplified = _simplify_loop(
+            loop,
+        )
+
+        if len(simplified) < 4:
+            raise PrepareError("Single-color trace contains insufficient geometry.")
+
+        if _signed_area(simplified) == 0:
+            raise PrepareError("Single-color trace contains degenerate geometry.")
+
+        paths.append(_svg_path_data(simplified))
+
+    ET.register_namespace(
+        "",
+        SVG_NAMESPACE,
+    )
+
+    root = ET.Element(
+        _svg_tag("svg"),
+        {
+            "width": str(width),
+            "height": str(height),
+            "viewBox": f"0 0 {width} {height}",
+        },
+    )
+
+    ET.SubElement(
+        root,
+        _svg_tag("path"),
+        {
+            "d": " ".join(paths),
+            "fill": "#000000",
+            "fill-rule": "nonzero",
+        },
+    )
+
+    output.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    try:
+        ET.ElementTree(root).write(
+            output,
+            encoding="utf-8",
+            xml_declaration=True,
+        )
+
+    except OSError as exc:
+        raise PrepareError(f"Could not write single-color trace: {output}") from exc
 
 
 # =========================================================
