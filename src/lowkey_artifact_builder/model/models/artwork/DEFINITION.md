@@ -47,7 +47,7 @@ The build system materializes the source into the Artifact workspace before Artw
 
 Artwork stages consume the materialized source through the build-engine context rather than depending on the source's original filesystem location.
 
-PNG sources follow raster interpretation and multicolor tracing.
+PNG sources follow raster interpretation and source-color tracing, using single-color tracing for one effective Artifact color and multicolor tracing for two or more.
 
 SVG sources follow vector-native interpretation. Supported authored geometry and color regions are preserved without conversion to PNG and retracing.
 
@@ -56,15 +56,16 @@ Both formats produce the established registered Artwork representation and remai
 
 ## Artifact Colors
 
-For PNG sources, Artwork preparation supplies the source's color information to multicolor tracing. It does not first quantize the source to printer, library, or catalog filament colors.
 
-For PNG sources, multicolor tracing produces `artifact_color_count` traced color regions and assigns an RGB representation to each region.
+For PNG sources, Artwork automatically discovers the number of meaningful foreground colors from the interpreted source. Automatic discovery is the default when `artifact_color_count` is not explicitly configured.
 
-Deriving `artifact_color_count` from the number of configured `printer_colors` does not make the identities of those printer colors material inputs to registered Artwork geometry.
+Transparent background pixels and incidental antialiasing variations do not introduce additional Artifact colors. Discovery operates on source Artwork within the derived envelope, independently of `printer_colors`, `library_colors`, and the physical color catalog.
 
-For PNG sources, registered Artwork processing depends on the effective `artifact_color_count`, not the identities of configured physical printer colors.
+An explicitly configured positive integer `artifact_color_count` overrides the automatically discovered count for PNG tracing. The override selects the requested tracing count but does not authorize silent loss, merging, or invention of authored Artifact colors.
 
-For SVG sources, registered Artwork processing depends on the supported authored geometry and colors, independently of `artifact_color_count`.
+For PNG sources, one effective Artifact color uses single-color tracing. Two or more effective Artifact colors use multicolor tracing. Preparation preserves source color information without first quantizing it to physical printer, library, or catalog colors.
+
+For SVG sources, registered Artwork processing depends on supported authored geometry and colors, independently of `artifact_color_count`.
 
 Changing physical printer-color selection without changing the effective PNG tracing count therefore does not change registered Artwork geometry. SVG registered geometry is likewise independent of physical printer-color selection.
 
@@ -75,6 +76,18 @@ artifact_color_count = 3
 ```
 
 even when five printer colors are available.
+
+### Color-Count Resolution and Logging
+
+Artwork resolves the effective PNG tracing count once per preparation decision and reports the count and its origin through the existing logging infrastructure.
+
+- Automatic discovery logs the discovered count at INFO level.
+- An explicit override matching the discovered count logs the selected count at INFO level.
+- An explicit override differing from the discovered count logs the discovered and selected counts at WARNING level.
+- When reliable automatic discovery is not possible, Artwork reports the ambiguity at WARNING level and requires an explicit count or fails with an actionable error rather than silently selecting an arbitrary count.
+
+Routine color-count resolution does not require operator confirmation. Logging does not change Artifact configuration or registered Artwork geometry.
+
 
 Those measured RGB representations are the:
 
@@ -297,7 +310,8 @@ Preparation interprets the source into prepared Artwork described by:
 trace.svg envelope.svg
 ```
 
-The trace represents the prepared color-separated Artwork. For PNG sources, it is produced through multicolor tracing. For SVG sources, it is produced through native vector interpretation without raster retracing.
+
+The trace represents the prepared color-separated Artwork. For PNG sources, it is produced through single-color or multicolor tracing according to the effective Artifact color count. For SVG sources, it is produced through native vector interpretation without raster retracing.
 
 The envelope represents the outer occupied region belonging to the Artwork.
 
@@ -358,7 +372,7 @@ Unsupported SVG constructs must be rejected with actionable errors rather than s
 
 Preparation preserves source color information belonging to the Artwork rather than quantizing it to configured physical filament colors.
 
-For PNG sources, multicolor tracing produces `artifact_color_count` traced color regions and assigns an RGB representation to each region.
+For PNG sources, preparation resolves the effective Artifact color count through automatic source-color discovery or an explicit `artifact_color_count` override. Tracing produces the corresponding Artifact-color regions and assigns an RGB representation to each region.
 
 For SVG sources, preparation preserves supported authored color regions and derives `artifact_colors` from their interpreted colors without multicolor retracing.
 
@@ -370,7 +384,7 @@ Physical printer, library, or catalog color assignments do not determine the Art
 
 Rasterization converts prepared Artwork into registered, color-separated raster products.
 
-For PNG sources, Raster consumes the prepared multicolor trace. For SVG sources, Raster derives its registered raster products from the prepared vector-native color regions without retracing the source.
+For PNG sources, Raster consumes the prepared color-separated trace. For SVG sources, Raster derives its registered raster products from the prepared vector-native color regions without retracing the source.
 
 Raster consumes the Artifact colors established during preparation.
 
@@ -1346,9 +1360,9 @@ A conforming Artwork implementation satisfies the following:
 5.  `alpha` envelope derivation determines meaningful source foreground from source alpha.
 6.  `shrink-wrap` envelope derivation produces a conservative outer envelope by distinguishing exterior background from enclosed Artwork.
 7.  Shrink-wrap does not exclude an enclosed Artwork region solely because its color also occurs in the exterior background.
-8. `artifact_color_count` controls the requested number of color regions for PNG multicolor tracing. SVG color regions are derived from supported authored colors independently of this parameter.
-9. Unless explicitly configured, `artifact_color_count` is derived from the number of configured `printer_colors` for PNG tracing.
-10. An explicitly configured `artifact_color_count` may be smaller than the number of configured printer colors; it does not constrain the number of colors discovered in SVG sources.
+8. For PNG sources, the effective Artifact color count determines whether preparation uses single-color or multicolor tracing. SVG color regions are derived from supported authored colors independently of `artifact_color_count`.
+9. Automatic discovery of meaningful source foreground colors is the default for PNG sources when `artifact_color_count` is not explicitly configured. Discovery is independent of physical printer-color availability.
+10. An explicitly configured positive integer `artifact_color_count` overrides the automatically discovered PNG tracing count. Preparation logs automatic or matching explicit selection at INFO level, mismatching explicit selection at WARNING level, and unresolved discovery ambiguity at WARNING level. An override does not authorize silent loss, merging, or invention of authored colors.
 11. Artwork does not create additional Artifact colors merely to use all available printer colors.
 12. Preparation preserves source color information within the Artwork envelope.
 13. Preparation does not quantize source Artwork to printer, library, or catalog filament RGB values.

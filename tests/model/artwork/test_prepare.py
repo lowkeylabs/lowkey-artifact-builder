@@ -1701,3 +1701,144 @@ def test_trace_single_color_rejects_distinct_maximum_opacity_colors(
         prepare._trace_single_color(source, output)
 
     assert not output.exists()
+
+
+
+def test_prepare_single_color_excludes_opaque_exterior_background(
+    tmp_path: Path,
+) -> None:
+    """
+    Shrink-wrap preparation excludes an opaque white exterior
+    background before single-color PNG tracing.
+
+    The prepared trace contains only the authored foreground RGB,
+    preserves its original pixel coordinates, and introduces
+    neither white background geometry nor a second Artifact color.
+    """
+    import xml.etree.ElementTree as ET
+
+    source = tmp_path / "source.png"
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    image = np.full(
+        (64, 64, 4),
+        (255, 255, 255, 255),
+        dtype=np.uint8,
+    )
+
+    # One solid green foreground on opaque white background.
+    image[16:48, 16:48] = (35, 140, 85, 255)
+
+    Image.fromarray(
+        image,
+        mode="RGBA",
+    ).save(source)
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={
+            "trace": trace,
+            "envelope": envelope,
+        },
+        resolver=_resolver(
+            artifact_color_count=1,
+            envelope_mode="shrink-wrap",
+        ),
+    )
+
+    prepare.execute(context)  # type: ignore[arg-type]
+
+    assert trace.is_file()
+    assert envelope.is_file()
+
+    namespace = "{http://www.w3.org/2000/svg}"
+
+    root = ET.parse(trace).getroot()
+
+    assert root.get("viewBox") == "0 0 64 64"
+
+    artwork = root.find(
+        f"{namespace}g[@id='artwork']"
+    )
+
+    assert artwork is not None
+
+    paths = artwork.findall(
+        f"{namespace}path"
+    )
+
+    assert len(paths) == 1
+
+    path = paths[0]
+
+    assert path.get("fill") == "#238c55"
+    assert path.get("fill-rule") == "nonzero"
+
+    path_data = path.get("d")
+
+    assert path_data is not None
+
+    # The original foreground has one closed boundary.
+    assert path_data.count("M ") == 1
+    assert path_data.count("Z") == 1
+
+    # Original source coordinates remain registered.
+    assert "16 16" in path_data
+    assert "48 48" in path_data
+
+    # Exterior white must not become foreground geometry.
+    assert "0 0" not in path_data
+    assert "64 64" not in path_data
+
+
+def test_prepare_single_color_alpha_mode_does_not_infer_white_background(
+    tmp_path: Path,
+) -> None:
+    """
+    Alpha envelope mode uses source alpha as authoritative.
+
+    An opaque white background is meaningful under alpha mode;
+    it must not be silently removed through shrink-wrap inference.
+
+    Because the source contains two distinct fully opaque RGB
+    colors, single-color tracing must reject it.
+    """
+    source = tmp_path / "source.png"
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    image = np.full(
+        (64, 64, 4),
+        (255, 255, 255, 255),
+        dtype=np.uint8,
+    )
+
+    image[16:48, 16:48] = (35, 140, 85, 255)
+
+    Image.fromarray(
+        image,
+        mode="RGBA",
+    ).save(source)
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={
+            "trace": trace,
+            "envelope": envelope,
+        },
+        resolver=_resolver(
+            artifact_color_count=1,
+            envelope_mode="alpha",
+        ),
+    )
+
+    with pytest.raises(
+        prepare.PrepareError,
+        match="Single-color tracing requires exactly one foreground",
+    ):
+        prepare.execute(context)  # type: ignore[arg-type]
+
+    assert not trace.exists()
+
+
