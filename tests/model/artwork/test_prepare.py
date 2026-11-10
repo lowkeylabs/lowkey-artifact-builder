@@ -2040,3 +2040,262 @@ def test_prepare_logs_explicit_png_color_count_override(
 
     if explicit_count != 2:
         assert any("2" in record.getMessage() for record in matching_records)
+
+
+@pytest.mark.parametrize(
+    ("include_second_color", "expected_count"),
+    [
+        (False, 1),
+        (True, 2),
+    ],
+)
+def test_discover_png_color_count_ignores_opaque_rgb_noise(
+    include_second_color: bool,
+    expected_count: int,
+) -> None:
+    """
+    Minor RGB differences within an authored foreground region
+    must not introduce additional Artifact colors, including
+    when every pixel is fully opaque.
+
+    A substantial, distinctly colored authored region must
+    remain a separate Artifact color.
+    """
+    rgba = np.zeros((64, 64, 4), dtype=np.uint8)
+
+    rgba[8:56, 8:56] = (255, 0, 0, 255)
+
+    # Small variations of the same authored red.
+    rgba[12:16, 12:16] = (252, 3, 2, 255)
+    rgba[20:24, 20:24] = (249, 5, 4, 255)
+    rgba[40:44, 40:44] = (253, 2, 1, 255)
+
+    if include_second_color:
+        rgba[32:56, 8:56] = (0, 0, 255, 255)
+
+    image = Image.fromarray(rgba, mode="RGBA")
+
+    assert prepare._discover_png_color_count(image) == expected_count
+
+
+@pytest.mark.parametrize(
+    ("interior_alpha", "include_second_color", "expected_count"),
+    [
+        (255, False, 1),
+        (200, False, 1),
+        (200, True, 2),
+    ],
+)
+def test_discover_png_color_count_handles_translucent_edges(
+    interior_alpha: int,
+    include_second_color: bool,
+    expected_count: int,
+) -> None:
+    """
+    Antialiased edges belong to their authored foreground
+    color even when no fully opaque pixels exist.
+
+    A substantially different meaningful translucent region
+    must be discovered independently.
+    """
+    rgba = np.zeros((64, 64, 4), dtype=np.uint8)
+
+    # Edge pixels have slightly different RGB and lower alpha.
+    rgba[7:57, 7:57] = (248, 8, 5, 160)
+
+    # Main authored foreground.
+    rgba[8:56, 8:56] = (255, 0, 0, interior_alpha)
+
+    if include_second_color:
+        rgba[24:40, 24:40] = (0, 0, 255, 160)
+
+    # Arbitrary RGB in fully transparent pixels is irrelevant.
+    rgba[0:4, 0:4, :3] = (0, 255, 0)
+
+    image = Image.fromarray(rgba, mode="RGBA")
+
+    assert prepare._discover_png_color_count(image) == expected_count
+
+
+def test_prepare_auto_single_color_accepts_minor_opaque_rgb_variation(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    Automatic color discovery and single-color tracing must agree.
+
+    Minor fully opaque RGB variations belong to one authored
+    foreground color. They must not cause tracing to fail or
+    create additional SVG paths.
+    """
+    import logging
+    import xml.etree.ElementTree as ET
+
+    source = tmp_path / "source.png"
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    rgba = np.zeros((64, 64, 4), dtype=np.uint8)
+
+    rgba[8:56, 8:56] = (255, 0, 0, 255)
+
+    # Minor opaque variations within the same red region.
+    rgba[12:16, 12:16] = (252, 3, 2, 255)
+    rgba[20:24, 20:24] = (249, 5, 4, 255)
+    rgba[40:44, 40:44] = (253, 2, 1, 255)
+
+    Image.fromarray(rgba, mode="RGBA").save(source)
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={"trace": trace, "envelope": envelope},
+        resolver=StubResolver({"artwork_envelope_mode": "alpha"}),
+    )
+
+    with caplog.at_level(logging.INFO):
+        prepare.execute(context)  # type: ignore[arg-type]
+
+    assert trace.is_file()
+    assert envelope.is_file()
+
+    root = ET.parse(trace).getroot()
+    namespace = "{http://www.w3.org/2000/svg}"
+
+    assert root.get("viewBox") == "0 0 64 64"
+
+    artwork = root.find(f"{namespace}g[@id='artwork']")
+    assert artwork is not None
+
+    paths = artwork.findall(f"{namespace}path")
+    assert len(paths) == 1
+
+    path = paths[0]
+    assert path.get("fill") == "#ff0000"
+    assert path.get("fill-rule") == "nonzero"
+
+    path_data = path.get("d")
+    assert path_data is not None
+    assert "8 8" in path_data
+    assert "56 56" in path_data
+
+    assert any(
+        record.levelno == logging.INFO and "artifact_color_count=1" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+def test_prepare_explicit_single_color_rejects_distinct_opaque_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    An explicit count of one cannot authorize merging two
+    substantially different authored foreground colors.
+
+    The preparation stage must reject the source rather than
+    producing misleading single-color geometry.
+    """
+    source = tmp_path / "source.png"
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    rgba = np.zeros((64, 64, 4), dtype=np.uint8)
+
+    rgba[8:32, 8:56] = (255, 0, 0, 255)
+    rgba[32:56, 8:56] = (0, 0, 255, 255)
+
+    Image.fromarray(rgba, mode="RGBA").save(source)
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={"trace": trace, "envelope": envelope},
+        resolver=StubResolver(
+            {
+                "artwork_envelope_mode": "alpha",
+                "artifact_color_count": 1,
+            }
+        ),
+    )
+
+    with pytest.raises(
+        prepare.PrepareError,
+        match="Single-color tracing requires exactly one foreground",
+    ):
+        prepare.execute(context)  # type: ignore[arg-type]
+
+    assert not trace.exists()
+
+
+def test_prepare_auto_color_discovery_rejects_continuous_gradient(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    Continuous color variation is not an unambiguous set
+    of discrete authored Artifact colors.
+
+    Automatic discovery must fail with an actionable warning
+    instead of selecting an arbitrary multicolor tracing count.
+    """
+    import logging
+
+    source = tmp_path / "source.png"
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    rgba = np.zeros((64, 64, 4), dtype=np.uint8)
+
+    # A fully opaque, continuous red-to-blue gradient.
+    # Transparent margins establish the exterior background.
+    for x in range(8, 56):
+        fraction = (x - 8) / 47
+        red = round(255 * (1 - fraction))
+        blue = round(255 * fraction)
+
+        rgba[8:56, x] = (red, 0, blue, 255)
+
+    Image.fromarray(rgba, mode="RGBA").save(source)
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={"trace": trace, "envelope": envelope},
+        resolver=StubResolver({"artwork_envelope_mode": "alpha"}),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(
+            prepare.PrepareError,
+            match=r"(?i)(ambiguous|gradient|color variation)",
+        ):
+            prepare.execute(context)  # type: ignore[arg-type]
+
+    assert not trace.exists()
+
+    warnings = [
+        record.getMessage().lower()
+        for record in caplog.records
+        if record.levelno == logging.WARNING
+    ]
+
+    assert any(
+        ("color" in message) and ("ambiguous" in message or "gradient" in message)
+        for message in warnings
+    )
+
+    assert any("artifact_color_count" in message for message in warnings)
+
+
+def test_discover_png_color_count_preserves_three_distinct_regions() -> None:
+    """
+    Automatic discovery must not reject ordinary discrete
+    multicolor artwork merely because it contains more
+    than two authored foreground colors.
+    """
+    rgba = np.zeros((64, 64, 4), dtype=np.uint8)
+
+    rgba[8:24, 8:56] = (255, 0, 0, 255)
+    rgba[24:40, 8:56] = (0, 255, 0, 255)
+    rgba[40:56, 8:56] = (0, 0, 255, 255)
+
+    image = Image.fromarray(rgba, mode="RGBA")
+
+    assert prepare._discover_png_color_count(image) == 3

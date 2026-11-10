@@ -1369,57 +1369,196 @@ def _discover_png_color_count(
     """
     Discover meaningful foreground RGB colors in prepared PNG artwork.
 
-    Transparent pixels do not contribute colors. Fully opaque pixels
-    provide authoritative color evidence. Partially transparent pixels
-    matching an established color within the antialias tolerance do
-    not create additional colors.
+    Transparent pixels do not contribute colors. Incidental RGB
+    variation does not introduce additional Artifact colors.
 
-    This is source-color discovery, not physical printer-color
-    assignment or general-purpose color quantization.
+    Detect substantial continuous color transitions that cannot
+    reliably be interpreted as discrete authored colors. Reject
+    ambiguous gradients rather than silently quantizing them.
+
+    Discrete authored colors are clustered by RGB proximity,
+    considering the most opaque pixels first and selecting
+    representatives by frequency.
+
+    This operation does not assign physical printer colors or
+    perform general-purpose color quantization.
     """
     rgba = np.asarray(
         image.convert("RGBA"),
         dtype=np.uint8,
     )
 
-    meaningful = rgba[:, :, 3] >= DEFAULT_ALPHA_THRESHOLD
+    alpha_image = rgba[:, :, 3]
+
+    meaningful = alpha_image >= DEFAULT_ALPHA_THRESHOLD
 
     if not np.any(meaningful):
         raise PrepareError("Cannot discover Artifact colors: no meaningful foreground pixels.")
 
-    rgb = rgba[:, :, :3][meaningful]
-    alpha = rgba[:, :, 3][meaningful]
-
-    maximum_alpha = int(np.max(alpha))
-
-    # Start with the strongest available color evidence.
-    strongest = np.unique(
-        rgb[alpha == maximum_alpha],
-        axis=0,
+    rgb_image = rgba[:, :, :3].astype(
+        np.float64,
     )
 
-    representatives = [color.astype(np.float64) for color in strongest]
+    # -----------------------------------------------------
+    # Continuous-gradient ambiguity detection
+    # -----------------------------------------------------
+    #
+    # A continuous gradient consists of a sufficiently long
+    # sequence of small, nonzero RGB transitions whose
+    # cumulative displacement is substantial.
+    #
+    # Examine horizontal and vertical runs separately.
+    # Fully opaque pixels provide reliable evidence and
+    # avoid confusing alpha-edge blending with gradients.
+    #
+    # These thresholds are internal heuristics, not public
+    # configuration parameters.
+    #
+    minimum_step = 2.0
+    maximum_step = 24.0
+    minimum_run_steps = 12
+    minimum_total_displacement = 96.0
 
-    # Examine lower-opacity colors for additional authored colors.
-    # Small RGB variations near established colors are incidental
-    # antialiasing, not additional Artifact colors.
+    opaque = alpha_image == 255
+
+    def contains_gradient_run(
+        pixels: np.ndarray,
+        valid: np.ndarray,
+    ) -> bool:
+        """
+        Detect a long, gradual color transition along rows.
+
+        Each row is evaluated independently. A run must
+        contain enough adjacent small transitions and span
+        a substantial RGB distance between its endpoints.
+        """
+        for row_pixels, row_valid in zip(
+            pixels,
+            valid,
+            strict=True,
+        ):
+            run_start: int | None = None
+
+            for index in range(
+                1,
+                len(row_pixels),
+            ):
+                if row_valid[index - 1] and row_valid[index]:
+                    step = float(np.linalg.norm(row_pixels[index] - row_pixels[index - 1]))
+                else:
+                    step = 0.0
+
+                gradual = minimum_step <= step <= maximum_step
+
+                if gradual:
+                    if run_start is None:
+                        run_start = index - 1
+
+                    run_steps = index - run_start
+
+                    if run_steps >= minimum_run_steps:
+                        displacement = float(
+                            np.linalg.norm(row_pixels[index] - row_pixels[run_start])
+                        )
+
+                        if displacement >= minimum_total_displacement:
+                            return True
+
+                else:
+                    run_start = None
+
+        return False
+
+    horizontal_gradient = contains_gradient_run(
+        rgb_image,
+        opaque,
+    )
+
+    vertical_gradient = contains_gradient_run(
+        np.transpose(
+            rgb_image,
+            (1, 0, 2),
+        ),
+        opaque.T,
+    )
+
+    if horizontal_gradient or vertical_gradient:
+        message = (
+            "ARTWORK: Ambiguous continuous color gradient "
+            "detected during automatic source-color discovery. "
+            "Provide discrete-color artwork instead. "
+            "An explicit artifact_color_count does not "
+            "authorize silent color quantization."
+        )
+
+        logger.warning(message)
+
+        raise PrepareError(message)
+
+    # -----------------------------------------------------
+    # Discrete foreground color discovery
+    # -----------------------------------------------------
+
+    rgb = rgba[:, :, :3][meaningful]
+
+    alpha = alpha_image[meaningful]
+
+    maximum_alpha = int(
+        np.max(alpha),
+    )
+
     tolerance = 24.0
 
-    remaining = np.unique(
-        rgb[alpha < maximum_alpha],
-        axis=0,
+    representatives: list[np.ndarray] = []
+
+    def add_colors(
+        pixels: np.ndarray,
+    ) -> None:
+        """
+        Add distinct source-color representatives.
+
+        Process colors in descending pixel-frequency order.
+        Nearby RGB values are incidental variations of an
+        established representative.
+        """
+        if pixels.size == 0:
+            return
+
+        colors, counts = np.unique(
+            pixels,
+            axis=0,
+            return_counts=True,
+        )
+
+        order = np.argsort(
+            -counts,
+            kind="stable",
+        )
+
+        for index in order:
+            candidate = colors[index].astype(
+                np.float64,
+            )
+
+            if any(
+                np.linalg.norm(candidate - representative) <= tolerance
+                for representative in representatives
+            ):
+                continue
+
+            representatives.append(candidate)
+
+    # Strongest available color evidence first.
+    add_colors(
+        rgb[alpha == maximum_alpha],
     )
 
-    for color in remaining:
-        candidate = color.astype(np.float64)
-
-        if any(
-            np.linalg.norm(candidate - representative) <= tolerance
-            for representative in representatives
-        ):
-            continue
-
-        representatives.append(candidate)
+    # Lower-opacity pixels may contain additional authored
+    # colors, but small variations near established colors
+    # do not create additional representatives.
+    add_colors(
+        rgb[alpha < maximum_alpha],
+    )
 
     return len(representatives)
 
@@ -2039,7 +2178,11 @@ def _trace_single_color(
     Derive the representative Artifact RGB from the most opaque
     foreground pixels, preferring fully opaque pixels when present.
 
-    Fully opaque foreground pixels must share one RGB color.
+    Meaningful foreground pixels may contain incidental RGB
+    variations within the source-color discovery tolerance,
+    regardless of opacity. Substantially different authored
+    colors are rejected rather than merged.
+
     Partially transparent foreground pixels may have incidental
     RGB variation within a small color-distance tolerance.
 
@@ -2098,71 +2241,39 @@ def _trace_single_color(
 
     foreground_alpha = alpha[foreground]
 
-    # The most opaque pixels provide the strongest evidence of
-    # the authored foreground color.
-    maximum_alpha = int(np.max(foreground_alpha))
-
-    representative_pixels = foreground_rgb[foreground_alpha == maximum_alpha]
-
-    unique_representative_colors = np.unique(
-        representative_pixels,
-        axis=0,
+    # Use the same meaningful-color interpretation as automatic
+    # discovery. An explicit single-color override must not
+    # silently merge genuinely different authored colors.
+    discovered_count = _discover_png_color_count(
+        Image.fromarray(
+            rgba,
+            mode="RGBA",
+        ),
     )
 
-    if len(unique_representative_colors) != 1:
+    if discovered_count != 1:
         raise PrepareError(
             "Single-color tracing requires exactly one foreground "
-            "RGB color among the most opaque pixels; "
-            f"found {len(unique_representative_colors)}. "
+            f"RGB color; discovered {discovered_count}. "
             "Use multicolor tracing or provide uniform foreground artwork."
         )
 
-    representative_rgb = unique_representative_colors[0]
+    # Choose the dominant RGB among the most opaque pixels.
+    # Minor opaque and translucent variations do not alter
+    # the representative Artifact color.
+    maximum_alpha = int(
+        np.max(foreground_alpha),
+    )
 
-    # Fully opaque pixels must agree exactly with the representative
-    # color. Less opaque pixels may differ slightly due to
-    # antialiasing or alpha-edge processing.
-    fully_opaque = foreground_alpha == 255
+    strongest_pixels = foreground_rgb[foreground_alpha == maximum_alpha]
 
-    if np.any(fully_opaque):
-        opaque_colors = np.unique(
-            foreground_rgb[fully_opaque],
-            axis=0,
-        )
+    colors, counts = np.unique(
+        strongest_pixels,
+        axis=0,
+        return_counts=True,
+    )
 
-        if len(opaque_colors) != 1:
-            raise PrepareError(
-                "Single-color tracing requires exactly one foreground "
-                "RGB color among fully opaque pixels; "
-                f"found {len(opaque_colors)}. "
-                "Use multicolor tracing or provide uniform foreground artwork."
-            )
-
-    # This is an RGB-distance tolerance for incidental variation
-    # in partially transparent foreground pixels.
-    #
-    # It is intentionally not a general-purpose color quantizer.
-    antialias_rgb_tolerance = 24.0
-
-    partially_transparent = foreground_alpha < 255
-
-    if np.any(partially_transparent):
-        edge_rgb = foreground_rgb[partially_transparent].astype(np.float64)
-
-        reference_rgb = representative_rgb.astype(np.float64)
-
-        distances = np.linalg.norm(
-            edge_rgb - reference_rgb,
-            axis=1,
-        )
-
-        if np.any(distances > antialias_rgb_tolerance):
-            raise PrepareError(
-                "Single-color tracing requires exactly one foreground "
-                "RGB color; partially transparent pixels contain "
-                "substantially different colors. "
-                "Use multicolor tracing or provide uniform foreground artwork."
-            )
+    representative_rgb = colors[int(np.argmax(counts))]
 
     red, green, blue = (int(channel) for channel in representative_rgb)
 
