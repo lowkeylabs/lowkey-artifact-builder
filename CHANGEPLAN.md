@@ -140,446 +140,785 @@ Add narrower tests when they help discover an uncertain boundary, protect an
 independently meaningful contract, reproduce a defect, or address a specific
 algorithmic or regression risk.
 
----
-
-
-The operator's ordinary goal is to move customer artwork into correct, reusable manufacturing Products with the fewest necessary decisions, actions, and computations.
-
-This plan prioritizes **source correctness**, then **efficient representation and interpretation**, then **SHAPE composition**, and finally **assembly of independently manufacturable Products**. It consolidates the existing defect backlog and SHAPE feature phases without treating future possibilities as commitments.
-
-## Working Rules
-
-1. **HEAD is authoritative.** At the beginning of each phase, review current HEAD and the relevant permanent specifications, code, and tests. Reconcile this plan with any work already completed.
-2. **Specifications precede implementation.** Update the applicable `DEFINITION.md` and other normative contracts before writing implementation tests that assert new behavior.
-3. **Use the repository's RED/GREEN/VERIFY process.** Follow `prompts/NEW_THREAD.md` and `prompts/TEST_DRIVEN_DEVELOPMENT.md`; make one coherent, testable change at a time.
-4. **Preserve architectural ownership.** ARTWORK owns source interpretation and registered artwork. SHAPE owns its geometry, placement, composition, and physical manufacturing. The generic engine must not acquire model-specific policy.
-5. **Reuse existing mechanisms.** Prefer existing registered geometry, Products, dependencies, and stages over new Models, generalized instance frameworks, or parallel SVG pipelines.
-6. **Separate source semantics from manufacturing choices.** Transparency is not a color; physical printer colors do not define source colors; SVG visual groups do not inherently define xTool processing layers.
-7. **Preserve compatibility and determinism.** Existing Artifacts, Realizations, canonical SVG, and 3MF workflows must continue to work unless an explicit specification revision states otherwise.
-8. **Do not expand scope implicitly.** A phase may expose a related requirement, but that does not authorize speculative features or unrelated refactoring.
-9. **Verification is required.** Run focused tests, applicable non-slow tests, Ruff, and Pyright. Add real xTool Studio acceptance checks where the contract depends on its behavior.
-10. **Record outcomes.** Mark completed phases with evidence, update permanent documentation, and remove or consolidate superseded backlog entries.
-
-## Roadmap and Dependencies
-
-| Order | Phase | Consolidates | Primary result |
-| --- | --- | --- | --- |
-| 1 | ARTWORK Envelope and Source-Color Correctness | BUG-006 + BUG-004; related BUG-002 | Valid boundary-touching, transparent, single-color artwork |
-| 2 | Raster-Preserving SVG Manufacturing | BUG-005 | Embedded bitmap artwork in canonical manufacturing SVG without mandatory tracing |
-| 3 | Broader SVG Source Interpretation | BUG-001 + BUG-003 | Embedded PNG SVG inputs and visible stroke geometry |
-| 4 | SHAPE Placement and Reusable SVG Decorations | Former SHAPE Phases 1 + 2 | Multiple independently transformed motif instances |
-| 5 | SHAPE Clipping and Deterministic Planar Composition | Former SHAPE Phases 3 + 4 | Manufacturing-correct clipping and overlap behavior |
-| 6 | Artwork Scaling and Boundary Policies | Former SHAPE Phase 5 | Explicit artwork enlargement with a fixed outer SHAPE boundary |
-| 7 | Hierarchical SVG Manufacturing Project Assembly | Existing assembly phase | One grouped SVG containing multiple independently manufacturable Products |
-
-**Dependency policy:** Phase 1 is the correctness foundation for raster tracing. Phase 2 supplies a useful manufacturing representation before project assembly. Phase 3 supplies the SVG interpretation needed by reusable decorations. Phase 4 precedes decoration clipping; Phase 5 supplies composition rules reused by Phase 6. Phase 7 uses established manufacturing Products rather than rebuilding them.
-
-Phases 2 and 3 are substantially independent after their contracts are defined. Their relative order may change if a demonstrated customer workflow warrants it. Phase 7 may begin with an architectural spike earlier, but its implementation should not preempt the correctness and representation contracts it consumes.
 
 ---
 
-## Phase 1 — ARTWORK Envelope and Source-Color Correctness
+### Primary Optimization Objective — Minimize Time to Manufacture
 
-**Status:** OPEN — Specification review and implementation pending.
+The principal purpose of `lowkey-artifact-builder` is to minimize the operator effort required to transform customer-supplied artwork into manufacturing-ready customized Products.
+
+The primary commercial use case is economical one-off and small-batch manufacturing for `lowkeylabs LLC`, including coasters, keychains, ornaments, stickers, engraved glassware, stamps, and other personalized objects.
+
+The software shall optimize the preparation workflow rather than the physical execution speed of lasers, printers, or other manufacturing devices.
+
+The desired operator workflow is:
+
+```text
+Customer artwork + customization
+                ↓
+         artifact create
+                ↓
+    Reusable managed Artwork
+                ↓
+     Product configurations
+                ↓
+         artifact build
+                ↓
+  Manufacturing-ready Products
+                ↓
+   Manufacturing package assembly
+                ↓
+      Grouped SVG / XTS project
+                ↓
+         xTool Studio
+                ↓
+          Manufacture
+```
+
+A single customer Artwork may be reused across multiple Products, product faces, dimensions, and manufacturing methods.
+
+Product-specific defaults shall minimize repeated configuration decisions. Customization shall focus on meaningful customer choices, such as artwork, labels, messages, and product selection.
+
+Manufacturing packages shall organize multiple independently manufacturable Products into a convenient importable representation, initially using hierarchical SVG grouping and potentially native multi-canvas `.xs` projects.
+
+The operator shall not need to understand or manually select internal processing Stages to perform ordinary manufacturing tasks.
+
+Requested Products and their dependencies shall determine the minimum necessary processing.
+
+### Success Measures
+
+Evaluate proposed features primarily by their ability to:
+
+1. Reduce operator actions between artwork receipt and manufacturing readiness.
+2. Reduce repeated work when creating multiple Products from the same Artwork.
+3. Reduce manual positioning, scaling, labeling, grouping, and operation preparation in XTS.
+4. Preserve manufacturing correctness, physical dimensions, and registration.
+5. Support rapid customization without requiring new source code or product-specific programming.
+6. Reuse existing Artwork and manufacturing Products without unnecessary recomputation.
+7. Maintain reliable, deterministic outputs and a simple operator interface.
+
+Avoid adding architectural complexity unless it provides measurable improvements in manufacturing preparation, correctness, or reuse.
+
+
+---
+
+## Phase — Hierarchical SVG Manufacturing Project Assembly
 
 ### Purpose
 
-Correct valid raster artwork that touches image boundaries and establish coherent source-driven foreground color semantics. Combine the overlapping color requirements of BUG-006 and BUG-004 rather than implementing two competing color-discovery policies.
+Enable `lowkey-artifact-builder` to combine multiple independently manufacturable Products into one self-contained, hierarchically grouped SVG document for import into xTool Studio (XTS).
 
-### Reproductions
+The operator shall be able to import one SVG, ungroup it once to expose individual product groups, and subsequently ungroup individual products to access their manufacturing components.
 
-- `tests/fixtures/artwork/bug06.png` — black foreground on a transparent PNG, including foreground that touches image boundaries; currently reported to fail during envelope cleanup.
-- Existing transparent and explicitly colored SVG fixtures, plus small synthetic cases for single-color and multicolor interpretation.
+This capability is independent of native `.xs` project generation and does not require separate XTS canvases.
 
-The reproduction path is recorded in the prior backlog; verify the fixture exists at current HEAD before relying on it.
+### Manufacturing Workflow
 
-### Contract to Resolve
-
-1. Foreground pixels on any image edge are valid artwork. Exterior transparency and enclosed transparent regions must remain distinguishable.
-2. Shrinkwrap and envelope cleanup must not remove meaningful boundary-touching geometry or require transparent padding.
-3. Preserve original source dimensions and coordinates; generate a valid, closed envelope.
-4. Count meaningful **foreground colors**, not fully transparent pixels or incidental antialiasing variations.
-5. Support exactly one foreground color and `artifact_color_count = 1`.
-6. Specify whether automatic color discovery is the default or an explicit mode, and how an explicit user override interacts with it.
-7. Define source color counting independently of the number or identities of `printer_colors`; retain physical color mapping as a separate concern.
-8. Distinguish transparent backgrounds from explicitly authored colored backgrounds, including SVGs that are rasterized.
-9. Preserve existing multicolor and native vector behavior unless a deliberate specification revision requires otherwise.
-
-**Specification decision:** Current ARTWORK documentation permits deriving a PNG tracing count from the number of printer colors. Replacing that behavior with source-driven discovery is a normative change; decide the exact default and override contract before RED tests.
-
-### TDD Work
-
-**RED**
-
-- Reproduce boundary-touching shrinkwrap failure with `bug06.png`.
-- Isolate edge handling, enclosed holes, alpha thresholds, and small-component cleanup with synthetic images.
-- Establish single-color and multicolor source-count tests, including antialiasing and partial transparency.
-- Test transparent versus explicitly colored backgrounds and independence from `printer_colors`.
-- Verify explicit count overrides according to the revised contract.
-
-**GREEN**
-
-- Correct envelope and cleanup behavior at image boundaries.
-- Implement only the specified source-color discovery and count resolution.
-- Avoid artificial background layers and unnecessary tracing partitions.
-
-**VERIFY**
-
-- Build the real reproduction through the ordinary `artifact build` path.
-- Verify correct geometry and one foreground partition for single-color input.
-- Confirm existing multicolor, SVG, and SHAPE incorporation workflows remain compatible.
-- Run required tests and quality checks.
-
-### Completion
-
-Boundary-touching artwork builds without padding; transparency does not become a manufacturing color; single-color input is supported; source-color policy is specified and tested; existing workflows remain compatible.
-
----
-
-## Phase 2 — Raster-Preserving SVG Manufacturing
-
-**Status:** OPEN — Specification and implementation pending.
-
-### Purpose
-
-Allow canonical manufacturing SVG output to carry raster artwork as an embedded bitmap instead of requiring it to be traced into vector geometry. This is especially valuable for laser engraving while retaining vector outlines, labels, ridges, and cut contours.
-
-### Architectural Boundaries
-
-- Preserve raster content and alpha where possible, with physical dimensions, scaling, orientation, and registration established by SHAPE.
-- Reuse ARTWORK preparation and existing SHAPE placement/composition; do not create a second raster interpretation pipeline.
-- Select raster preservation explicitly versus existing traced-vector output; preserve the vector workflow.
-- Keep xTool-specific processing policy outside the generic ARTWORK and SHAPE contracts.
-- Preserve source data and self-containment without introducing unnecessary 3MF or printer-color work when only manufacturing SVG is requested.
-- Distinguish canonical SVG manufacturing output from ARTWORK's intermediate traced representations.
-
-### TDD Work
-
-**RED**
-
-1. A standalone PNG produces a manufacturing SVG with an embedded `<image>`.
-2. Image bytes are self-contained and repeatable; no external asset reference is required.
-3. Alpha, aspect ratio, physical size, rotation, and SHAPE registration are preserved.
-4. Raster artwork coexists with vector engraving, labels, ridges, and cut geometry.
-5. Raster preservation does not depend on `printer_colors`.
-6. Existing traced-vector output remains selectable and unchanged by default.
-
-**GREEN**
-
-Implement the smallest representation selection and data flow that meet the contract. Reuse existing registered placement and SVG composition instead of adding unrelated stages or Models.
-
-**VERIFY**
-
-Inspect the generated SVG and import representative outputs into xTool Studio. Verify raster engraving can be assigned independently of cutting geometry and that physical dimensions remain correct. Run required tests and quality checks.
-
-### Completion
-
-An operator can manufacture a SHAPE from embedded raster artwork and vector structural features without mandatory tracing, while existing SVG and 3MF workflows remain compatible.
-
----
-
-## Phase 3 — Broader SVG Source Interpretation
-
-**Status:** OPEN — Specification and implementation pending.
-
-### Purpose
-
-Accept two common forms of valid customer-authored SVG that the existing ARTWORK pipeline does not fully support: SVG documents containing an embedded PNG, and geometry whose visible appearance is defined by strokes.
-
-These are distinct testable slices under one source-compatibility phase. Implement and verify them separately.
-
-### Slice A — Embedded PNG in SVG (BUG-001)
-
-**Reproduction:** `bug01.svg`, an xTool Studio-exported SVG containing a Base64 PNG. Confirm the fixture's location at current HEAD.
-
-**Required behavior**
-
-1. Recognize one embedded Base64 PNG `<image>` element.
-2. Decode it without unnecessary pixel alteration; preserve alpha.
-3. Respect document dimensions, `viewBox`, image placement, and applicable transforms.
-4. Integrate the image into the established ARTWORK processing path.
-5. Preserve standalone PNG and native vector SVG behavior.
-6. Provide actionable diagnostics for unsupported cases.
-
-Initially exclude multiple images, mixed image/vector content, external image references, additional raster formats, and general-purpose SVG rendering unless a current permanent specification already requires them.
-
-### Slice B — Stroke-Only and Mixed SVG Geometry (BUG-003)
-
-**Reproduction:** `tests/fixtures/artwork/bug02.svg`, a transparent 600 × 600 SVG with a black, unfilled circle stroke touching the canvas boundary. Confirm fixture availability at current HEAD.
-
-**Required behavior**
-
-1. Interpret visible strokes, not merely filled path interiors.
-2. Support supported SVG shapes and paths, including circles, ellipses, rectangles, lines, polylines, and paths.
-3. Respect stroke width, color, caps, joins, and transforms.
-4. Preserve transparent interiors of unfilled shapes.
-5. Support mixed stroke-and-fill geometry without losing either.
-6. Preserve registered color semantics, overlap rules, and deterministic manufacturing geometry.
-7. Reuse ARTWORK's interpretation machinery; do not implement stroke semantics separately inside SHAPE decorations.
-
-### TDD Work
-
-**RED:** Add reproduction tests and minimal synthetic cases for each slice, including dimensions, transparency, transforms, deterministic results, and explicit unsupported cases.
-
-**GREEN:** Implement the smallest coherent source-interpretation extensions against revised ARTWORK specifications.
-
-**VERIFY:** Build both reproduction fixtures through `artifact build`; verify existing PNG, filled SVG, and multicolor behavior; run required tests and quality checks.
-
-### Completion
-
-The supported embedded-image and stroke-only SVG cases build correctly, produce registered geometry or raster representation as specified, and do not introduce competing SVG semantics.
-
----
-
-## Phase 4 — SHAPE Placement and Reusable SVG Decorations
-
-**Status:** OPEN — Specification and implementation pending.
-
-### Purpose
-
-Allow SHAPE to incorporate externally authored decorative SVG motifs—stars, diamonds, flourishes, serifs, filigree, and similar geometry—as independently positioned instances. Reuse one source at multiple positions without copying source files or creating separate ARTWORK Realizations.
-
-This combines the former placement-contract and reusable-decoration phases: placement should be defined only to the extent needed by a real decoration use case.
-
-### Architectural Boundaries
-
-- SHAPE owns source references, instance identity, placement, composition, and physical manufacturing.
-- ARTWORK owns the reusable SVG source interpretation contract; SHAPE must not invoke another Model's Stage implementation directly.
-- Reuse registered coordinate space and existing SHAPE Structure/Compose/Extrude/Package boundaries.
-- Keep source interpretation, instance transforms, and color overrides separate.
-- Preserve authored geometry, logical colors, and source proportions unless explicitly overridden.
-- Do not introduce a generalized component-instance or dependency framework merely for anticipated future Models.
-
-### Work
-
-1. Inspect current registered Artwork placement, SHAPE composition, component identities, and existing transformation helpers.
-2. Specify the smallest SHAPE configuration for a decoration source and multiple named instances.
-3. Define translation, uniform scaling, rotation, transform order, and registered-to-physical placement.
-4. Preserve independent instance identities when two instances share one SVG source.
-5. Define optional logical color overrides without silently replacing authored colors.
-6. Carry decoration geometry through canonical SVG and 3MF manufacturing.
-7. Validate unsupported source constructs, invalid references, transforms, and colors clearly.
-8. Preserve all existing SHAPE behavior when decorations are absent.
-
-### TDD Work
-
-**RED:** One motif reused at two or more locations with different transforms, stable registration, separate identities, correct colors, and validation failures.
-
-**GREEN:** Implement placement and decoration incorporation together using existing mechanisms.
-
-**VERIFY:** Build a representative decorated SHAPE into both SVG and 3MF; check registration, dimensions, identities, and compatibility. Run required tests and quality checks.
-
-### Completion
-
-Reusable SVG decorations participate in SHAPE manufacturing with independent transforms and semantic identities, without speculative infrastructure or regressions.
-
----
-
-## Phase 5 — SHAPE Clipping and Deterministic Planar Composition
-
-**Status:** OPEN — Specification and implementation pending.
-
-### Purpose
-
-Allow a positioned decoration to be restricted to a selected SHAPE region, and define deterministic overlap behavior among decorations, Artwork, ridges, labels, QR codes, and other participating components.
-
-This combines the former clipping and planar-composition phases because clipping and overlap precedence must yield one coherent manufacturing result, not merely the right SVG appearance.
-
-### Architectural Boundaries
-
-- SHAPE remains authoritative for Base, Artwork, Inner Ridge, Outer Ridge, and other region geometry.
-- Clipping modifies participating geometry, not merely SVG visibility.
-- Planar precedence is distinct from physical Z dimensionalization.
-- Preserve common registration, component identity, logical colors, and valid physical partitions.
-- Do not silently allow conflicting positive-area manufactured overlaps between different logical colors.
-- Reuse existing overlap, subtraction, and partitioning machinery; prefer fixed semantic precedence over configurable ordering unless real use cases demand it.
-- Preserve existing default Artwork fitting and SHAPE composition.
-
-### Work
-
-1. Define selectable clipping regions initially considering Base, Artwork, Inner Ridge, and Outer Ridge.
-2. For each region, explicitly define whether it means enclosed area, occupied physical area, or another precise geometric domain.
-3. Define absent/empty-region behavior and how clipping interacts with transforms and color-separated components.
-4. Review current overlap precedence among existing SHAPE Features before adding decoration-specific behavior.
-5. Establish deterministic semantics for supported overlaps, distinguishing visibility, material ownership, and physical partitioning.
-6. Clip against authoritative registered geometry and preserve resulting component identities.
-7. Reject ambiguous or unsupported overlap combinations with actionable diagnostics.
-8. Carry the resulting geometry consistently into canonical SVG and raised/inlaid 3MF manufacturing.
-
-### TDD Work
-
-**RED:** Boundary-crossing motifs clipped to different regions; missing-region validation; overlaps between decorations and representative SHAPE Features; cases with different logical colors.
-
-**GREEN:** Implement only missing clipping, precedence, subtraction, or partitioning behavior.
-
-**VERIFY:** Confirm that clipping affects physical geometry, not just SVG display; inspect SVG and 3MF results; protect existing composition behavior; run required tests and quality checks.
-
-### Completion
-
-Supported clipping and overlap cases have documented, deterministic manufacturing semantics. SVG and 3MF agree on occupied regions and component identities, with no unintended changes to existing SHAPE configurations.
-
----
-
-## Phase 6 — Artwork Scaling and Boundary Policies
-
-**Status:** OPEN — Specification and implementation pending.
-
-### Purpose
-
-Permit incorporated Artwork to grow beyond its initial fitting region while preserving a deliberate relationship between Artwork extent, internal SHAPE regions, and the outer manufacturing boundary.
-
-The initial policy is **clip**. More expansive boundary behavior is deferred.
-
-### Architectural Boundaries
-
-- Existing Artwork fitting and registration remain the default.
-- Artwork scaling, clipping, nominal SHAPE boundary, and manufactured envelope are separate concepts.
-- Preserve aspect ratio, logical color identity, and registration.
-- Do not automatically enlarge the Base or alter `shape_size` when Artwork grows.
-- Reuse the placement, clipping, and composition contracts from Phases 4 and 5.
-- Do not implement `extend` or `expand` without a separate manufacturing specification.
-
-### Work
-
-1. Review existing Artwork fit/scale behavior and the new SHAPE placement and clipping contracts.
-2. Define explicit enlargement beyond the initial Artwork fitting region.
-3. Establish initial `clip` semantics:
-   - Artwork may cross internal SHAPE regions.
-   - Artwork beyond the nominal SHAPE boundary is clipped.
-   - Base dimensions, `shape_size`, and the outer cut contour remain unchanged.
-4. Define interactions with ridges, labels, QR codes, and decorations using established planar precedence.
-5. Preserve correct raised and inlaid manufacturing.
-6. Record `extend` and `expand` as deferred possibilities, not automatic consequences of scaling.
-
-### TDD Work
-
-**RED:** Enlarged Artwork crosses an internal boundary and the nominal outer boundary while preserving aspect ratio, registration, component identity, and fixed Base dimensions.
-
-**GREEN:** Extend existing Artwork fitting and clipping rather than introducing an alternate composition path.
-
-**VERIFY:** Check canonical SVG and 3MF, including raised and inlaid cases; confirm unchanged default fitting behavior; run required tests and quality checks.
-
-### Completion
-
-Explicit Artwork enlargement is manufacturing-correct under the `clip` policy, and existing SHAPE dimensions and default Artwork behavior remain stable.
-
----
-
-## Phase 7 — Hierarchical SVG Manufacturing Project Assembly
-
-**Status:** OPEN — Architectural review, specification, and implementation pending.
-
-### Purpose
-
-Combine multiple existing, independently manufacturable Products into one self-contained, hierarchically grouped SVG document for xTool Studio import.
-
-This is a **manufacturing project assembly operation**, not a new ARTWORK or SHAPE interpretation pipeline. It should consume completed Products without rebuilding their geometry.
-
-### Example Project
+The initial use case combines multiple products and product faces into one SVG:
 
 ```text
 manufacturing-project.svg
-└── project
-    ├── coaster-front
-    │   ├── engraving
-    │   └── cut-outline
-    ├── coaster-back
-    │   └── engraving
-    ├── keychain-front
-    │   ├── engraving
-    │   └── cut-outline
-    ├── keychain-back
-    │   └── engraving
-    └── sticker-front
-        ├── printable-artwork
-        └── cut-contour
+├── coaster-front
+│   ├── engraving
+│   └── cut-outline (optional)
+├── coaster-back
+│   └── engraving
+├── keychain-front
+│   ├── engraving
+│   └── cut-outline
+├── keychain-back
+│   └── engraving
+└── sticker-front
+    ├── printable-artwork
+    └── cut-contour
 ```
 
-Each product or product face has an independent position within the project workspace.
+Each product group is independently positioned within the SVG workspace.
 
-### Architectural Boundaries
-
-- Prefer application-level assembly of existing manufacturing Products; select the exact boundary after reviewing current Product identity and publication mechanisms.
-- Preserve source Products unchanged and avoid retracing, extruding, repackaging 3MF, or reassigning printer colors.
-- Keep XTS-specific assumptions outside the generic engine.
-- Distinguish SVG grouping and semantic operation identities from XTS processing layers and actual machine settings.
-- Do not assume SVG IDs, colors, or groups automatically create XTS processing layers.
-- Do not depend on native `.xs` generation or undocumented XTS metadata.
-- Preserve standalone SVG and 3MF manufacturing behavior.
+Each product may contain multiple manufacturing components, including raster images, vector artwork, and cutting geometry.
 
 ### Required Behavior
 
-1. Accept multiple existing manufacturing Products.
-2. Produce one outer project group with each product as an immediate named child group.
-3. Preserve meaningful nested manufacturing component groups without unnecessary wrappers.
-4. Support native vector geometry and embedded raster content.
-5. Preserve physical size, transparency, transforms, orientation, and artwork registration.
-6. Support independent positioning of product groups in one workspace.
-7. Resolve identifier collisions and references, including SVG definitions and nested coordinate systems.
-8. Produce deterministic, self-contained SVG.
-9. Preserve source Products and their semantic operation/component identities.
-10. Permit independently assigning engraving, cutting, and printing operations in XTS after import.
+1. Accept multiple existing manufacturing Products for assembly into one SVG document.
+2. Represent each product or product face as an independent, named top-level SVG group.
+3. Preserve nested groups representing the product's manufacturing components.
+4. Preserve the hierarchy of existing SVG groups where semantically meaningful.
+5. Support native vector geometry and embedded raster images.
+6. Preserve physical dimensions, scaling, orientation, transparency, and artwork registration.
+7. Support independent positioning of product groups within the combined workspace.
+8. Assign stable, unique SVG identifiers without collisions between incorporated Products.
+9. Produce deterministic, self-contained SVG output.
+10. Preserve original manufacturing Products without modification.
+11. Avoid unnecessary tracing, extrusion, 3MF packaging, or physical printer-color assignment when producing grouped SVG output.
+12. Preserve existing standalone SVG and 3MF manufacturing behavior.
 
-### Grouping Acceptance Contract
+### Grouping and Ungrouping Contract
+
+The SVG hierarchy shall be intentionally structured for XTS's one-level-at-a-time Ungroup behavior.
 
 The intended interaction is:
 
-1. Import the combined SVG as one grouped manufacturing project.
-2. Ungroup once to expose individual product groups.
-3. Ungroup an individual product to expose its immediate manufacturing components.
-4. Leave other product groups intact.
-5. Assign processing settings to intended components without unintentionally affecting unrelated Products.
+**Initial import**
 
-**XTS behavior must be observed, not inferred.** If XTS changes the authored hierarchy, document the observed behavior and revise the export contract before considering the phase complete.
+The combined SVG is available as one grouped manufacturing project containing independently identifiable product groups.
 
-### TDD Work
+**First Ungroup**
 
-**RED**
+Ungrouping the outer project group exposes the immediate product groups:
 
-- Assemble multiple representative coaster, keychain, and sticker Products.
-- Verify exact group depth and stable, unique IDs.
-- Preserve physical dimensions, independent placement, and nested component identities.
-- Preserve embedded raster data, SVG definitions, and internal references.
-- Verify deterministic output and unchanged source Products.
-- Reject unsupported or incompatible Product representations clearly.
+- Coaster Front
+- Coaster Back
+- Keychain Front
+- Keychain Back
+- Sticker Front
 
-**GREEN**
+Each product remains internally grouped.
 
-Implement the smallest reusable assembly operation using established Product, SVG, coordinate, and registration mechanisms. Do not add a new Model, Stage, or generalized project framework without a demonstrated architectural need.
+**Subsequent Ungroup**
 
-**VERIFY**
+Ungrouping an individual product exposes its immediate manufacturing components, such as engraving artwork and cutting geometry.
 
-Import representative assemblies into xTool Studio and verify grouping, ungrouping, dimensions, raster/vector registration, and independent processing assignments. Run required tests and quality checks.
+Nested component groups remain intact until explicitly ungrouped.
 
-### Completion
+The generated SVG shall not introduce unnecessary wrapper groups that require additional ungroup operations.
 
-Multiple existing Products can be imported as one manufacturing SVG, remain independently identifiable and positionable, and retain usable component grouping and registration in XTS.
+The expected interaction shall be verified against actual XTS import behavior rather than inferred solely from the SVG document structure.
+
+### SVG Structure
+
+Use standard SVG `<g>` elements to represent semantic group boundaries.
+
+The preferred hierarchy is:
+
+```text
+SVG document
+└── manufacturing project group
+    ├── product group
+    │   ├── operation/component group
+    │   │   └── geometry or embedded raster
+    │   └── operation/component group
+    └── product group
+        └── operation/component group
+```
+
+Each meaningful group shall have a stable, unique identifier.
+
+Preserve source geometry and transformations while ensuring that incorporated Products occupy the intended physical positions.
+
+When combining existing SVG documents, resolve nested coordinate systems, transforms, definitions, references, and identifiers without changing their rendered appearance.
+
+### Groups Versus XTS Processing Layers
+
+SVG groups and XTS processing layers are distinct concepts.
+
+**SVG groups** organize related manufacturing objects and preserve product identity.
+
+**XTS processing layers** associate objects with machine operations and processing parameters.
+
+A product group may contain components requiring different operations, including:
+
+- Raster engraving.
+- Vector engraving.
+- Cutting.
+- Printable artwork.
+
+Do not assume that SVG group boundaries automatically establish XTS processing layers.
+
+Do not infer manufacturing operations solely from visible SVG colors.
+
+Preserve explicit semantic operation identities within the generated SVG, while allowing XTS to assign the actual machine processing settings.
+
+Investigate whether XTS can reliably recognize or preserve operation-specific grouping, colors, identifiers, or other supported SVG attributes during import.
+
+Do not invent undocumented XTS metadata conventions.
+
+### Architectural Review
+
+Review current HEAD, the permanent specifications, and existing manufacturing Products.
+
+Determine:
+
+1. Which existing Products are suitable inputs for grouped SVG assembly.
+2. Whether assembly belongs in an application-level operation, an existing Model realization, or another established architectural boundary.
+3. How existing SVG component identities and group hierarchies are represented.
+4. How physical placement and coordinate normalization should be handled.
+5. How embedded raster images are preserved.
+6. How identifiers and SVG references are safely merged.
+7. How the assembly operation can avoid rebuilding unchanged Products.
+8. How manufacturing operation identities remain distinct from SVG visual styling.
+
+Prefer composition of existing manufacturing Products over reexecuting their ARTWORK or SHAPE processing.
+
+Do not introduce XTS-specific behavior into the generic build engine.
+
+Update the applicable permanent specifications before implementing new behavior.
+
+### Test-Driven Implementation
+
+**RED — Establish the assembly contract**
+
+Create a coherent test set demonstrating:
+
+1. Multiple manufacturing Products can be combined into one SVG.
+2. The document contains one explicit outer project group.
+3. The immediate children of that group are the individual product groups.
+4. Each product retains its internal manufacturing component groups.
+5. No unnecessary wrapper groups alter the intended ungrouping depth.
+6. Every group has a stable, unique identifier.
+7. Physical dimensions, transforms, and placement are preserved.
+8. Embedded raster content remains self-contained.
+9. Source SVG definitions and references remain valid after merging.
+10. Repeated assembly produces deterministic output.
+11. Original Products remain unchanged.
+
+Include representative coaster, keychain, and sticker Products.
+
+**GREEN — Implement grouped SVG assembly**
+
+Implement the smallest reusable capability satisfying the specified assembly contract.
+
+Reuse existing SVG composition, coordinate, registration, and Product mechanisms where appropriate.
+
+Do not introduce new Models, Stages, or generalized project infrastructure unless the architectural review establishes a concrete requirement.
+
+**VERIFY — XTS manufacturing acceptance**
+
+Import the generated SVG into XTS and verify:
+
+1. The combined SVG is recognized as one grouped object.
+2. One Ungroup operation exposes the individual product groups.
+3. Each product retains its internal grouping.
+4. Ungrouping one product exposes its immediate manufacturing components.
+5. Other product groups remain unaffected.
+6. Raster images, vector geometry, and cutting contours remain correctly registered.
+7. Physical dimensions and positions are preserved.
+8. Engraving, cutting, and printing operations can be assigned to the intended objects without unintentionally affecting other products.
+
+If XTS does not preserve the authored SVG hierarchy, document the observed import behavior and revise the export contract before implementation is considered complete.
+
+### Relationship to Native `.xs` Projects
+
+Grouped SVG assembly is the initial manufacturing project packaging capability.
+
+Native `.xs` multi-canvas project generation remains a separate, optional investigation.
+
+Do not make grouped SVG assembly dependent on reverse-engineering the `.xs` format.
+
+### Completion Criteria
+
+This phase is complete when:
+
+- Multiple independently manufacturable Products can be packaged into one SVG.
+- Product and component identities remain distinct.
+- SVG hierarchy is deterministic and structurally correct.
+- One-level-at-a-time ungrouping behaves as intended in XTS.
+- Raster and vector content retain their intended appearance and physical registration.
+- Manufacturing operations can be independently assigned in XTS.
+- Existing standalone manufacturing Products remain compatible.
+- Focused tests, applicable non-slow tests, Ruff, and Pyright pass.
+- Applicable permanent specifications document the new capability.
+
+### Status
+
+**OPEN — Architectural review, specification, and implementation pending.**
+
+Implementation shall follow the repository's specification-first, RED/GREEN test-driven development process.
+
 
 ---
 
-## Deferred Work and Explicit Non-Goals
+## BUG-006 — Single-Color Raster Artwork and Boundary-Touching Shrinkwrap
 
-These are not additional active phases. Revisit them only when a real manufacturing requirement justifies a separate specification and plan:
+### Problem
 
-- Native `.xs` multi-canvas project generation or reverse-engineering.
-- A generalized component-instance framework or new BANNER Model.
-- Multiple embedded raster images, mixed image/vector SVG input, external image links, or arbitrary SVG rendering beyond the initial Phase 3 contract.
-- Artwork boundary `extend` or `expand` policies.
-- Configurable general-purpose layer ordering when fixed semantic precedence suffices.
-- Automatic assignment of xTool processing parameters from arbitrary SVG groups or colors.
-- Broader project management, nesting optimization, or machine-specific manufacturing orchestration.
+The ARTWORK model fails to prepare a valid transparent PNG containing black foreground artwork when that artwork touches the image boundaries.
 
-## Phase Execution Checklist
+Reproduction fixture: `tests/fixtures/artwork/bug06.png`
 
-For each phase or independently testable slice:
+The current failure occurs in `model/models/artwork/stages/prepare.py`, during envelope construction:
 
-- [ ] Reload HEAD and inspect relevant permanent specifications, implementation, and tests.
-- [ ] Confirm reproductions and existing capabilities before editing.
-- [ ] Resolve open semantic decisions; revise normative documentation first.
-- [ ] Define one coherent RED test boundary and verify expected failure.
-- [ ] Implement the smallest GREEN change.
-- [ ] Run focused tests, applicable non-slow tests, Ruff, and Pyright.
-- [ ] Perform manufacturing acceptance when the contract requires it.
-- [ ] Update documentation, record completion evidence, and identify the next slice.
-- [ ] Commit only the verified, scoped change.
+```text
+PrepareError: No meaningful foreground remains after envelope cleanup.
+```
+
+The image also exposes a separate color-processing requirement: ARTWORK must support artwork containing exactly one foreground color, without treating transparency as a second color or requiring multiple configured printer colors.
+
+### Required Behavior
+
+**A. Shrinkwrap and envelope construction**
+
+1. Recognize foreground pixels that touch any edge of the image.
+2. Correctly distinguish the transparent exterior from transparent interior regions.
+3. Produce a valid, closed envelope around the visible foreground, including segments coincident with image boundaries.
+4. Do not discard meaningful foreground geometry merely because it intersects the image boundary.
+5. Preserve the original image dimensions and coordinates.
+6. Do not require users to add transparent padding to otherwise valid artwork.
+
+**B. Artwork color discovery**
+
+1. Determine the effective number of foreground colors represented in the source artwork.
+2. Exclude fully transparent pixels from foreground color counting.
+3. Account for antialiasing, partial transparency, and insignificant pixel-level color variations.
+4. Support exactly one foreground color.
+5. Permit `artifact_color_count = 1`.
+6. Do not infer the source artwork's color count from the configured `printer_colors` palette size.
+7. When automatic color discovery is enabled, derive `artifact_color_count` from the effective foreground colors.
+8. Preserve explicit user color-count overrides where supported, subject to the ARTWORK specification.
+9. Ensure that a single-color image produces one meaningful artwork color partition without manufacturing an artificial background layer.
+
+### Specification Review
+
+Before implementation:
+
+- Review `model/models/artwork/DEFINITION.md`.
+- Review the envelope and shrinkwrap contracts.
+- Review `artifact_color_count` validation, defaults, and parameter derivation.
+- Review the relationship between source color discovery, raster quantization, tracing, and printer color assignment.
+- Specify whether automatic color discovery is the default or an explicitly selected mode.
+- Update the normative specification before modifying production code.
+
+### Test-Driven Implementation
+
+**RED — Regression tests**
+
+Using `bug06.png`:
+
+- Verify that meaningful foreground survives envelope cleanup.
+- Verify that the envelope correctly handles artwork touching all four image edges.
+- Verify that transparent interior regions do not invalidate the envelope.
+- Verify that the image is recognized as effectively single-color artwork.
+- Verify that `artifact_color_count = 1` is accepted.
+- Verify that automatic color discovery produces one foreground color partition.
+- Verify that varying `printer_colors` does not change the discovered source color count.
+
+Add smaller synthetic fixtures to isolate boundary handling from color discovery.
+
+**GREEN — Implementation**
+
+- Correct envelope construction for boundary-touching foreground geometry.
+- Correct color-count validation and automatic discovery as specified.
+- Preserve the existing ARTWORK pipeline and manufacturing invariants.
+- Avoid introducing artificial background colors or unnecessary color partitions.
+
+**VERIFY**
+
+- Run focused ARTWORK regression tests.
+- Run the applicable non-slow test suite.
+- Run Ruff and Pyright.
+- Verify `bug06.png` through the ordinary `artifact build` workflow.
+- Confirm that existing multicolor artwork remains compatible.
+
+### Completion Criteria
+
+BUG-006 is complete when:
+
+- `bug06.png` builds successfully.
+- Shrinkwrap produces a correct envelope without requiring transparent padding.
+- Single-color transparent artwork is accepted.
+- `artifact_color_count = 1` is valid.
+- Automatic color discovery identifies one effective foreground color.
+- Transparency does not generate an additional manufacturing color.
+- Existing multicolor workflows remain compatible.
+- Regression tests and quality checks pass.
+
+### Relationship to Existing Defects
+
+- **BUG-002:** Boundary-touching shrinkwrap failure. `bug06.png` is now a concrete reproduction fixture.
+- **BUG-004:** Source-aware color counting. BUG-006 adds the explicit requirement to support a color count of one.
+- **BUG-005:** Raster preservation in SVG output. This is complementary but independent.
+
+### Status
+
+**OPEN — Specification review and implementation pending.**
+
+No production changes are authorized by recording this defect. Implementation shall follow specification-first, RED/GREEN test-driven development.
+
+
+---
+
+## BUG-001 — Support Embedded Raster Images in SVG Artwork
+
+### Problem
+
+The ARTWORK model rejects valid SVG documents containing embedded raster images.
+
+The failure occurs during the `prepare` stage in:
+
+`src/lowkey_artifact_builder/model/models/artwork/stages/prepare.py`
+
+The current implementation raises:
+
+```text
+PrepareError: Embedded raster images are unsupported in native SVG artwork.
+```
+
+The reported reproduction fixture, `bug01.svg`, is an SVG exported by xTool Studio containing a Base64-encoded PNG image.
+
+Although the SVG is valid and renders correctly in a browser, `artifact build` fails.
+
+### Required Behavior
+
+ARTWORK shall accept SVG documents containing a single embedded raster image, subject to the following requirements:
+
+1. Recognize an SVG `<image>` element containing a Base64-encoded PNG.
+2. Decode the embedded raster without unnecessarily altering its pixel content.
+3. Preserve transparency, including the PNG alpha channel.
+4. Interpret the SVG coordinate system, physical dimensions, image placement, and applicable transformations correctly.
+5. Integrate the raster into the existing ARTWORK preparation and manufacturing pipeline.
+6. Preserve existing behavior for native vector SVG and standalone raster artwork.
+7. Report unsupported SVG image configurations through actionable, user-facing diagnostics rather than an unexplained traceback.
+
+An SVG containing an embedded raster shall not be rejected solely because its artwork is raster-based.
+
+### Scope
+
+The initial implementation shall support SVG documents containing one embedded PNG image.
+
+The following are outside the initial scope unless existing ARTWORK contracts already require them:
+
+- Multiple embedded raster images.
+- Mixed raster and vector artwork.
+- Externally referenced raster images.
+- Additional embedded raster formats.
+- General-purpose SVG rendering or rasterization.
+
+These cases shall not be silently treated as supported.
+
+### Specification Review
+
+Before implementation:
+
+1. Review `model/models/artwork/DEFINITION.md` for existing SVG and raster input contracts.
+2. Identify any normative restrictions that conflict with the required behavior.
+3. Update the specification before modifying production code.
+4. Preserve existing ARTWORK invariants concerning dimensions, transparency, colors, and manufacturing output.
+
+Implementation details shall be derived from the revised specification rather than assumed from the current code.
+
+### Test-Driven Implementation
+
+**RED — Reproduce and specify the defect**
+
+- Add a regression test using `bug01.svg`.
+- Add a minimal synthetic SVG fixture containing a Base64-encoded PNG.
+- Verify successful recognition and preparation of the embedded raster.
+- Verify preservation of transparency, dimensions, and placement.
+- Verify deterministic output.
+- Verify that existing standalone PNG and vector SVG workflows remain unchanged.
+- Add focused negative tests for unsupported embedded-image configurations.
+
+The regression test must fail against the existing implementation for the expected reason.
+
+**GREEN — Correct the implementation**
+
+- Implement the smallest change that satisfies the revised ARTWORK contract.
+- Reuse existing raster preparation behavior where appropriate.
+- Avoid introducing a separate, inconsistent raster-processing pipeline.
+- Do not introduce unrelated SVG features or architectural changes.
+
+**VERIFY — Regression and quality checks**
+
+- Run focused ARTWORK tests.
+- Run the applicable non-slow test suite.
+- Run Ruff and Pyright.
+- Verify the original `bug01.svg` through the ordinary `artifact build` workflow.
+- Confirm that previously supported SVG and raster inputs produce unchanged results.
+
+### Completion Criteria
+
+BUG-001 is complete when:
+
+- `bug01.svg` builds successfully.
+- Embedded PNG transparency and placement are preserved.
+- Existing ARTWORK behavior remains compatible.
+- Unsupported configurations receive clear diagnostics.
+- Regression tests and required quality checks pass.
+- The ARTWORK definition documents the supported SVG raster behavior.
+
+### Status
+
+**OPEN — Specification and implementation pending.**
+
+Reproduction fixture: `bug01.svg`
+
+No production code changes are authorized by recording this defect. Implementation shall follow the repository's established specification-first, RED/GREEN test-driven development process.
+
+
+---
+
+## BUG-003 — Support Stroke-Only SVG Artwork
+
+### Problem
+
+The ARTWORK model rejects valid SVG documents containing visible geometry defined entirely by strokes, without filled regions.
+
+The failure occurs during the `raster` stage in:
+
+`src/lowkey_artifact_builder/model/models/artwork/stages/raster.py`
+
+The current implementation raises:
+
+```text
+RasterError: Native SVG contains no supported filled paths.
+```
+
+The reproduction fixture, `bug02.svg`, contains:
+
+- A transparent 600 × 600 px SVG canvas.
+- One centered circle.
+- A black stroke, 5 px wide.
+- No fill (`fill="none"`).
+- A visible stroke extending to all four canvas boundaries.
+
+The SVG renders correctly in standard SVG viewers but cannot be processed by ARTWORK.
+
+### Required Behavior
+
+ARTWORK shall accept valid SVG documents containing visible stroked geometry, regardless of whether the geometry has a fill.
+
+1. Recognize SVG strokes as visible artwork, independently of filled regions.
+2. Support stroke-only shapes and paths, including circles, ellipses, rectangles, lines, polylines, and arbitrary paths within the supported SVG geometry contract.
+3. Respect stroke color, width, line caps, line joins, and applicable transformations.
+4. Preserve transparent regions, including the interior of unfilled closed shapes.
+5. Interpret visible strokes according to their rendered geometry rather than treating their centerlines as filled boundaries.
+6. Support documents containing both stroked and filled geometry without losing either.
+7. Preserve existing ARTWORK behavior for filled SVG paths and standalone raster artwork.
+8. Produce deterministic manufacturing geometry consistent with the visible SVG artwork.
+
+An SVG shall not be rejected solely because its visible geometry is represented by strokes rather than fills.
+
+### Specification Review
+
+Before implementation:
+
+1. Review `model/models/artwork/DEFINITION.md` for normative SVG geometry, color, transparency, and rasterization contracts.
+2. Identify existing restrictions on stroke-only geometry.
+3. Define the supported stroke semantics, including how stroke width and transforms affect visible geometry.
+4. Update the ARTWORK specification before changing production code.
+5. Preserve existing manufacturing and color-partitioning invariants.
+
+### Test-Driven Implementation
+
+**RED — Reproduce and specify the defect**
+
+- Add a regression test using `bug02.svg`.
+- Verify that a stroke-only circle is accepted.
+- Verify that the visible stroke is preserved at its specified width.
+- Verify that the circle's interior remains transparent.
+- Verify correct handling of strokes touching the SVG canvas boundary.
+- Add focused tests for open paths, line caps, line joins, and transformed strokes.
+- Add a mixed stroke-and-fill regression case.
+- Verify that existing filled-path SVG behavior remains unchanged.
+
+The primary regression test must fail against the existing implementation for the expected reason.
+
+**GREEN — Correct the implementation**
+
+- Implement the smallest coherent correction satisfying the revised ARTWORK contract.
+- Reuse existing SVG geometry and raster-processing mechanisms where appropriate.
+- Avoid converting stroke-only artwork into incorrectly filled shapes.
+- Preserve color, transparency, dimensions, and placement.
+- Avoid unrelated changes to shrinkwrap or other ARTWORK stages.
+
+**VERIFY — Regression and quality checks**
+
+- Run focused ARTWORK tests.
+- Run the applicable non-slow test suite.
+- Run Ruff and Pyright.
+- Verify that `bug02.svg` completes the ordinary `artifact build` workflow.
+- Confirm that existing filled SVG artwork continues to produce compatible results.
+
+### Completion Criteria
+
+BUG-003 is complete when:
+
+- `bug02.svg` builds successfully.
+- Stroke-only geometry is correctly represented in the resulting artwork.
+- Stroke width, color, transparency, and placement are preserved.
+- Mixed stroke-and-fill SVG documents behave according to the ARTWORK specification.
+- Existing filled-path workflows remain compatible.
+- Regression tests and required quality checks pass.
+- The ARTWORK definition documents supported SVG stroke behavior.
+
+### Status
+
+**OPEN — Specification and implementation pending.**
+
+Reproduction fixture: `tests/fixtures/artwork/bug02.svg`
+
+No production changes are authorized by recording this defect. Implementation shall follow the repository's specification-first, RED/GREEN test-driven development process.
+
+---
+
+## BUG-004 — Derive SVG Raster Tracing Colors from Source Artwork
+
+### Problem
+
+When ARTWORK rasterizes an SVG containing a limited number of colors, the bitmap tracing process may use the configured `printer_colors` count rather than the actual colors present in the source artwork.
+
+For example, an SVG containing black text and black graphics on a transparent background has one visible foreground color. However, rasterization may assign a default background color and tracing may attempt to extract additional color regions based on the configured printer palette.
+
+This can produce incorrect color partitions, unnecessary traced layers, or geometry that does not correspond to the source artwork.
+
+### Required Behavior
+
+1. Determine the colors represented in the source SVG independently of the configured printer palette.
+2. Distinguish transparent regions from explicitly colored background regions.
+3. Treat transparency as the absence of artwork, not as an additional source color.
+4. Preserve explicitly authored background colors as artwork where required by the ARTWORK specification.
+5. Do not introduce a default background color into source color counting.
+6. Determine the number of tracing regions from the actual source artwork and the applicable ARTWORK color-processing contract.
+7. Use `printer_colors` for manufacturing color assignment or mapping, not as an implicit source-color count.
+8. Preserve existing behavior for native vector SVG and standalone raster artwork unless the specification explicitly requires a change.
+
+### Specification Review
+
+Before implementation:
+
+- Review `model/models/artwork/DEFINITION.md` for source color discovery, transparency, rasterization, tracing, and printer color mapping.
+- Identify where default background colors enter the processing pipeline.
+- Determine how SVG colors and raster pixel colors are currently classified.
+- Define the relationship between source color regions, tracing layers, and manufacturing color assignments.
+- Specify handling of antialiasing and intermediate raster colors without treating every distinct pixel value as an independent authored color.
+- Update the normative ARTWORK definition before changing implementation.
+
+### Test-Driven Implementation
+
+**RED — Reproduce and specify**
+
+Create focused regression fixtures covering:
+
+- Black artwork on a transparent SVG background.
+- Black artwork on an explicitly white SVG background.
+- Two-color artwork on a transparent background.
+- Two-color artwork with an explicitly colored background.
+- SVG artwork whose source color count differs from the configured `printer_colors` count.
+- Antialiased SVG rasterization that introduces intermediate pixel colors.
+
+Verify that transparent regions do not become manufacturing artwork and that the number of traced color regions is independent of unrelated printer palette entries.
+
+**GREEN — Correct the implementation**
+
+- Implement source-aware color discovery and tracing behavior.
+- Preserve transparency through rasterization and tracing.
+- Separate source color interpretation from printer color mapping.
+- Reuse existing color partitioning and tracing mechanisms where appropriate.
+- Avoid unrelated changes to SVG geometry, shrinkwrap, or manufacturing output.
+
+**VERIFY — Regression and quality checks**
+
+- Run focused ARTWORK tests.
+- Run the applicable non-slow test suite.
+- Run Ruff and Pyright.
+- Verify resulting traced geometry and color partitions.
+- Confirm compatibility with existing native SVG and standalone raster workflows.
+
+### Completion Criteria
+
+BUG-004 is complete when:
+
+- Single-color SVG artwork produces the expected single foreground color partition.
+- Transparent backgrounds do not create additional traced artwork.
+- Explicitly colored backgrounds are handled according to the ARTWORK specification.
+- Source color discovery does not depend on the number of configured printer colors.
+- Antialiasing does not create unintended manufacturing layers.
+- Regression tests and required quality checks pass.
+
+### Status
+
+**OPEN — Specification review and implementation pending.**
+
+Reproduction fixture: To be supplied or created.
+
+Implementation shall follow the repository's specification-first, RED/GREEN test-driven development process.
+
+---
+
+## BUG-005 — Support Embedded Raster Artwork in SVG Manufacturing Output
+
+### Problem
+
+The ARTWORK and SHAPE manufacturing workflow currently relies on tracing raster artwork into vector geometry for SVG composition.
+
+However, vectorization is not always required or desirable.
+
+For laser engraving workflows using xTool Studio, raster artwork can be embedded directly in an SVG document. The manufacturing application can then perform raster engraving while using accompanying vector geometry for other operations.
+
+Mandatory tracing can introduce unnecessary computation, alter image detail, generate excessive SVG geometry, and prevent use of native raster engraving controls.
+
+### Required Behavior
+
+1. Support a manufacturing output mode that preserves raster artwork as an embedded bitmap within an SVG document.
+2. Do not require bitmap tracing when raster preservation is selected.
+3. Preserve the original raster image content and transparency where possible.
+4. Preserve physical dimensions, scaling, alignment, and placement within the composed SHAPE.
+5. Embed raster data within the SVG rather than depending on external image files.
+6. Permit embedded raster artwork to coexist with vector geometry, including base outlines, ridges, borders, and labels.
+7. Preserve existing traced-vector output behavior as an independently selectable mode.
+8. Ensure output is deterministic and compatible with the supported SVG manufacturing contract.
+9. Keep raster preservation independent of the configured printer color count.
+
+### Specification Review
+
+Before implementation:
+
+- Review the ARTWORK and SHAPE model definitions.
+- Identify where raster tracing is currently required.
+- Determine how prepared raster artwork is represented and passed between models.
+- Define an explicit contract for selecting raster preservation versus vector tracing.
+- Define the SVG representation and coordinate transformations for embedded raster artwork.
+- Determine which manufacturing realizations support embedded raster content.
+- Update normative model definitions before modifying production code.
+
+### Test-Driven Implementation
+
+**RED — Specify and reproduce**
+
+Add regression tests demonstrating:
+
+- A standalone PNG can be incorporated into manufacturing SVG output without tracing.
+- The SVG contains an embedded raster `<image>` element.
+- Embedded image data is self-contained.
+- Raster transparency is preserved.
+- Image dimensions, scaling, and placement are correct.
+- Raster artwork can coexist with vector SHAPE components.
+- Existing vector-tracing behavior remains available.
+- Raster preservation does not depend on `printer_colors`.
+- Repeated builds produce deterministic output.
+
+**GREEN — Implement**
+
+- Introduce the smallest explicit configuration mechanism required to select raster preservation.
+- Reuse existing ARTWORK preparation and SHAPE placement behavior.
+- Preserve raster data through composition without unnecessary conversion.
+- Avoid modifying existing vector-tracing behavior except where required by the specification.
+- Do not introduce xTool-specific processing into the core ARTWORK model.
+
+**VERIFY — Regression and quality checks**
+
+- Run focused ARTWORK and SHAPE tests.
+- Run the applicable non-slow test suite.
+- Run Ruff and Pyright.
+- Inspect generated SVG structure.
+- Validate representative manufacturing output in xTool Studio.
+- Confirm compatibility with existing traced-vector workflows.
+
+### Completion Criteria
+
+BUG-005 is complete when:
+
+- Raster artwork can be embedded directly in a manufacturing SVG.
+- Tracing is not required in the raster-preservation mode.
+- Embedded raster data remains self-contained.
+- Transparency and physical placement are preserved.
+- Raster and vector elements coexist correctly.
+- Existing vector output behavior remains available.
+- Regression tests and required quality checks pass.
+- ARTWORK and SHAPE specifications document the new output behavior.
+
+### Status
+
+**OPEN — Specification review and implementation pending.**
+
+No production code changes are authorized by recording this requirement. Implementation shall follow the repository's specification-first, RED/GREEN test-driven development process.
 
