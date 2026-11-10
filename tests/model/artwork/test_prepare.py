@@ -2299,3 +2299,264 @@ def test_discover_png_color_count_preserves_three_distinct_regions() -> None:
     image = Image.fromarray(rgba, mode="RGBA")
 
     assert prepare._discover_png_color_count(image) == 3
+
+
+def test_discover_png_color_count_accepts_twenty_discrete_colors() -> None:
+    """
+    Twenty distinctly authored color regions are valid artwork.
+
+    Automatic discovery must not impose an arbitrary maximum
+    color count or classify sharp boundaries as gradients.
+
+    Each authored RGB color is separated from every other
+    by more than the incidental-variation tolerance.
+    """
+    rgba = np.zeros((64, 128, 4), dtype=np.uint8)
+
+    levels = (0, 127, 255)
+
+    colors = [(red, green, blue) for red in levels for green in levels for blue in levels][:20]
+
+    assert len(colors) == 20
+    assert len(set(colors)) == 20
+
+    for index, color in enumerate(colors):
+        x0 = 4 + index * 6
+
+        rgba[8:56, x0 : x0 + 6] = (
+            *color,
+            255,
+        )
+
+    image = Image.fromarray(
+        rgba,
+        mode="RGBA",
+    )
+
+    assert prepare._discover_png_color_count(image) == 20
+
+
+def test_discover_png_color_count_accepts_antialiased_color_boundary() -> None:
+    """
+    A narrow antialiased transition between two solid authored
+    colors must not be interpreted as a continuous gradient.
+    """
+    rgba = np.zeros((64, 64, 4), dtype=np.uint8)
+
+    rgba[8:56, 8:32] = (255, 0, 0, 255)
+    rgba[8:56, 32:56] = (0, 0, 255, 255)
+
+    # Slight RGB variations near the boundary.
+    rgba[8:56, 30] = (250, 3, 5, 255)
+    rgba[8:56, 31] = (245, 5, 10, 255)
+    rgba[8:56, 32] = (10, 5, 245, 255)
+    rgba[8:56, 33] = (5, 3, 250, 255)
+
+    image = Image.fromarray(rgba, mode="RGBA")
+
+    assert prepare._discover_png_color_count(image) == 2
+
+
+def test_discover_png_color_count_accepts_scattered_rgb_noise() -> None:
+    """
+    Small isolated RGB variations are incidental source noise,
+    not a continuous gradient or additional authored colors.
+    """
+    rgba = np.zeros((64, 64, 4), dtype=np.uint8)
+
+    rgba[8:56, 8:56] = (200, 50, 30, 255)
+
+    for y in range(12, 52, 8):
+        for x in range(12, 52, 8):
+            rgba[y, x] = (196, 53, 33, 255)
+
+    image = Image.fromarray(rgba, mode="RGBA")
+
+    assert prepare._discover_png_color_count(image) == 1
+
+
+@pytest.mark.parametrize(
+    ("edge", "bounds"),
+    [
+        ("top", (8, 0, 24, 20)),
+        ("bottom", (8, 12, 24, 32)),
+        ("left", (0, 8, 20, 24)),
+        ("right", (12, 8, 32, 24)),
+    ],
+)
+def test_prepare_single_color_preserves_boundary_touching_artwork(
+    tmp_path: Path,
+    edge: str,
+    bounds: tuple[int, int, int, int],
+) -> None:
+    """
+    Foreground touching any image boundary is valid artwork.
+
+    Preparation preserves original coordinates, source dimensions,
+    source RGB, and a closed physical envelope.
+    """
+    import xml.etree.ElementTree as ET
+
+    source = tmp_path / f"{edge}.png"
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    rgba = np.zeros((32, 32, 4), dtype=np.uint8)
+
+    x0, y0, x1, y1 = bounds
+
+    rgba[y0:y1, x0:x1] = (0, 0, 0, 255)
+
+    Image.fromarray(rgba, mode="RGBA").save(source)
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={"trace": trace, "envelope": envelope},
+        resolver=StubResolver({"artwork_envelope_mode": "alpha"}),
+    )
+
+    prepare.execute(context)  # type: ignore[arg-type]
+
+    namespace = "{http://www.w3.org/2000/svg}"
+
+    trace_root = ET.parse(trace).getroot()
+    envelope_root = ET.parse(envelope).getroot()
+
+    assert trace_root.get("viewBox") == "0 0 32 32"
+    assert envelope_root.get("viewBox") == "0 0 32 32"
+
+    artwork = trace_root.find(f"{namespace}g[@id='artwork']")
+    assert artwork is not None
+
+    paths = artwork.findall(f"{namespace}path")
+    assert len(paths) == 1
+    assert paths[0].get("fill") == "#000000"
+
+    path_data = paths[0].get("d")
+    assert path_data is not None
+
+    # The traced geometry must retain the original rectangle.
+    for x, y in (
+        (x0, y0),
+        (x1, y0),
+        (x1, y1),
+        (x0, y1),
+    ):
+        assert f"{x} {y}" in path_data
+
+    envelope_paths = envelope_root.findall(f"{namespace}path")
+    assert len(envelope_paths) == 1
+
+    envelope_data = envelope_paths[0].get("d")
+    assert envelope_data is not None
+    assert envelope_data.strip().endswith("Z")
+
+
+def test_prepare_single_color_preserves_corner_touching_artwork(
+    tmp_path: Path,
+) -> None:
+    """
+    Foreground occupying an image corner must remain intact
+    without artificial transparent padding.
+    """
+    import xml.etree.ElementTree as ET
+
+    source = tmp_path / "corner.png"
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    rgba = np.zeros((32, 32, 4), dtype=np.uint8)
+
+    rgba[0:20, 0:20] = (35, 140, 85, 255)
+
+    Image.fromarray(rgba, mode="RGBA").save(source)
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={"trace": trace, "envelope": envelope},
+        resolver=StubResolver({"artwork_envelope_mode": "alpha"}),
+    )
+
+    prepare.execute(context)  # type: ignore[arg-type]
+
+    namespace = "{http://www.w3.org/2000/svg}"
+
+    root = ET.parse(trace).getroot()
+    artwork = root.find(f"{namespace}g[@id='artwork']")
+
+    assert artwork is not None
+
+    paths = artwork.findall(f"{namespace}path")
+    assert len(paths) == 1
+
+    assert paths[0].get("fill") == "#238c55"
+
+    path_data = paths[0].get("d")
+    assert path_data is not None
+
+    for coordinate in (
+        "0 0",
+        "20 0",
+        "20 20",
+        "0 20",
+    ):
+        assert coordinate in path_data
+
+    envelope_root = ET.parse(envelope).getroot()
+    assert envelope_root.get("viewBox") == "0 0 32 32"
+
+
+def test_prepare_single_color_accepts_fully_occupied_image(
+    tmp_path: Path,
+) -> None:
+    """
+    A fully occupied single-color PNG has a valid closed
+    envelope and does not require exterior transparency.
+    """
+    import xml.etree.ElementTree as ET
+
+    source = tmp_path / "full.png"
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    rgba = np.zeros((32, 32, 4), dtype=np.uint8)
+    rgba[:, :] = (0, 0, 0, 255)
+
+    Image.fromarray(rgba, mode="RGBA").save(source)
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={"trace": trace, "envelope": envelope},
+        resolver=StubResolver({"artwork_envelope_mode": "alpha"}),
+    )
+
+    prepare.execute(context)  # type: ignore[arg-type]
+
+    namespace = "{http://www.w3.org/2000/svg}"
+
+    trace_root = ET.parse(trace).getroot()
+    envelope_root = ET.parse(envelope).getroot()
+
+    assert trace_root.get("viewBox") == "0 0 32 32"
+    assert envelope_root.get("viewBox") == "0 0 32 32"
+
+    artwork = trace_root.find(f"{namespace}g[@id='artwork']")
+    assert artwork is not None
+
+    paths = artwork.findall(f"{namespace}path")
+    assert len(paths) == 1
+
+    path_data = paths[0].get("d")
+    assert path_data is not None
+
+    for coordinate in (
+        "0 0",
+        "32 0",
+        "32 32",
+        "0 32",
+    ):
+        assert coordinate in path_data
+
+    envelope_paths = envelope_root.findall(f"{namespace}path")
+    assert len(envelope_paths) == 1
+    assert envelope_paths[0].get("d", "").strip().endswith("Z")
