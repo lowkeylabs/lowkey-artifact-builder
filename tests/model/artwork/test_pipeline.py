@@ -1379,3 +1379,187 @@ def test_artwork_pipeline_packages_participating_outer_ridge(
     assert ridge_object_id is not None
 
     assert any(item.get("objectid") == ridge_object_id for item in build_items)
+
+
+def test_bug06_build_produces_manufacturing_ready_artwork(
+    tmp_path: Path,
+) -> None:
+    """
+    BUG-006: boundary-touching PNG artwork must survive the
+    ordinary public ARTWORK build pipeline.
+
+    The build must produce registered vector geometry and
+    a valid manufacturing package without modifying the
+    original PNG or requiring transparent padding.
+
+    Color-count discovery is source-driven; the test does
+    not explicitly configure artifact_color_count.
+    """
+    fixture = Path(__file__).resolve().parents[2] / "assets" / "bug06.png"
+
+    assert fixture.is_file()
+
+    with Image.open(fixture) as image:
+        assert image.format == "PNG"
+        source_size = image.size
+
+    source = tmp_path / "bug06.png"
+
+    shutil.copyfile(
+        fixture,
+        source,
+    )
+
+    original_bytes = source.read_bytes()
+
+    # Configure the physical manufacturing environment,
+    # but leave artifact_color_count unspecified.
+    (tmp_path / "workspace.toml").write_text(
+        """
+[parameters]
+printer_colors = ["black", "white"]
+artwork_size = 100.0
+artwork_raise = 1.0
+artwork_min_island_area = 1
+artwork_island_connectivity = 8
+artwork_envelope_mode = "shrink-wrap"
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    write_artifact_config(
+        "bug06",
+        {
+            "model": "artwork",
+            "source": "bug06.png",
+        },
+        project_root=tmp_path,
+    )
+
+    # Enter through the public planner and execution engine.
+    plan = create_build_plan(
+        "bug06",
+        project_root=tmp_path,
+    )
+
+    execute_build(plan)
+
+    realization = tmp_path / "artifacts" / "bug06" / "artwork" / "artwork_default"
+
+    prepare_directory = realization / "10-prepare"
+    vector_directory = realization / "30-vector"
+    extrude_directory = realization / "40-extrude"
+    package_directory = realization / "50-package"
+
+    # -----------------------------------------------------
+    # Preparation: source coordinate registration
+    # -----------------------------------------------------
+
+    trace = prepare_directory / "trace.svg"
+    envelope = prepare_directory / "envelope.svg"
+
+    assert trace.is_file()
+    assert envelope.is_file()
+
+    expected_viewbox = f"0 0 {source_size[0]} {source_size[1]}"
+
+    trace_root = ET.parse(trace).getroot()
+    envelope_root = ET.parse(envelope).getroot()
+
+    assert trace_root.get("viewBox") == expected_viewbox
+    assert envelope_root.get("viewBox") == expected_viewbox
+
+    _assert_svg_has_geometry(trace)
+    _assert_svg_has_geometry(envelope)
+
+    # -----------------------------------------------------
+    # Vector: registered manufacturing components
+    # -----------------------------------------------------
+
+    vector_manifest_path = vector_directory / "products.json"
+
+    assert vector_manifest_path.is_file()
+
+    vector_manifest = _read_manifest(
+        vector_manifest_path,
+    )
+
+    vector_products = _manifest_products(
+        vector_manifest,
+    )
+
+    assert vector_products
+
+    registered_envelope = vector_directory / str(vector_manifest["envelope"])
+
+    assert registered_envelope.is_file()
+
+    _assert_svg_has_geometry(registered_envelope)
+
+    vector_paths = [vector_directory / str(product["path"]) for product in vector_products]
+
+    assert all(path.is_file() for path in vector_paths)
+
+    for path in vector_paths:
+        _assert_svg_has_geometry(path)
+
+    # -----------------------------------------------------
+    # Extrusion: physical manufacturing geometry
+    # -----------------------------------------------------
+
+    extrude_manifest_path = extrude_directory / "products.json"
+
+    assert extrude_manifest_path.is_file()
+
+    extrude_manifest = _read_manifest(
+        extrude_manifest_path,
+    )
+
+    extrude_products = _manifest_products(
+        extrude_manifest,
+    )
+
+    assert extrude_products
+
+    extruded_paths = [extrude_directory / str(product["path"]) for product in extrude_products]
+
+    assert all(path.is_file() for path in extruded_paths)
+
+    for path in extruded_paths:
+        assert path.stat().st_size > 0
+
+    # -----------------------------------------------------
+    # Packaging: valid manufacturing-ready 3MF
+    # -----------------------------------------------------
+
+    package = package_directory / "artifact.3mf"
+
+    assert package.is_file()
+    assert zipfile.is_zipfile(package)
+
+    model = _read_3mf_model(package)
+
+    namespace = {"m": CORE_NS}
+
+    objects = model.findall(
+        "./m:resources/m:object",
+        namespace,
+    )
+
+    build_items = model.findall(
+        "./m:build/m:item",
+        namespace,
+    )
+
+    assert objects
+    assert build_items
+
+    # -----------------------------------------------------
+    # Source preservation
+    # -----------------------------------------------------
+
+    assert source.read_bytes() == original_bytes
+
+    with Image.open(source) as image:
+        assert image.format == "PNG"
+        assert image.size == source_size
