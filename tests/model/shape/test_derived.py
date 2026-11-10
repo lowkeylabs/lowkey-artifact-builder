@@ -46,7 +46,7 @@ def test_shape_base_color_resolves_through_shared_color_mechanism(
 
     assert color == PaletteColor(
         name="white",
-        rgb=(227, 228, 212),
+        rgb=(255, 255, 255),
     )
 
 

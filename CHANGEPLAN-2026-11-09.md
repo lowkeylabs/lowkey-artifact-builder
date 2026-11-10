@@ -487,4 +487,3 @@ regression.
 - Existing Artwork workflows remain unchanged by default.
 - `extend` and `expand` remain deferred unless separately specified
   and justified by manufacturing requirements.
-
