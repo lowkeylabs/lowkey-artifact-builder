@@ -2560,3 +2560,247 @@ def test_prepare_single_color_accepts_fully_occupied_image(
     envelope_paths = envelope_root.findall(f"{namespace}path")
     assert len(envelope_paths) == 1
     assert envelope_paths[0].get("d", "").strip().endswith("Z")
+
+
+def test_prepare_bug06_preserves_boundary_touching_artwork(
+    tmp_path: Path,
+) -> None:
+    """
+    BUG-006 regression: real boundary-touching PNG artwork.
+
+    The original source must prepare successfully without
+    transparent padding or changes to its dimensions.
+
+    Preparation must produce a valid, closed Artwork envelope
+    and registered SVG geometry in source coordinates.
+    """
+    import xml.etree.ElementTree as ET
+
+    source = Path(__file__).resolve().parents[2] / "assets" / "bug06.png"
+
+    assert source.is_file(), f"Missing BUG-006 reproduction fixture: {source}"
+
+    with Image.open(source) as image:
+        assert image.format == "PNG"
+
+        width, height = image.size
+
+        rgba = np.asarray(
+            image.convert("RGBA"),
+            dtype=np.uint8,
+        )
+
+    assert width > 0
+    assert height > 0
+
+    alpha = rgba[:, :, 3]
+
+    # Confirm that the fixture exercises boundary-touching
+    # foreground rather than merely containing an arbitrary PNG.
+    threshold = prepare.DEFAULT_ALPHA_THRESHOLD
+
+    foreground = alpha >= threshold
+
+    assert np.any(foreground)
+
+    assert (
+        np.any(foreground[0, :])
+        or np.any(foreground[-1, :])
+        or np.any(foreground[:, 0])
+        or np.any(foreground[:, -1])
+    ), "BUG-006 fixture must contain boundary-touching foreground."
+
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    context = StubContext(
+        inputs={
+            "source": source,
+        },
+        outputs={
+            "trace": trace,
+            "envelope": envelope,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_envelope_mode": "alpha",
+            }
+        ),
+    )
+
+    # Execute the actual preparation implementation.
+    # Do not mock tracing, envelope construction, or clipping.
+    prepare.execute(context)  # type: ignore[arg-type]
+
+    assert trace.is_file()
+    assert envelope.is_file()
+
+    namespace = "{http://www.w3.org/2000/svg}"
+
+    trace_root = ET.parse(trace).getroot()
+    envelope_root = ET.parse(envelope).getroot()
+
+    expected_viewbox = f"0 0 {width} {height}"
+
+    assert trace_root.get("viewBox") == expected_viewbox
+    assert envelope_root.get("viewBox") == expected_viewbox
+
+    # Registered artwork must exist and contain real geometry.
+    artwork = trace_root.find(f"{namespace}g[@id='artwork']")
+
+    assert artwork is not None
+
+    artwork_paths = artwork.findall(f"{namespace}path")
+
+    assert artwork_paths
+
+    assert all(path.get("d") for path in artwork_paths)
+
+    # The envelope must contain a closed contour.
+    envelope_paths = envelope_root.findall(f"{namespace}path")
+
+    assert envelope_paths
+
+    envelope_data = " ".join(path.get("d", "") for path in envelope_paths)
+
+    assert envelope_data.strip()
+    assert "Z" in envelope_data.upper()
+
+    # The source fixture must not be modified by preparation.
+    with Image.open(source) as image:
+        assert image.size == (width, height)
+        assert image.format == "PNG"
+
+
+def test_bug06_shrink_wrap_produces_valid_envelope() -> None:
+    """
+    BUG-006: the original PNG must produce a valid
+    shrink-wrap envelope in its source coordinate system.
+
+    Foreground touching the raster boundary must not
+    be lost during morphological closing.
+    """
+    source = Path(__file__).resolve().parents[2] / "assets" / "bug06.png"
+
+    assert source.is_file()
+
+    with Image.open(source) as image:
+        rgba_image = image.convert("RGBA")
+        width, height = rgba_image.size
+
+        envelope = prepare._derive_envelope(
+            rgba_image,
+            mode="shrink-wrap",
+        )
+
+    assert envelope.shape == (height, width)
+    assert envelope.dtype == np.bool_
+    assert np.any(envelope)
+
+    # At least one occupied boundary pixel must survive
+    # shrink-wrap construction when the source foreground
+    # reaches that boundary.
+    source_alpha = np.asarray(rgba_image)[:, :, 3]
+
+    source_boundary = np.concatenate(
+        (
+            source_alpha[0, :],
+            source_alpha[-1, :],
+            source_alpha[:, 0],
+            source_alpha[:, -1],
+        )
+    )
+
+    envelope_boundary = np.concatenate(
+        (
+            envelope[0, :],
+            envelope[-1, :],
+            envelope[:, 0],
+            envelope[:, -1],
+        )
+    )
+
+    if np.any(source_boundary >= prepare.DEFAULT_ALPHA_THRESHOLD):
+        assert np.any(envelope_boundary)
+
+    # Verify that the resulting mask can be converted
+    # into a closed physical SVG contour.
+    path_data = prepare._envelope_path_data(envelope)
+
+    assert path_data
+    assert path_data.strip().endswith("Z")
+
+
+def test_prepare_bug06_shrink_wrap_produces_registered_svg(
+    tmp_path: Path,
+) -> None:
+    """
+    BUG-006: the real PNG must prepare successfully
+    using shrink-wrap envelope construction.
+
+    The output SVGs must retain source dimensions,
+    contain registered artwork, and provide a closed
+    physical envelope.
+    """
+    import xml.etree.ElementTree as ET
+
+    source = Path(__file__).resolve().parents[2] / "assets" / "bug06.png"
+
+    assert source.is_file()
+
+    with Image.open(source) as image:
+        assert image.format == "PNG"
+        width, height = image.size
+
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={
+            "trace": trace,
+            "envelope": envelope,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_envelope_mode": "shrink-wrap",
+            }
+        ),
+    )
+
+    prepare.execute(context)  # type: ignore[arg-type]
+
+    assert trace.is_file()
+    assert envelope.is_file()
+
+    namespace = "{http://www.w3.org/2000/svg}"
+    expected_viewbox = f"0 0 {width} {height}"
+
+    trace_root = ET.parse(trace).getroot()
+    envelope_root = ET.parse(envelope).getroot()
+
+    assert trace_root.get("viewBox") == expected_viewbox
+    assert envelope_root.get("viewBox") == expected_viewbox
+
+    artwork = trace_root.find(f"{namespace}g[@id='artwork']")
+
+    assert artwork is not None
+
+    artwork_paths = artwork.findall(f"{namespace}path")
+
+    assert artwork_paths
+    assert all(path.get("d") for path in artwork_paths)
+
+    envelope_paths = envelope_root.findall(f"{namespace}path")
+
+    assert len(envelope_paths) == 1
+
+    envelope_data = envelope_paths[0].get("d")
+
+    assert envelope_data is not None
+    assert envelope_data.strip().endswith("Z")
+
+    # Preparation must not rewrite the source.
+    with Image.open(source) as image:
+        assert image.format == "PNG"
+        assert image.size == (width, height)
