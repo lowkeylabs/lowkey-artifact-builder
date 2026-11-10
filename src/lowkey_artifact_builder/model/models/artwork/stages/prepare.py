@@ -1926,21 +1926,28 @@ def _trace_single_color(
     output: Path,
 ) -> None:
     """
-    Trace a single foreground color into one compound SVG path.
+    Trace one foreground color into a compound SVG path.
 
     Preserve exact raster pixel boundaries, disconnected regions,
     enclosed holes, and source coordinate registration.
 
-    The source alpha channel determines foreground occupancy.
-    Pixels below DEFAULT_ALPHA_THRESHOLD are excluded, including
-    their RGB values.
+    Foreground occupancy is determined by the source alpha channel.
+    Pixels below DEFAULT_ALPHA_THRESHOLD are excluded from both
+    geometry and color interpretation.
 
-    All meaningful foreground pixels must share one RGB color.
-    Preserve that authored color as the SVG path fill rather than
-    substituting a physical printer color or a default black fill.
+    Derive the representative Artifact RGB from the most opaque
+    foreground pixels, preferring fully opaque pixels when present.
 
-    Background pixels are represented by SVG transparency; no
-    background geometry or fill is generated.
+    Fully opaque foreground pixels must share one RGB color.
+    Partially transparent foreground pixels may have incidental
+    RGB variation within a small color-distance tolerance.
+
+    Substantially different foreground colors are rejected rather
+    than silently merged into a single Artifact color.
+
+    The representative source RGB becomes the SVG path fill.
+    No background path is generated, leaving the background
+    fully transparent.
 
     The resulting path uses the nonzero fill rule with oriented
     boundary loops to distinguish filled regions from holes.
@@ -1974,8 +1981,10 @@ def _trace_single_color(
 
     height, width = rgba.shape[:2]
 
+    alpha = rgba[:, :, 3]
+
     foreground = np.asarray(
-        rgba[:, :, 3] >= DEFAULT_ALPHA_THRESHOLD,
+        alpha >= DEFAULT_ALPHA_THRESHOLD,
         dtype=bool,
     )
 
@@ -1983,25 +1992,83 @@ def _trace_single_color(
         raise PrepareError("Single-color tracing requires meaningful foreground pixels.")
 
     # Only meaningful foreground pixels contribute to Artifact color.
-    # Fully transparent background RGB values are irrelevant.
+    # Transparent background RGB values are excluded.
     foreground_rgb = rgba[:, :, :3][foreground]
 
-    unique_colors = np.unique(
-        foreground_rgb,
+    foreground_alpha = alpha[foreground]
+
+    # The most opaque pixels provide the strongest evidence of
+    # the authored foreground color.
+    maximum_alpha = int(np.max(foreground_alpha))
+
+    representative_pixels = foreground_rgb[foreground_alpha == maximum_alpha]
+
+    unique_representative_colors = np.unique(
+        representative_pixels,
         axis=0,
     )
 
-    if len(unique_colors) != 1:
+    if len(unique_representative_colors) != 1:
         raise PrepareError(
             "Single-color tracing requires exactly one foreground "
-            f"RGB color; found {len(unique_colors)}. "
+            "RGB color among the most opaque pixels; "
+            f"found {len(unique_representative_colors)}. "
             "Use multicolor tracing or provide uniform foreground artwork."
         )
 
-    red, green, blue = (int(channel) for channel in unique_colors[0])
+    representative_rgb = unique_representative_colors[0]
+
+    # Fully opaque pixels must agree exactly with the representative
+    # color. Less opaque pixels may differ slightly due to
+    # antialiasing or alpha-edge processing.
+    fully_opaque = foreground_alpha == 255
+
+    if np.any(fully_opaque):
+        opaque_colors = np.unique(
+            foreground_rgb[fully_opaque],
+            axis=0,
+        )
+
+        if len(opaque_colors) != 1:
+            raise PrepareError(
+                "Single-color tracing requires exactly one foreground "
+                "RGB color among fully opaque pixels; "
+                f"found {len(opaque_colors)}. "
+                "Use multicolor tracing or provide uniform foreground artwork."
+            )
+
+    # This is an RGB-distance tolerance for incidental variation
+    # in partially transparent foreground pixels.
+    #
+    # It is intentionally not a general-purpose color quantizer.
+    antialias_rgb_tolerance = 24.0
+
+    partially_transparent = foreground_alpha < 255
+
+    if np.any(partially_transparent):
+        edge_rgb = foreground_rgb[partially_transparent].astype(np.float64)
+
+        reference_rgb = representative_rgb.astype(np.float64)
+
+        distances = np.linalg.norm(
+            edge_rgb - reference_rgb,
+            axis=1,
+        )
+
+        if np.any(distances > antialias_rgb_tolerance):
+            raise PrepareError(
+                "Single-color tracing requires exactly one foreground "
+                "RGB color; partially transparent pixels contain "
+                "substantially different colors. "
+                "Use multicolor tracing or provide uniform foreground artwork."
+            )
+
+    red, green, blue = (int(channel) for channel in representative_rgb)
 
     fill_color = f"#{red:02x}{green:02x}{blue:02x}"
 
+    # Geometry is determined solely by meaningful alpha occupancy.
+    # RGB normalization must not alter the occupied region.
     edges = _boundary_edges(
         foreground,
     )

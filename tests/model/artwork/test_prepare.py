@@ -1436,3 +1436,268 @@ def test_prepare_single_color_preserves_source_rgb_through_clipping(
 
     # The SVG retains the source coordinate system.
     assert root.get("viewBox") == "0 0 64 64"
+
+
+def test_trace_single_color_ignores_antialiased_edge_rgb(
+    tmp_path: Path,
+) -> None:
+    """
+    Single-color tracing tolerates incidental RGB variation
+    at partially transparent foreground boundaries.
+
+    The authored opaque interior determines the Artifact RGB.
+    Edge variation does not introduce additional Artifact colors
+    or change the registered source coordinate system.
+    """
+    import xml.etree.ElementTree as ET
+
+    source = tmp_path / "source.png"
+    output = tmp_path / "trace.svg"
+
+    image = np.zeros(
+        (40, 40, 4),
+        dtype=np.uint8,
+    )
+
+    # Slightly varied red along the partially transparent edge.
+    # Alpha remains above the meaningful foreground threshold.
+    image[7:33, 7:33] = (248, 8, 5, 160)
+
+    # The solid interior contains the authored foreground color.
+    image[8:32, 8:32] = (255, 0, 0, 255)
+
+    # Transparent pixels may contain arbitrary RGB.
+    image[0:4, 0:4, :3] = (0, 255, 0)
+
+    Image.fromarray(
+        image,
+        mode="RGBA",
+    ).save(source)
+
+    prepare._trace_single_color(
+        source,
+        output,
+    )
+
+    root = ET.parse(output).getroot()
+
+    paths = root.findall("{http://www.w3.org/2000/svg}path")
+
+    assert len(paths) == 1
+
+    path = paths[0]
+
+    assert path.get("fill") == "#ff0000"
+    assert path.get("fill-rule") == "nonzero"
+
+    assert root.get("viewBox") == "0 0 40 40"
+
+    path_data = path.get("d")
+
+    assert path_data is not None
+
+    # The partially transparent boundary remains meaningful
+    # foreground geometry rather than being discarded.
+    assert "7 7" in path_data
+    assert "33 33" in path_data
+
+
+def test_trace_single_color_rejects_distinct_opaque_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Single-color tracing must not silently merge two distinct
+    authored opaque foreground colors into one Artifact color.
+
+    Such artwork requires multicolor interpretation or an
+    explicit future color-reduction policy.
+    """
+    source = tmp_path / "source.png"
+    output = tmp_path / "trace.svg"
+
+    image = np.zeros(
+        (40, 40, 4),
+        dtype=np.uint8,
+    )
+
+    # Two substantial, fully opaque foreground regions.
+    image[8:20, 8:32] = (255, 0, 0, 255)
+    image[20:32, 8:32] = (0, 0, 255, 255)
+
+    Image.fromarray(
+        image,
+        mode="RGBA",
+    ).save(source)
+
+    with pytest.raises(
+        prepare.PrepareError,
+        match="Single-color tracing requires exactly one foreground",
+    ):
+        prepare._trace_single_color(
+            source,
+            output,
+        )
+
+    assert not output.exists()
+
+
+def test_trace_single_color_rejects_distinct_partially_transparent_color(
+    tmp_path: Path,
+) -> None:
+    """
+    Single-color tracing must reject substantially different RGB
+    colors in meaningful partially transparent foreground pixels.
+
+    Partial transparency permits incidental antialiasing variation,
+    but must not permit distinct authored foreground colors to
+    be silently merged.
+
+    Fully transparent background pixels do not contribute colors.
+    """
+    source = tmp_path / "source.png"
+    output = tmp_path / "trace.svg"
+
+    image = np.zeros(
+        (40, 40, 4),
+        dtype=np.uint8,
+    )
+
+    # Fully opaque red establishes the representative foreground RGB.
+    image[8:32, 8:32] = (255, 0, 0, 255)
+
+    # A substantial partially transparent blue region is a
+    # different authored foreground color, not incidental
+    # antialiasing of the red foreground.
+    image[12:20, 12:20] = (0, 0, 255, 160)
+
+    # Arbitrary RGB in fully transparent pixels must be ignored.
+    image[0:4, 0:4, :3] = (0, 255, 0)
+
+    Image.fromarray(
+        image,
+        mode="RGBA",
+    ).save(source)
+
+    with pytest.raises(
+        prepare.PrepareError,
+        match=("Single-color tracing requires exactly one foreground RGB color"),
+    ):
+        prepare._trace_single_color(
+            source,
+            output,
+        )
+
+    # Rejected artwork must not produce a misleading trace.
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    ("foreground_rgb", "alpha", "expected_fill"),
+    [
+        ((255, 0, 0), 160, "#ff0000"),
+        ((35, 140, 85), 200, "#238c55"),
+        ((0, 0, 255), 128, "#0000ff"),
+    ],
+)
+def test_trace_single_color_accepts_uniform_translucent_foreground(
+    tmp_path: Path,
+    foreground_rgb: tuple[int, int, int],
+    alpha: int,
+    expected_fill: str,
+) -> None:
+    """
+    A uniformly translucent foreground remains one Artifact color.
+
+    Fully opaque pixels are not required to establish the source RGB.
+    The SVG preserves source registration and occupied geometry.
+    """
+    import xml.etree.ElementTree as ET
+
+    source = tmp_path / "source.png"
+    output = tmp_path / "trace.svg"
+
+    image = np.zeros((40, 40, 4), dtype=np.uint8)
+    image[8:32, 8:32] = (*foreground_rgb, alpha)
+
+    Image.fromarray(image, mode="RGBA").save(source)
+
+    prepare._trace_single_color(source, output)
+
+    root = ET.parse(output).getroot()
+    paths = root.findall("{http://www.w3.org/2000/svg}path")
+
+    assert len(paths) == 1
+    assert paths[0].get("fill") == expected_fill
+    assert paths[0].get("fill-rule") == "nonzero"
+    assert root.get("viewBox") == "0 0 40 40"
+
+    path_data = paths[0].get("d")
+    assert path_data is not None
+    assert "8 8" in path_data
+    assert "32 32" in path_data
+
+
+def test_trace_single_color_accepts_translucent_antialiased_edges(
+    tmp_path: Path,
+) -> None:
+    """
+    When no pixel is fully opaque, the most opaque foreground
+    establishes the RGB representation.
+
+    Slightly different, less opaque edge colors are incidental
+    and do not change the occupied geometry.
+    """
+    import xml.etree.ElementTree as ET
+
+    source = tmp_path / "source.png"
+    output = tmp_path / "trace.svg"
+
+    image = np.zeros((40, 40, 4), dtype=np.uint8)
+
+    image[7:33, 7:33] = (248, 8, 5, 160)
+    image[8:32, 8:32] = (255, 0, 0, 200)
+
+    Image.fromarray(image, mode="RGBA").save(source)
+
+    prepare._trace_single_color(source, output)
+
+    root = ET.parse(output).getroot()
+    paths = root.findall("{http://www.w3.org/2000/svg}path")
+
+    assert len(paths) == 1
+    assert paths[0].get("fill") == "#ff0000"
+
+    path_data = paths[0].get("d")
+    assert path_data is not None
+    assert "7 7" in path_data
+    assert "33 33" in path_data
+
+    assert root.get("viewBox") == "0 0 40 40"
+
+
+def test_trace_single_color_rejects_distinct_maximum_opacity_colors(
+    tmp_path: Path,
+) -> None:
+    """
+    Distinct foreground colors at the same maximum opacity
+    cannot be interpreted as one authored Artifact color.
+
+    This remains true even when neither color is fully opaque.
+    """
+    source = tmp_path / "source.png"
+    output = tmp_path / "trace.svg"
+
+    image = np.zeros((40, 40, 4), dtype=np.uint8)
+
+    image[8:20, 8:32] = (255, 0, 0, 200)
+    image[20:32, 8:32] = (0, 0, 255, 200)
+
+    Image.fromarray(image, mode="RGBA").save(source)
+
+    with pytest.raises(
+        prepare.PrepareError,
+        match="Single-color tracing requires exactly one foreground",
+    ):
+        prepare._trace_single_color(source, output)
+
+    assert not output.exists()
