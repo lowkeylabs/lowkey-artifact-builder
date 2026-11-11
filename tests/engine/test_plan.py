@@ -1846,9 +1846,27 @@ def test_create_build_plan_preserves_realization_product_dependencies(
         ) -> str:
             return "test"
 
+    class ProducerResolver:
+        def __call__(self, name: str):
+            return {
+                "model": "producer",
+                "variant": "default",
+                "realization": "default",
+            }[name]
+
+        def source(self, name: str) -> str:
+            return "test"
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_realization_names",
+        lambda artifact_id, *, project_root: ("default",),
+    )
+
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_resolver",
-        lambda artifact_id, *, model=None, realization=None, project_root: Resolver(),
+        lambda artifact_id, *, model=None, realization=None, project_root: (
+            Resolver() if artifact_id == "consumer-artifact" else ProducerResolver()
+        ),
     )
 
     monkeypatch.setattr(
@@ -2037,9 +2055,27 @@ def test_create_build_plan_resolves_product_dependency_bindings(
         ) -> str:
             return "test"
 
+    class ProducerResolver:
+        def __call__(self, name: str):
+            return {
+                "model": "producer",
+                "variant": "default",
+                "realization": "default",
+            }[name]
+
+        def source(self, name: str) -> str:
+            return "test"
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_realization_names",
+        lambda artifact_id, *, project_root: ("default",),
+    )
+
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_resolver",
-        lambda artifact_id, *, model=None, realization=None, project_root: Resolver(),
+        lambda artifact_id, *, model=None, realization=None, project_root: (
+            Resolver() if artifact_id == "consumer-artifact" else ProducerResolver()
+        ),
     )
 
     monkeypatch.setattr(
@@ -2574,10 +2610,16 @@ def test_shape_build_plan_resolves_bound_registered_artwork(
                     "stage": "vector",
                     "product": "manifest",
                     "artifact": "artwork-source",
-                    "realization": "default",
+                    "realization": "artwork_default",
                 },
             },
         },
+        project_root=tmp_path,
+    )
+
+    write_artifact_config(
+        "artwork-source",
+        {"model": "artwork", "source": "source.png"},
         project_root=tmp_path,
     )
 
@@ -2601,13 +2643,13 @@ def test_shape_build_plan_resolves_bound_registered_artwork(
     assert binding == ProductDependencyBinding(
         dependency=dependency,
         artifact="artwork-source",
-        realization="default",
+        realization="artwork_default",
     )
 
     assert binding.product_ref == ProductRef(
         artifact="artwork-source",
         model="artwork",
-        realization="default",
+        realization="artwork_default",
         stage="vector",
         product="manifest",
     )
@@ -2623,7 +2665,7 @@ def test_shape_build_plan_resolves_bound_registered_artwork(
         / "artifacts"
         / "artwork-source"
         / "artwork"
-        / "default"
+        / "artwork_default"
         / "30-vector"
         / "products.json"
     )
@@ -2651,7 +2693,7 @@ def test_create_build_plans_preserves_shape_bound_registered_artwork(
                     "stage": "vector",
                     "product": "manifest",
                     "artifact": "artwork-source",
-                    "realization": "default",
+                    "realization": "artwork_default",
                 },
             },
         },
@@ -2697,7 +2739,7 @@ def test_create_build_plans_preserves_shape_bound_registered_artwork(
     assert binding == ProductDependencyBinding(
         dependency=dependency,
         artifact="artwork-source",
-        realization="default",
+        realization="artwork_default",
     )
 
     assert len(plan.planned_product_dependencies) == 1
@@ -2711,7 +2753,7 @@ def test_create_build_plans_preserves_shape_bound_registered_artwork(
         / "artifacts"
         / "artwork-source"
         / "artwork"
-        / "default"
+        / "artwork_default"
         / "30-vector"
         / "products.json"
     )
@@ -2739,7 +2781,7 @@ def test_shape_registered_artwork_dependency_plans_only_vector_closure(
                     "stage": "vector",
                     "product": "manifest",
                     "artifact": "artwork-source",
-                    "realization": "default",
+                    "realization": "artwork_default",
                 },
             },
         },
@@ -2769,7 +2811,7 @@ def test_shape_registered_artwork_dependency_plans_only_vector_closure(
 
     assert producer_plan.artifact_id == "artwork-source"
     assert producer_plan.model_name == "artwork"
-    assert producer_plan.realization_name == "default"
+    assert producer_plan.realization_name == "artwork_default"
 
     assert tuple(stage.name for stage in producer_plan.stages) == (
         "prepare",
@@ -3246,14 +3288,29 @@ def test_planning_preserves_independent_named_product_dependency_roles(
         project_root=tmp_path,
     )
 
+    class ProducerResolver:
+        def __call__(self, name: str):
+            return {
+                "model": "producer",
+                "variant": "default",
+                "realization": "default",
+            }[name]
+
+        def source(self, name: str) -> str:
+            return "test"
+
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_realization_names",
-        lambda artifact_id, *, project_root: ("consumer_default",),
+        lambda artifact_id, *, project_root: (
+            ("consumer_default",) if artifact_id == "consumer-artifact" else ("default",)
+        ),
     )
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_resolver",
-        lambda artifact_id, *, model=None, realization=None, project_root: Resolver(),
+        lambda artifact_id, *, model=None, realization=None, project_root: (
+            Resolver() if artifact_id == "consumer-artifact" else ProducerResolver()
+        ),
     )
 
     monkeypatch.setattr(
@@ -3427,9 +3484,27 @@ def test_explicit_product_dependency_binding_overrides_declarative_variant(
         project_root=tmp_path,
     )
 
+    class ProducerResolver:
+        def __call__(self, name: str):
+            return {
+                "model": "producer",
+                "variant": "alternate",
+                "realization": "producer_alternate",
+            }[name]
+
+        def source(self, name: str) -> str:
+            return "test"
+
+    monkeypatch.setattr(
+        "lowkey_artifact_builder.engine.plan.get_realization_names",
+        lambda artifact_id, *, project_root: ("consumer_default", "producer_alternate"),
+    )
+
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_resolver",
-        lambda artifact_id, *, model=None, realization=None, project_root: Resolver(),
+        lambda artifact_id, *, model=None, realization=None, project_root: (
+            ProducerResolver() if realization == "producer_alternate" else Resolver()
+        ),
     )
 
     monkeypatch.setattr(

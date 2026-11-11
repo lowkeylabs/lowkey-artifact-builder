@@ -844,9 +844,18 @@ def test_shape_compose_context_receives_bound_registered_artwork(
                     "stage": "vector",
                     "product": "manifest",
                     "artifact": "artwork-source",
-                    "realization": "default",
+                    "realization": "artwork_default",
                 },
             },
+        },
+        project_root=tmp_path,
+    )
+
+    write_artifact_config(
+        "artwork-source",
+        {
+            "model": "artwork",
+            "source": "source.png",
         },
         project_root=tmp_path,
     )
@@ -881,7 +890,7 @@ def test_shape_compose_context_receives_bound_registered_artwork(
             / "artifacts"
             / "artwork-source"
             / "artwork"
-            / "default"
+            / "artwork_default"
             / "30-vector"
             / "products.json"
         ),
@@ -908,9 +917,18 @@ def test_shape_registered_artwork_is_exposed_only_to_compose(
                     "stage": "vector",
                     "product": "manifest",
                     "artifact": "artwork-source",
-                    "realization": "default",
+                    "realization": "artwork_default",
                 },
             },
+        },
+        project_root=tmp_path,
+    )
+
+    write_artifact_config(
+        "artwork-source",
+        {
+            "model": "artwork",
+            "source": "source.png",
         },
         project_root=tmp_path,
     )

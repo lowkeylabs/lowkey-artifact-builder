@@ -91,7 +91,7 @@ def test_shape_can_consume_persistent_registered_artwork_without_source(
                     "stage": "vector",
                     "product": "manifest",
                     "artifact": "artwork-example",
-                    "realization": "default",
+                    "realization": "artwork_default",
                 },
             },
         },
@@ -99,7 +99,7 @@ def test_shape_can_consume_persistent_registered_artwork_without_source(
     )
 
     vector_directory = (
-        tmp_path / "artifacts" / "artwork-example" / "artwork" / "default" / "30-vector"
+        tmp_path / "artifacts" / "artwork-example" / "artwork" / "artwork_default" / "30-vector"
     )
 
     vector_directory.mkdir(
@@ -183,7 +183,7 @@ def test_shape_can_consume_persistent_registered_artwork_without_source(
     assert dependency.binding.dependency.product == "manifest"
 
     assert dependency.binding.artifact == "artwork-example"
-    assert dependency.binding.realization == "default"
+    assert dependency.binding.realization == "artwork_default"
 
     assert dependency.path == manifest
 

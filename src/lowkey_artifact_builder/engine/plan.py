@@ -546,6 +546,9 @@ def _resolve_product_dependency_bindings(
     1. The consuming Realization's Product dependency binding.
     2. The Artifact-level Product dependency binding.
 
+    Explicit producer bindings must identify an existing Realization whose
+    resolved Model matches the declarative dependency's producer Model.
+
     A dependency that explicitly selects a producer Variant binds to the
     canonical same-Artifact Realization for that Model Variant.
 
@@ -583,14 +586,48 @@ def _resolve_product_dependency_bindings(
                 realization=realization_name,
                 project_root=project_root,
             ):
-                bindings.append(
-                    get_product_dependency_binding(
-                        artifact_id,
-                        dependency,
-                        realization=realization_name,
-                        project_root=project_root,
-                    )
+                binding = get_product_dependency_binding(
+                    artifact_id,
+                    dependency,
+                    realization=realization_name,
+                    project_root=project_root,
                 )
+
+                producer_realizations = get_realization_names(
+                    binding.artifact,
+                    project_root=project_root,
+                )
+
+                if binding.realization not in producer_realizations:
+                    raise BuildPlanError(
+                        f"Product dependency "
+                        f"{dependency.model}/{dependency.stage}/"
+                        f"{dependency.product} selects unknown producer "
+                        f"Realization {binding.realization!r} "
+                        f"for Artifact {binding.artifact!r}."
+                    )
+
+                producer_resolver = get_resolver(
+                    binding.artifact,
+                    realization=binding.realization,
+                    project_root=project_root,
+                )
+
+                producer_model = producer_resolver("model")
+
+                if producer_model != dependency.model:
+                    raise BuildPlanError(
+                        f"Product dependency "
+                        f"{dependency.model}/{dependency.stage}/"
+                        f"{dependency.product} selects producer "
+                        f"Realization {binding.realization!r} "
+                        f"of Artifact {binding.artifact!r}, "
+                        f"which resolves to Model {producer_model!r} "
+                        f"instead of required Model "
+                        f"{dependency.model!r}."
+                    )
+
+                bindings.append(binding)
                 continue
 
             if dependency.variant is not None:
