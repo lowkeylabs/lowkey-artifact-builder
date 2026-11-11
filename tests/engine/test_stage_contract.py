@@ -112,29 +112,21 @@ def _install_implementation(
     implementation,
 ) -> None:
     """
-    Install one implementation for every artwork stage.
+    Install the supplied implementation for every declared Artwork Stage.
 
-    execute_stage() obtains a fresh registry through build_stage_registry(),
-    so replacing that registry factory exercises the real common execution
-    boundary without invoking model-specific artwork transformations.
+    The test registry follows the Model definition rather than
+    maintaining a separate hard-coded Stage inventory.
     """
 
-    from lowkey_artifact_builder.engine.registry import (
-        StageRegistry,
-    )
+    from lowkey_artifact_builder.engine.registry import StageRegistry
+    from lowkey_artifact_builder.model.models.artwork import MODEL
 
     registry = StageRegistry()
 
-    for stage_name in (
-        "prepare",
-        "raster",
-        "vector",
-        "extrude",
-        "package",
-    ):
+    for stage in MODEL.stages:
         registry.register(
             "artwork",
-            stage_name,
+            stage.name,
             implementation,
         )
 
@@ -327,13 +319,9 @@ def test_graph_and_independent_execution_use_same_registry_contract(
         plan,
     )
 
-    assert executed == [
-        "prepare",
-        "raster",
-        "vector",
-        "extrude",
-        "package",
-    ]
+    from lowkey_artifact_builder.model.models.artwork import MODEL
+
+    assert executed == [stage.name for stage in sorted(MODEL.stages, key=lambda stage: stage.id)]
 
     executed.clear()
 

@@ -28,6 +28,7 @@ from .extrude import execute as execute_extrude
 from .package import execute as execute_package
 from .prepare import execute as execute_prepare
 from .raster import execute as execute_raster
+from .source import execute as execute_source
 from .vector import execute as execute_vector
 
 # =========================================================
@@ -68,8 +69,14 @@ def register_stage_implementations(
     registry: StageImplementationRegistry,
 ) -> None:
     """
-    Register executable implementations for the artwork workflow.
+    Register executable implementations for the Artwork workflow.
     """
+
+    registry.register(
+        "artwork",
+        "source",
+        execute_source,
+    )
 
     registry.register(
         "artwork",

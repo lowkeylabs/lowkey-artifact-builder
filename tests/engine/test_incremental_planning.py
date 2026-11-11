@@ -704,7 +704,7 @@ def test_changed_external_input_invalidates_descendants(
         build_plan,
     )
 
-    consuming_stage = next(stage for stage in build_plan.stages if stage.inputs)
+    consuming_stage = next(stage for stage in build_plan.stages if stage.name == "prepare")
 
     descendants = _descendant_stage_names(
         build_plan,

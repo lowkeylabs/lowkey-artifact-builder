@@ -55,6 +55,8 @@ def test_product_catalog_contains_artwork_products() -> None:
     )
 
     assert artwork_products == (
+        ("artwork", "source", "artifact"),
+        ("artwork", "source", "metadata"),
         (
             "artwork",
             "prepare",

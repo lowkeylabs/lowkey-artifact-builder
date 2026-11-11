@@ -80,6 +80,35 @@ class StageImplementationRegistry(
 
 STAGES = (
     StageSpec(
+        id=5,
+        name="source",
+        description=("Register the original Artwork source without image processing."),
+        inputs=(
+            InputSpec(
+                name="source",
+                parameter="source",
+                path="artifact.png",
+                description="Materialized original Artwork source.",
+            ),
+        ),
+        parameters=(
+            "artwork_representation",
+            "artwork_processing",
+        ),
+        products=(
+            ProductSpec(
+                name="artifact",
+                path="artifact.source",
+                description="Byte-preserved original Artwork source.",
+            ),
+            ProductSpec(
+                name="metadata",
+                path="metadata.json",
+                description="Source format and provenance metadata.",
+            ),
+        ),
+    ),
+    StageSpec(
         id=10,
         name="prepare",
         description=(
@@ -104,12 +133,12 @@ STAGES = (
             ProductSpec(
                 name="trace",
                 path="trace.svg",
-                description=("Multicolor vector trace of the source artwork."),
+                description="Multicolor vector trace of the source artwork.",
             ),
             ProductSpec(
                 name="envelope",
                 path="envelope.svg",
-                description=("Envelope surrounding outside of image."),
+                description="Envelope surrounding outside of image.",
             ),
         ),
     ),
@@ -150,7 +179,7 @@ STAGES = (
             ProductSpec(
                 name="manifest",
                 path="products.json",
-                description=("Manifest describing the generated registered vector color layers."),
+                description="Manifest describing the generated registered vector color layers.",
             ),
         ),
     ),
@@ -208,7 +237,7 @@ STAGES = (
             ProductSpec(
                 name="artifact",
                 path="artifact.3mf",
-                description=("Final printable multicomponent 3MF artifact."),
+                description="Final printable multicomponent 3MF artifact.",
             ),
         ),
     ),

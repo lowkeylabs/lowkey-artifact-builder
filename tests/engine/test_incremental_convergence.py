@@ -332,7 +332,7 @@ def test_changed_external_input_invalidates_descendants(
         execute_stage=execute_stage,
     )
 
-    consuming_stage = next(stage for stage in build_plan.stages if stage.inputs)
+    consuming_stage = next(stage for stage in build_plan.stages if stage.name == "prepare")
 
     for planned_input in consuming_stage.inputs:
         planned_input.source_path.write_bytes(

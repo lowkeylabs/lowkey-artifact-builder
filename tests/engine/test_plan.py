@@ -204,6 +204,7 @@ def test_create_build_plan_for_artwork(
     assert plan.artifact_dir == (tmp_path / "artifacts" / "example")
 
     assert tuple(stage.name for stage in plan.stages) == (
+        "source",
         "prepare",
         "raster",
         "vector",
@@ -229,7 +230,7 @@ def test_create_build_plan_retains_resolver(
         monkeypatch,
     )
 
-    prepare = plan.stages[0]
+    prepare = next(stage for stage in plan.stages if stage.name == "prepare")
 
     assert prepare.name == "prepare"
 
@@ -292,6 +293,10 @@ def test_create_build_plan_materializes_product_paths(
     artifact_dir = tmp_path / "artifacts" / "example"
 
     assert products == {
+        "source": (
+            artifact_dir / "artwork" / "artwork_default" / "5-source" / "artifact.source",
+            artifact_dir / "artwork" / "artwork_default" / "5-source" / "metadata.json",
+        ),
         "prepare": (
             artifact_dir / "artwork" / "artwork_default" / "10-prepare" / "trace.svg",
             artifact_dir / "artwork" / "artwork_default" / "10-prepare" / "envelope.svg",
@@ -324,6 +329,7 @@ def test_create_build_plan_preserves_dependencies(
     dependencies = {stage.name: stage.dependencies for stage in plan.stages}
 
     assert dependencies == {
+        "source": (),
         "prepare": (),
         "raster": ("prepare",),
         "vector": (
@@ -608,7 +614,7 @@ def test_canonical_default_realization_owns_planned_products(
     assert plan.realization_name == "artwork_default"
 
     for stage in plan.stages:
-        stage_directory = realization_directory / f"{stage.spec.id:02d}-{stage.name}"
+        stage_directory = realization_directory / f"{stage.spec.id}-{stage.name}"
 
         for product in stage.products:
             assert product.path == (stage_directory / product.spec.path)
@@ -1202,6 +1208,7 @@ def test_create_build_plan_without_targets_is_complete_build(
     assert plan.targeted is False
 
     assert tuple(stage.name for stage in plan.stages) == (
+        "source",
         "prepare",
         "raster",
         "vector",

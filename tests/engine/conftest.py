@@ -45,6 +45,8 @@ def test_resolver() -> Resolver:
         "variant": "default",
         "realization": "artwork_default",
         "source": "source.png",
+        "artwork_representation": "vector",
+        "artwork_processing": "auto",
         "artifact_color_count": 2,
         "artwork_envelope_mode": "shrink-wrap",
         "printer_colors": [

@@ -26,6 +26,7 @@ def test_artwork_stages() -> None:
     """
 
     assert tuple((stage.id, stage.name) for stage in MODEL.stages) == (
+        (5, "source"),
         (10, "prepare"),
         (20, "raster"),
         (30, "vector"),

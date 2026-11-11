@@ -630,7 +630,7 @@ def test_incremental_artifact_build_downstream_stage_sees_rebuilt_upstream_produ
         build_plan,
     )
 
-    upstream_stage = next(stage for stage in build_plan.stages if stage.inputs)
+    upstream_stage = next(stage for stage in build_plan.stages if stage.name == "prepare")
 
     downstream_stage = next(
         stage for stage in build_plan.stages if upstream_stage.name in stage.spec.dependencies

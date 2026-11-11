@@ -256,13 +256,7 @@ def test_execute_build_runs_stages_in_plan_order(
 
     execute_build(plan)
 
-    assert executed == [
-        "prepare",
-        "raster",
-        "vector",
-        "extrude",
-        "package",
-    ]
+    assert executed == [stage.name for stage in plan.stages]
 
 
 # =========================================================
@@ -837,10 +831,7 @@ def test_execute_build_sets_stage_working_directory(
         monkeypatch,
     )
 
-    observed: dict[
-        str,
-        Path,
-    ] = {}
+    observed: dict[str, Path] = {}
 
     def implementation(
         context: StageContext,
@@ -859,11 +850,13 @@ def test_execute_build_sets_stage_working_directory(
     execute_build(plan)
 
     assert observed == {
-        "prepare": (plan.artifact_dir / "artwork" / "artwork_default" / "10-prepare"),
-        "raster": (plan.artifact_dir / "artwork" / "artwork_default" / "20-raster"),
-        "vector": (plan.artifact_dir / "artwork" / "artwork_default" / "30-vector"),
-        "extrude": (plan.artifact_dir / "artwork" / "artwork_default" / "40-extrude"),
-        "package": (plan.artifact_dir / "artwork" / "artwork_default" / "50-package"),
+        stage.name: (
+            plan.artifact_dir
+            / plan.model_name
+            / plan.realization_name
+            / f"{stage.spec.id}-{stage.name}"
+        )
+        for stage in plan.stages
     }
 
 
@@ -979,13 +972,7 @@ def test_execute_build_context_uses_plan_resolver(
 
     execute_build(plan)
 
-    assert set(observed) == {
-        "prepare",
-        "raster",
-        "vector",
-        "extrude",
-        "package",
-    }
+    assert set(observed) == {stage.name for stage in plan.stages}
 
     assert all(resolver is plan.resolver for resolver in observed.values())
 
@@ -1026,13 +1013,7 @@ def test_execute_build_context_has_full_configuration_visibility(
 
     execute_build(plan)
 
-    assert observed == {
-        "prepare": 150.0,
-        "raster": 150.0,
-        "vector": 150.0,
-        "extrude": 150.0,
-        "package": 150.0,
-    }
+    assert observed == {stage.name: 150.0 for stage in plan.stages}
 
 
 # =========================================================
@@ -1271,10 +1252,8 @@ def test_execute_build_rejects_missing_declared_product(
     ):
         execute_build(plan)
 
-    assert executed == [
-        "prepare",
-        "raster",
-    ]
+    expected = [stage.name for stage in plan.stages]
+    assert executed == expected[: expected.index("raster") + 1]
 
 
 # =========================================================
@@ -1322,11 +1301,8 @@ def test_execute_build_stops_after_stage_failure(
     ):
         execute_build(plan)
 
-    assert executed == [
-        "prepare",
-        "raster",
-        "vector",
-    ]
+    expected = [stage.name for stage in plan.stages]
+    assert executed == expected[: expected.index("vector") + 1]
 
 
 def test_execute_build_wraps_stage_failure_with_context(
@@ -1365,7 +1341,7 @@ def test_execute_build_wraps_stage_failure_with_context(
 
     assert "example" in message
     assert "artwork" in message
-    assert "prepare" in message
+    assert plan.stages[0].name in message
     assert "boom" in message
 
 
@@ -1427,25 +1403,20 @@ def _install_stage_implementation(
     implementation,
 ) -> None:
     """
-    Install one implementation for every artwork stage.
+    Install one implementation for every declared Artwork Stage.
 
-    Stage implementation discovery belongs to the independent stage
-    execution boundary, so tests replace the registry constructed by
-    engine.stage rather than engine.build.
+    Discover Stage names from the Model definition so unrelated engine
+    tests do not require changes when Artwork adds a Stage.
     """
+
+    from lowkey_artifact_builder.model.models.artwork import MODEL
 
     registry = StageRegistry()
 
-    for stage_name in (
-        "prepare",
-        "raster",
-        "vector",
-        "extrude",
-        "package",
-    ):
+    for stage in MODEL.stages:
         registry.register(
             "artwork",
-            stage_name,
+            stage.name,
             implementation,
         )
 
@@ -2024,10 +1995,4 @@ def test_execute_build_does_not_rebuild_product_dependency_produced_by_same_plan
 
     execute_build(plan)
 
-    assert executed == [
-        "prepare",
-        "raster",
-        "vector",
-        "extrude",
-        "package",
-    ]
+    assert executed == [stage.name for stage in plan.stages]

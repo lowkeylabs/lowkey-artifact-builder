@@ -312,9 +312,9 @@ def test_external_input_change_propagates_to_descendants(
         monkeypatch,
     )
 
-    stage = _input_stage(
-        build_plan,
-    )
+    stage = next(stage for stage in build_plan.stages if stage.name == "prepare")
+
+    assert stage.inputs
 
     descendants = _descendant_stage_names(
         build_plan,

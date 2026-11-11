@@ -58,6 +58,7 @@ def test_defined_graph_contains_artwork_stages() -> None:
     )
 
     assert tuple(stage.name for stage in artwork.stages) == (
+        "source",
         "prepare",
         "raster",
         "vector",
