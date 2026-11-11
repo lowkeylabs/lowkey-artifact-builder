@@ -2,14 +2,9 @@
 
 ## Purpose
 
-Continue refining `lowkey-artifact-builder` around the manufacturing value
-chain established by the current repository HEAD.
-The operator's ordinary goal is:
+Continue refining `lowkey-artifact-builder` around the manufacturing value chain established by current repository HEAD. The operator's ordinary goal is:
 
-> Move customer artwork to a correct, manufacturing-ready Product with the
-> fewest necessary decisions, actions, and computations.
-
-The normal production path is intentionally short:
+> Move customer artwork to correct, manufacturing-ready Products with the fewest necessary decisions, actions, and computations.
 
 ```text
 customer artwork
@@ -18,337 +13,317 @@ artifact create
       ↓
 managed Artifact
       ↓
-artifact build
+artifact build (requested Realization Products and dependencies)
       ↓
-manufacturing-ready Product
+independent manufacturing-ready SHAPE SVG Products
       ↓
-slicer / xTool Studio / share / manufacture
+xTool Studio / share / manufacture
 ```
 
-`create` and `build` define the ordinary value chain. `show`, `config`,
-`colors`, and `clean` support that path when the operator needs discovery,
-inspection, customization, correction, color selection, or maintenance. These
-support commands must not become mandatory ceremony before routine
-manufacturing.
+`create` and `build` define the ordinary value chain. `show`, `config`, `colors`, and `clean` support discovery, inspection, customization, correction, and maintenance; they must not become mandatory ceremony. A single customer Artwork can support multiple independently configured ARTWORK Realizations and multiple SHAPE Realizations. The operator should not have to manually duplicate Artwork or transfer intermediate files between Realizations.
 
-This CHANGEPLAN contains actionable remaining work, not a history of completed
-implementation or a catalog of speculative capabilities. Completed behavior
-should be credited from HEAD and removed from the plan. Longer-term goals and
-unresolved design ideas belong in `FUTURE.md`; that document is not normative.
-Before promoting an item from `FUTURE.md`, reevaluate current HEAD and the
-permanent specifications and establish a sufficiently understood behavioral
-boundary. Phases may be removed, reordered, combined, or rewritten after each
-completed implementation slice. Phase numbering is local to the current plan.
+This CHANGEPLAN contains actionable remaining work, not completed implementation history or speculative capabilities. Credit existing HEAD behavior and remove completed phases. Longer-term ideas belong in `FUTURE.md`, which is not normative. Phase numbers are local to this plan and may change as work is completed.
 
-## Current Implementation Scope — SVG Manufacturing
+## Current Implementation Scope — First-Class SHAPE SVG Manufacturing
 
-The active implementation priority is manufacturing-ready SVG output for xTool Studio and related laser fabrication workflows.
+**The primary first-class manufacturing outputs are independently buildable SVG Products for each requested SHAPE Realization, intended for xTool Studio.** SVG is not merely a side effect of a 3D-printing pipeline. A SHAPE SVG must be useful without executing Extrude or Package when those stages are unnecessary for the requested Product.
 
-Active phases may change ARTWORK source interpretation, SHAPE registered planar geometry, SVG composition, and manufacturing project assembly. New physical extrusion behavior, optional Base implementation, revised Z-raise semantics, and 3MF component partitioning are deferred to `FUTURE.md`, under **SHAPE Physical Realization — Optional Base and Independent Components**.
+A single Artifact may have several ARTWORK Realizations, such as full-color raster, grayscale raster, traced vector, or color-limited vector, and several SHAPE Realizations, such as printable coaster, raster-engraved coaster, vector-engraved coaster, or Prusa coaster. Each SHAPE Realization must select the upstream ARTWORK Realization whose registered Product it consumes. Reusable configurations belong to Model-scoped Variants; Realizations are Artifact-specific applications of Variants, with supported customizations. Illustrative Realization names are not declarations of existing catalog Variants.
 
-Existing 3MF behavior must remain compatible. Continue to run applicable regression tests, but do not expand an SVG phase into new Extrude functionality solely to realize its new planar features. If an existing 3MF defect prevents production, assess it separately under the plan's manufacturing-correctness priority; do not silently fold the deferred redesign into an SVG phase.
+```text
+                              customer source
+                                    |
+                                 Artifact
+                                    |
+                +-------------------+-------------------+
+                |                   |                   |
+         artwork_full_color   artwork_grayscale     artwork_prusa
+                |                   |                   |
+         registered raster   registered raster    registered vectors
+                |                   |                   |
+         coaster_print       coaster_engrave       coaster_prusa
+                |                   |                   |
+           Compose SVG         Compose SVG          Compose SVG
+                |                   |                   |
+         terminal SVG         terminal SVG           Extrude
+                                                        |
+                                                     Package
+                                                        |
+                                                       3MF
+```
 
-A later implementation phase may revisit physical realization only after an explicit specification review and CHANGEPLAN revision.
+The diagram illustrates distinct Realizations, not new Models or mandatory Stage names. Verify actual Stage and Product declarations in HEAD before changing them. The dependency planner, not the CLI or Compose implementation alone, must know which upstream Realization is selected.
 
-## Planning and development rules
+Active work may change ARTWORK representation, Realization dependency binding, SHAPE planar geometry, SVG composition, and manufacturing-project assembly. Existing 3MF behavior must remain compatible, but new physical extrusion behavior, optional Base, revised Z-raise semantics, and 3MF component partitioning remain deferred to `FUTURE.md` under **SHAPE Physical Realization — Optional Base and Independent Components**. Do not expand an SVG phase into physical Extrude work merely to support planar features.
 
-`ARCHITECTURE.md` and the applicable Model `DEFINITION.md` files are normative.
-Repository HEAD defines the current implementation. The CLI README defines the
-intended operator-facing command model. This CHANGEPLAN describes temporary
-remaining work and must not redefine permanent architecture.
-At the beginning of a thread and before each meaningful implementation slice:
+**Depth-map compatibility:** A future `artwork_depth` Realization may provide a grayscale raster that a SHAPE Realization embeds in an SVG together with grayscale fills for ridges, border regions, and labels. SHAPE need not construct Z-aware geometry to compose this SVG. Existing SHAPE color parameters can encode grayscale values; no new depth parameters or special depth-composition mode are authorized by this plan. Depth-map generation, grayscale-range validation, and calibrated material-removal behavior are deferred to `FUTURE.md` pending their own specification and manufacturing tests.
 
-1. Reload and follow `prompts/NEW_THREAD.md`.
-2. Compare CHANGEPLAN with current HEAD, `ARCHITECTURE.md`, applicable Model
-   definitions, and relevant CLI documentation.
-3. Credit behavior HEAD already satisfies.
-4. Identify the next unmet behavioral boundary rather than assuming the plan
-   is still current.
-5. Resolve known semantic or architectural questions before encoding behavior
-   in tests, while allowing test-first exploration to discover or clarify
-   uncertain seams and ownership boundaries.
-6. Organize TDD around major behavioral seams or boundaries, using one test or
-   a small coherent test set to drive a substantial implementation slice rather
-   than creating single-test/single-change cycles.
-7. Implement the smallest correct change at the layer that owns the behavior.
-8. Run focused tests and then the appropriate complete quality suite.
-9. Reevaluate the plan against the resulting HEAD.
+## Planning and Development Rules
 
-Tests should protect useful behavioral boundaries rather than inventory
-implementation details. High-level CLI/application seams should be protected
-as they are introduced, while lower-level tests should be added only where
-they protect behavior actually owned by that layer.
-A newly discovered defect that can produce an incorrect manufacturing Product,
-corrupt persistent manufacturing state, or cause material value-chain
-inefficiency takes priority over CLI presentation work.
-Every phase must leave the application production-capable.
+`ARCHITECTURE.md` and applicable Model `DEFINITION.md` files are normative. HEAD defines implemented behavior; the CLI README defines the intended operator-facing command model. This plan does not silently override permanent specifications.
 
-## Common constraints
+Before each implementation slice:
 
-Preserve the separation between operator presentation and reusable application
-behavior:
+1. Reload and follow `prompts/NEW_THREAD.md` and `prompts/TEST_DRIVEN_DEVELOPMENT.md`.
+2. Compare HEAD, `ARCHITECTURE.md`, applicable Model definitions, relevant code and tests, and this plan.
+3. Credit completed behavior and identify the next unmet behavioral boundary.
+4. Resolve normative or architectural conflicts before encoding new requirements in RED tests.
+5. Use one test or a small coherent test set to establish a meaningful behavioral seam.
+6. Implement the smallest correct change in the layer that owns the behavior.
+7. Run focused tests, applicable non-slow tests, Ruff, and Pyright; perform xTool Studio acceptance when required.
+8. Reevaluate the plan, update specifications and documentation, and commit only verified scoped changes.
+
+Preserve the separation:
 
 ```text
 CLI / TUI / GUI / API
-          │
-          ▼
+          |
+          v
 reusable application operations
-          │
-          ▼
+          |
+          v
 configuration / planning / engine / Products
 ```
 
-Click owns parsing, terminal presentation, prompts, and translation of
-structured application errors into operator-facing prose. Reusable workflow
-behavior belongs below Click and should return structured domain/application
-information rather than Rich objects or presentation-specific strings.
-The CLI operates on the current working directory as project root. A registered
-Artifact may legitimately exist under `originals/` before
-`artifacts/<artifact_id>/` exists. Commands must preserve the distinction
-between registered Artifact identity, materialized Artifact workspace, and
-manufacturing Product state.
-Missing collection directories normally represent empty collections. An
-explicitly requested missing object is an operator error. Expected domain
-errors should be concise and traceback-free; unexpected invariant or
-programming failures must not be indiscriminately converted into ordinary
-operator failures.
-Routine output should be lean and oriented toward the operator's next useful
-decision. Operator-facing Product paths should be concise and useful from the
-project root. Do not expose Stage, resolver, dependency, or filesystem
-mechanics unless they answer an operator question.
-Do not change Product identity, dependency semantics, configuration precedence,
-Model semantics, manufacturing ownership, persistence semantics, or color
-semantics merely to simplify CLI presentation. If work exposes a genuine
-architectural mismatch, resolve that mismatch explicitly against the permanent
-specifications before proceeding.
+Click owns parsing, prompts, terminal presentation, and translation of structured application errors. Reusable workflow behavior belongs below Click. The CLI operates on the current working directory as project root. A registered Artifact may exist under `originals/` before `artifacts/<artifact_id>/` exists. Missing collections normally mean empty collections; a requested missing object is an operator error. Expected errors should be concise and traceback-free; unexpected invariant failures must remain distinguishable.
 
-Manufacturing-specific representations and operations must not be smuggled into
-the generic engine or inferred solely from visual color. Preserve established
-logical color identities, component registration, and existing SHAPE SVG and
-3MF behavior unless an explicit Model contract change requires otherwise.
+Product paths should be concise and useful from project root. Avoid exposing internal Stage or resolver mechanics unless they answer an operator question. Do not change Product identity, dependency semantics, configuration precedence, Model ownership, persistence, or color semantics merely for CLI presentation. The generic engine must not acquire SHAPE- or xTool-specific interpretation policy.
 
-## TDD cycles
+### TDD cycles
 
-TDD remains test-first. Before implementing a meaningful new behavior, write a
-test that exercises the behavioral seam or boundary being established.
-The purpose of the initial failing test is not only verification. A test may
-also be used to discover or clarify the appropriate seam, ownership boundary,
-or contract before implementation. If the test exposes a better boundary than
-the one initially assumed, refine the design and test before committing to the
-implementation.
-TDD cycles should normally correspond to substantial behavioral seams or
-boundaries rather than individual implementation changes. Once a failing test
-establishes the intended seam, implement the coherent behavior necessary to
-make that seam work. Do not begin a new RED/GREEN cycle merely because that
-implementation requires another helper, parameter, branch, component, or
-internal refactoring.
-One test may be sufficient to establish a seam. A small coherent group of tests
-is appropriate when materially different cases are necessary to define the
-same boundary. Prefer these high-value behavioral tests over many narrow tests
-that separately inventory implementation details.
-Add narrower tests when they help discover an uncertain boundary, protect an
-independently meaningful contract, reproduce a defect, or address a specific
-algorithmic or regression risk.
+TDD is test-first: RED establishes a behavioral boundary, GREEN implements the coherent behavior, VERIFY protects the manufacturing workflow. Do not force one test per helper or parameter. Add narrower tests only for independently meaningful contracts, uncertain algorithms, or regressions. Every phase must leave the application production-capable. Incorrect manufacturing Products, corrupt persistent state, and material value-chain inefficiency take priority over presentation polish.
 
----
+### Primary optimization objective — Minimize time to manufacture
 
-### Primary Optimization Objective — Minimize Time to Manufacture
+The primary commercial use case is economical one-off and small-batch manufacturing for lowkeylabs LLC: coasters, keychains, ornaments, stickers, engraved glassware, stamps, and coordinated collections. Optimize preparation, not machine execution speed. Product-specific defaults should minimize repeated decisions; operator customization should focus on artwork, labels, messages, dimensions, and product selection.
 
-The principal purpose of `lowkey-artifact-builder` is to minimize the operator effort required to transform customer-supplied artwork into manufacturing-ready customized Products.
+The requested Product and its transitive dependencies determine the minimum work. One customer Artwork may be reused across products, product faces, sizes, and manufacturing methods without unnecessary recomputation. Manufacturing-project assembly may later group independently completed SVG Products for convenient xTool Studio import.
 
-The primary commercial use case is economical one-off and small-batch manufacturing for `lowkeylabs LLC`, including coasters, keychains, ornaments, stickers, engraved glassware, stamps, and other personalized objects.
-
-The software shall optimize the preparation workflow rather than the physical execution speed of lasers, printers, or other manufacturing devices.
-
-The desired operator workflow is:
-
-```text
-Customer artwork + customization
-                ↓
-         artifact create
-                ↓
-    Reusable managed Artwork
-                ↓
-     Product configurations
-                ↓
-         artifact build
-                ↓
-  Manufacturing-ready Products
-                ↓
-   Manufacturing package assembly
-                ↓
-      Grouped SVG / XTS project
-                ↓
-         xTool Studio
-                ↓
-          Manufacture
-```
-
-A single customer Artwork may be reused across multiple Products, product faces, dimensions, and manufacturing methods.
-
-Product-specific defaults shall minimize repeated configuration decisions. Customization shall focus on meaningful customer choices, such as artwork, labels, messages, and product selection.
-
-Manufacturing packages shall organize multiple independently manufacturable Products into a convenient importable representation, initially using hierarchical SVG grouping and potentially native multi-canvas `.xs` projects.
-
-The operator shall not need to understand or manually select internal processing Stages to perform ordinary manufacturing tasks.
-
-Requested Products and their dependencies shall determine the minimum necessary processing.
-
-### Success Measures
-
-Evaluate proposed features primarily by their ability to:
-
-1. Reduce operator actions between artwork receipt and manufacturing readiness.
-2. Reduce repeated work when creating multiple Products from the same Artwork.
-3. Reduce manual positioning, scaling, labeling, grouping, and operation preparation in XTS.
-4. Preserve manufacturing correctness, physical dimensions, and registration.
-5. Support rapid customization without requiring new source code or product-specific programming.
-6. Reuse existing Artwork and manufacturing Products without unnecessary recomputation.
-7. Maintain reliable, deterministic outputs and a simple operator interface.
-
-Avoid adding architectural complexity unless it provides measurable improvements in manufacturing preparation, correctness, or reuse.
-
----
-
-The operator's ordinary goal is to move customer artwork into correct, reusable manufacturing Products with the fewest necessary decisions, actions, and computations.
-
-This SVG-focused plan prioritizes **source correctness**, then **efficient representation and interpretation**, then **SHAPE planar composition**, and finally **assembly of independently manufacturable Products**. Existing 3MF behavior is protected for compatibility, not expanded by these phases. It consolidates the existing defect backlog and SHAPE feature phases without treating future possibilities as commitments.
+**Success measures:** fewer operator actions; less repeated source preparation; less manual positioning and labeling in xTool Studio; correct physical dimensions and registration; reusable Products and deterministic output; no unnecessary Extrude/Package; and simple operator-facing workflows.
 
 ## Working Rules
 
-1. **HEAD is authoritative.** At the beginning of each phase, review current HEAD and the relevant permanent specifications, code, and tests. Reconcile this plan with any work already completed.
-2. **Specifications precede implementation.** Update the applicable `DEFINITION.md` and other normative contracts before writing implementation tests that assert new behavior.
-3. **Use the repository's RED/GREEN/VERIFY process.** Follow `prompts/NEW_THREAD.md` and `prompts/TEST_DRIVEN_DEVELOPMENT.md`; make one coherent, testable change at a time.
-4. **Preserve architectural ownership.** ARTWORK owns source interpretation and registered artwork. SHAPE owns its geometry, placement, composition, and physical manufacturing. The generic engine must not acquire model-specific policy.
-5. **Reuse existing mechanisms.** Prefer existing registered geometry, Products, dependencies, and stages over new Models, generalized instance frameworks, or parallel SVG pipelines.
-6. **Separate source semantics from manufacturing choices.** Transparency is not a color; physical printer colors do not define source colors; SVG visual groups do not inherently define xTool processing layers.
-7. **Preserve compatibility and determinism.** Existing Artifacts, Realizations, canonical SVG, and 3MF workflows must continue to work unless an explicit specification revision states otherwise.
-8. **Do not expand scope implicitly.** A phase may expose a related requirement, but that does not authorize speculative features or unrelated refactoring.
-9. **Verification is required.** Run focused tests, applicable non-slow tests, Ruff, and Pyright. Add real xTool Studio acceptance checks where the contract depends on its behavior.
-10. **Record outcomes.** Mark completed phases with evidence, update permanent documentation, and remove or consolidate superseded backlog entries.
+1. **HEAD is authoritative.** Reinspect the relevant current implementation before each phase.
+2. **Specifications precede new contracts.** Reconcile `ARCHITECTURE.md` and Model definitions before tests assert revised behavior.
+3. **Follow RED/GREEN/VERIFY.** Prefer coherent behavioral slices over mechanical change-by-change cycles.
+4. **Preserve ownership.** ARTWORK interprets source content and registers representations; SHAPE selects upstream Products and owns geometry, placement, composition, and physical manufacturing; the engine owns generic dependency planning and Product state.
+5. **Reuse existing mechanisms.** Prefer existing Variants, Realizations, Product dependencies, Stage outputs, registered geometry, and SVG composition.
+6. **Keep representation separate from manufacturing.** Transparency is not a color; printer colors do not define source colors; visual SVG groups or grayscale fills do not automatically assign xTool operations or calibrated depths.
+7. **Preserve compatibility.** Existing `artwork_default` dependencies, SVG Products, and 3MF workflows must continue to work unless a reviewed specification explicitly changes them.
+8. **Avoid speculative scope.** Do not introduce a new Model, generic framework, native `.xs` generation, or physical extrusion behavior without a demonstrated need.
+9. **Verify manufacturing behavior.** Test physical dimensions, SVG self-containment, component registration, and actual xTool Studio import where relevant.
+10. **Record outcomes.** Remove completed or superseded work from the active plan.
 
 ## Roadmap and Dependencies
 
 | Order | Phase | Consolidates | Primary result |
 | --- | --- | --- | --- |
-| 1 | ARTWORK Envelope and Source-Color Correctness | BUG-006 + BUG-004; related BUG-002 | Valid boundary-touching, transparent, single-color artwork |
-| 2 | Raster-Preserving SVG Manufacturing | BUG-005 | Embedded bitmap artwork in canonical manufacturing SVG without mandatory tracing |
-| 3 | Broader SVG Source Interpretation | BUG-001 + BUG-003 | Embedded PNG SVG inputs and visible stroke geometry |
-| 4 | SHAPE Perimeter Region and SVG Fill | First-class SHAPE planar region; migration from Outer Ridge inset | Independently dimensioned, registered, and colored SVG perimeter |
-| 5 | SHAPE Placement and Reusable SVG Decorations | Former SHAPE Phases 1 + 2 | Multiple independently transformed motif instances |
-| 6 | SHAPE Clipping and Deterministic Planar Composition | Former SHAPE Phases 3 + 4 | Manufacturing-correct clipping and overlap behavior |
-| 7 | Artwork Scaling and Boundary Policies | Former SHAPE Phase 5 | Explicit artwork enlargement with a fixed outer SHAPE boundary |
-| 8 | Hierarchical SVG Manufacturing Project Assembly | Existing assembly phase | One grouped SVG containing multiple independently manufacturable Products |
+| 1 | Cross-Realization ARTWORK Dependencies for SHAPE | Realization selection and dependency planning | Each SHAPE Realization consumes its selected ARTWORK Realization |
+| 2 | First-Class SHAPE SVG Products | Terminal SVG build path and manufacturing identity | Independent SVG Product for every SHAPE Realization, without unnecessary 3MF work |
+| 3 | ARTWORK Representation and Source Correctness | BUG-006, BUG-004, related BUG-002; representation policy | Correct envelope and source handling across representation-specific ARTWORK Realizations |
+| 4 | Raster-Preserving SVG Manufacturing | BUG-005 | Embedded raster from a selected ARTWORK Realization in terminal SHAPE SVG |
+| 5 | Multi-Realization SVG Manufacturing Acceptance | End-to-end selection, isolation, and xTool acceptance | One source yields independently manufacturable raster/vector SVGs and compatible 3MF |
+| 6 | Broader SVG Source Interpretation | BUG-001 + BUG-003 | Embedded PNG SVG inputs and visible stroke geometry |
+| 7 | SHAPE Perimeter Region and SVG Fill | First-class planar Perimeter | Independently dimensioned and colored perimeter region |
+| 8 | SHAPE Placement and Reusable SVG Decorations | Former SHAPE placement/decorations | Multiple independently transformed motif instances |
+| 9 | SHAPE Clipping and Deterministic Planar Composition | Clipping and overlap | Manufacturing-correct planar clipping and precedence |
+| 10 | Artwork Scaling and Boundary Policies | Artwork enlargement | Explicit enlargement with fixed outer SHAPE boundary |
+| 11 | Hierarchical SVG Manufacturing Project Assembly | Manufacturing project assembly | Grouped SVG containing independently manufacturable Products |
 
-**Dependency policy:** Phase 1 establishes source correctness. Phases 2 and 3 establish raster representation and SVG interpretation. Phase 4 establishes Perimeter as a first-class planar SHAPE region with its own width and fill color, including compatibility with existing Outer Ridge inset configurations. Phase 5 introduces reusable decorations; Phase 6 establishes their clipping and planar overlap semantics; Phase 7 reuses those policies for enlarged Artwork. Phase 8 assembles existing manufacturing Products without rebuilding their geometry.
-
-Phases 2 and 3 are substantially independent after their contracts are defined. Phase 4 may be implemented earlier if the current xTool SVG workflow needs independently colored perimeter regions. Phase 8 may begin with an architectural spike earlier, but its implementation should not preempt the correctness and representation contracts it consumes.
+**Dependency policy:** Phase 1 establishes correct cross-Realization Product dependency identity; Phase 2 makes SHAPE SVG an independently requested first-class Product; Phase 3 resolves source correctness and representation-specific preparation; Phase 4 makes raster representation composable; Phase 5 verifies the combined end-to-end manufacturing contract. Phases 6–10 extend supported source and planar composition features; Phase 11 assembles existing Products. Independent defect fixes may move earlier when required for manufacturing correctness, but must not undermine the dependency and Product contracts.
 
 ---
+## Phase 1 — Cross-Realization ARTWORK Dependencies for SHAPE
 
-## Phase 1 — ARTWORK Envelope and Source-Color Correctness
-
-**Status:** OPEN — Specification review and implementation pending.
+**Status:** OPEN — Inspect HEAD binding and planner contracts; normative specification and implementation pending.
 
 ### Purpose
 
-Correct valid raster artwork that touches image boundaries and establish coherent source-driven foreground color semantics. Combine the overlapping color requirements of BUG-006 and BUG-004 rather than implementing two competing color-discovery policies.
-
-### Reproductions
-
-- `tests/fixtures/artwork/bug06.png` — black foreground on a transparent PNG, including foreground that touches image boundaries; currently reported to fail during envelope cleanup.
-- Existing transparent and explicitly colored SVG fixtures, plus small synthetic cases for single-color and multicolor interpretation.
-
-The reproduction path is recorded in the prior backlog; verify the fixture exists at current HEAD before relying on it.
+Allow each SHAPE Realization to select a specific ARTWORK Realization, rather than always depending on `artwork_default`. ARTWORK Realizations already have distinct identities and Product namespaces; reuse those mechanisms. This phase establishes the binding and dependency graph, not new artwork-processing algorithms.
 
 ### Contract to Resolve
 
-1. Foreground pixels on any image edge are valid artwork. Exterior transparency and enclosed transparent regions must remain distinguishable.
-2. Shrinkwrap and envelope cleanup must not remove meaningful boundary-touching geometry or require transparent padding.
-3. Preserve original source dimensions and coordinates; generate a valid, closed envelope.
-4. Count meaningful **foreground colors**, not fully transparent pixels or incidental antialiasing variations.
-5. Support exactly one foreground color and `artifact_color_count = 1`.
-6. Specify whether automatic color discovery is the default or an explicit mode, and how an explicit user override interacts with it.
-7. Define source color counting independently of the number or identities of `printer_colors`; retain physical color mapping as a separate concern.
-8. Distinguish transparent backgrounds from explicitly authored colored backgrounds, including SVGs that are rasterized.
-9. Preserve existing multicolor and native vector behavior unless a deliberate specification revision requires otherwise.
+1. Inspect current SHAPE Product dependency declarations, configuration resolution, canonical/explicit Realization identities, planner dependency closure, and freshness tracking. Determine which behavior is already implemented.
+2. Define the smallest configuration mechanism by which an Artifact-specific SHAPE Realization selects an Artifact-specific ARTWORK Realization. **The name and syntax below are illustrative, not yet approved:**
 
-**Specification decision:** Current ARTWORK documentation permits deriving a PNG tracing count from the number of printer colors. Replacing that behavior with source-driven discovery is a normative change; decide the exact default and override contract before RED tests.
+   ```toml
+   [realizations.coaster_print]
+   variant = "shape.coaster"
+   artwork_realization = "artwork_full_color"
+
+   [realizations.coaster_engrave]
+   variant = "shape.coaster"
+   artwork_realization = "artwork_grayscale"
+   ```
+
+3. Preserve the existing implicit selection of `artwork_default` when no alternate selection is configured. Do not silently change canonical Variant/Realization naming or legacy configuration resolution.
+4. Bind the selected ARTWORK Realization's **registered Product** through the ordinary Product dependency mechanism. The planner must see the selected Realization identity; do not implement a Compose-only filename lookup or private dependency override.
+5. Ensure Product dependency closure builds only required upstream Realizations and Stages. Shared dependencies may be reused; unrelated ARTWORK Realizations must not be built merely because they are declared.
+6. Preserve independent namespaces, completion records, fingerprints, and freshness. A changed selected ARTWORK Product invalidates its dependent SHAPE Products; an unrelated ARTWORK Realization must not invalidate them.
+7. Diagnose missing names, wrong Model types, unavailable required Products, and dependency cycles clearly at the appropriate configuration/planning boundary.
+8. Reconcile the selection contract with `ARCHITECTURE.md` and ARTWORK/SHAPE `DEFINITION.md` before tests. Reusable manufacturing configurations belong to Variants; Realizations remain Artifact-specific.
 
 ### TDD Work
 
-**RED**
+**RED:** One Artifact declares at least two ARTWORK Realizations and two SHAPE Realizations. Each SHAPE Realization selects a different ARTWORK Realization; planning and dependency identity reflect the selection. Verify default fallback, missing/invalid selection, independent Product namespaces, transitive dependency closure, and targeted freshness invalidation.
 
-- Reproduce boundary-touching shrinkwrap failure with `bug06.png`.
-- Isolate edge handling, enclosed holes, alpha thresholds, and small-component cleanup with synthetic images.
-- Establish single-color and multicolor source-count tests, including antialiasing and partial transparency.
-- Test transparent versus explicitly colored backgrounds and independence from `printer_colors`.
-- Verify explicit count overrides according to the revised contract.
+**GREEN:** Extend existing configuration and Product dependency binding at the owning layer. Avoid new Models, new Stage implementations, hardcoded Realization names in Compose, or SHAPE-specific logic in the generic planner.
 
-**GREEN**
-
-- Correct envelope and cleanup behavior at image boundaries.
-- Implement only the specified source-color discovery and count resolution.
-- Avoid artificial background layers and unnecessary tracing partitions.
-
-**VERIFY**
-
-- Build the real reproduction through the ordinary `artifact build` path.
-- Verify correct geometry and one foreground partition for single-color input.
-- Confirm existing multicolor, SVG, and SHAPE incorporation workflows remain compatible.
-- Run required tests and quality checks.
+**VERIFY:** Build the selected paths through the ordinary application/CLI workflow; inspect Product provenance and dependencies. Confirm existing default ARTWORK-to-SHAPE and 3MF builds remain compatible. Run required quality checks.
 
 ### Completion
 
-Boundary-touching artwork builds without padding; transparency does not become a manufacturing color; single-color input is supported; source-color policy is specified and tested; existing workflows remain compatible.
+A SHAPE Realization can select any compatible ARTWORK Realization for the same Artifact, and the build graph, persistent state, and dependency-driven work reflect that selection correctly.
 
 ---
 
-## Phase 2 — Raster-Preserving SVG Manufacturing
+## Phase 2 — First-Class SHAPE SVG Products
 
-**Status:** OPEN — Specification and implementation pending.
+**Status:** OPEN — Audit existing Compose Products and build-target selection before changing behavior.
 
 ### Purpose
 
-Allow canonical manufacturing SVG output to carry raster artwork as an embedded bitmap instead of requiring it to be traced into vector geometry. This is especially valuable for laser engraving while retaining vector outlines, labels, ridges, and cut contours.
+Make a manufacturing-ready SVG the primary, independently requested Product of each SHAPE Realization. Preserve 3MF as an additional supported output, not a prerequisite for xTool manufacturing.
 
-### Architectural Boundaries
+### Contract to Resolve
 
-- Preserve raster content and alpha where possible, with physical dimensions, scaling, orientation, and registration established by SHAPE.
-- Reuse ARTWORK preparation and existing SHAPE placement/composition; do not create a second raster interpretation pipeline.
-- Select raster preservation explicitly versus existing traced-vector output; preserve the vector workflow.
-- Keep xTool-specific processing policy outside the generic ARTWORK and SHAPE contracts.
-- Preserve source data and self-containment without introducing unnecessary 3MF or printer-color work when only manufacturing SVG is requested.
-- Distinguish canonical SVG manufacturing output from ARTWORK's intermediate traced representations.
+1. Inspect current SHAPE Structure/Prepare/Compose/Extrude/Package registration, Product declarations, default build target, requested-Product selection, and publication paths. Credit existing terminal SVG behavior where already supported.
+2. Define the stable, Realization-qualified identity and output location for each SHAPE SVG Product. Multiple SHAPE Realizations of one Artifact must produce separate SVG files without overwriting one another.
+3. A request for a SHAPE SVG must build its required ARTWORK Product and SHAPE prerequisites but **must not** execute Extrude, Package, 3MF color assignment, or unrelated Realizations.
+4. A 3MF request may continue through existing extrusion and packaging stages, consuming the appropriate intermediate Products without altering SVG identity.
+5. Canonical SVGs must preserve physical dimensions, coordinate registration, semantic component identity, labels, ridges, border fills, artwork placement, and manufacturing-relevant grouping.
+6. SVG must remain self-contained and deterministic. An individual SHAPE SVG must be independently usable in xTool Studio without requiring project assembly.
+7. Clarify the ordinary `artifact build` default and explicit Product selection in the application/CLI contract. Prioritize the simplest xTool workflow without silently breaking existing default 3MF expectations; specify migration or explicit selection where needed.
+8. Distinguish authored colors, SVG grouping, and logical manufacturing components from actual xTool Studio operations. Do not infer cutting, engraving, or depth calibration solely from SVG color.
 
 ### TDD Work
 
-**RED**
+**RED:** Build two SHAPE Realizations of the same Artifact as independent SVG Products. Verify paths, identity, registration, content, deterministic rebuilds, dependency closure, and absence of unnecessary Extrude/Package. Verify a legacy 3MF request still works.
 
-1. A standalone PNG produces a manufacturing SVG with an embedded `<image>`.
-2. Image bytes are self-contained and repeatable; no external asset reference is required.
-3. Alpha, aspect ratio, physical size, rotation, and SHAPE registration are preserved.
-4. Raster artwork coexists with vector engraving, labels, ridges, and cut geometry.
-5. Raster preservation does not depend on `printer_colors`.
-6. Existing traced-vector output remains selectable and unchanged by default.
+**GREEN:** Reuse existing Compose Stage/Product and generic requested-Product planning. Change only the missing publication, selection, or application behavior.
 
-**GREEN**
-
-Implement the smallest representation selection and data flow that meet the contract. Reuse existing registered placement and SVG composition instead of adding unrelated stages or Models.
-
-**VERIFY**
-
-Inspect the generated SVG and import representative outputs into xTool Studio. Verify raster engraving can be assigned independently of cutting geometry and that physical dimensions remain correct. Run required tests and quality checks.
+**VERIFY:** Import representative standalone SVGs into xTool Studio; check dimensions, component grouping, and separate processing assignment. Run regression and quality suites.
 
 ### Completion
 
-An operator can manufacture a SHAPE from embedded raster artwork and vector structural features without mandatory tracing, while existing SVG and 3MF workflows remain compatible.
+Each requested SHAPE Realization yields its own first-class, manufacturing-ready SVG, independent of 3MF generation and independently importable into xTool Studio.
 
 ---
 
-## Phase 3 — Broader SVG Source Interpretation
+## Phase 3 — ARTWORK Representation and Source Correctness
 
-**Status:** OPEN — Specification and implementation pending.
+**Status:** OPEN — Separate existing source-envelope defects from representation-dependent color policies; normative reconciliation pending.
+
+### Purpose
+
+Resolve BUG-006 and BUG-004 (related BUG-002) without assuming every ARTWORK Realization must trace colors for Prusa. Establish representation-appropriate preparation for vector, raster, and grayscale ARTWORK Realizations while preserving existing source semantics and physical-printing compatibility.
+
+### Reproductions
+
+- `tests/fixtures/artwork/bug06.png`: transparent PNG with boundary-touching black foreground; confirm fixture and current behavior at HEAD.
+- Existing transparent PNG, authored-background SVG, single-color and multicolor fixtures, plus small synthetic images with alpha and antialiasing.
+
+### Contract to Resolve
+
+1. Boundary-touching foreground is valid. Envelope cleanup must preserve meaningful edge geometry, distinguish exterior transparency from enclosed holes, preserve source coordinates and dimensions, and produce a valid closed envelope when one is required.
+2. Distinguish authored colors from fully transparent pixels, incidental antialiasing variations, and explicitly authored background fills.
+3. Define **ARTWORK representation selection** through the existing Variant/Realization and parameter mechanisms, after inspecting current HEAD. Do not introduce a new Model or assume the illustrative names `artwork_full_color`, `artwork_grayscale`, and `artwork_prusa` are already defined Variants.
+4. For **raster-preserving** representations, preserve original image information (including color and alpha) without requiring `artifact_color_count`, `printer_colors`, or vector tracing.
+5. For **grayscale raster** representations, define deterministic grayscale conversion and alpha/background behavior; do not quantize to physical printer colors or collapse continuous intensity to one traced color.
+6. For **traced-vector** representations, define foreground color discovery, supported single-color tracing, and an explicit maximum-color policy. When a source has more meaningful colors than a configured tracing maximum, deliberate reduction may be valid; it must be specified, deterministic, and diagnostically visible. An unsupported reduction to one color must fail clearly rather than silently degrade. Do not impose this vector-tracing maximum on raster or grayscale Realizations.
+7. Reconcile normative ARTWORK documentation with current derivation of `artifact_color_count` from `printer_colors`. Preserve existing Prusa behavior through a compatible default or Variant policy, but do not treat physical printer palette size as a universal source-color rule.
+8. Define the registered Product representation and metadata needed by SHAPE, including physical source envelope, alpha, color/grayscale characteristics, and required representation compatibility. Avoid unnecessary conversions or duplicate source processing.
+9. Preserve native vector SVG handling and existing multicolor/3MF manufacturing behavior unless an explicit specification change requires otherwise.
+
+### TDD Work
+
+**RED:** Reproduce the boundary fixture and edge/hole cases; verify single-color and multicolor vector tracing, explicit tracing maximum, diagnostics for color reduction, and independent raster/grayscale paths that do not consult `printer_colors`. Test explicit colored backgrounds, alpha, and stable registration. Avoid tests that incorrectly prohibit all intentional vector color reduction.
+
+**GREEN:** Correct source-envelope behavior and implement the smallest representation-specific preparation and Product registration required by the contracts. Keep tracing-specific decisions out of raster-preserving paths.
+
+**VERIFY:** Build the real boundary reproduction and representative raster, grayscale, vector, and legacy Prusa cases through `artifact build`; check source geometry, colors, alpha, and Product provenance. Run required quality checks.
+
+### Completion
+
+ARTWORK Realizations can produce appropriate registered representations from one source; boundary-touching artwork is correct; vector tracing policy is explicit; raster/grayscale Realizations are not constrained by physical printer colors; existing manufacturing paths remain compatible.
+
+---
+
+## Phase 4 — Raster-Preserving SVG Manufacturing
+
+**Status:** OPEN — Specification and implementation pending; depends on Phases 1–3.
+
+### Purpose
+
+Allow a SHAPE Compose Product to incorporate a raster Product from its **selected** ARTWORK Realization as an embedded SVG `<image>`, while retaining vector structural geometry such as ridges, labels, borders, and cut contours. Tracing is not mandatory for raster engraving or printing.
+
+### Architectural Boundaries
+
+- ARTWORK owns raster/grayscale interpretation and registration; SHAPE owns placement, scaling, clipping, physical size, and planar composition.
+- The SHAPE dependency must point to the selected ARTWORK Realization and compatible registered raster Product; no default-Realization shortcut is allowed.
+- Embed image bytes in a self-contained SVG; preserve alpha, aspect ratio, orientation, and registration. Keep SVG vector components independently identifiable.
+- A grayscale depth map is a possible future raster input, not a requirement to implement depth estimation or Z-aware extrusion here.
+- Do not add xTool processing settings to generic ARTWORK/SHAPE logic or execute 3MF stages for SVG-only requests.
+
+### TDD Work
+
+**RED:** Standalone PNG and grayscale ARTWORK Products embed as self-contained `<image>` elements in distinct SHAPE Realization SVGs; alpha, transforms, physical dimensions, and registered placement survive. Raster and vector SHAPE features coexist. The selected ARTWORK Realization is honored; `printer_colors` is not consulted for raster output. Existing traced-vector composition remains selectable.
+
+**GREEN:** Extend existing ARTWORK Product consumption and SHAPE Compose SVG serialization, not a parallel raster pipeline.
+
+**VERIFY:** Inspect generated SVGs and import representative full-color and grayscale raster products into xTool Studio. Check image placement, size, transparency, independent structural groups, and unchanged 3MF builds.
+
+### Completion
+
+A selected raster or grayscale ARTWORK Realization produces a manufacturing-ready SHAPE SVG containing correctly registered embedded raster content and independent vector SHAPE features, without mandatory tracing or extrusion.
+
+---
+
+## Phase 5 — Multi-Realization SVG Manufacturing Acceptance
+
+**Status:** OPEN — Integration and xTool Studio acceptance pending; depends on Phases 1–4.
+
+### Purpose
+
+Demonstrate the primary value chain: **one customer source, multiple ARTWORK Realizations, multiple SHAPE Realizations, multiple independent manufacturing-ready SVG Products**, with a compatible 3MF path when requested.
+
+### Required Scenario
+
+One Artifact declares at least:
+
+- A full-color raster ARTWORK Realization consumed by a printable SHAPE Realization.
+- A grayscale raster ARTWORK Realization consumed by a raster-engraving SHAPE Realization.
+- A vector or color-limited ARTWORK Realization consumed by a vector SHAPE Realization and/or existing Prusa path.
+
+Each SHAPE Realization independently selects its ARTWORK Realization, retains the same relevant Shape geometry and label customization, and produces a separately addressable SVG. These names and product configurations are examples; prefer reusable Model Variants for repeated setups.
+
+### Acceptance Contract
+
+1. `artifact create` registers the customer source once. No manual copying of artwork or manufactured SVGs is required.
+2. Each SHAPE SVG is requested, built, inspected, and rebuilt independently through ordinary application/CLI operations.
+3. The planner executes only selected dependencies and required stages. Unrelated Realizations and Extrude/Package are skipped for SVG-only builds.
+4. Each output has stable Realization-qualified identity, correct physical dimensions, deterministic SVG, and independent Product state.
+5. Changes to one ARTWORK Realization affect only dependent SHAPE Products; changes to common source content affect the appropriate dependent paths.
+6. xTool Studio imports the individual SVGs with usable raster/vector content and SHAPE component grouping. Confirm observed operation assignment behavior rather than assuming colors/groups automatically map to operations.
+7. Existing default-ARTWORK and 3MF builds remain compatible.
+
+### TDD Work
+
+**RED:** High-level application/CLI acceptance tests covering three ARTWORK representations, three SHAPE consumers, independent SVG Products, dependency isolation, targeted invalidation, and compatibility. Avoid duplicating every lower-level case already covered by prior phases.
+
+**GREEN:** Fix integration gaps in the layer that owns them; do not introduce a new manufacturing-project abstraction simply to make the acceptance scenario pass.
+
+**VERIFY:** Perform real xTool Studio imports of the individual SVG Products; record dimensions, hierarchy, and raster/vector handling. Run the complete required quality suite.
+
+### Completion
+
+The normal workflow reliably produces multiple distinct xTool-ready SHAPE SVGs from one customer source, with correct Realization dependencies and without unnecessary manufacturing preparation.
+
+---
+
+## Phase 6 — Broader SVG Source Interpretation
+
+**\*\*Status:\*\*** OPEN — Specification and implementation pending.
 
 ### Purpose
 
@@ -358,50 +333,61 @@ These are distinct testable slices under one source-compatibility phase. Impleme
 
 ### Slice A — Embedded PNG in SVG (BUG-001)
 
-**Reproduction:** `bug01.svg`, an xTool Studio-exported SVG containing a Base64 PNG. Confirm the fixture's location at current HEAD.
+**\*\*Reproduction:\*\*** `bug01.svg`, an xTool Studio-exported SVG containing a Base64 PNG. Confirm the fixture's location at current HEAD.
 
-**Required behavior**
+**\*\*Required behavior\*\***
 
 1. Recognize one embedded Base64 PNG `<image>` element.
+
 2. Decode it without unnecessary pixel alteration; preserve alpha.
+
 3. Respect document dimensions, `viewBox`, image placement, and applicable transforms.
-4. Integrate the image into the established ARTWORK processing path.
+
+4. Integrate the image into the established ARTWORK processing path, preserving the selected representation and Realization-specific preparation policy.
+
 5. Preserve standalone PNG and native vector SVG behavior.
+
 6. Provide actionable diagnostics for unsupported cases.
 
 Initially exclude multiple images, mixed image/vector content, external image references, additional raster formats, and general-purpose SVG rendering unless a current permanent specification already requires them.
 
 ### Slice B — Stroke-Only and Mixed SVG Geometry (BUG-003)
 
-**Reproduction:** `tests/fixtures/artwork/bug02.svg`, a transparent 600 × 600 SVG with a black, unfilled circle stroke touching the canvas boundary. Confirm fixture availability at current HEAD.
+**\*\*Reproduction:\*\*** `tests/fixtures/artwork/bug02.svg`, a transparent 600 × 600 SVG with a black, unfilled circle stroke touching the canvas boundary. Confirm fixture availability at current HEAD.
 
-**Required behavior**
+**\*\*Required behavior\*\***
 
 1. Interpret visible strokes, not merely filled path interiors.
+
 2. Support supported SVG shapes and paths, including circles, ellipses, rectangles, lines, polylines, and paths.
+
 3. Respect stroke width, color, caps, joins, and transforms.
+
 4. Preserve transparent interiors of unfilled shapes.
+
 5. Support mixed stroke-and-fill geometry without losing either.
+
 6. Preserve registered color semantics, overlap rules, and deterministic manufacturing geometry.
+
 7. Reuse ARTWORK's interpretation machinery; do not implement stroke semantics separately inside SHAPE decorations.
 
 ### TDD Work
 
-**RED:** Add reproduction tests and minimal synthetic cases for each slice, including dimensions, transparency, transforms, deterministic results, and explicit unsupported cases.
+**\*\*RED:\*\*** Add reproduction tests and minimal synthetic cases for each slice, including dimensions, transparency, transforms, deterministic results, and explicit unsupported cases.
 
-**GREEN:** Implement the smallest coherent source-interpretation extensions against revised ARTWORK specifications.
+**\*\*GREEN:\*\*** Implement the smallest coherent source-interpretation extensions against revised ARTWORK specifications.
 
-**VERIFY:** Build both reproduction fixtures through `artifact build`; verify existing PNG, filled SVG, and multicolor behavior; run required tests and quality checks.
+**\*\*VERIFY:\*\*** Build both reproduction fixtures through `artifact build`; verify existing PNG, filled SVG, and multicolor behavior; run required tests and quality checks.
 
 ### Completion
 
 The supported embedded-image and stroke-only SVG cases build correctly, produce registered geometry or raster representation as specified, and do not introduce competing SVG semantics.
 
----
+**---**
 
-## Phase 4 — SHAPE Perimeter Region and SVG Fill
+## Phase 7 — SHAPE Perimeter Region and SVG Fill
 
-**Status:** OPEN — Normative specification review, migration contract, and SVG implementation pending. Physical extrusion is deferred.
+**\*\*Status:\*\*** OPEN — Normative specification review, migration contract, and SVG implementation pending. Physical extrusion is deferred.
 
 ### Purpose
 
@@ -412,31 +398,38 @@ Introduce `shape_perimeter_width` to define the region measured inward from the 
 ### Contract to Resolve
 
 1. Define the Perimeter as the planar band bounded externally by the complete Shape envelope and internally by the inward offset specified by `shape_perimeter_width`. Its registration and existence do not depend on an Outer Ridge being present.
+
 2. Establish `shape_perimeter_width` as the single authoritative width parameter for this region. Use the same physical measurement conventions already established for inset geometry, including perpendicular offsets for polygon edges. Require finite, nonnegative width and specify geometric bounds and empty-region behavior, including zero width.
+
 3. Define Outer Ridge placement relative to the inner Perimeter boundary. When an Outer Ridge exists, its outer boundary begins at that boundary and its own width is controlled by `shape_outer_ridge_width`. Specify behavior for absent ridges and for dimensions that cannot fit inside the Shape envelope.
+
 4. Introduce `shape_perimeter_fill_color` as an independently configurable logical color, not an alias for `shape_base_color` or `shape_outer_ridge_color`. Resolve its default/inheritance behavior so existing artifacts retain their established appearance unless explicitly customized.
+
 5. Explicitly reconcile the existing `shape_outer_ridge_inset` parameter with the new first-class `shape_perimeter_width`. Preserve legacy artifact geometry through a documented compatibility/migration policy; do not leave two independently effective parameters controlling the same region. Specify precedence, conflict diagnostics, and whether the old name is accepted as a deprecated alias before implementing tests. Do not silently reinterpret existing configurations.
+
 6. Register Perimeter geometry and identity independently in SHAPE Compose, and emit it as a distinct canonical SVG component with stable logical color and physical dimensions. Reuse established geometric offset helpers where appropriate, without making Perimeter ownership depend on the Outer Ridge.
+
 7. Define planar interactions with Outer Ridge, Border Fill, Artwork Region Fill, labels, and other registered geometry. Preserve deterministic component boundaries and avoid prohibited positive-area color overlaps. Do not infer xTool Studio processing settings from visual colors alone.
+
 8. Preserve existing 3MF behavior and all unrelated SHAPE geometry. Do not modify Extrude, introduce new Base partitioning, or implement new Z-height semantics in this phase.
 
 ### TDD Work
 
-**RED:** Establish the normative contract, then test independent Perimeter geometry and fill color for circle, square, and polygon Shapes. Cover zero and nonzero width, absent and present Outer Ridge, distinct Perimeter and Base colors, fixed outer cut contour, component identity, geometric bounds, invalid dimensions, and deterministic SVG output. Add compatibility tests for legacy `shape_outer_ridge_inset` configurations and the selected migration/precedence policy.
+**\*\*RED:\*\*** Establish the normative contract, then test independent Perimeter geometry and fill color for circle, square, and polygon Shapes. Cover zero and nonzero width, absent and present Outer Ridge, distinct Perimeter and Base colors, fixed outer cut contour, component identity, geometric bounds, invalid dimensions, and deterministic SVG output. Add compatibility tests for legacy `shape_outer_ridge_inset` configurations and the selected migration/precedence policy.
 
-**GREEN:** Extend SHAPE configuration, derived geometry as needed, Compose registration, and canonical SVG output. Make `shape_perimeter_width` authoritative while preserving legacy input through the specified compatibility boundary. Reuse existing planar offset calculations; do not add a competing width mechanism or change Extrude.
+**\*\*GREEN:\*\*** Extend SHAPE configuration, derived geometry as needed, Compose registration, and canonical SVG output. Make `shape_perimeter_width` authoritative while preserving legacy input through the specified compatibility boundary. Reuse existing planar offset calculations; do not add a competing width mechanism or change Extrude.
 
-**VERIFY:** Inspect generated SVG and import representative cases into xTool Studio. Verify physical size, distinct Perimeter grouping and fill, correct ridge placement, stable cut contour, legacy configuration compatibility, and unchanged existing 3MF workflows. Run focused and complete applicable quality checks.
+**\*\*VERIFY:\*\*** Inspect generated SVG and import representative cases into xTool Studio. Verify physical size, distinct Perimeter grouping and fill, correct ridge placement, stable cut contour, legacy configuration compatibility, and unchanged existing 3MF workflows. Run focused and complete applicable quality checks.
 
 ### Completion
 
 Perimeter is a first-class, independently registered SHAPE planar region controlled by `shape_perimeter_width` and `shape_perimeter_fill_color`. It remains well-defined without an Outer Ridge, existing configurations have an explicit compatibility path, and canonical SVG manufacturing works without new physical extrusion behavior.
 
----
+**---**
 
-## Phase 5 — SHAPE Placement and Reusable SVG Decorations
+## Phase 8 — SHAPE Placement and Reusable SVG Decorations
 
-**Status:** OPEN — Specification and implementation pending.
+**\*\*Status:\*\*** OPEN — Specification and implementation pending.
 
 ### Purpose
 
@@ -447,40 +440,52 @@ This combines the former placement-contract and reusable-decoration phases: plac
 ### Architectural Boundaries
 
 - SHAPE owns source references, instance identity, placement, and registered planar composition. Existing physical manufacturing ownership is unchanged; new decoration extrusion is deferred.
+
 - ARTWORK owns the reusable SVG source interpretation contract; SHAPE must not invoke another Model's Stage implementation directly.
+
 - Reuse registered coordinate space and existing SHAPE Structure/Compose boundaries. Do not extend Extrude or 3MF packaging for decoration support in this phase.
+
 - Keep source interpretation, instance transforms, and color overrides separate.
+
 - Preserve authored geometry, logical colors, and source proportions unless explicitly overridden.
+
 - Do not introduce a generalized component-instance or dependency framework merely for anticipated future Models.
 
 ### Work
 
 1. Inspect current registered Artwork placement, SHAPE composition, component identities, and existing transformation helpers.
+
 2. Specify the smallest SHAPE configuration for a decoration source and multiple named instances.
+
 3. Define translation, uniform scaling, rotation, transform order, and registered-to-physical placement.
+
 4. Preserve independent instance identities when two instances share one SVG source.
+
 5. Define optional logical color overrides without silently replacing authored colors.
+
 6. Carry registered decoration geometry through canonical SVG manufacturing, preserving independent instance identities, transforms, and logical colors. Do not introduce new 3MF realization behavior in this phase.
+
 7. Validate unsupported source constructs, invalid references, transforms, and colors clearly.
+
 8. Preserve all existing SHAPE behavior when decorations are absent.
 
 ### TDD Work
 
-**RED:** One motif reused at two or more locations with different transforms, stable registration, separate identities, correct colors, and validation failures.
+**\*\*RED:\*\*** One motif reused at two or more locations with different transforms, stable registration, separate identities, correct colors, and validation failures.
 
-**GREEN:** Implement placement and decoration incorporation together using existing mechanisms.
+**\*\*GREEN:\*\*** Implement placement and decoration incorporation together using existing mechanisms.
 
-**VERIFY:** Build a representative decorated SHAPE into canonical SVG. Check registration, dimensions, independent instance identities, logical colors, and xTool Studio import behavior. Confirm existing 3MF workflows remain compatible without requiring new decoration extrusion support. Run required tests and quality checks.
+**\*\*VERIFY:\*\*** Build a representative decorated SHAPE into canonical SVG. Check registration, dimensions, independent instance identities, logical colors, and xTool Studio import behavior. Confirm existing 3MF workflows remain compatible without requiring new decoration extrusion support. Run required tests and quality checks.
 
 ### Completion
 
 Reusable SVG decorations participate in SHAPE manufacturing with independent transforms and semantic identities, without speculative infrastructure or regressions.
 
----
+**---**
 
-## Phase 6 — SHAPE Clipping and Deterministic Planar Composition
+## Phase 9 — SHAPE Clipping and Deterministic Planar Composition
 
-**Status:** OPEN — Specification and implementation pending.
+**\*\*Status:\*\*** OPEN — Specification and implementation pending.
 
 ### Purpose
 
@@ -491,112 +496,155 @@ This combines the former clipping and planar-composition phases because clipping
 ### Architectural Boundaries
 
 - SHAPE remains authoritative for its registered planar geometry, including the Shape boundary, Artwork, Inner Ridge, Outer Ridge, and other participating regions.
+
 - Clipping modifies registered planar geometry, not merely SVG visibility.
+
 - Planar precedence is distinct from physical Z-dimensionalization.
+
 - Preserve common registration, component identity, logical colors, and deterministic planar geometry.
-- Do not silently permit prohibited positive-area overlap between different logical colors.
+
+- Do not silently permit prohibited positive-area overlap between distinct vector material partitions. Distinguish raster display layering from 3D color-partition constraints; raster image pixels are not separate SHAPE material partitions.
+
 - Reuse existing planar overlap, subtraction, and partitioning machinery; prefer fixed semantic precedence over configurable ordering unless real use cases demand it.
+
 - Preserve existing default Artwork fitting and SHAPE composition.
+
 - Do not introduce new Extrude behavior or physical Z-partitioning requirements in this phase.
 
 ### Work
 
 1. Define selectable clipping regions initially considering Base, Artwork, Inner Ridge, and Outer Ridge.
+
 2. For each region, explicitly define whether it means enclosed area, occupied physical area, or another precise geometric domain.
+
 3. Define absent/empty-region behavior and how clipping interacts with transforms and color-separated components.
+
 4. Review current overlap precedence among existing SHAPE Features before adding decoration-specific behavior.
+
 5. Establish deterministic planar semantics for supported overlaps, distinguishing visible SVG layering, registered component ownership, and deferred physical partitioning.
+
 6. Clip against authoritative registered geometry and preserve resulting component identities.
+
 7. Reject ambiguous or unsupported overlap combinations with actionable diagnostics.
+
 8. Carry the resulting registered geometry into canonical SVG manufacturing, preserving component identities and deterministic planar relationships. Defer new raised/inlaid physical realization behavior.
 
 ### TDD Work
 
-**RED:** Boundary-crossing motifs clipped to different regions; missing-region validation; overlaps between decorations and representative SHAPE Features; cases with different logical colors.
+**\*\*RED:\*\*** Boundary-crossing motifs clipped to different regions; missing-region validation; overlaps between decorations and representative SHAPE Features; cases with different logical colors.
 
-**GREEN:** Implement only missing planar clipping, precedence, subtraction, or registration behavior.
+**\*\*GREEN:\*\*** Implement only missing planar clipping, precedence, subtraction, or registration behavior.
 
-**VERIFY:** Confirm that clipping changes registered planar geometry rather than only SVG display. Inspect canonical SVG output, including component boundaries, colors, registration, and overlap behavior. Confirm existing 3MF workflows remain compatible without introducing new extrusion semantics. Run required tests and quality checks.
+**\*\*VERIFY:\*\*** Confirm that clipping changes registered planar geometry rather than only SVG display. Inspect canonical SVG output, including component boundaries, colors, registration, and overlap behavior. Confirm existing 3MF workflows remain compatible without introducing new extrusion semantics. Run required tests and quality checks.
 
 ### Completion
 
 Supported clipping and overlap cases have documented, deterministic planar manufacturing semantics. Canonical SVG preserves intended registered regions and component identities, with no unintended changes to existing SHAPE configurations or existing 3MF behavior.
 
----
+**---**
 
-## Phase 7 — Artwork Scaling and Boundary Policies
+## Phase 10 — Artwork Scaling and Boundary Policies
 
-**Status:** OPEN — Specification and implementation pending.
+**\*\*Status:\*\*** OPEN — Specification and implementation pending.
 
 ### Purpose
 
 Permit incorporated Artwork to grow beyond its initial fitting region while preserving a deliberate relationship between Artwork extent, internal SHAPE regions, and the outer manufacturing boundary.
 
-The initial policy is **clip**. More expansive boundary behavior is deferred.
+The initial policy is **\*\*clip\*\***. More expansive boundary behavior is deferred.
 
 ### Architectural Boundaries
 
 - Existing Artwork fitting and registration remain the default.
+
 - Artwork scaling, clipping, nominal SHAPE boundary, and manufactured envelope are separate concepts.
+
 - Preserve aspect ratio, logical color identity, and registration.
+
 - Do not automatically enlarge the authoritative Shape envelope, alter `shape_size`, or change the outer cut contour when Artwork grows.
-- Reuse the placement, clipping, and composition contracts from Phases 5 and 6.
+
+- Reuse the placement, clipping, and composition contracts from Phases 8 and 9.
+
 - Do not implement `extend` or `expand` without a separate manufacturing specification.
 
 ### Work
 
 1. Review existing Artwork fit/scale behavior and the new SHAPE placement and clipping contracts.
+
 2. Define explicit enlargement beyond the initial Artwork fitting region.
+
 3. Establish initial `clip` semantics:
-   - Artwork may cross internal SHAPE regions.
-   - Artwork beyond the nominal SHAPE boundary is clipped.
-   - The authoritative Shape envelope, `shape_size`, and the outer cut contour remain unchanged.
+
+   - Artwork may cross internal SHAPE regions.
+
+   - Artwork beyond the nominal SHAPE boundary is clipped.
+
+   - The authoritative Shape envelope, `shape_size`, and the outer cut contour remain unchanged.
+
 4. Define interactions with ridges, labels, QR codes, and decorations using established planar precedence.
+
 5. Preserve correct registered planar geometry and canonical SVG manufacturing under the `clip` policy. Do not modify raised/inlaid physical realization behavior as part of this phase.
+
 6. Record `extend` and `expand` as deferred possibilities, not automatic consequences of scaling.
 
 ### TDD Work
 
-**RED:** Enlarged Artwork crosses an internal boundary and the nominal outer boundary while preserving aspect ratio, registration, component identity, and fixed Shape envelope and outer cut-contour dimensions.
+**\*\*RED:\*\*** Enlarged Artwork crosses an internal boundary and the nominal outer boundary while preserving aspect ratio, registration, component identity, and fixed Shape envelope and outer cut-contour dimensions.
 
-**GREEN:** Extend existing Artwork fitting and clipping rather than introducing an alternate composition path.
+**\*\*GREEN:\*\*** Extend existing Artwork fitting and clipping rather than introducing an alternate composition path.
 
-**VERIFY:** Check canonical SVG output for enlarged Artwork, clipping, fixed Shape dimensions, registration, and component identity. Confirm unchanged default Artwork fitting and existing 3MF compatibility. Run required tests and quality checks.
+**\*\*VERIFY:\*\*** Check canonical SVG output for enlarged Artwork, clipping, fixed Shape dimensions, registration, and component identity. Confirm unchanged default Artwork fitting and existing 3MF compatibility. Run required tests and quality checks.
 
 ### Completion
 
 Explicit Artwork enlargement is manufacturing-correct under the `clip` policy, and existing SHAPE dimensions and default Artwork behavior remain stable.
 
----
+**---**
 
-## Phase 8 — Hierarchical SVG Manufacturing Project Assembly
+## Phase 11 — Hierarchical SVG Manufacturing Project Assembly
 
-**Status:** OPEN — Architectural review, specification, and implementation pending.
+**\*\*Status:\*\*** OPEN — Architectural review, specification, and implementation pending.
 
 ### Purpose
 
 Combine multiple existing, independently manufacturable Products into one self-contained, hierarchically grouped SVG document for xTool Studio import.
 
-This is a **manufacturing project assembly operation**, not a new ARTWORK or SHAPE interpretation pipeline. It should consume completed Products without rebuilding their geometry.
+This is a **\*\*manufacturing project assembly operation\*\***, not a new ARTWORK or SHAPE interpretation pipeline. It should consume completed Products without rebuilding their geometry.
 
 ### Example Project
 
 ```text
+
 manufacturing-project.svg
+
 └── project
-    ├── coaster-front
-    │   ├── engraving
-    │   └── cut-outline
-    ├── coaster-back
-    │   └── engraving
-    ├── keychain-front
-    │   ├── engraving
-    │   └── cut-outline
-    ├── keychain-back
-    │   └── engraving
-    └── sticker-front
-        ├── printable-artwork
-        └── cut-contour
+
+    ├── coaster-front
+
+    │   ├── engraving
+
+    │   └── cut-outline
+
+    ├── coaster-back
+
+    │   └── engraving
+
+    ├── keychain-front
+
+    │   ├── engraving
+
+    │   └── cut-outline
+
+    ├── keychain-back
+
+    │   └── engraving
+
+    └── sticker-front
+
+        ├── printable-artwork
+
+        └── cut-contour
+
 ```
 
 Each product or product face has an independent position within the project workspace.
@@ -604,24 +652,39 @@ Each product or product face has an independent position within the project work
 ### Architectural Boundaries
 
 - Prefer application-level assembly of existing manufacturing Products; select the exact boundary after reviewing current Product identity and publication mechanisms.
+
 - Preserve source Products unchanged and avoid retracing, extruding, repackaging 3MF, or reassigning printer colors.
+
 - Keep XTS-specific assumptions outside the generic engine.
+
 - Distinguish SVG grouping and semantic operation identities from XTS processing layers and actual machine settings.
+
 - Do not assume SVG IDs, colors, or groups automatically create XTS processing layers.
+
 - Do not depend on native `.xs` generation or undocumented XTS metadata.
+
 - Preserve standalone SVG and 3MF manufacturing behavior.
 
 ### Required Behavior
 
 1. Accept multiple existing manufacturing Products.
+
 2. Produce one outer project group with each product as an immediate named child group.
+
 3. Preserve meaningful nested manufacturing component groups without unnecessary wrappers.
+
 4. Support native vector geometry and embedded raster content.
+
 5. Preserve physical size, transparency, transforms, orientation, and artwork registration.
+
 6. Support independent positioning of product groups in one workspace.
+
 7. Resolve identifier collisions and references, including SVG definitions and nested coordinate systems.
+
 8. Produce deterministic, self-contained SVG.
+
 9. Preserve source Products and their semantic operation/component identities.
+
 10. Permit independently assigning engraving, cutting, and printing operations in XTS after import.
 
 ### Grouping Acceptance Contract
@@ -629,29 +692,38 @@ Each product or product face has an independent position within the project work
 The intended interaction is:
 
 1. Import the combined SVG as one grouped manufacturing project.
+
 2. Ungroup once to expose individual product groups.
+
 3. Ungroup an individual product to expose its immediate manufacturing components.
+
 4. Leave other product groups intact.
+
 5. Assign processing settings to intended components without unintentionally affecting unrelated Products.
 
-**XTS behavior must be observed, not inferred.** If XTS changes the authored hierarchy, document the observed behavior and revise the export contract before considering the phase complete.
+**\*\*XTS behavior must be observed, not inferred.\*\*** If XTS changes the authored hierarchy, document the observed behavior and revise the export contract before considering the phase complete.
 
 ### TDD Work
 
-**RED**
+**\*\*RED\*\***
 
 - Assemble multiple representative coaster, keychain, and sticker Products.
+
 - Verify exact group depth and stable, unique IDs.
+
 - Preserve physical dimensions, independent placement, and nested component identities.
+
 - Preserve embedded raster data, SVG definitions, and internal references.
+
 - Verify deterministic output and unchanged source Products.
+
 - Reject unsupported or incompatible Product representations clearly.
 
-**GREEN**
+**\*\*GREEN\*\***
 
 Implement the smallest reusable assembly operation using established Product, SVG, coordinate, and registration mechanisms. Do not add a new Model, Stage, or generalized project framework without a demonstrated architectural need.
 
-**VERIFY**
+**\*\*VERIFY\*\***
 
 Import representative assemblies into xTool Studio and verify grouping, ungrouping, dimensions, raster/vector registration, and independent processing assignments. Run required tests and quality checks.
 
@@ -659,22 +731,26 @@ Import representative assemblies into xTool Studio and verify grouping, ungroupi
 
 Multiple existing Products can be imported as one manufacturing SVG, remain independently identifiable and positionable, and retain usable component grouping and registration in XTS.
 
----
+**---**
 
 ## Deferred Work and Explicit Non-Goals
 
 These are not additional active phases. Revisit them only when a real manufacturing requirement justifies a separate specification and plan:
 
+- **Depth-map generation** using a future `artwork_depth` Realization (potentially Depth Anything V2 Small), including model selection, source masking, normalization, depth-map provenance, and licensing review.
+- **Depth-map grayscale compatibility validation:** compare an ARTWORK depth map's actual minimum/maximum grayscale values with existing SHAPE component fills (for example `shape_outer_ridge_color`, `shape_border_fill_color`, and `shape_label_color`), warn about or reject specifically defined incompatible depth relationships, and preserve intended component heights. Do not add depth-specific SHAPE parameters by default.
+- **Depth-map xTool manufacturing calibration:** verify whether xTool Studio treats vector SVG grayscale fills and embedded grayscale rasters consistently, including the relationship between luminance, power, passes, and physical material removal. A grayscale value does not itself guarantee a particular removal depth.
+- Native height-field-to-mesh or 3MF relief generation, if future manufacturing needs it. Ordinary raster-preserving SHAPE SVG composition must not depend on it.
 - Native `.xs` multi-canvas project generation or reverse-engineering.
 - A generalized component-instance framework or new BANNER Model.
-- Multiple embedded raster images, mixed image/vector SVG input, external image links, or arbitrary SVG rendering beyond the initial Phase 3 contract.
+- Multiple embedded raster images, mixed image/vector SVG input, external image links, or arbitrary SVG rendering beyond Phase 6's initial contract.
 - Artwork boundary `extend` or `expand` policies.
 - Configurable general-purpose layer ordering when fixed semantic precedence suffices.
 - Automatic assignment of xTool processing parameters from arbitrary SVG groups or colors.
 - Broader project management, nesting optimization, or machine-specific manufacturing orchestration.
-- SHAPE physical realization changes, including optional Base, zero-volume component omission, uniform Z-raise semantics, revised raised/inlaid component partitioning, and independent 3MF objects. Preserve the agreed design considerations in `FUTURE.md`.
+- SHAPE physical realization changes, including optional Base, zero-volume component omission, uniform Z-raise semantics, revised raised/inlaid component partitioning, and independent 3MF objects. Preserve agreed design considerations in `FUTURE.md`.
 - Physical extrusion of new reusable decorations, clipping behaviors, and enlarged Artwork beyond existing supported 3MF capabilities.
-- Perimeter physical realization, including `shape_perimeter_fill_raise`, physical Base partitioning, and independent 3MF geometry. First-class planar Perimeter registration, `shape_perimeter_width`, and `shape_perimeter_fill_color` are active in Phase 4.
+- Perimeter physical realization, including `shape_perimeter_fill_raise`, physical Base partitioning, and independent 3MF geometry. First-class planar Perimeter registration, `shape_perimeter_width`, and `shape_perimeter_fill_color` remain active in Phase 7.
 
 ## Phase Execution Checklist
 
@@ -692,6 +768,8 @@ For each phase or independently testable slice:
 
 ## Next Action
 
-Begin with **Phase 1, ARTWORK Envelope and Source-Color Correctness**. Before RED tests, decide the default policy for automatic color discovery and the precedence of explicit `artifact_color_count` overrides. If immediate raster engraving throughput becomes more pressing, Phase 2 may be brought forward after isolating the critical envelope regression.
+Begin with **Phase 1 — Cross-Realization ARTWORK Dependencies for SHAPE**. Inspect the existing SHAPE Product dependency declaration, configuration resolution, Realization identities, planner closure, and fingerprint/freshness behavior. Credit existing support before writing new tests. Resolve the smallest normative mechanism for explicit ARTWORK Realization selection while preserving the implicit `artwork_default` dependency. Then establish RED tests for two SHAPE Realizations selecting different ARTWORK Realizations.
+
+**Do not implement new depth-map processing, depth parameters, physical Extrude changes, or native xTool project formats as part of this first slice.**
 
 No implementation work is authorized merely by adopting this plan.
