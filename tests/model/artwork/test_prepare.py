@@ -3249,3 +3249,96 @@ def test_discover_png_color_count_ignores_multicolor_antialiasing() -> None:
 
     finally:
         image.close()
+
+
+def test_prepare_warns_when_vector_tracing_reduces_source_colors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    Reducing discovered Artifact colors to a configured vector
+    tracing maximum is a potentially lossy operation.
+
+    Prepare must warn about the reduction while preserving the
+    supported multicolor tracing workflow.
+    """
+    import logging
+
+    source = tmp_path / "source.png"
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    rgba = np.zeros((64, 64, 4), dtype=np.uint8)
+
+    # Three substantial, distinctly colored authored regions.
+    rgba[8:24, 8:56] = (255, 0, 0, 255)
+    rgba[24:40, 8:56] = (0, 255, 0, 255)
+    rgba[40:56, 8:56] = (0, 0, 255, 255)
+
+    Image.fromarray(
+        rgba,
+        mode="RGBA",
+    ).save(source)
+
+    context = StubContext(
+        inputs={
+            "source": source,
+        },
+        outputs={
+            "trace": trace,
+            "envelope": envelope,
+        },
+        resolver=StubResolver(
+            {
+                "artwork_envelope_mode": "alpha",
+                "artifact_color_count": 2,
+            }
+        ),
+    )
+
+    traced_counts: list[int] = []
+
+    def trace_multicolor(
+        source_path: Path,
+        output_path: Path,
+        *,
+        colors: int,
+    ) -> None:
+        assert source_path.is_file()
+
+        traced_counts.append(colors)
+
+        output_path.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg"/>',
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        prepare,
+        "_trace_multicolor",
+        trace_multicolor,
+    )
+
+    monkeypatch.setattr(
+        prepare,
+        "_clip_trace_to_envelope",
+        lambda trace_path, artwork_envelope: None,
+    )
+
+    with caplog.at_level(logging.INFO):
+        prepare.execute(context)  # type: ignore[arg-type]
+
+    # The existing supported reduction must still succeed.
+    assert traced_counts == [2]
+    assert trace.is_file()
+    assert envelope.is_file()
+
+    # A potentially lossy reduction must be visible as a warning.
+    warnings = [
+        record.getMessage().lower()
+        for record in caplog.records
+        if record.levelno == logging.WARNING
+    ]
+
+    assert any("reduc" in message and "3" in message and "2" in message for message in warnings)

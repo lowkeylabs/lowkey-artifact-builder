@@ -321,7 +321,7 @@ def execute(
     )
 
     if discovered_color_count > maximum_color_count:
-        logger.info(
+        logger.warning(
             "ARTWORK: Reducing source artwork from %d to "
             "at most %d colors through Inkscape tracing.",
             discovered_color_count,
