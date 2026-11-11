@@ -30,11 +30,13 @@ from lowkey_artifact_builder.engine import (
     execute_artifact_build,
     execute_build,
 )
+from lowkey_artifact_builder.engine.plan import create_build_plans
 from lowkey_artifact_builder.formats.threemf import (
     CORE_NS,
     component_name,
     load_stl,
 )
+from lowkey_artifact_builder.model.specs import ProductRef
 
 # Mark all tests in this suite as slow
 
@@ -56,6 +58,9 @@ def _build_clean_bg_house_artwork(
     regression case under investigation. Its physical artwork_size matches
     the real artifact configuration, although registered vector Artwork
     remains dimension-independent.
+
+    Target the packaged manufacturing Product so independent source and
+    raster-preserving Stages are excluded from the vector workflow.
     """
 
     fixture = Path(__file__).parents[2] / "assets" / "clean_bg_house.png"
@@ -91,14 +96,23 @@ artwork_island_connectivity = 8
         project_root=project_root,
     )
 
-    plan = create_build_plan(
+    target = ProductRef(
+        artifact="clean_bg_house",
+        model="artwork",
+        realization="artwork_default",
+        stage="package",
+        product="artifact",
+    )
+
+    plans = create_build_plans(
         "clean_bg_house",
+        targets=(target,),
         project_root=project_root,
     )
 
-    execute_build(
-        plan,
-    )
+    assert len(plans) == 1
+
+    execute_build(plans[0])
 
     return project_root / "artifacts" / "clean_bg_house" / "artwork" / "artwork_default"
 
@@ -417,14 +431,16 @@ def _build_artwork(
     project_root: Path,
 ) -> Path:
     """
-    Build the deterministic artwork fixture and return its realization
-    directory.
+    Build the deterministic Artwork manufacturing fixture.
+
+    Target the packaged 3MF Product so independent source and
+    raster-preserving Stages do not execute as part of the
+    vector manufacturing workflow.
     """
 
     _write_workspace(project_root)
 
     source = project_root / "source.png"
-
     _write_source(source)
 
     write_artifact_config(
@@ -436,12 +452,23 @@ def _build_artwork(
         project_root=project_root,
     )
 
-    plan = create_build_plan(
+    target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="artwork_default",
+        stage="package",
+        product="artifact",
+    )
+
+    plans = create_build_plans(
         "example",
+        targets=(target,),
         project_root=project_root,
     )
 
-    execute_build(plan)
+    assert len(plans) == 1
+
+    execute_build(plans[0])
 
     return project_root / "artifacts" / "example" / "artwork" / "artwork_default"
 
@@ -940,7 +967,6 @@ def test_artwork_pipeline_reuses_canonical_vector_across_named_realizations(
     _write_workspace(tmp_path)
 
     source = tmp_path / "source.png"
-
     _write_source(source)
 
     write_artifact_config(
@@ -976,12 +1002,14 @@ def test_artwork_pipeline_reuses_canonical_vector_across_named_realizations(
     execute_artifact_build(
         "example",
         realization="ornament",
+        product="3mf",
         project_root=tmp_path,
     )
 
     execute_artifact_build(
         "example",
         realization="coaster",
+        product="3mf",
         project_root=tmp_path,
     )
 
@@ -1248,19 +1276,14 @@ def test_artwork_pipeline_packages_participating_outer_ridge(
     identity. Package applies the configured physical Outer Ridge color to
     the final 3MF component.
 
-    The test enters through create_build_plan() and execute_build() rather
-    than invoking extrusion or packaging stages directly.
+    The test enters through the public planner and execution engine,
+    explicitly targeting the packaged manufacturing Product.
     """
 
-    _write_workspace(
-        tmp_path,
-    )
+    _write_workspace(tmp_path)
 
     source = tmp_path / "source.png"
-
-    _write_source(
-        source,
-    )
+    _write_source(source)
 
     write_artifact_config(
         "example",
@@ -1273,14 +1296,23 @@ def test_artwork_pipeline_packages_participating_outer_ridge(
         project_root=tmp_path,
     )
 
-    plan = create_build_plan(
+    target = ProductRef(
+        artifact="example",
+        model="artwork",
+        realization="artwork_default",
+        stage="package",
+        product="artifact",
+    )
+
+    plans = create_build_plans(
         "example",
+        targets=(target,),
         project_root=tmp_path,
     )
 
-    execute_build(
-        plan,
-    )
+    assert len(plans) == 1
+
+    execute_build(plans[0])
 
     realization = tmp_path / "artifacts" / "example" / "artwork" / "artwork_default"
 
@@ -1295,9 +1327,7 @@ def test_artwork_pipeline_packages_participating_outer_ridge(
 
     assert outer_ridge_stl.is_file()
 
-    ridge_mesh = load_stl(
-        outer_ridge_stl,
-    )
+    ridge_mesh = load_stl(outer_ridge_stl)
 
     assert ridge_mesh.vertices
     assert ridge_mesh.triangles
@@ -1330,13 +1360,9 @@ def test_artwork_pipeline_packages_participating_outer_ridge(
     assert artifact.is_file()
     assert artifact.stat().st_size > 0
 
-    model = _read_3mf_model(
-        artifact,
-    )
+    model = _read_3mf_model(artifact)
 
-    namespace = {
-        "m": CORE_NS,
-    }
+    namespace = {"m": CORE_NS}
 
     objects = model.findall(
         "./m:resources/m:object",
@@ -1437,13 +1463,25 @@ artwork_envelope_mode = "shrink-wrap"
         project_root=tmp_path,
     )
 
-    # Enter through the public planner and execution engine.
-    plan = create_build_plan(
+    # Target the packaged manufacturing Product through the
+    # public planner and execution engine.
+    target = ProductRef(
+        artifact="bug06",
+        model="artwork",
+        realization="artwork_default",
+        stage="package",
+        product="artifact",
+    )
+
+    plans = create_build_plans(
         "bug06",
+        targets=(target,),
         project_root=tmp_path,
     )
 
-    execute_build(plan)
+    assert len(plans) == 1
+
+    execute_build(plans[0])
 
     realization = tmp_path / "artifacts" / "bug06" / "artwork" / "artwork_default"
 

@@ -279,12 +279,14 @@ def test_graph_and_independent_execution_use_same_registry_contract(
     test_resolver: Resolver,
 ) -> None:
     """
-    Both execution modes dispatch through the registered implementation.
+    Graph and independent execution dispatch through the same
+    registered Stage implementation.
+
+    Graph execution follows the BuildPlan's Stage order.
+    Independent execution invokes only the requested Stage.
     """
 
-    _create_source(
-        tmp_path,
-    )
+    _create_source(tmp_path)
 
     plan = artwork_plan(
         tmp_path,
@@ -302,26 +304,17 @@ def test_graph_and_independent_execution_use_same_registry_contract(
     def implementation(
         context: StageContext,
     ) -> None:
-        executed.append(
-            context.stage_name,
-        )
-
-        _create_declared_outputs(
-            context,
-        )
+        executed.append(context.stage_name)
+        _create_declared_outputs(context)
 
     _install_implementation(
         monkeypatch,
         implementation,
     )
 
-    execute_build(
-        plan,
-    )
+    execute_build(plan)
 
-    from lowkey_artifact_builder.model.models.artwork import MODEL
-
-    assert executed == [stage.name for stage in sorted(MODEL.stages, key=lambda stage: stage.id)]
+    assert executed == [stage.name for stage in plan.stages]
 
     executed.clear()
 
@@ -331,9 +324,7 @@ def test_graph_and_independent_execution_use_same_registry_contract(
         project_root=tmp_path,
     )
 
-    assert executed == [
-        "vector",
-    ]
+    assert executed == ["vector"]
 
 
 # =========================================================

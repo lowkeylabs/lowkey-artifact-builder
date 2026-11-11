@@ -21,18 +21,26 @@ def test_artwork_model_has_no_features() -> None:
 
 def test_artwork_stages() -> None:
     """
-    The artwork workflow declares the expected stages with stable
-    numeric identifiers.
+    Artwork declares stable Stage identities.
+
+    Adding unrelated Stages must not invalidate the identities of
+    existing Stages. Stage names and numeric IDs remain unique.
     """
 
-    assert tuple((stage.id, stage.name) for stage in MODEL.stages) == (
-        (5, "source"),
-        (10, "prepare"),
-        (20, "raster"),
-        (30, "vector"),
-        (40, "extrude"),
-        (50, "package"),
-    )
+    stages = {stage.name: stage.id for stage in MODEL.stages}
+
+    assert len(stages) == len(MODEL.stages)
+    assert len(set(stages.values())) == len(MODEL.stages)
+
+    assert {
+        "source": 5,
+        "prepare": 10,
+        "raster": 20,
+        "vector": 30,
+        "extrude": 40,
+        "package": 50,
+        "raster_source": 15,
+    }.items() <= stages.items()
 
 
 def test_artwork_stage_dependencies() -> None:

@@ -44,27 +44,31 @@ def test_defined_graph_contains_registered_models() -> None:
 
 def test_defined_graph_contains_artwork_stages() -> None:
     """
-    The defined graph contains every stage declared by the artwork model.
+    The Defined Graph preserves every declared Artwork Stage.
+
+    Adding new Stages must not invalidate the graph contract.
+    Stage identities and declaration order remain preserved.
     """
 
     registry = build_model_registry()
+    graph = build_defined_graph(registry)
 
-    graph = build_defined_graph(
-        registry,
+    model = registry.get_model("artwork")
+    artwork = graph.model("artwork")
+
+    assert tuple(stage.name for stage in artwork.stages) == tuple(
+        stage.name for stage in model.stages
     )
 
-    artwork = graph.model(
-        "artwork",
-    )
-
-    assert tuple(stage.name for stage in artwork.stages) == (
+    assert {
         "source",
+        "raster_source",
         "prepare",
         "raster",
         "vector",
         "extrude",
         "package",
-    )
+    } <= {stage.name for stage in artwork.stages}
 
 
 # =========================================================

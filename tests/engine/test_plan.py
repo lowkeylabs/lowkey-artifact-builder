@@ -184,33 +184,21 @@ def test_create_build_plan_for_artwork(
     artwork_plan,
 ) -> None:
     """
-    A configured artwork artifact produces the complete artwork build
-    workflow in declared stage order.
+    A configured Artwork artifact plans every declared Stage
+    in Model declaration order.
     """
 
-    plan = artwork_plan(
-        tmp_path,
-        monkeypatch,
-    )
+    from lowkey_artifact_builder.model.models.artwork import MODEL
 
-    assert isinstance(
-        plan,
-        BuildPlan,
-    )
+    plan = artwork_plan(tmp_path, monkeypatch)
 
+    assert isinstance(plan, BuildPlan)
     assert plan.artifact_id == "example"
     assert plan.model_name == "artwork"
     assert plan.project_root == tmp_path
     assert plan.artifact_dir == (tmp_path / "artifacts" / "example")
 
-    assert tuple(stage.name for stage in plan.stages) == (
-        "source",
-        "prepare",
-        "raster",
-        "vector",
-        "extrude",
-        "package",
-    )
+    assert tuple(stage.name for stage in plan.stages) == tuple(stage.name for stage in MODEL.stages)
 
 
 def test_create_build_plan_retains_resolver(
@@ -249,25 +237,20 @@ def test_create_build_plan_resolves_external_input(
     artwork_plan,
 ) -> None:
     """
-    Planning resolves external filesystem inputs to both their original
-    source and artifact-owned materialization paths.
+    Planning resolves the Prepare Stage's external source
+    to its original and materialized paths.
     """
 
-    plan = artwork_plan(
-        tmp_path,
-        monkeypatch,
-    )
+    plan = artwork_plan(tmp_path, monkeypatch)
 
-    prepare = plan.stages[0]
+    prepare = next(stage for stage in plan.stages if stage.name == "prepare")
 
     assert len(prepare.inputs) == 1
 
     source = prepare.inputs[0]
 
     assert source.name == "source"
-
     assert source.source_path == (tmp_path / "source.png")
-
     assert source.path == (plan.artifact_dir / "artifact.png")
 
 
@@ -277,35 +260,53 @@ def test_create_build_plan_materializes_product_paths(
     artwork_plan,
 ) -> None:
     """
-    Declarative products are materialized using the canonical
-    artifact/model/realization/stage hierarchy.
+    Declared Products use canonical Stage-local paths.
+
+    Additional Stages must not invalidate existing Product
+    locations or identities.
     """
 
-    plan = artwork_plan(
-        tmp_path,
-        monkeypatch,
-    )
+    plan = artwork_plan(tmp_path, monkeypatch)
 
     products = {
-        stage.name: tuple(product.path for product in stage.products) for stage in plan.stages
+        stage.name: {product.spec.name: product.path for product in stage.products}
+        for stage in plan.stages
     }
 
-    artifact_dir = tmp_path / "artifacts" / "example"
+    root = tmp_path / "artifacts" / "example" / "artwork" / "artwork_default"
 
-    assert products == {
-        "source": (
-            artifact_dir / "artwork" / "artwork_default" / "5-source" / "artifact.source",
-            artifact_dir / "artwork" / "artwork_default" / "5-source" / "metadata.json",
-        ),
-        "prepare": (
-            artifact_dir / "artwork" / "artwork_default" / "10-prepare" / "trace.svg",
-            artifact_dir / "artwork" / "artwork_default" / "10-prepare" / "envelope.svg",
-        ),
-        "raster": (artifact_dir / "artwork" / "artwork_default" / "20-raster" / "products.json",),
-        "vector": (artifact_dir / "artwork" / "artwork_default" / "30-vector" / "products.json",),
-        "extrude": (artifact_dir / "artwork" / "artwork_default" / "40-extrude" / "products.json",),
-        "package": (artifact_dir / "artwork" / "artwork_default" / "50-package" / "artifact.3mf",),
+    required = {
+        "source": {
+            "artifact": root / "5-source" / "artifact.source",
+            "metadata": root / "5-source" / "metadata.json",
+        },
+        "raster_source": {
+            "artifact": root / "15-raster_source" / "artifact.png",
+            "metadata": root / "15-raster_source" / "metadata.json",
+        },
+        "prepare": {
+            "trace": root / "10-prepare" / "trace.svg",
+            "envelope": root / "10-prepare" / "envelope.svg",
+        },
+        "raster": {
+            "manifest": root / "20-raster" / "products.json",
+        },
+        "vector": {
+            "manifest": root / "30-vector" / "products.json",
+        },
+        "extrude": {
+            "manifest": root / "40-extrude" / "products.json",
+        },
+        "package": {
+            "artifact": root / "50-package" / "artifact.3mf",
+        },
     }
+
+    for stage_name, expected_products in required.items():
+        assert stage_name in products
+
+        for product_name, expected_path in expected_products.items():
+            assert products[stage_name][product_name] == expected_path
 
 
 def test_create_build_plan_preserves_dependencies(
@@ -314,31 +315,24 @@ def test_create_build_plan_preserves_dependencies(
     artwork_plan,
 ) -> None:
     """
-    Planned stages preserve their declared same-Realization dependencies.
-
-    Artwork Extrude consumes registered Vector geometry through a Product
-    dependency, so Vector is not a local Stage dependency of Extrude.
-    Package remains locally dependent on Extrude.
+    Planned Artwork Stages preserve their declared local
+    dependencies, including independent representation Stages.
     """
 
-    plan = artwork_plan(
-        tmp_path,
-        monkeypatch,
-    )
+    plan = artwork_plan(tmp_path, monkeypatch)
 
     dependencies = {stage.name: stage.dependencies for stage in plan.stages}
 
-    assert dependencies == {
-        "source": (),
-        "prepare": (),
-        "raster": ("prepare",),
-        "vector": (
-            "prepare",
-            "raster",
-        ),
-        "extrude": (),
-        "package": ("extrude",),
-    }
+    assert dependencies["source"] == ()
+    assert dependencies["raster_source"] == ()
+    assert dependencies["prepare"] == ()
+    assert dependencies["raster"] == ("prepare",)
+    assert dependencies["vector"] == (
+        "prepare",
+        "raster",
+    )
+    assert dependencies["extrude"] == ()
+    assert dependencies["package"] == ("extrude",)
 
 
 def test_create_build_plan_targets_artwork_registered_vector_geometry(
@@ -1193,28 +1187,20 @@ def test_create_build_plan_without_targets_is_complete_build(
     artwork_plan,
 ) -> None:
     """
-    Planning without product targets preserves complete-build behavior.
+    Untargeted planning includes every declared Model Stage.
 
-    Phase 7 product targeting must not change the existing default
-    behavior of planning every participating stage.
+    Adding a Stage extends the complete plan without changing
+    product-targeted planning behavior.
     """
 
-    plan = artwork_plan(
-        tmp_path,
-        monkeypatch,
-    )
+    from lowkey_artifact_builder.model.models.artwork import MODEL
+
+    plan = artwork_plan(tmp_path, monkeypatch)
 
     assert plan.targets is None
     assert plan.targeted is False
 
-    assert tuple(stage.name for stage in plan.stages) == (
-        "source",
-        "prepare",
-        "raster",
-        "vector",
-        "extrude",
-        "package",
-    )
+    assert tuple(stage.name for stage in plan.stages) == tuple(stage.name for stage in MODEL.stages)
 
 
 def test_create_build_plan_targets_vector_product(

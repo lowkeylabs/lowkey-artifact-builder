@@ -109,6 +109,37 @@ STAGES = (
         ),
     ),
     StageSpec(
+        id=15,
+        name="raster_source",
+        description=(
+            "Register raster Artwork as a PNG without color separation or vector tracing."
+        ),
+        inputs=(
+            InputSpec(
+                name="source",
+                parameter="source",
+                path="artifact.png",
+                description="Materialized original Artwork source.",
+            ),
+        ),
+        parameters=(
+            "artwork_representation",
+            "artwork_processing",
+        ),
+        products=(
+            ProductSpec(
+                name="artifact",
+                path="artifact.png",
+                description="Raster-preserving PNG Artwork.",
+            ),
+            ProductSpec(
+                name="metadata",
+                path="metadata.json",
+                description="Raster format, dimensions, and provenance.",
+            ),
+        ),
+    ),
+    StageSpec(
         id=10,
         name="prepare",
         description=(

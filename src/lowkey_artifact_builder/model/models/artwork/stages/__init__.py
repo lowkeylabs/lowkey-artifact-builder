@@ -28,6 +28,7 @@ from .extrude import execute as execute_extrude
 from .package import execute as execute_package
 from .prepare import execute as execute_prepare
 from .raster import execute as execute_raster
+from .raster_source import execute as execute_raster_source
 from .source import execute as execute_source
 from .vector import execute as execute_vector
 
@@ -76,6 +77,12 @@ def register_stage_implementations(
         "artwork",
         "source",
         execute_source,
+    )
+
+    registry.register(
+        "artwork",
+        "raster_source",
+        execute_raster_source,
     )
 
     registry.register(

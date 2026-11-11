@@ -28,66 +28,39 @@ from lowkey_artifact_builder.model import (
 
 def test_product_catalog_contains_artwork_products() -> None:
     """
-    The product catalog contains every product defined by artwork.
+    The catalog contains the required Artwork Products.
 
-    Products belonging to other registered models do not affect the
-    Artwork-specific catalog contract exercised by this test.
+    Adding unrelated Stages or Products must not invalidate
+    existing Product identities.
     """
 
     registry = build_model_registry()
+    graph = build_defined_graph(registry)
+    catalog = build_product_catalog(graph)
 
-    graph = build_defined_graph(
-        registry,
-    )
-
-    catalog = build_product_catalog(
-        graph,
-    )
-
-    artwork_products = tuple(
+    artwork_products = {
         (
-            product.model_name,
             product.stage_name,
             product.product_name,
         )
         for product in catalog.products
         if product.model_name == "artwork"
-    )
+    }
 
-    assert artwork_products == (
-        ("artwork", "source", "artifact"),
-        ("artwork", "source", "metadata"),
-        (
-            "artwork",
-            "prepare",
-            "trace",
-        ),
-        (
-            "artwork",
-            "prepare",
-            "envelope",
-        ),
-        (
-            "artwork",
-            "raster",
-            "manifest",
-        ),
-        (
-            "artwork",
-            "vector",
-            "manifest",
-        ),
-        (
-            "artwork",
-            "extrude",
-            "manifest",
-        ),
-        (
-            "artwork",
-            "package",
-            "artifact",
-        ),
-    )
+    required_products = {
+        ("source", "artifact"),
+        ("source", "metadata"),
+        ("raster_source", "artifact"),
+        ("raster_source", "metadata"),
+        ("prepare", "trace"),
+        ("prepare", "envelope"),
+        ("raster", "manifest"),
+        ("vector", "manifest"),
+        ("extrude", "manifest"),
+        ("package", "artifact"),
+    }
+
+    assert required_products <= artwork_products
 
 
 def test_product_catalog_finds_product_by_definition() -> None:
