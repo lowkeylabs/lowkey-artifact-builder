@@ -118,7 +118,6 @@ The requested Product and its transitive dependencies determine the minimum work
 
 | Order | Phase | Consolidates | Primary result |
 | --- | --- | --- | --- |
-| 2 | First-Class SHAPE SVG Products | Terminal SVG build path and manufacturing identity | Independent SVG Product for every SHAPE Realization, without unnecessary 3MF work |
 | 3 | ARTWORK Representation and Source Correctness | BUG-006, BUG-004, related BUG-002; representation policy | Correct envelope and source handling across representation-specific ARTWORK Realizations |
 | 4 | Raster-Preserving SVG Manufacturing | BUG-005 | Embedded raster from a selected ARTWORK Realization in terminal SHAPE SVG |
 | 5 | Multi-Realization SVG Manufacturing Acceptance | End-to-end selection, isolation, and xTool acceptance | One source yields independently manufacturable raster/vector SVGs and compatible 3MF |
@@ -130,39 +129,6 @@ The requested Product and its transitive dependencies determine the minimum work
 | 11 | Hierarchical SVG Manufacturing Project Assembly | Manufacturing project assembly | Grouped SVG containing independently manufacturable Products |
 
 **Dependency policy:** Phase 1 establishes correct cross-Realization Product dependency identity; Phase 2 makes SHAPE SVG an independently requested first-class Product; Phase 3 resolves source correctness and representation-specific preparation; Phase 4 makes raster representation composable; Phase 5 verifies the combined end-to-end manufacturing contract. Phases 6–10 extend supported source and planar composition features; Phase 11 assembles existing Products. Independent defect fixes may move earlier when required for manufacturing correctness, but must not undermine the dependency and Product contracts.
-
----
-
-## Phase 2 — First-Class SHAPE SVG Products
-
-**Status:** OPEN — Audit existing Compose Products and build-target selection before changing behavior.
-
-### Purpose
-
-Make a manufacturing-ready SVG the primary, independently requested Product of each SHAPE Realization. Preserve 3MF as an additional supported output, not a prerequisite for xTool manufacturing.
-
-### Contract to Resolve
-
-1. Inspect current SHAPE Structure/Prepare/Compose/Extrude/Package registration, Product declarations, default build target, requested-Product selection, and publication paths. Credit existing terminal SVG behavior where already supported.
-2. Define the stable, Realization-qualified identity and output location for each SHAPE SVG Product. Multiple SHAPE Realizations of one Artifact must produce separate SVG files without overwriting one another.
-3. A request for a SHAPE SVG must build its required ARTWORK Product and SHAPE prerequisites but **must not** execute Extrude, Package, 3MF color assignment, or unrelated Realizations.
-4. A 3MF request may continue through existing extrusion and packaging stages, consuming the appropriate intermediate Products without altering SVG identity.
-5. Canonical SVGs must preserve physical dimensions, coordinate registration, semantic component identity, labels, ridges, border fills, artwork placement, and manufacturing-relevant grouping.
-6. SVG must remain self-contained and deterministic. An individual SHAPE SVG must be independently usable in xTool Studio without requiring project assembly.
-7. Clarify the ordinary `artifact build` default and explicit Product selection in the application/CLI contract. Prioritize the simplest xTool workflow without silently breaking existing default 3MF expectations; specify migration or explicit selection where needed.
-8. Distinguish authored colors, SVG grouping, and logical manufacturing components from actual xTool Studio operations. Do not infer cutting, engraving, or depth calibration solely from SVG color.
-
-### TDD Work
-
-**RED:** Build two SHAPE Realizations of the same Artifact as independent SVG Products. Verify paths, identity, registration, content, deterministic rebuilds, dependency closure, and absence of unnecessary Extrude/Package. Verify a legacy 3MF request still works.
-
-**GREEN:** Reuse existing Compose Stage/Product and generic requested-Product planning. Change only the missing publication, selection, or application behavior.
-
-**VERIFY:** Import representative standalone SVGs into xTool Studio; check dimensions, component grouping, and separate processing assignment. Run regression and quality suites.
-
-### Completion
-
-Each requested SHAPE Realization yields its own first-class, manufacturing-ready SVG, independent of 3MF generation and independently importable into xTool Studio.
 
 ---
 
