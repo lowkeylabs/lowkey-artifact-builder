@@ -519,13 +519,26 @@ Each consumed Artwork color layer retains its logical Artifact-color
 identity. The registered Artwork dependency does not require or carry a
 standalone Artwork Package printer assignment into Shape.
 
+
 ## Artwork Dependency
 
-Registered Artwork is supplied through the normal artifact
-product-dependency mechanism.
+Registered Artwork is supplied through the generic Product dependency
+mechanism defined in `ARCHITECTURE.md`.
 
-Shape depends on the Artwork product it consumes, not on the completed
-Artwork artifact.
+Each Shape Realization independently selects the Artwork producer
+Artifact and Realization through its Product dependency binding.
+
+Different Shape Realizations may consume registered Artwork from
+different Artwork Realizations, including Realizations belonging to
+the same Artifact or to different Artifacts.
+
+The selected producer must satisfy the declared registered Artwork
+Product contract. Shape does not select a producer by inspecting
+generated directories or assuming a particular Artwork Realization
+name.
+
+Shape depends on the registered Artwork Product it consumes, not
+on completion of the producer's entire Artwork Realization.
 
 For the current Artwork model, consuming registered vector Artwork
 requires the upstream dependency:
@@ -537,10 +550,14 @@ artwork/raster
       ↓
 artwork/vector
       ↓
-    shape
+shape/compose
 ```
 
-Artwork stages after the consumed vector product are not prerequisites.
+For SVG sources, the Artwork model may satisfy its vector dependency
+through prepared native vector regions without executing rasterization,
+as defined by the Artwork model.
+
+Artwork stages after the consumed vector Product are not prerequisites.
 
 In particular, Shape does not require:
 
@@ -551,8 +568,28 @@ artwork/package
 
 to consume registered vector Artwork.
 
-Shape consumes the declared Artwork manifest rather than discovering
-dynamic Artwork components by scanning generated directories.
+Shape consumes the selected producer's declared Artwork manifest
+rather than discovering dynamic Artwork components by scanning
+generated directories.
+
+The generic dependency engine resolves, validates, and builds the
+selected producer's required Product before executing a dependent
+Shape Stage.
+
+A current registered Artwork Product may be reused without
+reexecuting its producing Stages.
+
+Shape Compose freshness depends on the selected registered Artwork
+Product and its fingerprint. Changes to an unselected Artwork
+Realization do not, by themselves, invalidate the consuming Shape
+Realization.
+
+Producer selection and dependency freshness are independent for
+each Shape Realization.
+
+The Shape model does not implement generic producer resolution,
+dependency graph traversal, or cross-Realization freshness policy.
+Those responsibilities belong to the generic build infrastructure.
 
 ## Registered Artwork Coordinate Space
 

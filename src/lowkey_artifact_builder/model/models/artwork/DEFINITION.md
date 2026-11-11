@@ -582,65 +582,75 @@ Packaging preserves independently printable component identity while applying th
 
 Changes to physical printer-color assignment therefore require packaging to be reconsidered but do not, by themselves, change registered Artwork geometry or standalone extrusion geometry.
 
+
 ## Reuse
 
-Registered Artwork may be consumed by another artifact before standalone Artwork extrusion or packaging.
+Registered Artwork may be consumed by another Realization, including a Realization belonging to another Model or Artifact, without requiring standalone Artwork extrusion or packaging.
+
+Each Artwork Realization owns its registered Products independently. Different Artwork Realizations may interpret the same Artifact source using different effective configurations while preserving the same registered Artwork Product contracts.
+
+A consuming Realization selects its producer through the generic Product dependency binding mechanism defined in `ARCHITECTURE.md`. Artwork does not determine which producer Realization a consumer selects.
 
 For the current Artwork model, a consumer of registered vector Artwork requires:
 
-``` text
+```text
                       source
                      PNG | SVG
-                         |
-                         v
+                        |
+                        v
                       prepare
-                         |
-              +----------+----------+
-              |                     |
-              v                     |
-             raster                 |
-              |                     |
-              +----------+----------+
-                         |
-                         v
-                       vector
-                         |
-                +--------+--------+
-                |                 |
-                v                 v
-             consumer           extrude
-                                  |
-                                  v
-                                package
+                        |
+              +---------+---------+
+              |                   |
+              v                   |
+             raster               |
+              |                   |
+              +---------+---------+
+                        |
+                        v
+                      vector
+                        |
+                +-------+-------+
+                |               |
+                v               v
+             consumer         extrude
+                                |
+                                v
+                              package
 ```
 
 For PNG sources, the vector stage consumes registered raster color layers and the prepared Artwork envelope.
 
 For SVG sources, the vector stage consumes prepared native vector color regions and the prepared Artwork envelope.
 
-The registered vector products exposed to consuming Models are identical in contract regardless of source format.
+The registered vector Products exposed to consuming Models are identical in contract regardless of source format or producer Realization.
 
 The later Artwork stages:
 
-``` text
-artwork/extrude artwork/package
+```text
+artwork/extrude
+artwork/package
 ```
 
-are not prerequisites merely because another model consumes registered vector Artwork.
+are not prerequisites merely because another Realization consumes registered vector Artwork.
 
 Likewise, color analysis and alternative library or catalog assignment do not require standalone Artwork extrusion or packaging.
 
-The consuming model is responsible for the physical size, placement, and dimensionalization of the registered Artwork within its own object.
+A consuming Realization depends on the selected producer's registered Product, not on completion of the producer's entire Artwork Realization.
 
-When fitting registered Artwork within another model, the consumer may use the registered Artwork envelope to determine geometric containment while applying one common transformation to the envelope and all registered color layers.
+Current registered Products may be reused without executing their producing Stages again. Products belonging to different Artwork Realizations retain independent ownership, completion state, and freshness.
 
-Any region belonging to the consuming model but lying outside the registered Artwork envelope is the responsibility of the consuming model.
+The consuming Model is responsible for the physical size, placement, and dimensionalization of registered Artwork within its own object.
+
+When fitting registered Artwork within another Model, the consumer may use the registered Artwork envelope to determine geometric containment while applying one common transformation to the envelope and all registered color layers.
+
+Any region belonging to the consuming Model but lying outside the registered Artwork envelope is the responsibility of that consuming Model.
 
 Artwork does not assign a fill color to such surrounding geometry.
 
-Because registered Artwork carries Artifact-color identity rather than a standalone physical printer assignment, a consuming model does not inherit a physical printer assignment merely by consuming registered Artwork.
+Because registered Artwork carries Artifact-color identity rather than a standalone physical printer assignment, a consuming Model does not inherit a physical printer assignment merely by consuming registered Artwork.
 
-The consuming manufacturing model preserves Artifact-color identity through its own processing and resolves physical printer assignment at the appropriate packaging boundary for its final manufactured product.
+The consuming manufacturing Model preserves Artifact-color identity through its own processing and resolves physical printer assignment at the appropriate packaging boundary for its final manufactured Product.
 
 ## Features
 

@@ -1259,6 +1259,7 @@ Dependencies may cross Artifact boundaries.
 
 ------------------------------------------------------------------------
 
+
 # 32. Configuration Versus Dependency Wiring
 
 Model specifications declare Product dependencies that Stages know how to consume.
@@ -1284,9 +1285,63 @@ A declared dependency does not require every Variant or Realization of the consu
 
 Feature and Variant semantics may determine whether a dependency participates, but generic dependency infrastructure must not contain Model-specific rules.
 
+## 32.1 Product dependency selection
+
+Product dependency bindings may be configured at the Artifact level or for an individual consuming Realization.
+
+For each participating dependency, the effective binding is selected in this order:
+
+1. An explicit binding belonging to the consuming Realization.
+2. An explicit binding belonging to the Artifact.
+3. The dependency's ordinary canonical producer selection.
+
+A Realization-specific binding overrides the corresponding Artifact-level binding without changing bindings used by sibling Realizations.
+
+An explicit binding identifies the producer Artifact and Realization. The selected Realization must exist, belong to the required Model, and provide the declared Product.
+
+For example, two SHAPE Realizations of the same Artifact may select different ARTWORK Realizations:
+
+```toml
+[realizations.coaster_print]
+variant = "shape.coaster"
+
+[realizations.coaster_print.product_dependencies.manifest]
+artifact = "example"
+realization = "artwork_color"
+
+[realizations.coaster_engrave]
+variant = "shape.coaster"
+
+[realizations.coaster_engrave.product_dependencies.manifest]
+artifact = "example"
+realization = "artwork_vector"
+```
+
+Both consuming Realizations retain their originating `shape.coaster` Variant. Their selected ARTWORK Realizations are Artifact-specific producer identities, not reusable Variant configurations.
+
+When no explicit binding is supplied, ordinary canonical dependency resolution remains in effect. For example, a SHAPE Realization consuming the default ARTWORK vector Product may select `artwork_default` without requiring an explicit binding.
+
+## 32.2 Dependency planning and freshness
+
+The selected producer is represented by its registered logical Product identity, including the producer Realization.
+
+Dependency planning must use that identity to determine the required upstream Product and its transitive dependency closure.
+
+Only required upstream Stages and Realizations are executed. Current producer Products may be reused without rerunning their producing Stages.
+
+Distinct producer Realizations retain independent Product namespaces, completion records, and fingerprints.
+
+The selected producer Product participates in the consuming Product's freshness evaluation. Changes affecting the selected producer invalidate dependent Products as required, without invalidating consumers of unrelated producer Realizations.
+
+Missing producer Realizations, incompatible producer Models or Products, and dependency cycles must be diagnosed at the appropriate configuration or planning boundary.
+
+## 32.3 Configuration responsibilities
+
 Normal users should not need to manually wire routine internal dependencies.
 
 Explicit logical Product references remain available for advanced composition and producer selection.
+
+Product dependency selection does not redefine Model Features, create new Variants, or change a consuming Realization's originating Variant.
 
 Generated filesystem paths must not be used as dependency identity.
 
