@@ -17,6 +17,7 @@ bindings.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TypedDict
 
 import click
 
@@ -52,9 +53,17 @@ from lowkey_artifact_builder.messaging import (
     display_path,
 )
 
+
+class _ProductKwargs(TypedDict, total=False):
+    product: str
+
+
 # =========================================================
 # CLI
 # =========================================================
+
+
+DEFAULT_MANUFACTURING_PRODUCT = "svg"
 
 
 @click.command("build")
@@ -74,6 +83,12 @@ from lowkey_artifact_builder.messaging import (
     type=str,
     default=None,
     help="Select one artifact realization.",
+)
+@click.option(
+    "--product",
+    type=click.Choice(("svg", "3mf")),
+    default=None,
+    help=f"Select the manufacturing Product (default: {DEFAULT_MANUFACTURING_PRODUCT}).",
 )
 @click.option(
     "--input",
@@ -121,6 +136,7 @@ def cli(
     artifact_ids: tuple[str, ...],
     stage: str | None,
     realization: str | None,
+    product: str | None,
     input_bindings: tuple[str, ...],
     parameter_bindings: tuple[str, ...],
     output_bindings: tuple[str, ...],
@@ -134,17 +150,19 @@ def cli(
 
     Bare ``artifact build`` is a read-only project-status operation.
 
-    Positional arguments are artifact IDs.
+    Positional arguments are Artifact IDs.
 
     Without --stage, BUILD operates on effective Artifact Realizations.
     An optional --realization selects one Realization; otherwise BUILD
     incrementally builds every effective Realization of each selected
     Artifact.
 
-    With --stage, exactly one declared stage is executed independently.
-    An optional --realization selects the Artifact Realization for that
-    stage. Explicit input, parameter, and output bindings apply only to
-    this independent stage execution mode.
+    --product explicitly selects a manufacturing Product for normal
+    execution or dry-run planning. Omitting it preserves the existing
+    default manufacturing behavior.
+
+    With --stage, exactly one declared Stage is executed independently.
+    Product selection does not apply to independent Stage execution.
     """
 
     verbosity = 0
@@ -159,6 +177,12 @@ def cli(
         verbosity=verbosity,
         sink=click.echo,
     )
+
+    if product is not None and stage is not None:
+        raise click.UsageError("--product cannot be combined with --stage.")
+
+    if product is not None and (rebuild or rebuild_all):
+        raise click.UsageError("--product cannot be combined with --rebuild or --rebuild-all.")
 
     if build_all and rebuild_all:
         raise click.UsageError("--build-all and --rebuild-all cannot be used together.")
@@ -203,6 +227,9 @@ def cli(
         raise click.UsageError("--dry-run requires a build scope.")
 
     if not artifact_ids and realization is None and not build_all and not rebuild_all:
+        if product is not None:
+            raise click.UsageError("--product requires a build scope.")
+
         _display_build_status()
         return
 
@@ -237,6 +264,7 @@ def cli(
             artifact_ids,
             dry_run=dry_run,
             messenger=messenger,
+            product=product,
         )
         return
 
@@ -268,6 +296,7 @@ def cli(
             realization=realization,
             dry_run=dry_run,
             messenger=messenger,
+            product=product,
         )
         return
 
@@ -275,6 +304,7 @@ def cli(
         artifact_ids,
         dry_run=dry_run,
         messenger=messenger,
+        product=product,
     )
 
 
@@ -369,24 +399,27 @@ def _execute_realization(
     realization: str,
     dry_run: bool,
     messenger: SemanticMessenger,
+    product: str | None = None,
 ) -> None:
     """
     Build one selected Realization for the selected Artifacts.
 
-    Mutating build execution materializes each Artifact baseline before
-    Realization execution. Dry-run remains non-mutating.
+    An explicit manufacturing Product is forwarded to the application
+    engine for both execution and dry-run planning.
 
-    Independent Artifact builds continue after individual failures. After
-    all requested Artifacts have been attempted, any failures are reported
-    together as command failure.
+    Omitting Product selection preserves existing engine defaults.
 
-    Routine successful execution presents the resulting manufacturing
-    Product rather than narrating internal Stage lifecycle events.
+    Mutating execution materializes each Artifact baseline.
+    Dry-run remains non-mutating.
+
+    Independent Artifact builds continue after individual failures.
     """
 
     project_root = Path.cwd()
 
     failures: list[str] = []
+
+    product_kwargs: _ProductKwargs = {"product": product} if product is not None else {}
 
     for artifact_id in artifact_ids:
         try:
@@ -395,6 +428,7 @@ def _execute_realization(
                     artifact_id,
                     realization=realization,
                     project_root=project_root,
+                    **product_kwargs,
                 )
 
                 for plan in plans:
@@ -417,6 +451,7 @@ def _execute_realization(
                 realization=realization,
                 project_root=project_root,
                 event_sink=messenger.execution_event,
+                **product_kwargs,
             )
 
             for execution_plan in execution_plans:
@@ -424,6 +459,7 @@ def _execute_realization(
                     execution_plan,
                     project_root=project_root,
                     messenger=messenger,
+                    product=product if product is not None else DEFAULT_MANUFACTURING_PRODUCT,
                 )
 
         except (
@@ -542,28 +578,30 @@ def _execute_realizations(
     *,
     dry_run: bool,
     messenger: SemanticMessenger,
+    product: str | None = None,
 ) -> None:
     """
     Build every effective Realization for the selected Artifacts.
 
-    Normal build execution addresses Artifact + Realization. Effective
-    Realization discovery remains owned by configuration.
+    Normal build execution addresses Artifact + Realization.
+    Effective Realization discovery remains owned by configuration.
 
-    Mutating build execution materializes each Artifact baseline before
-    Realization discovery. Dry-run remains non-mutating.
+    Explicit Product selection applies to each selected Realization.
+    Omitting Product selection preserves existing engine defaults.
+
+    Mutating build execution materializes each Artifact baseline
+    before Realization discovery. Dry-run remains non-mutating.
 
     Independent Realization builds continue after individual failures.
-    After all requested independent builds have been attempted, any
-    failures are reported together as command failure.
-
-    Routine successful execution presents one concise manufacturing result
-    for each Realization rather than narrating internal Stage lifecycle
-    events.
+    After all requested builds have been attempted, failures are
+    reported together.
     """
 
     project_root = Path.cwd()
 
     failures: list[str] = []
+
+    product_kwargs: _ProductKwargs = {"product": product} if product is not None else {}
 
     for artifact_id in artifact_ids:
         try:
@@ -591,6 +629,7 @@ def _execute_realizations(
                         artifact_id,
                         realization=realization,
                         project_root=project_root,
+                        **product_kwargs,
                     )
 
                     for plan in plans:
@@ -608,6 +647,7 @@ def _execute_realizations(
                     realization=realization,
                     project_root=project_root,
                     event_sink=messenger.execution_event,
+                    **product_kwargs,
                 )
 
                 for execution_plan in execution_plans:
@@ -615,6 +655,7 @@ def _execute_realizations(
                         execution_plan,
                         project_root=project_root,
                         messenger=messenger,
+                        product=product if product is not None else DEFAULT_MANUFACTURING_PRODUCT,
                     )
 
             except (
@@ -818,6 +859,7 @@ def _display_manufacturing_result(
     *,
     project_root: Path,
     messenger: SemanticMessenger,
+    product: str,
 ) -> None:
     """
     Present one successful manufacturing result.
@@ -835,7 +877,7 @@ def _display_manufacturing_result(
         project_root
         / "artifacts"
         / execution_plan.artifact_id
-        / f"{execution_plan.realization}.3mf"
+        / f"{execution_plan.realization}.{product}"
     )
 
     messenger.message(

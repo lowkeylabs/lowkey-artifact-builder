@@ -84,6 +84,7 @@ def _build(
     execute_artifact_build(
         ARTIFACT_ID,
         realization=realization,
+        product="3mf",
         project_root=project_root,
     )
 

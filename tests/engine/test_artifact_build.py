@@ -42,14 +42,12 @@ def test_artifact_build_accepts_configured_artifact_identity(
     """
     The public engine build boundary accepts an artifact identity.
 
+    Omitted Product selection publishes the canonical SHAPE Compose SVG.
     Callers do not construct a BuildPlan or select an execution strategy.
     """
-
     write_artifact_config(
         "shape-artifact",
-        {
-            "model": "shape",
-        },
+        {"model": "shape"},
         project_root=tmp_path,
     )
 
@@ -58,21 +56,15 @@ def test_artifact_build_accepts_configured_artifact_identity(
         project_root=tmp_path,
     )
 
-    output = (
-        tmp_path
-        / "artifacts"
-        / "shape-artifact"
-        / "shape"
-        / "shape_default"
-        / "40-package"
-        / "artifact.3mf"
-    )
+    artifact_dir = tmp_path / "artifacts" / "shape-artifact"
+    canonical = artifact_dir / "shape" / "shape_default" / "20-compose" / "artifact.svg"
+    published = artifact_dir / "shape_default.svg"
 
-    assert output.is_file()
-    assert output.stat().st_size > 0
-    assert zipfile.is_zipfile(
-        output,
-    )
+    assert canonical.is_file()
+    assert canonical.stat().st_size > 0
+    assert published.is_file()
+    assert published.read_bytes() == canonical.read_bytes()
+    assert not (artifact_dir / "shape" / "shape_default" / "40-package").exists()
 
 
 @pytest.mark.slow
@@ -162,6 +154,7 @@ def test_artifact_build_satisfies_cross_artifact_dependencies(
 
     execute_artifact_build(
         "artwork-shape",
+        product="3mf",
         project_root=tmp_path,
     )
 
@@ -200,22 +193,17 @@ def test_artifact_build_selects_requested_realization(
     tmp_path: Path,
 ) -> None:
     """
-    The public artifact-build boundary may build one selected realization.
+    The public artifact-build boundary builds only the selected Realization.
 
-    Other configured realizations are not built merely because they belong
-    to the same artifact.
+    With omitted Product selection, the selected SHAPE publishes SVG.
+    Other configured Realizations remain unbuilt.
     """
-
     write_artifact_config(
         "shape-artifact",
         {
             "realizations": {
-                "default": {
-                    "model": "shape",
-                },
-                "alternate": {
-                    "model": "shape",
-                },
+                "default": {"model": "shape"},
+                "alternate": {"model": "shape"},
             },
         },
         project_root=tmp_path,
@@ -227,33 +215,16 @@ def test_artifact_build_selects_requested_realization(
         project_root=tmp_path,
     )
 
-    default_output = (
-        tmp_path
-        / "artifacts"
-        / "shape-artifact"
-        / "shape"
-        / "default"
-        / "40-package"
-        / "artifact.3mf"
-    )
+    artifact_dir = tmp_path / "artifacts" / "shape-artifact"
+    selected = artifact_dir / "shape" / "default" / "20-compose" / "artifact.svg"
+    sibling = artifact_dir / "shape" / "alternate" / "20-compose" / "artifact.svg"
 
-    alternate_output = (
-        tmp_path
-        / "artifacts"
-        / "shape-artifact"
-        / "shape"
-        / "alternate"
-        / "40-package"
-        / "artifact.3mf"
-    )
-
-    assert default_output.is_file()
-    assert default_output.stat().st_size > 0
-    assert zipfile.is_zipfile(
-        default_output,
-    )
-
-    assert not alternate_output.exists()
+    assert selected.is_file()
+    assert selected.stat().st_size > 0
+    assert (artifact_dir / "default.svg").read_bytes() == selected.read_bytes()
+    assert not sibling.exists()
+    assert not (artifact_dir / "alternate.svg").exists()
+    assert not (artifact_dir / "shape" / "default" / "40-package").exists()
 
 
 def test_artifact_rebuild_removes_only_selected_realization(
@@ -314,6 +285,24 @@ def test_artifact_rebuild_removes_only_selected_realization(
             plan.realization_name,
         )
 
+        # Simulate successful execution of the canonical Compose
+        # Product required by default SVG manufacturing publication.
+        compose_stage = next(stage for stage in plan.stages if stage.name == "compose")
+
+        svg_product = next(
+            product for product in compose_stage.products if product.spec.name == "artifact"
+        )
+
+        svg_product.path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        svg_product.path.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg"/>',
+            encoding="utf-8",
+        )
+
         return plan
 
     monkeypatch.setattr(
@@ -328,12 +317,17 @@ def test_artifact_rebuild_removes_only_selected_realization(
         project_root=tmp_path,
     )
 
-    assert executed == [
-        "default",
-    ]
+    assert executed == ["default"]
 
     assert not selected_product.exists()
     assert sibling_product.is_file()
+    assert sibling_product.read_text() == "keep"
+
+    # The selected Realization publishes its default SVG Product.
+    published_svg = tmp_path / "artifacts" / "shape-artifact" / "default.svg"
+
+    assert published_svg.is_file()
+    assert published_svg.read_text() == ('<svg xmlns="http://www.w3.org/2000/svg"/>')
 
 
 def test_artifact_build_forwards_model_and_local_variant_selection(
@@ -863,6 +857,7 @@ def test_artifact_build_executes_only_selected_canonical_default_realization(
 
     execute_artifact_build(
         "example",
+        product="3mf",
         realization="shape_ornament",
         project_root=tmp_path,
     )
@@ -897,6 +892,7 @@ def test_artifact_build_restores_missing_published_3mf_from_current_package(
 
     plans = execute_artifact_build(
         "shape-artifact",
+        product="3mf",
         project_root=tmp_path,
     )
 
@@ -928,6 +924,7 @@ def test_artifact_build_restores_missing_published_3mf_from_current_package(
 
     plans = execute_artifact_build(
         "shape-artifact",
+        product="3mf",
         project_root=tmp_path,
     )
 
@@ -970,6 +967,7 @@ def test_artifact_build_publication_recovery_does_not_reexecute_package(
 
     execute_artifact_build(
         "shape-artifact",
+        product="3mf",
         project_root=tmp_path,
     )
 
@@ -1021,6 +1019,7 @@ def test_artifact_build_publication_recovery_does_not_reexecute_package(
 
     execute_artifact_build(
         "shape-artifact",
+        product="3mf",
         project_root=tmp_path,
     )
 
@@ -1068,6 +1067,7 @@ def test_artifact_build_plans_named_artwork_realization_from_canonical_vector(
     plans = artifact_build.create_artifact_build_plans(
         "example",
         realization="ornament",
+        product="3mf",
         project_root=tmp_path,
     )
 

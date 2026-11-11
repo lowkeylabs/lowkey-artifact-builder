@@ -3,7 +3,7 @@ Tests for successful BUILD manufacturing-result presentation.
 
 A routine selected-Realization build exists to make the requested
 manufacturing Product current and leave the operator with an accessible
-3MF.
+SVG by default, or an explicitly requested 3MF.
 
 These tests protect the CLI/application boundary rather than Stage or
 incremental-engine mechanics. Engine tests independently protect canonical
@@ -73,38 +73,23 @@ def _artifact_dir(
     return project_root / "artifacts" / ARTIFACT_ID
 
 
-def _canonical_3mf(
-    project_root: Path,
-) -> Path:
-    """
-    Return the canonical package Product path for the selected Realization.
-    """
-
+def _canonical_product(project_root: Path, product: str = "svg") -> Path:
+    """Return the canonical Stage Product for the selected format."""
+    if product == "svg":
+        return (
+            _artifact_dir(project_root) / MODEL_NAME / REALIZATION / "20-compose" / "artifact.svg"
+        )
     return _artifact_dir(project_root) / MODEL_NAME / REALIZATION / "40-package" / "artifact.3mf"
 
 
-def _published_3mf(
-    project_root: Path,
-) -> Path:
-    """
-    Return the operator-facing Realization-named convenience 3MF.
-    """
-
-    return _artifact_dir(project_root) / f"{REALIZATION}.3mf"
+def _published_product(project_root: Path, product: str = "svg") -> Path:
+    """Return the operator-facing Realization-named manufacturing Product."""
+    return _artifact_dir(project_root) / f"{REALIZATION}.{product}"
 
 
-def _relative_published_3mf(
-    project_root: Path,
-) -> Path:
-    """
-    Return the operator-facing 3MF path relative to the project root.
-    """
-
-    return _published_3mf(
-        project_root,
-    ).relative_to(
-        project_root,
-    )
+def _relative_published_product(project_root: Path, product: str = "svg") -> Path:
+    """Return the published manufacturing Product path relative to the project root."""
+    return _published_product(project_root, product).relative_to(project_root)
 
 
 def _install_materialization(
@@ -126,7 +111,7 @@ def _install_materialization(
 def _product_state_event(
     state: ProductState,
     *,
-    stage_name: str = "package",
+    stage_name: str = "compose",
     product_name: str = "artifact",
 ) -> ProductStateEvent:
     """
@@ -163,13 +148,15 @@ def _execution_event(
 
 def _execution_plan(
     state: ProductState,
+    *,
+    stage_name: str = "compose",
 ) -> ExecutionPlan:
     """
     Return a representative execution result for the selected Realization.
 
     ExecutionPlan preserves the persistent Product state observed before
-    execution. A non-current package Product therefore means manufacturing
-    work was required, while a CURRENT package Product means the existing
+    execution. A non-current Compose Product therefore means manufacturing
+    work was required, while a CURRENT Compose Product means the existing
     manufacturing result was reusable.
     """
 
@@ -179,7 +166,7 @@ def _execution_plan(
         realization=REALIZATION,
         stages=(
             PlannedStageExecution(
-                stage_name="package",
+                stage_name=stage_name,
                 product_states=(state,),
             ),
         ),
@@ -192,6 +179,7 @@ def _emit_built_realization(
     realization: str,
     project_root: Path,
     event_sink=None,
+    product: str = "svg",
 ) -> tuple[ExecutionPlan, ...]:
     """
     Simulate successful execution that had manufacturing work to perform.
@@ -205,12 +193,10 @@ def _emit_built_realization(
     assert realization == REALIZATION
     assert event_sink is not None
 
-    canonical = _canonical_3mf(
-        project_root,
-    )
-    published = _published_3mf(
-        project_root,
-    )
+    canonical = _canonical_product(project_root, product)
+    published = _published_product(project_root, product)
+
+    stage_name = "compose" if product == "svg" else "package"
 
     event_sink(
         _execution_event(
@@ -221,13 +207,14 @@ def _emit_built_realization(
     event_sink(
         _product_state_event(
             ProductState.ABSENT,
+            stage_name=stage_name,
         )
     )
 
     event_sink(
         _execution_event(
             "stage.started",
-            stage_name="package",
+            stage_name=stage_name,
         )
     )
 
@@ -236,7 +223,7 @@ def _emit_built_realization(
         exist_ok=True,
     )
     canonical.write_bytes(
-        b"new packaged 3mf",
+        b"new composed svg" if product == "svg" else b"new packaged 3mf",
     )
 
     published.parent.mkdir(
@@ -250,7 +237,7 @@ def _emit_built_realization(
     event_sink(
         _execution_event(
             "stage.completed",
-            stage_name="package",
+            stage_name=stage_name,
         )
     )
 
@@ -263,6 +250,7 @@ def _emit_built_realization(
     return (
         _execution_plan(
             ProductState.ABSENT,
+            stage_name=stage_name,
         ),
     )
 
@@ -273,6 +261,7 @@ def _emit_current_realization(
     realization: str,
     project_root: Path,
     event_sink=None,
+    product: str = "svg",
 ) -> tuple[ExecutionPlan, ...]:
     """
     Simulate successful execution whose manufacturing Product is current.
@@ -300,7 +289,7 @@ def _emit_current_realization(
     event_sink(
         _execution_event(
             "stage.skipped",
-            stage_name="package",
+            stage_name="compose",
         )
     )
 
@@ -321,13 +310,13 @@ def _install_existing_manufacturing_result(
     project_root: Path,
 ) -> tuple[Path, Path]:
     """
-    Install representative current canonical and published 3MF Products.
+    Install representative current canonical and published SVG Products.
     """
 
-    canonical = _canonical_3mf(
+    canonical = _canonical_product(
         project_root,
     )
-    published = _published_3mf(
+    published = _published_product(
         project_root,
     )
 
@@ -336,7 +325,7 @@ def _install_existing_manufacturing_result(
         exist_ok=True,
     )
     canonical.write_bytes(
-        b"existing packaged 3mf",
+        b"existing composed svg",
     )
 
     published.parent.mkdir(
@@ -344,7 +333,7 @@ def _install_existing_manufacturing_result(
         exist_ok=True,
     )
     published.write_bytes(
-        b"existing packaged 3mf",
+        b"existing composed svg",
     )
 
     return canonical, published
@@ -356,6 +345,7 @@ def _invoke_selected_realization(
     execute: Callable[..., tuple[ExecutionPlan, ...]],
     *,
     cli_args: tuple[str, ...] = (),
+    build_args: tuple[str, ...] = (),
 ) -> Any:
     """
     Invoke one selected-Realization build with deterministic execution.
@@ -379,6 +369,7 @@ def _invoke_selected_realization(
         ARTIFACT_ID,
         "--realization",
         REALIZATION,
+        *build_args,
         cli_args=cli_args,
     )
 
@@ -396,7 +387,7 @@ def test_build_reports_built_manufacturing_result(
     A selected Realization that required work reports a built result.
 
     Routine BUILD output identifies the Artifact, Realization, resulting
-    state, and accessible manufacturing 3MF.
+    state, and accessible manufacturing SVG.
     """
 
     result = _invoke_selected_realization(
@@ -410,10 +401,10 @@ def test_build_reports_built_manufacturing_result(
 
     assert result.exit_code == 0, result.output or repr(result.exception)
 
-    published = _published_3mf(
+    published = _published_product(
         tmp_path,
     )
-    relative_published = _relative_published_3mf(
+    relative_published = _relative_published_product(
         tmp_path,
     )
 
@@ -428,12 +419,12 @@ def test_build_reports_built_manufacturing_result(
     assert str(published) not in output
 
 
-def test_build_result_reports_published_3mf_not_internal_canonical_product(
+def test_build_result_reports_published_svg_not_internal_canonical_product(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     """
-    Routine BUILD presents the operator-facing 3MF.
+    Routine BUILD presents the operator-facing SVG.
 
     The canonical Stage Product remains authoritative internally, but the
     operator should not need to navigate the Stage workspace to retrieve
@@ -448,13 +439,13 @@ def test_build_result_reports_published_3mf_not_internal_canonical_product(
 
     assert result.exit_code == 0, result.output or repr(result.exception)
 
-    published = _published_3mf(
+    published = _published_product(
         tmp_path,
     )
-    relative_published = _relative_published_3mf(
+    relative_published = _relative_published_product(
         tmp_path,
     )
-    canonical = _canonical_3mf(
+    canonical = _canonical_product(
         tmp_path,
     )
 
@@ -494,10 +485,10 @@ def test_build_reports_current_manufacturing_result_without_rebuilding(
 
     assert result.exit_code == 0, result.output or repr(result.exception)
 
-    assert canonical.read_bytes() == b"existing packaged 3mf"
-    assert published.read_bytes() == b"existing packaged 3mf"
+    assert canonical.read_bytes() == b"existing composed svg"
+    assert published.read_bytes() == b"existing composed svg"
 
-    relative_published = _relative_published_3mf(
+    relative_published = _relative_published_product(
         tmp_path,
     )
 
@@ -615,7 +606,7 @@ def test_verbose_build_reports_stage_completion(
 
     output = result.output.lower()
 
-    assert "package" in output
+    assert "compose" in output
     assert "completed" in output
 
 
@@ -642,7 +633,7 @@ def test_verbose_build_reports_current_stage_as_reused(
 
     output = result.output.lower()
 
-    assert "package" in output
+    assert "compose" in output
     assert "reused" in output
     assert "skipped" not in output
 
@@ -666,7 +657,7 @@ def test_very_verbose_build_reports_product_state(
 
     output = result.output.lower()
 
-    assert "package" in output
+    assert "compose" in output
     assert "absent" in output
 
 
@@ -688,3 +679,22 @@ def test_quiet_build_suppresses_semantic_output(
     assert result.exit_code == 0, result.output or repr(result.exception)
 
     assert result.output == ""
+
+
+def test_explicit_3mf_reports_published_3mf(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """An explicit 3MF request reports its 3MF convenience Product."""
+    result = _invoke_selected_realization(
+        monkeypatch,
+        tmp_path,
+        _emit_built_realization,
+        build_args=("--product", "3mf"),
+    )
+
+    assert result.exit_code == 0, result.output or repr(result.exception)
+    assert _canonical_product(tmp_path, "3mf").is_file()
+    assert _published_product(tmp_path, "3mf").is_file()
+    assert str(_relative_published_product(tmp_path, "3mf")) in result.output
+    assert str(_relative_published_product(tmp_path, "svg")) not in result.output

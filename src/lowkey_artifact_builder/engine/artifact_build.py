@@ -54,7 +54,7 @@ from .product_resolver import (
 def _publish_manufacturing_product(
     plan: BuildPlan,
     *,
-    product: str = "3mf",
+    product: str = "svg",
 ) -> None:
     """
     Publish Realization-named manufacturing convenience files.
@@ -174,7 +174,7 @@ def create_artifact_build_plans(
     variant_name: str | None = None,
     realization: str | None = None,
     all_variants: bool = False,
-    product: str = "3mf",
+    product: str = "svg",
     project_root: Path | None = None,
 ) -> tuple[BuildPlan, ...]:
     """
@@ -316,7 +316,7 @@ def execute_artifact_build(
     variant_name: str | None = None,
     realization: str | None = None,
     all_variants: bool = False,
-    product: str = "3mf",
+    product: str = "svg",
     project_root: Path | None = None,
     event_sink: EventSink | None = None,
 ) -> tuple[ExecutionPlan, ...]:

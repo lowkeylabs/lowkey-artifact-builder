@@ -125,10 +125,10 @@ def test_explicit_3mf_target_preserves_existing_workflow(
     )
 
 
-def test_omitted_target_retains_legacy_3mf_default(
+def test_omitted_target_selects_svg_default(
     tmp_path: Path,
 ) -> None:
-    """Adding SVG selection does not silently change old callers."""
+    """Omitting Product selection targets the canonical SHAPE Compose SVG."""
     _configure(tmp_path)
 
     plans = create_artifact_build_plans(
@@ -138,6 +138,12 @@ def test_omitted_target_retains_legacy_3mf_default(
     )
 
     assert len(plans) == 1
-    assert plans[0].targets is not None
-    assert plans[0].targets[0].stage == "package"
-    assert plans[0].targets[0].product == "artifact"
+
+    plan = plans[0]
+
+    assert plan.targets == (_svg_ref("coaster_front"),)
+
+    assert tuple(stage.name for stage in plan.stages) == (
+        "structure",
+        "compose",
+    )
