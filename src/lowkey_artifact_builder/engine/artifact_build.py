@@ -53,56 +53,69 @@ from .product_resolver import (
 
 def _publish_manufacturing_product(
     plan: BuildPlan,
+    *,
+    product: str = "3mf",
 ) -> None:
     """
     Publish Realization-named manufacturing convenience files.
 
-    The canonical Stage Products remain authoritative.
+    Canonical Stage Products remain authoritative.
 
-    The packaged 3MF is published whenever the package Product exists,
-    preserving the existing artifact-build behavior.
+    For a 3MF request, publish the packaged Product when available.
+    Preserve optional SHAPE SVG publication controlled by
+    shape_svg_enabled.
 
-    For SHAPE, an enabled shape_svg_enabled setting additionally publishes
-    the canonical Compose SVG. This publication is independent of whether
-    Compose executed during the current build.
+    For an explicit SVG request, publish the canonical SHAPE Compose
+    Product regardless of shape_svg_enabled. No Package Stage or
+    packaged 3MF is required.
 
-    Publication settings do not change Stage dependencies, fingerprints,
-    or canonical Products. Disabling SVG publication does not delete a
-    previously published convenience file.
+    Publication does not change Stage dependencies, fingerprints,
+    or canonical Products. Disabling optional SVG publication does
+    not delete an existing convenience file.
     """
-    package_stage = next(
-        (stage for stage in plan.stages if stage.name == "package"),
-        None,
-    )
 
-    if package_stage is None or not package_stage.products:
-        return
-
-    package_product = package_stage.products[0]
-
-    if not package_product.path.is_file():
-        return
-
-    published_3mf = plan.artifact_dir / f"{plan.realization_name}.3mf"
-
-    try:
-        shutil.copy2(
-            package_product.path,
-            published_3mf,
+    if product not in {"svg", "3mf"}:
+        raise ValueError(
+            f"Unsupported manufacturing product: {product!r}. Expected 'svg' or '3mf'."
         )
-    except OSError as exc:
-        raise RuntimeError(
-            f"Could not publish manufacturing Product "
-            f"{package_product.path} to {published_3mf}: {exc}"
-        ) from exc
 
-    # SVG publication is currently a SHAPE-specific policy.
-    # Other Models retain their existing publication behavior.
+    if product == "3mf":
+        package_stage = next(
+            (stage for stage in plan.stages if stage.name == "package"),
+            None,
+        )
+
+        if package_stage is None or not package_stage.products:
+            return
+
+        package_product = package_stage.products[0]
+
+        if not package_product.path.is_file():
+            return
+
+        published_3mf = plan.artifact_dir / f"{plan.realization_name}.3mf"
+
+        try:
+            shutil.copy2(
+                package_product.path,
+                published_3mf,
+            )
+        except OSError as exc:
+            raise RuntimeError(
+                f"Could not publish manufacturing Product "
+                f"{package_product.path} to {published_3mf}: {exc}"
+            ) from exc
+
+    # SVG publication is currently SHAPE-specific.
+    # Other Models retain their existing 3MF behavior.
 
     if plan.model_name != "shape":
         return
 
-    if not plan.resolver("shape_svg_enabled"):
+    # Explicit SVG requests always publish their selected Product.
+    # During 3MF builds, SVG publication remains optional.
+
+    if product == "3mf" and not plan.resolver("shape_svg_enabled"):
         return
 
     compose_stage = next(
@@ -118,7 +131,7 @@ def _publish_manufacturing_product(
         )
 
     svg_product = next(
-        (product for product in compose_stage.products if product.spec.name == "artifact"),
+        (candidate for candidate in compose_stage.products if candidate.spec.name == "artifact"),
         None,
     )
 
@@ -308,23 +321,25 @@ def execute_artifact_build(
     event_sink: EventSink | None = None,
 ) -> tuple[ExecutionPlan, ...]:
     """
-    Build one or more selected manufacturing Products for an Artifact.
+    Build and publish selected manufacturing Products for an Artifact.
 
     The default manufacturing Product remains the packaged 3MF.
 
-    An explicit SVG request targets the canonical SHAPE Compose artifact
+    An explicit SVG request targets the canonical SHAPE Compose
     Product without requiring SHAPE Extrude or Package.
 
-    Build-plan selection is shared with non-executing callers such as
-    dry-run. Each selected BuildPlan is executed through dependency-aware
-    orchestration.
+    Build-plan selection is shared with non-executing callers such
+    as dry-run. Each selected BuildPlan is executed through
+    dependency-aware orchestration.
 
-    Existing 3MF convenience publication remains unchanged. SVG-only
-    builds produce the canonical Compose SVG; convenient SVG publication
-    is outside this slice.
+    After successful execution, publish the selected manufacturing
+    Product using its Realization-qualified convenience filename.
 
-    Return the execution plan produced for each selected build plan in
-    planning order.
+    Existing 3MF publication and optional SVG publication behavior
+    remain compatible with previous callers.
+
+    Return the execution plan produced for each selected build plan
+    in planning order.
     """
 
     plans = create_artifact_build_plans(
@@ -345,10 +360,10 @@ def execute_artifact_build(
             event_sink=event_sink,
         )
 
-        if product == "3mf":
-            _publish_manufacturing_product(
-                plan,
-            )
+        _publish_manufacturing_product(
+            plan,
+            product=product,
+        )
 
         execution_plans.append(
             execution_plan,
