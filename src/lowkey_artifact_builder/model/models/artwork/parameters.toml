@@ -9,6 +9,12 @@ artwork_envelope_mode = "shrink-wrap"
 artwork_min_island_area = 34
 artwork_island_connectivity = 8
 
+# Registered Artwork representation and processing strategy.
+# Preserve the established vector workflow by default.
+
+artwork_representation = "vector"
+artwork_processing = "auto"
+
 # --------------
 # Optional standalone Loop Feature.
 # loop_inner_diameter == 0 disables Loop participation.

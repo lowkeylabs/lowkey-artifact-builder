@@ -1474,4 +1474,3 @@ Artwork does not define:
 -   automatic filament installation or purchasing decisions.
 
 Those responsibilities belong to the consuming model, configuration layer, or explicit user action as appropriate.
-

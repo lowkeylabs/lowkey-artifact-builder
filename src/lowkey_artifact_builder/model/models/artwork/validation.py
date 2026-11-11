@@ -488,6 +488,67 @@ def _validate_artwork_outer_ridge_width(
         )
 
 
+def _validate_artwork_representation_processing(
+    resolver: ConfigurationResolver,
+) -> None:
+    """
+    Require a supported Artwork representation and processing strategy.
+
+    Representation identifies the required registered Product format.
+    Processing identifies the strategy used to produce that representation.
+
+    Initially supported combinations are:
+        source + none
+        raster + none
+        vector + auto
+    """
+
+    representation = resolver(
+        "artwork_representation",
+    )
+
+    processing = resolver(
+        "artwork_processing",
+    )
+
+    if not isinstance(
+        representation,
+        str,
+    ) or representation not in (
+        "source",
+        "raster",
+        "vector",
+    ):
+        raise ConfigError(
+            "artwork_representation must be 'source', 'raster', or 'vector'.",
+        )
+
+    if not isinstance(
+        processing,
+        str,
+    ) or processing not in (
+        "none",
+        "auto",
+    ):
+        raise ConfigError(
+            "artwork_processing must be 'none' or 'auto'.",
+        )
+
+    supported = {
+        ("source", "none"),
+        ("raster", "none"),
+        ("vector", "auto"),
+    }
+
+    if (representation, processing) not in supported:
+        raise ConfigError(
+            "Unsupported artwork_representation and artwork_processing "
+            f"combination: {representation!r} + {processing!r}. "
+            "Supported combinations are source + none, "
+            "raster + none, and vector + auto.",
+        )
+
+
 VALIDATORS = (
     ConfigurationValidator(
         parameters=("artifact_color_count",),
@@ -551,6 +612,13 @@ VALIDATORS = (
             "artwork_hole_position",
         ),
         validate=_validate_artwork_hole_position,
+    ),
+    ConfigurationValidator(
+        parameters=(
+            "artwork_representation",
+            "artwork_processing",
+        ),
+        validate=_validate_artwork_representation_processing,
     ),
 )
 
