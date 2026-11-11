@@ -1,4 +1,3 @@
-
 """
 Selected Artwork Realization dependency fingerprint isolation.
 
@@ -20,7 +19,6 @@ from lowkey_artifact_builder.engine import (
     create_required_fingerprints,
 )
 from lowkey_artifact_builder.model import ProductRef
-
 
 ARTIFACT_ID = "example"
 
@@ -90,9 +88,7 @@ def _required(
     producer_fingerprints: dict[str, ProductFingerprint],
 ) -> dict[str, ProductFingerprint]:
     def resolve(dependency):
-        return producer_fingerprints[
-            dependency.binding.realization
-        ]
+        return producer_fingerprints[dependency.binding.realization]
 
     return create_required_fingerprints(
         plan,
