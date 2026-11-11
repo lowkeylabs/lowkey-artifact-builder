@@ -304,7 +304,9 @@ def test_prepare_uses_declared_output_paths(
             "trace": trace,
             "envelope": envelope,
         },
-        resolver=_resolver(),
+        resolver=_resolver(
+            envelope_mode="alpha",
+        ),
     )
 
     observed_trace: Path | None = None
@@ -395,7 +397,9 @@ def test_prepare_temporary_raster_is_stage_local_and_removed(
             "trace": trace,
             "envelope": envelope,
         },
-        resolver=_resolver(),
+        resolver=_resolver(
+            envelope_mode="alpha",
+        ),
     )
 
     temporary_source: Path | None = None
@@ -443,13 +447,16 @@ def test_prepare_temporary_raster_is_stage_local_and_removed(
 # =========================================================
 
 
-def test_prepare_defaults_to_alpha_envelope_mode(
+def test_prepare_defaults_to_shrink_wrap_envelope_mode(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Artwork preparation defaults to alpha envelope derivation when no
-    envelope mode is explicitly configured.
+    When no envelope mode is explicitly resolved, Prepare uses
+    the Model-defined shrink-wrap default.
+
+    This fallback must agree with the permanent Artwork
+    specification and Model parameter defaults.
     """
 
     source = tmp_path / "source.png"
@@ -471,6 +478,8 @@ def test_prepare_defaults_to_alpha_envelope_mode(
 
     observed_modes: list[str] = []
 
+    real_derive_envelope = prepare._derive_envelope
+
     def observed_derive_envelope(
         image: Image.Image,
         *,
@@ -480,10 +489,9 @@ def test_prepare_defaults_to_alpha_envelope_mode(
             mode,
         )
 
-        return prepare._build_envelope(
-            prepare._foreground_mask(
-                image,
-            )
+        return real_derive_envelope(
+            image,
+            mode=mode,
         )
 
     monkeypatch.setattr(
@@ -506,9 +514,82 @@ def test_prepare_defaults_to_alpha_envelope_mode(
 
     prepare.execute(context)  # type: ignore[arg-type]
 
-    assert observed_modes == [
-        "alpha",
-    ]
+    assert observed_modes == ["shrink-wrap"]
+
+    assert context.output("trace").is_file()
+    assert context.output("envelope").is_file()
+
+
+def test_prepare_explicit_alpha_envelope_mode_remains_supported(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Explicit alpha mode remains selectable independently of
+    the Model's shrink-wrap default.
+    """
+
+    source = tmp_path / "source.png"
+
+    _write_source(
+        source,
+    )
+
+    context = StubContext(
+        inputs={
+            "source": source,
+        },
+        outputs={
+            "trace": tmp_path / "trace.svg",
+            "envelope": tmp_path / "envelope.svg",
+        },
+        resolver=_resolver(
+            envelope_mode="alpha",
+        ),
+    )
+
+    observed_modes: list[str] = []
+
+    real_derive_envelope = prepare._derive_envelope
+
+    def observed_derive_envelope(
+        image: Image.Image,
+        *,
+        mode: str,
+    ) -> np.ndarray:
+        observed_modes.append(
+            mode,
+        )
+
+        return real_derive_envelope(
+            image,
+            mode=mode,
+        )
+
+    monkeypatch.setattr(
+        prepare,
+        "_derive_envelope",
+        observed_derive_envelope,
+    )
+
+    monkeypatch.setattr(
+        prepare,
+        "_trace_multicolor",
+        _fake_trace_multicolor,
+    )
+
+    monkeypatch.setattr(
+        prepare,
+        "_clip_trace_to_envelope",
+        lambda trace_path, artwork_envelope: None,
+    )
+
+    prepare.execute(context)  # type: ignore[arg-type]
+
+    assert observed_modes == ["alpha"]
+
+    assert context.output("trace").is_file()
+    assert context.output("envelope").is_file()
 
 
 def test_alpha_envelope_mode_preserves_existing_alpha_behavior() -> None:

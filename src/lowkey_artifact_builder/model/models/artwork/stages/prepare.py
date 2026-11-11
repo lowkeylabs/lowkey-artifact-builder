@@ -94,7 +94,7 @@ DEFAULT_OPTIMIZE = 0.2
 #
 DEFAULT_ALPHA_THRESHOLD = 128
 
-DEFAULT_ENVELOPE_MODE = "alpha"
+DEFAULT_ENVELOPE_MODE = "shrink-wrap"
 
 #
 # Small connected foreground regions below this size are treated as
