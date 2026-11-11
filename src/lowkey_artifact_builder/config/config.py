@@ -852,32 +852,57 @@ def has_product_dependency_binding(
     artifact_id: str,
     dependency: ProductDependencySpec,
     *,
+    realization: str | None = None,
     project_root: Path | str | None = None,
 ) -> bool:
     """
-    Return whether an artifact configures a binding for one product dependency.
+    Return whether configuration supplies a binding for one dependency.
 
-    ProductDependencySpec declares a potential dependency relationship.
-    Artifact configuration activates that relationship by supplying a
-    concrete producer binding.
+    A binding on the selected consumer Realization takes precedence over
+    an Artifact-level binding.
 
-    This function tests only whether the binding is present. Validation
-    of the configured binding remains the responsibility of
+    When realization is omitted, preserve the historical Artifact-only
+    lookup behavior.
+
+    This function tests presence. Binding contents are validated by
     get_product_dependency_binding().
     """
 
-    _validate_artifact_id(
-        artifact_id,
-    )
+    _validate_artifact_id(artifact_id)
 
-    root = _project_root(
-        project_root,
-    )
+    root = _project_root(project_root)
 
     artifact_document = load_artifact_config(
         artifact_id,
         project_root=root,
     )
+
+    dependency_name = _product_dependency_binding_name(dependency)
+
+    if realization is not None:
+        realizations = artifact_document.get("realizations", {})
+
+        if not isinstance(realizations, Mapping):
+            raise ConfigError("The [realizations] section in artifact.toml must be a TOML table.")
+
+        realization_document = realizations.get(realization, {})
+
+        if not isinstance(realization_document, Mapping):
+            raise ConfigError(f"Realization {realization!r} must be a TOML table.")
+
+        realization_dependencies = realization_document.get(
+            "product_dependencies",
+        )
+
+        if realization_dependencies is not None:
+            if not isinstance(realization_dependencies, Mapping):
+                raise ConfigError(
+                    f"The [product_dependencies] section in "
+                    f"realization {realization!r} must be a TOML table."
+                )
+
+            if dependency_name in realization_dependencies:
+                return True
 
     product_dependencies = artifact_document.get(
         "product_dependencies",
@@ -886,73 +911,53 @@ def has_product_dependency_binding(
     if product_dependencies is None:
         return False
 
-    if not isinstance(
-        product_dependencies,
-        Mapping,
-    ):
+    if not isinstance(product_dependencies, Mapping):
         raise ConfigError(
             "The [product_dependencies] section in artifact.toml must be a TOML table."
         )
 
-    return _product_dependency_binding_name(dependency) in product_dependencies
+    return dependency_name in product_dependencies
 
 
 def get_product_dependency_binding(
     artifact_id: str,
     dependency: ProductDependencySpec,
     *,
+    realization: str | None = None,
     project_root: Path | str | None = None,
 ) -> ProductDependencyBinding:
     """
-    Resolve one configured product dependency binding.
+    Resolve one configured Product dependency binding.
 
-    A ProductDependencySpec identifies a definition-level product
-    dependency declared by a consumer model. Artifact configuration binds
-    that dependency to the concrete producer artifact and realization
-    that will supply the product.
+    The selected consumer Realization's binding takes precedence over
+    the Artifact-level binding. If no Realization binding exists, the
+    Artifact-level binding remains the fallback.
 
-    Named Product dependencies are keyed by their consumer-semantic role
-    in the artifact's [product_dependencies] table. Legacy unnamed
-    dependencies are keyed by the required producer Product name.
+    Omitting realization preserves historical Artifact-only behavior.
 
-    Model, stage, and product belong to the declarative dependency and do
-    not need to be repeated in artifact configuration. When explicitly
-    configured, however, they must exactly match the supplied declarative
-    dependency.
+    Model, stage, and product belong to the declarative dependency.
+    Explicitly configured values must match that declaration.
 
-    The declarative producer Variant is not part of the explicit binding's
-    identity. An explicit Artifact binding may therefore select a concrete
-    producer Realization different from the canonical Realization implied
-    by the declarative Variant.
+    The declarative producer Variant does not constrain the explicit
+    producer Realization selection.
     """
 
-    _validate_artifact_id(
-        artifact_id,
-    )
+    _validate_artifact_id(artifact_id)
 
-    root = _project_root(
-        project_root,
-    )
+    root = _project_root(project_root)
 
     artifact_document = load_artifact_config(
         artifact_id,
         project_root=root,
     )
 
+    dependency_name = _product_dependency_binding_name(dependency)
+
     product_dependencies = artifact_document.get(
         "product_dependencies",
     )
 
-    dependency_name = _product_dependency_binding_name(
-        dependency,
-    )
-
-    if product_dependencies is None:
-        raise ConfigError(
-            f"Artifact {artifact_id!r} does not configure product dependency {dependency_name!r}."
-        )
-
-    if not isinstance(
+    if product_dependencies is not None and not isinstance(
         product_dependencies,
         Mapping,
     ):
@@ -960,19 +965,42 @@ def get_product_dependency_binding(
             "The [product_dependencies] section in artifact.toml must be a TOML table."
         )
 
-    configured = product_dependencies.get(
-        dependency_name,
-    )
+    configured = None
+
+    if realization is not None:
+        realizations = artifact_document.get("realizations", {})
+
+        if not isinstance(realizations, Mapping):
+            raise ConfigError("The [realizations] section in artifact.toml must be a TOML table.")
+
+        realization_document = realizations.get(realization, {})
+
+        if not isinstance(realization_document, Mapping):
+            raise ConfigError(f"Realization {realization!r} must be a TOML table.")
+
+        realization_dependencies = realization_document.get(
+            "product_dependencies",
+        )
+
+        if realization_dependencies is not None:
+            if not isinstance(realization_dependencies, Mapping):
+                raise ConfigError(
+                    f"The [product_dependencies] section in "
+                    f"realization {realization!r} must be a TOML table."
+                )
+
+            if dependency_name in realization_dependencies:
+                configured = realization_dependencies[dependency_name]
+
+    if configured is None and isinstance(product_dependencies, Mapping):
+        configured = product_dependencies.get(dependency_name)
 
     if configured is None:
         raise ConfigError(
             f"Artifact {artifact_id!r} does not configure product dependency {dependency_name!r}."
         )
 
-    if not isinstance(
-        configured,
-        Mapping,
-    ):
+    if not isinstance(configured, Mapping):
         raise ConfigError(f"Product dependency {dependency_name!r} must be a TOML table.")
 
     configured_model = configured.get(
@@ -1000,32 +1028,16 @@ def get_product_dependency_binding(
             "does not match its declarative dependency."
         )
 
-    producer_artifact = configured.get(
-        "artifact",
-    )
+    producer_artifact = configured.get("artifact")
 
-    if (
-        not isinstance(
-            producer_artifact,
-            str,
-        )
-        or not producer_artifact.strip()
-    ):
+    if not isinstance(producer_artifact, str) or not producer_artifact.strip():
         raise ConfigError(
             f"Product dependency {dependency_name!r} must define a non-empty artifact."
         )
 
-    producer_realization = configured.get(
-        "realization",
-    )
+    producer_realization = configured.get("realization")
 
-    if (
-        not isinstance(
-            producer_realization,
-            str,
-        )
-        or not producer_realization.strip()
-    ):
+    if not isinstance(producer_realization, str) or not producer_realization.strip():
         raise ConfigError(
             f"Product dependency {dependency_name!r} must define a non-empty realization."
         )
@@ -1428,15 +1440,16 @@ def _validate_realization_document(
 ) -> None:
     """
     Validate one realization configuration.
+
+    Product dependency bindings are Realization configuration metadata,
+    not Model parameter overrides. Their individual producer identities
+    are validated when the bindings are resolved.
     """
 
     model = document.get("model")
 
     if model is not None:
-        if not isinstance(
-            model,
-            str,
-        ):
+        if not isinstance(model, str):
             raise ConfigError(f"Realization {name!r} model must be a string.")
 
         if not model.strip():
@@ -1445,10 +1458,7 @@ def _validate_realization_document(
     variant = document.get("variant")
 
     if variant is not None:
-        if not isinstance(
-            variant,
-            str,
-        ):
+        if not isinstance(variant, str):
             raise ConfigError(f"Realization {name!r} variant must be a string.")
 
         if not variant.strip():
@@ -1461,6 +1471,16 @@ def _validate_realization_document(
         Mapping,
     ):
         raise ConfigError(f"The [parameters] section in realization {name!r} must be a TOML table.")
+
+    product_dependencies = document.get("product_dependencies")
+
+    if product_dependencies is not None and not isinstance(
+        product_dependencies,
+        Mapping,
+    ):
+        raise ConfigError(
+            f"The [product_dependencies] section in realization {name!r} must be a TOML table."
+        )
 
 
 # =========================================================
@@ -2241,11 +2261,11 @@ def _artifact_parameters(
     """
     Extract configurable values from artifact.toml.
 
-    Artifact identity and provenance fields do not participate
-    in normal parameter resolution.
+    Artifact identity, Product dependency bindings, and other configuration
+    structure do not participate in normal Model parameter resolution.
 
-    Ordinary Artifact parameter overrides may be stored directly
-    at the top level or in a [parameters] table.
+    Ordinary Artifact parameter overrides may be stored directly at the
+    top level or in a [parameters] table.
 
     Registered Model tables, such as [shape.ornament], are
     configuration structure and are not ordinary parameters.
@@ -2263,6 +2283,7 @@ def _artifact_parameters(
         "original",
         "parameters",
         "realizations",
+        "product_dependencies",
     }
 
     reserved.update(model_names)

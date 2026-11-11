@@ -1864,12 +1864,12 @@ def test_create_build_plan_preserves_realization_product_dependencies(
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.has_product_dependency_binding",
-        lambda artifact_id, required_dependency, *, project_root: True,
+        lambda artifact_id, required_dependency, *, realization=None, project_root: True,
     )
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_product_dependency_binding",
-        lambda artifact_id, required_dependency, *, project_root: binding,
+        lambda artifact_id, required_dependency, *, realization=None, project_root: binding,
     )
 
     target = ProductRef(
@@ -2055,12 +2055,12 @@ def test_create_build_plan_resolves_product_dependency_bindings(
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.has_product_dependency_binding",
-        lambda artifact_id, required_dependency, *, project_root: True,
+        lambda artifact_id, required_dependency, *, realization=None, project_root: True,
     )
 
     monkeypatch.setattr(
         "lowkey_artifact_builder.engine.plan.get_product_dependency_binding",
-        lambda artifact_id, required_dependency, *, project_root: binding,
+        lambda artifact_id, required_dependency, *, realization=None, project_root: binding,
     )
 
     target = ProductRef(

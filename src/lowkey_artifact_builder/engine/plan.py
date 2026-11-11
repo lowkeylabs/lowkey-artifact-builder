@@ -541,7 +541,10 @@ def _resolve_product_dependency_bindings(
     """
     Resolve active declarative Product dependencies to concrete producers.
 
-    An explicit Artifact Product-dependency binding is authoritative.
+    Explicit configuration is authoritative, in this order:
+
+    1. The consuming Realization's Product dependency binding.
+    2. The Artifact-level Product dependency binding.
 
     A dependency that explicitly selects a producer Variant binds to the
     canonical same-Artifact Realization for that Model Variant.
@@ -549,24 +552,18 @@ def _resolve_product_dependency_bindings(
     Otherwise, existing implicit dependency semantics are preserved:
 
     - when the consuming Realization is itself the canonical default
-      Realization for the producer Model, the dependency binds locally to
-      that same Realization;
-    - otherwise, Artifact-level source ownership permits the dependency to
-      bind to the producer Model's canonical default Realization; and
-    - without an explicit binding, an explicit producer Variant, a local
-      canonical producer Realization, or Artifact-owned source, the
-      dependency remains unbound.
+      Realization for the producer Model, bind to that Realization;
+    - otherwise, Artifact-level source ownership permits binding to
+      the producer Model's canonical default Realization;
+    - without an explicit binding, producer Variant, matching canonical
+      Realization, or Artifact-owned source, leave the dependency unbound.
 
-    Artifact-level source ownership is the boundary for implicit
-    cross-Realization default binding. A source configured only on a named
-    Realization does not establish an implicit producer for other
-    Realizations.
+    A source configured only on a named Realization does not establish
+    an implicit producer for other Realizations.
 
-    Configuration failures encountered while inspecting or resolving
-    bindings are translated to BuildPlanError so callers of the planning
-    subsystem receive its public error type.
+    Configuration failures are translated to BuildPlanError.
 
-    Producer build planning remains outside this function's responsibility.
+    Producer build planning remains outside this function.
     """
 
     bindings: list[ProductDependencyBinding] = []
@@ -583,12 +580,14 @@ def _resolve_product_dependency_bindings(
             if has_product_dependency_binding(
                 artifact_id,
                 dependency,
+                realization=realization_name,
                 project_root=project_root,
             ):
                 bindings.append(
                     get_product_dependency_binding(
                         artifact_id,
                         dependency,
+                        realization=realization_name,
                         project_root=project_root,
                     )
                 )
