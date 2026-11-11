@@ -1,35 +1,49 @@
 # Artwork Model Definition
 
-The `artwork` model converts PNG or SVG source artwork into registered, color-separated geometry.
+The `artwork` model interprets source artwork and produces reusable Products according to the representation and processing selected by an Artwork Realization.
 
-Registered Artwork may be dimensionalized into a standalone multicolor 3MF or consumed as an intermediate product by another model.
+Artwork supports source-preserving, vector, and raster representations. Existing color-separated vector geometry remains available for standalone multicolor 3MF manufacturing and consumption by other Models.
 
 This document defines the semantic contract of the Artwork model.
 
 ## Purpose
 
-Artwork interprets raster or vector source artwork and converts it into reusable registered geometry.
+Artwork converts customer-supplied artwork into reusable Products suitable for downstream manufacturing.
+
+Each Artwork Realization independently selects:
+
+- `artwork_representation`, defining the required output representation;
+- `artwork_processing`, defining the processing strategy used to produce that representation.
+
+Supported representations are:
+
+- `source` — preserve the original source file and format without transformation;
+- `vector` — produce registered vector artwork;
+- `raster` — produce registered raster artwork encoded as PNG.
+
+Initially supported processing strategies are:
+
+- `none` — perform no image-processing transformation beyond any conversion required by the selected representation;
+- `auto` — select the established processing strategy appropriate to the source and requested representation.
+
+The existing color-separated vector workflow remains the default for compatibility with standalone Artwork manufacturing and existing consuming Models.
 
 The Artwork model supports:
 
--   a raster or vector source image;
--   Artwork-envelope derivation;
--   source-driven color separation;
--   measured Artifact colors;
--   assignment of physical printer colors to Artifact colors;
--   comparison with alternative library and catalog color assignments;
--   registered raster color layers;
--   registered vector color layers;
--   optional physical dimensionalization;
--   a printable multicomponent 3MF.
+- source preservation;
+- representation-specific processing;
+- reusable registered Products;
+- Artwork-envelope derivation where required;
+- source-driven color separation for the established vector workflow;
+- measured Artifact colors;
+- registered raster and vector color layers;
+- optional physical dimensionalization;
+- physical printer-color assignment during standalone packaging;
+- printable multicomponent 3MF manufacturing.
 
-Artwork deliberately separates:
+Representation and processing are independent of Realization identity. A named Realization defines a particular effective configuration, and its registered Products remain independently owned and reusable.
 
--   interpretation of source artwork;
--   discovery of the Artifact colors represented by that artwork;
--   construction of registered Artifact-color geometry;
--   physical dimensionalization of that geometry; and
--   assignment of physical printer colors to the dimensionalized Artifact-color components during packaging.
+Processing strategies may be extended without requiring new representation values or hard-coded Realization names.
 
 ## Source
 
@@ -39,20 +53,35 @@ Artwork consumes one source:
 source
 ```
 
-Supported source formats are PNG and SVG.
+Supported source formats are PNG and SVG. JPEG (`.jpg` and `.jpeg`) support is introduced as part of the representation-specific processing implementation.
 
-PNG and SVG are alternative source representations of the same Artifact identity. Source format does not establish a separate Artifact identity. An Artifact has at most one registered source, and a new source does not silently replace an existing registration.
+Source format does not establish a separate Artifact identity. An Artifact has at most one registered source, and a new source does not silently replace an existing registration.
 
-The build system materializes the source into the Artifact workspace before Artwork processing begins, preserving its source format.
+The build system materializes the source into the Artifact workspace before Artwork processing begins, preserving its original format and content.
 
 Artwork stages consume the materialized source through the build-engine context rather than depending on the source's original filesystem location.
 
-PNG sources follow raster interpretation and source-color tracing, using single-color tracing for one effective Artifact color and multicolor tracing for two or more.
+The selected `artwork_representation` determines the required output:
 
-SVG sources follow vector-native interpretation. Supported authored geometry and color regions are preserved without conversion to PNG and retracing.
+- `source` preserves the materialized source without conversion or image processing.
+- `vector` produces SVG geometry, tracing raster sources when necessary and preserving supported native SVG geometry.
+- `raster` produces PNG artwork, preserving PNG image content and converting other supported source formats when necessary.
 
-Both formats produce the established registered Artwork representation and remain interchangeable from the perspective of downstream consuming Models.
+The selected `artwork_processing` determines the processing strategy.
 
+The initially supported combinations are:
+
+| Representation | Processing | Behavior |
+|---|---|---|
+| `source` | `none` | Preserve original source and format |
+| `vector` | `auto` | Use established vector preparation and registration |
+| `raster` | `none` | Preserve raster image content, converting to PNG when necessary |
+
+Unsupported representation and processing combinations must fail with an actionable error rather than silently selecting a different strategy.
+
+For the existing vector workflow, PNG sources use source-color tracing and SVG sources use native vector interpretation. Both continue to produce the established registered vector Artwork contract.
+
+Source-preserving and raster-preserving Products do not require source-color discovery, vector tracing, physical printer-color assignment, or standalone dimensionalization merely to become reusable registered Products.
 
 ## Artifact Colors
 
@@ -587,70 +616,29 @@ Changes to physical printer-color assignment therefore require packaging to be r
 
 Registered Artwork may be consumed by another Realization, including a Realization belonging to another Model or Artifact, without requiring standalone Artwork extrusion or packaging.
 
-Each Artwork Realization owns its registered Products independently. Different Artwork Realizations may interpret the same Artifact source using different effective configurations while preserving the same registered Artwork Product contracts.
+Each Artwork Realization owns its registered Products independently. Different Artwork Realizations may interpret the same Artifact source using different effective representations and processing strategies.
 
 A consuming Realization selects its producer through the generic Product dependency binding mechanism defined in `ARCHITECTURE.md`. Artwork does not determine which producer Realization a consumer selects.
 
-For the current Artwork model, a consumer of registered vector Artwork requires:
+The selected producer Realization identifies the requested Artwork configuration. Its registered Product identifies the representation actually produced.
 
-```text
-                      source
-                     PNG | SVG
-                        |
-                        v
-                      prepare
-                        |
-              +---------+---------+
-              |                   |
-              v                   |
-             raster               |
-              |                   |
-              +---------+---------+
-                        |
-                        v
-                      vector
-                        |
-                +-------+-------+
-                |               |
-                v               v
-             consumer         extrude
-                                |
-                                v
-                              package
-```
+A consumer must receive a Product compatible with its required representation. An incompatible Product must be rejected rather than silently converted or substituted.
 
-For PNG sources, the vector stage consumes registered raster color layers and the prepared Artwork envelope.
+The established registered vector Products remain unchanged in contract and continue to support existing consumers and standalone 3MF manufacturing.
 
-For SVG sources, the vector stage consumes prepared native vector color regions and the prepared Artwork envelope.
+Source-preserving and raster-preserving Products retain their original or normalized image content, representation identity, dimensions, and applicable transparency information. They do not acquire Artifact-color separation or physical printer-color assignment merely through registration.
 
-The registered vector Products exposed to consuming Models are identical in contract regardless of source format or producer Realization.
+A consuming Model is responsible for the physical size, placement, and manufacturing interpretation of the selected registered Artwork.
 
-The later Artwork stages:
+The consuming Model must not independently repeat processing already completed by the selected Artwork Realization.
 
-```text
-artwork/extrude
-artwork/package
-```
+Registered Products may be reused without executing their producing Stages again. Products belonging to different Artwork Realizations retain independent ownership, completion state, and freshness.
 
-are not prerequisites merely because another Realization consumes registered vector Artwork.
+Changes to a Realization's effective representation or processing configuration must participate in Product freshness determination so that incompatible or obsolete Products are not silently reused.
 
-Likewise, color analysis and alternative library or catalog assignment do not require standalone Artwork extrusion or packaging.
+Standalone Artwork extrusion and packaging are required only when manufacturing a standalone Artwork Product that uses those capabilities.
 
-A consuming Realization depends on the selected producer's registered Product, not on completion of the producer's entire Artwork Realization.
-
-Current registered Products may be reused without executing their producing Stages again. Products belonging to different Artwork Realizations retain independent ownership, completion state, and freshness.
-
-The consuming Model is responsible for the physical size, placement, and dimensionalization of registered Artwork within its own object.
-
-When fitting registered Artwork within another Model, the consumer may use the registered Artwork envelope to determine geometric containment while applying one common transformation to the envelope and all registered color layers.
-
-Any region belonging to the consuming Model but lying outside the registered Artwork envelope is the responsibility of that consuming Model.
-
-Artwork does not assign a fill color to such surrounding geometry.
-
-Because registered Artwork carries Artifact-color identity rather than a standalone physical printer assignment, a consuming Model does not inherit a physical printer assignment merely by consuming registered Artwork.
-
-The consuming manufacturing Model preserves Artifact-color identity through its own processing and resolves physical printer assignment at the appropriate packaging boundary for its final manufactured Product.
+For the existing vector workflow, registered Artwork retains its common envelope, color-layer registration, Artifact-color identities, and dimensionless coordinate system. The consuming Model preserves these relationships and resolves physical printer assignments at its own appropriate manufacturing boundary.
 
 ## Features
 
@@ -1434,6 +1422,16 @@ A conforming Artwork implementation satisfies the following:
 69. A consuming model is responsible for resolving physical printer assignment at the packaging boundary of its own manufactured artifact.
 70. An Artwork Feature without an explicit physical-color override inherits the packaged physical printer color of its logically attached Artifact color.
 71. An explicit Feature physical-color override takes precedence over inherited Artifact-color printer assignment.
+72. `artwork_representation` defines the required output representation independently of the source format.
+73. `artwork_processing` defines the processing strategy independently of the Artwork Realization name.
+74. Supported initial representations are `source`, `vector`, and `raster`.
+75. Supported initial processing strategies are `none` and `auto`.
+76. The existing registered vector workflow remains the default until explicitly migrated.
+77. Source-preserving Artwork retains the original source format and content without image-processing transformation.
+78. Raster-preserving Artwork produces PNG content without requiring vector tracing or Artifact-color quantization.
+79. Unsupported representation and processing combinations fail explicitly.
+80. A consuming Realization selects its Artwork producer through generic Product dependency binding and validates the selected Product's representation.
+81. Artwork Realizations independently own their registered Products, and changes to effective processing configuration invalidate affected Products.
 
 ## Scope
 
@@ -1476,3 +1474,4 @@ Artwork does not define:
 -   automatic filament installation or purchasing decisions.
 
 Those responsibilities belong to the consuming model, configuration layer, or explicit user action as appropriate.
+
