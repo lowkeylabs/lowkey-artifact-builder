@@ -161,28 +161,23 @@ def create_artifact_build_plans(
     variant_name: str | None = None,
     realization: str | None = None,
     all_variants: bool = False,
+    product: str = "3mf",
     project_root: Path | None = None,
 ) -> tuple[BuildPlan, ...]:
     """
-    Construct manufacturing build plans for one configured Artifact.
+    Construct manufacturing build plans for configured Artifact Realizations.
 
-    Artifact-build planning owns selection of the Artifact Realization or
-    Realizations requested by the caller. Generic build planning first resolves
-    those selections to concrete Realizations.
+    The caller may explicitly request a SHAPE SVG or the established
+    packaged 3MF. The default remains 3MF for compatibility.
 
-    Manufacturing then targets each selected Realization's packaged artifact
-    Product. Explicit Product targeting lets the generic planner select only
-    the stages and Product dependencies required to manufacture that Product,
-    rather than eagerly realizing every participating stage in the Model.
-
-    The package/artifact Product is an artifact-build convention, not a
-    privileged Product in ModelSpec. Other engine operations remain free to
-    request any declared Product directly.
-
-    A caller may select one Realization, one Model Variant, or all Variants of
-    the effective Model. Variant and Realization selection remain delegated to
-    generic planning.
+    Product selection determines the terminal ProductRef. Generic planning
+    owns the required Stage and Product dependency closure.
     """
+
+    if product not in {"svg", "3mf"}:
+        raise ValueError(
+            f"Unsupported manufacturing product: {product!r}. Expected 'svg' or '3mf'."
+        )
 
     if realization is not None and all_variants:
         raise ValueError(
@@ -270,11 +265,21 @@ def create_artifact_build_plans(
     manufacturing_plans: list[BuildPlan] = []
 
     for selected_plan in selected_plans:
+        if product == "svg":
+            if selected_plan.model_name != "shape":
+                raise ValueError(
+                    "SVG manufacturing is currently supported only for SHAPE Realizations."
+                )
+
+            stage_name = "compose"
+        else:
+            stage_name = "package"
+
         target = ProductRef(
             artifact=selected_plan.artifact_id,
             model=selected_plan.model_name,
             realization=selected_plan.realization_name,
-            stage="package",
+            stage=stage_name,
             product="artifact",
         )
 
@@ -298,18 +303,25 @@ def execute_artifact_build(
     variant_name: str | None = None,
     realization: str | None = None,
     all_variants: bool = False,
+    product: str = "3mf",
     project_root: Path | None = None,
     event_sink: EventSink | None = None,
 ) -> tuple[ExecutionPlan, ...]:
     """
-    Build one or more selected workflows for one configured artifact.
+    Build one or more selected manufacturing Products for an Artifact.
 
-    Build-plan selection is shared with non-executing callers such as dry-run.
-    Each selected BuildPlan is executed through dependency-aware orchestration.
+    The default manufacturing Product remains the packaged 3MF.
 
-    After successful execution, any current canonical package Product is
-    published as the Realization-named convenience 3MF. Publication is
-    independent of whether package production executed during this invocation.
+    An explicit SVG request targets the canonical SHAPE Compose artifact
+    Product without requiring SHAPE Extrude or Package.
+
+    Build-plan selection is shared with non-executing callers such as
+    dry-run. Each selected BuildPlan is executed through dependency-aware
+    orchestration.
+
+    Existing 3MF convenience publication remains unchanged. SVG-only
+    builds produce the canonical Compose SVG; convenient SVG publication
+    is outside this slice.
 
     Return the execution plan produced for each selected build plan in
     planning order.
@@ -321,6 +333,7 @@ def execute_artifact_build(
         variant_name=variant_name,
         realization=realization,
         all_variants=all_variants,
+        product=product,
         project_root=project_root,
     )
 
@@ -332,9 +345,10 @@ def execute_artifact_build(
             event_sink=event_sink,
         )
 
-        _publish_manufacturing_product(
-            plan,
-        )
+        if product == "3mf":
+            _publish_manufacturing_product(
+                plan,
+            )
 
         execution_plans.append(
             execution_plan,
