@@ -322,6 +322,7 @@ def _write_workspace(
 [parameters]
 printer_colors = ["test-white", "test-red"]
 artifact_color_count = 2
+artwork_envelope_mode = "alpha"
 artwork_pixels = 64
 artwork_size = 20.0
 artwork_min_island_area = 1

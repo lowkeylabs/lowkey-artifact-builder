@@ -40,6 +40,16 @@ permanent specifications and establish a sufficiently understood behavioral
 boundary. Phases may be removed, reordered, combined, or rewritten after each
 completed implementation slice. Phase numbering is local to the current plan.
 
+## Current Implementation Scope — SVG Manufacturing
+
+The active implementation priority is manufacturing-ready SVG output for xTool Studio and related laser fabrication workflows.
+
+Active phases may change ARTWORK source interpretation, SHAPE registered planar geometry, SVG composition, and manufacturing project assembly. New physical extrusion behavior, optional Base implementation, revised Z-raise semantics, and 3MF component partitioning are deferred to `FUTURE.md`, under **SHAPE Physical Realization — Optional Base and Independent Components**.
+
+Existing 3MF behavior must remain compatible. Continue to run applicable regression tests, but do not expand an SVG phase into new Extrude functionality solely to realize its new planar features. If an existing 3MF defect prevents production, assess it separately under the plan's manufacturing-correctness priority; do not silently fold the deferred redesign into an SVG phase.
+
+A later implementation phase may revisit physical realization only after an explicit specification review and CHANGEPLAN revision.
+
 ## Planning and development rules
 
 `ARCHITECTURE.md` and the applicable Model `DEFINITION.md` files are normative.
@@ -140,7 +150,6 @@ Add narrower tests when they help discover an uncertain boundary, protect an
 independently meaningful contract, reproduce a defect, or address a specific
 algorithmic or regression risk.
 
-
 ---
 
 ### Primary Optimization Objective — Minimize Time to Manufacture
@@ -199,13 +208,11 @@ Evaluate proposed features primarily by their ability to:
 
 Avoid adding architectural complexity unless it provides measurable improvements in manufacturing preparation, correctness, or reuse.
 
-
 ---
-
 
 The operator's ordinary goal is to move customer artwork into correct, reusable manufacturing Products with the fewest necessary decisions, actions, and computations.
 
-This plan prioritizes **source correctness**, then **efficient representation and interpretation**, then **SHAPE composition**, and finally **assembly of independently manufacturable Products**. It consolidates the existing defect backlog and SHAPE feature phases without treating future possibilities as commitments.
+This SVG-focused plan prioritizes **source correctness**, then **efficient representation and interpretation**, then **SHAPE planar composition**, and finally **assembly of independently manufacturable Products**. Existing 3MF behavior is protected for compatibility, not expanded by these phases. It consolidates the existing defect backlog and SHAPE feature phases without treating future possibilities as commitments.
 
 ## Working Rules
 
@@ -227,14 +234,15 @@ This plan prioritizes **source correctness**, then **efficient representation an
 | 1 | ARTWORK Envelope and Source-Color Correctness | BUG-006 + BUG-004; related BUG-002 | Valid boundary-touching, transparent, single-color artwork |
 | 2 | Raster-Preserving SVG Manufacturing | BUG-005 | Embedded bitmap artwork in canonical manufacturing SVG without mandatory tracing |
 | 3 | Broader SVG Source Interpretation | BUG-001 + BUG-003 | Embedded PNG SVG inputs and visible stroke geometry |
-| 4 | SHAPE Placement and Reusable SVG Decorations | Former SHAPE Phases 1 + 2 | Multiple independently transformed motif instances |
-| 5 | SHAPE Clipping and Deterministic Planar Composition | Former SHAPE Phases 3 + 4 | Manufacturing-correct clipping and overlap behavior |
-| 6 | Artwork Scaling and Boundary Policies | Former SHAPE Phase 5 | Explicit artwork enlargement with a fixed outer SHAPE boundary |
-| 7 | Hierarchical SVG Manufacturing Project Assembly | Existing assembly phase | One grouped SVG containing multiple independently manufacturable Products |
+| 4 | SHAPE Perimeter Region and SVG Fill | First-class SHAPE planar region; migration from Outer Ridge inset | Independently dimensioned, registered, and colored SVG perimeter |
+| 5 | SHAPE Placement and Reusable SVG Decorations | Former SHAPE Phases 1 + 2 | Multiple independently transformed motif instances |
+| 6 | SHAPE Clipping and Deterministic Planar Composition | Former SHAPE Phases 3 + 4 | Manufacturing-correct clipping and overlap behavior |
+| 7 | Artwork Scaling and Boundary Policies | Former SHAPE Phase 5 | Explicit artwork enlargement with a fixed outer SHAPE boundary |
+| 8 | Hierarchical SVG Manufacturing Project Assembly | Existing assembly phase | One grouped SVG containing multiple independently manufacturable Products |
 
-**Dependency policy:** Phase 1 is the correctness foundation for raster tracing. Phase 2 supplies a useful manufacturing representation before project assembly. Phase 3 supplies the SVG interpretation needed by reusable decorations. Phase 4 precedes decoration clipping; Phase 5 supplies composition rules reused by Phase 6. Phase 7 uses established manufacturing Products rather than rebuilding them.
+**Dependency policy:** Phase 1 establishes source correctness. Phases 2 and 3 establish raster representation and SVG interpretation. Phase 4 establishes Perimeter as a first-class planar SHAPE region with its own width and fill color, including compatibility with existing Outer Ridge inset configurations. Phase 5 introduces reusable decorations; Phase 6 establishes their clipping and planar overlap semantics; Phase 7 reuses those policies for enlarged Artwork. Phase 8 assembles existing manufacturing Products without rebuilding their geometry.
 
-Phases 2 and 3 are substantially independent after their contracts are defined. Their relative order may change if a demonstrated customer workflow warrants it. Phase 7 may begin with an architectural spike earlier, but its implementation should not preempt the correctness and representation contracts it consumes.
+Phases 2 and 3 are substantially independent after their contracts are defined. Phase 4 may be implemented earlier if the current xTool SVG workflow needs independently colored perimeter regions. Phase 8 may begin with an architectural spike earlier, but its implementation should not preempt the correctness and representation contracts it consumes.
 
 ---
 
@@ -391,7 +399,42 @@ The supported embedded-image and stroke-only SVG cases build correctly, produce 
 
 ---
 
-## Phase 4 — SHAPE Placement and Reusable SVG Decorations
+## Phase 4 — SHAPE Perimeter Region and SVG Fill
+
+**Status:** OPEN — Normative specification review, migration contract, and SVG implementation pending. Physical extrusion is deferred.
+
+### Purpose
+
+Establish `shape_perimeter` as a first-class SHAPE planar region, alongside the Outer Ridge, Border Label, Inner Ridge, and Artwork regions. The Perimeter is not an incidental remainder of Outer Ridge placement. It has independently specified geometry, component identity, and logical fill color.
+
+Introduce `shape_perimeter_width` to define the region measured inward from the authoritative Shape boundary, and `shape_perimeter_fill_color` to define its SVG fill. The Outer Ridge, when present, begins immediately inside the Perimeter. Preserve `shape_size` and the outer manufacturing cut contour. Defer `shape_perimeter_fill_raise`, Z-dimensionalization, and physical extrusion to `FUTURE.md`.
+
+### Contract to Resolve
+
+1. Define the Perimeter as the planar band bounded externally by the complete Shape envelope and internally by the inward offset specified by `shape_perimeter_width`. Its registration and existence do not depend on an Outer Ridge being present.
+2. Establish `shape_perimeter_width` as the single authoritative width parameter for this region. Use the same physical measurement conventions already established for inset geometry, including perpendicular offsets for polygon edges. Require finite, nonnegative width and specify geometric bounds and empty-region behavior, including zero width.
+3. Define Outer Ridge placement relative to the inner Perimeter boundary. When an Outer Ridge exists, its outer boundary begins at that boundary and its own width is controlled by `shape_outer_ridge_width`. Specify behavior for absent ridges and for dimensions that cannot fit inside the Shape envelope.
+4. Introduce `shape_perimeter_fill_color` as an independently configurable logical color, not an alias for `shape_base_color` or `shape_outer_ridge_color`. Resolve its default/inheritance behavior so existing artifacts retain their established appearance unless explicitly customized.
+5. Explicitly reconcile the existing `shape_outer_ridge_inset` parameter with the new first-class `shape_perimeter_width`. Preserve legacy artifact geometry through a documented compatibility/migration policy; do not leave two independently effective parameters controlling the same region. Specify precedence, conflict diagnostics, and whether the old name is accepted as a deprecated alias before implementing tests. Do not silently reinterpret existing configurations.
+6. Register Perimeter geometry and identity independently in SHAPE Compose, and emit it as a distinct canonical SVG component with stable logical color and physical dimensions. Reuse established geometric offset helpers where appropriate, without making Perimeter ownership depend on the Outer Ridge.
+7. Define planar interactions with Outer Ridge, Border Fill, Artwork Region Fill, labels, and other registered geometry. Preserve deterministic component boundaries and avoid prohibited positive-area color overlaps. Do not infer xTool Studio processing settings from visual colors alone.
+8. Preserve existing 3MF behavior and all unrelated SHAPE geometry. Do not modify Extrude, introduce new Base partitioning, or implement new Z-height semantics in this phase.
+
+### TDD Work
+
+**RED:** Establish the normative contract, then test independent Perimeter geometry and fill color for circle, square, and polygon Shapes. Cover zero and nonzero width, absent and present Outer Ridge, distinct Perimeter and Base colors, fixed outer cut contour, component identity, geometric bounds, invalid dimensions, and deterministic SVG output. Add compatibility tests for legacy `shape_outer_ridge_inset` configurations and the selected migration/precedence policy.
+
+**GREEN:** Extend SHAPE configuration, derived geometry as needed, Compose registration, and canonical SVG output. Make `shape_perimeter_width` authoritative while preserving legacy input through the specified compatibility boundary. Reuse existing planar offset calculations; do not add a competing width mechanism or change Extrude.
+
+**VERIFY:** Inspect generated SVG and import representative cases into xTool Studio. Verify physical size, distinct Perimeter grouping and fill, correct ridge placement, stable cut contour, legacy configuration compatibility, and unchanged existing 3MF workflows. Run focused and complete applicable quality checks.
+
+### Completion
+
+Perimeter is a first-class, independently registered SHAPE planar region controlled by `shape_perimeter_width` and `shape_perimeter_fill_color`. It remains well-defined without an Outer Ridge, existing configurations have an explicit compatibility path, and canonical SVG manufacturing works without new physical extrusion behavior.
+
+---
+
+## Phase 5 — SHAPE Placement and Reusable SVG Decorations
 
 **Status:** OPEN — Specification and implementation pending.
 
@@ -403,9 +446,9 @@ This combines the former placement-contract and reusable-decoration phases: plac
 
 ### Architectural Boundaries
 
-- SHAPE owns source references, instance identity, placement, composition, and physical manufacturing.
+- SHAPE owns source references, instance identity, placement, and registered planar composition. Existing physical manufacturing ownership is unchanged; new decoration extrusion is deferred.
 - ARTWORK owns the reusable SVG source interpretation contract; SHAPE must not invoke another Model's Stage implementation directly.
-- Reuse registered coordinate space and existing SHAPE Structure/Compose/Extrude/Package boundaries.
+- Reuse registered coordinate space and existing SHAPE Structure/Compose boundaries. Do not extend Extrude or 3MF packaging for decoration support in this phase.
 - Keep source interpretation, instance transforms, and color overrides separate.
 - Preserve authored geometry, logical colors, and source proportions unless explicitly overridden.
 - Do not introduce a generalized component-instance or dependency framework merely for anticipated future Models.
@@ -417,7 +460,7 @@ This combines the former placement-contract and reusable-decoration phases: plac
 3. Define translation, uniform scaling, rotation, transform order, and registered-to-physical placement.
 4. Preserve independent instance identities when two instances share one SVG source.
 5. Define optional logical color overrides without silently replacing authored colors.
-6. Carry decoration geometry through canonical SVG and 3MF manufacturing.
+6. Carry registered decoration geometry through canonical SVG manufacturing, preserving independent instance identities, transforms, and logical colors. Do not introduce new 3MF realization behavior in this phase.
 7. Validate unsupported source constructs, invalid references, transforms, and colors clearly.
 8. Preserve all existing SHAPE behavior when decorations are absent.
 
@@ -427,7 +470,7 @@ This combines the former placement-contract and reusable-decoration phases: plac
 
 **GREEN:** Implement placement and decoration incorporation together using existing mechanisms.
 
-**VERIFY:** Build a representative decorated SHAPE into both SVG and 3MF; check registration, dimensions, identities, and compatibility. Run required tests and quality checks.
+**VERIFY:** Build a representative decorated SHAPE into canonical SVG. Check registration, dimensions, independent instance identities, logical colors, and xTool Studio import behavior. Confirm existing 3MF workflows remain compatible without requiring new decoration extrusion support. Run required tests and quality checks.
 
 ### Completion
 
@@ -435,7 +478,7 @@ Reusable SVG decorations participate in SHAPE manufacturing with independent tra
 
 ---
 
-## Phase 5 — SHAPE Clipping and Deterministic Planar Composition
+## Phase 6 — SHAPE Clipping and Deterministic Planar Composition
 
 **Status:** OPEN — Specification and implementation pending.
 
@@ -447,13 +490,14 @@ This combines the former clipping and planar-composition phases because clipping
 
 ### Architectural Boundaries
 
-- SHAPE remains authoritative for Base, Artwork, Inner Ridge, Outer Ridge, and other region geometry.
-- Clipping modifies participating geometry, not merely SVG visibility.
-- Planar precedence is distinct from physical Z dimensionalization.
-- Preserve common registration, component identity, logical colors, and valid physical partitions.
-- Do not silently allow conflicting positive-area manufactured overlaps between different logical colors.
-- Reuse existing overlap, subtraction, and partitioning machinery; prefer fixed semantic precedence over configurable ordering unless real use cases demand it.
+- SHAPE remains authoritative for its registered planar geometry, including the Shape boundary, Artwork, Inner Ridge, Outer Ridge, and other participating regions.
+- Clipping modifies registered planar geometry, not merely SVG visibility.
+- Planar precedence is distinct from physical Z-dimensionalization.
+- Preserve common registration, component identity, logical colors, and deterministic planar geometry.
+- Do not silently permit prohibited positive-area overlap between different logical colors.
+- Reuse existing planar overlap, subtraction, and partitioning machinery; prefer fixed semantic precedence over configurable ordering unless real use cases demand it.
 - Preserve existing default Artwork fitting and SHAPE composition.
+- Do not introduce new Extrude behavior or physical Z-partitioning requirements in this phase.
 
 ### Work
 
@@ -461,26 +505,26 @@ This combines the former clipping and planar-composition phases because clipping
 2. For each region, explicitly define whether it means enclosed area, occupied physical area, or another precise geometric domain.
 3. Define absent/empty-region behavior and how clipping interacts with transforms and color-separated components.
 4. Review current overlap precedence among existing SHAPE Features before adding decoration-specific behavior.
-5. Establish deterministic semantics for supported overlaps, distinguishing visibility, material ownership, and physical partitioning.
+5. Establish deterministic planar semantics for supported overlaps, distinguishing visible SVG layering, registered component ownership, and deferred physical partitioning.
 6. Clip against authoritative registered geometry and preserve resulting component identities.
 7. Reject ambiguous or unsupported overlap combinations with actionable diagnostics.
-8. Carry the resulting geometry consistently into canonical SVG and raised/inlaid 3MF manufacturing.
+8. Carry the resulting registered geometry into canonical SVG manufacturing, preserving component identities and deterministic planar relationships. Defer new raised/inlaid physical realization behavior.
 
 ### TDD Work
 
 **RED:** Boundary-crossing motifs clipped to different regions; missing-region validation; overlaps between decorations and representative SHAPE Features; cases with different logical colors.
 
-**GREEN:** Implement only missing clipping, precedence, subtraction, or partitioning behavior.
+**GREEN:** Implement only missing planar clipping, precedence, subtraction, or registration behavior.
 
-**VERIFY:** Confirm that clipping affects physical geometry, not just SVG display; inspect SVG and 3MF results; protect existing composition behavior; run required tests and quality checks.
+**VERIFY:** Confirm that clipping changes registered planar geometry rather than only SVG display. Inspect canonical SVG output, including component boundaries, colors, registration, and overlap behavior. Confirm existing 3MF workflows remain compatible without introducing new extrusion semantics. Run required tests and quality checks.
 
 ### Completion
 
-Supported clipping and overlap cases have documented, deterministic manufacturing semantics. SVG and 3MF agree on occupied regions and component identities, with no unintended changes to existing SHAPE configurations.
+Supported clipping and overlap cases have documented, deterministic planar manufacturing semantics. Canonical SVG preserves intended registered regions and component identities, with no unintended changes to existing SHAPE configurations or existing 3MF behavior.
 
 ---
 
-## Phase 6 — Artwork Scaling and Boundary Policies
+## Phase 7 — Artwork Scaling and Boundary Policies
 
 **Status:** OPEN — Specification and implementation pending.
 
@@ -495,8 +539,8 @@ The initial policy is **clip**. More expansive boundary behavior is deferred.
 - Existing Artwork fitting and registration remain the default.
 - Artwork scaling, clipping, nominal SHAPE boundary, and manufactured envelope are separate concepts.
 - Preserve aspect ratio, logical color identity, and registration.
-- Do not automatically enlarge the Base or alter `shape_size` when Artwork grows.
-- Reuse the placement, clipping, and composition contracts from Phases 4 and 5.
+- Do not automatically enlarge the authoritative Shape envelope, alter `shape_size`, or change the outer cut contour when Artwork grows.
+- Reuse the placement, clipping, and composition contracts from Phases 5 and 6.
 - Do not implement `extend` or `expand` without a separate manufacturing specification.
 
 ### Work
@@ -506,18 +550,18 @@ The initial policy is **clip**. More expansive boundary behavior is deferred.
 3. Establish initial `clip` semantics:
    - Artwork may cross internal SHAPE regions.
    - Artwork beyond the nominal SHAPE boundary is clipped.
-   - Base dimensions, `shape_size`, and the outer cut contour remain unchanged.
+   - The authoritative Shape envelope, `shape_size`, and the outer cut contour remain unchanged.
 4. Define interactions with ridges, labels, QR codes, and decorations using established planar precedence.
-5. Preserve correct raised and inlaid manufacturing.
+5. Preserve correct registered planar geometry and canonical SVG manufacturing under the `clip` policy. Do not modify raised/inlaid physical realization behavior as part of this phase.
 6. Record `extend` and `expand` as deferred possibilities, not automatic consequences of scaling.
 
 ### TDD Work
 
-**RED:** Enlarged Artwork crosses an internal boundary and the nominal outer boundary while preserving aspect ratio, registration, component identity, and fixed Base dimensions.
+**RED:** Enlarged Artwork crosses an internal boundary and the nominal outer boundary while preserving aspect ratio, registration, component identity, and fixed Shape envelope and outer cut-contour dimensions.
 
 **GREEN:** Extend existing Artwork fitting and clipping rather than introducing an alternate composition path.
 
-**VERIFY:** Check canonical SVG and 3MF, including raised and inlaid cases; confirm unchanged default fitting behavior; run required tests and quality checks.
+**VERIFY:** Check canonical SVG output for enlarged Artwork, clipping, fixed Shape dimensions, registration, and component identity. Confirm unchanged default Artwork fitting and existing 3MF compatibility. Run required tests and quality checks.
 
 ### Completion
 
@@ -525,7 +569,7 @@ Explicit Artwork enlargement is manufacturing-correct under the `clip` policy, a
 
 ---
 
-## Phase 7 — Hierarchical SVG Manufacturing Project Assembly
+## Phase 8 — Hierarchical SVG Manufacturing Project Assembly
 
 **Status:** OPEN — Architectural review, specification, and implementation pending.
 
@@ -628,6 +672,9 @@ These are not additional active phases. Revisit them only when a real manufactur
 - Configurable general-purpose layer ordering when fixed semantic precedence suffices.
 - Automatic assignment of xTool processing parameters from arbitrary SVG groups or colors.
 - Broader project management, nesting optimization, or machine-specific manufacturing orchestration.
+- SHAPE physical realization changes, including optional Base, zero-volume component omission, uniform Z-raise semantics, revised raised/inlaid component partitioning, and independent 3MF objects. Preserve the agreed design considerations in `FUTURE.md`.
+- Physical extrusion of new reusable decorations, clipping behaviors, and enlarged Artwork beyond existing supported 3MF capabilities.
+- Perimeter physical realization, including `shape_perimeter_fill_raise`, physical Base partitioning, and independent 3MF geometry. First-class planar Perimeter registration, `shape_perimeter_width`, and `shape_perimeter_fill_color` are active in Phase 4.
 
 ## Phase Execution Checklist
 

@@ -27,10 +27,15 @@ def test_coin_builds_from_packaged_shape_dependencies(
     """
     A configured Coin builds through the ordinary dependency graph.
 
-    Requesting only the Coin causes its two packaged Shape dependencies to
-    manufacture first. Coin then consumes those persistent Shape Products,
-    composes complete Faces, and packages the resulting two-sided physical
-    object without requiring Coin-specific orchestration.
+    Requesting only the Coin causes its two packaged Shape dependencies
+    to manufacture first.
+
+    Coin consumes those persistent Shape Products, composes complete
+    Faces, and packages the resulting two-sided physical object without
+    requiring Coin-specific orchestration.
+
+    Each Shape contributes its Base and Artwork Region Fill components.
+    Coin preserves their identities, colors, and physical placement.
     """
 
     project_root = tmp_path
@@ -167,7 +172,7 @@ def test_coin_builds_from_packaged_shape_dependencies(
     assert artifact.stat().st_size > 0
 
     # -----------------------------------------------------
-    # Final Coin contains both complete Face identities
+    # Final Coin preserves complete Face identities
     # -----------------------------------------------------
 
     components = read(
@@ -176,24 +181,60 @@ def test_coin_builds_from_packaged_shape_dependencies(
 
     by_name = {component.name: component for component in components}
 
-    assert set(by_name) == {
+    expected_names = {
         "faceA-base - test-white",
+        "faceA-artwork-region-fill - test-white",
         "faceB-base - test-red",
+        "faceB-artwork-region-fill - test-red",
     }
 
-    assert by_name["faceA-base - test-white"].color is not None
-    assert by_name["faceA-base - test-white"].color.name == "test-white"
-
-    assert by_name["faceB-base - test-red"].color is not None
-    assert by_name["faceB-base - test-red"].color.name == "test-red"
+    assert set(by_name) == expected_names
 
     # -----------------------------------------------------
-    # The two Faces occupy opposite sides of the mating plane
+    # Component colors are preserved
     # -----------------------------------------------------
 
-    face_a_z = tuple(vertex[2] for vertex in by_name["faceA-base - test-white"].mesh.vertices)
+    expected_colors = {
+        "faceA-base - test-white": "test-white",
+        "faceA-artwork-region-fill - test-white": "test-white",
+        "faceB-base - test-red": "test-red",
+        "faceB-artwork-region-fill - test-red": "test-red",
+    }
 
-    face_b_z = tuple(vertex[2] for vertex in by_name["faceB-base - test-red"].mesh.vertices)
+    for name, expected_color in expected_colors.items():
+        component = by_name[name]
 
-    assert min(face_a_z) >= 0.0
-    assert max(face_b_z) <= 0.0
+        assert component.color is not None
+        assert component.color.name == expected_color
+
+    # -----------------------------------------------------
+    # Both Faces occupy opposite sides of the mating plane
+    # -----------------------------------------------------
+
+    face_a_names = (
+        "faceA-base - test-white",
+        "faceA-artwork-region-fill - test-white",
+    )
+
+    face_b_names = (
+        "faceB-base - test-red",
+        "faceB-artwork-region-fill - test-red",
+    )
+
+    for name in face_a_names:
+        vertices = by_name[name].mesh.vertices
+
+        assert vertices, f"{name} has no mesh vertices"
+
+        z_coordinates = tuple(vertex[2] for vertex in vertices)
+
+        assert min(z_coordinates) >= 0.0, f"{name} extends below the Coin mating plane"
+
+    for name in face_b_names:
+        vertices = by_name[name].mesh.vertices
+
+        assert vertices, f"{name} has no mesh vertices"
+
+        z_coordinates = tuple(vertex[2] for vertex in vertices)
+
+        assert max(z_coordinates) <= 0.0, f"{name} extends above the Coin mating plane"

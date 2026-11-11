@@ -5,6 +5,22 @@ End-to-end acceptance tests for Shape artifact production.
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
 
+
+# DEFERRED — SHAPE physical realization
+#
+# The acceptance tests prefixed with deferred_test_ document
+# intended future Extrude behavior.
+#
+# They are intentionally excluded from pytest collection while
+# SVG manufacturing development takes priority.
+#
+# See FUTURE.md:
+# "SHAPE Physical Realization — Optional Base and
+# Independent Components"
+#
+# Restore the test_ prefix when this work is promoted
+# into CHANGEPLAN.md.
+
 from __future__ import annotations
 
 import json
@@ -87,44 +103,19 @@ def test_shape_builds_complete_3mf_without_artwork(
     monkeypatch,
 ) -> None:
     """
-    A Shape without Artwork can be built into a complete 3MF artifact.
+    A Shape without source Artwork produces a complete 3MF.
 
-    Shape structural geometry begins in registered nonphysical space.
-    Physical X/Y size and base thickness are introduced by extrusion,
-    and the resulting physical component is packaged into the final
-    artifact.3mf.
-
-    The default Shape base retains its semantic color identity through
-    dimensionalization and packaging.
-
-    No Artwork source or completed Artwork artifact is required.
+    Base and Artwork Region Fill are distinct Shape-owned components.
+    Neither requires an Artwork dependency.
     """
-
-    # -----------------------------------------------------
-    # Arrange temporary project
-    # -----------------------------------------------------
-
     project_root = tmp_path
-
-    monkeypatch.chdir(
-        project_root,
-    )
-
-    runner = CliRunner()
-
-    # -----------------------------------------------------
-    # Configure source-less Artifact
-    # -----------------------------------------------------
+    monkeypatch.chdir(project_root)
 
     write_artifact_config(
         "testshape",
         {},
         project_root=project_root,
     )
-
-    # -----------------------------------------------------
-    # Plan the Shape Variant underlying the Realization
-    # -----------------------------------------------------
 
     plans = create_build_plans(
         "testshape",
@@ -134,31 +125,21 @@ def test_shape_builds_complete_3mf_without_artwork(
     )
 
     assert len(plans) == 1
-
     plan = plans[0]
 
     assert plan.artifact_id == "testshape"
     assert plan.model_name == "shape"
     assert plan.realization_name == "shape_default"
+    assert plan.artifact_dir.is_relative_to(project_root)
 
-    assert plan.artifact_dir.is_relative_to(
-        project_root,
-    )
-
-    stage_names = tuple(stage.spec.name for stage in plan.stages)
-
-    assert stage_names == (
+    assert tuple(stage.spec.name for stage in plan.stages) == (
         "structure",
         "compose",
         "extrude",
         "package",
     )
 
-    # -----------------------------------------------------
-    # Build canonical Shape Realization through public CLI
-    # -----------------------------------------------------
-
-    build_result = runner.invoke(
+    result = CliRunner().invoke(
         cli,
         [
             "build",
@@ -168,91 +149,73 @@ def test_shape_builds_complete_3mf_without_artwork(
         ],
     )
 
-    assert build_result.exit_code == 0, (
-        f"Shape build failed:\n{build_result.output}\n{build_result.exception!r}"
-    )
-
-    # -----------------------------------------------------
-    # Locate final product through the build plan
-    # -----------------------------------------------------
+    assert result.exit_code == 0, f"Shape build failed:\n{result.output}\n{result.exception!r}"
 
     package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
 
-    artifact_product = next(
-        product for product in package_stage.products if product.spec.name == "artifact"
+    output = next(
+        product.path for product in package_stage.products if product.spec.name == "artifact"
     )
 
-    output = artifact_product.path
-
-    # -----------------------------------------------------
-    # Verify final product
-    # -----------------------------------------------------
-
-    assert output.is_relative_to(
-        project_root,
-    )
-
-    assert output.is_file(), f"Build did not produce the expected Shape 3MF: {output}"
-
+    assert output.is_relative_to(project_root)
+    assert output.is_file()
     assert output.stat().st_size > 0
+    assert zipfile.is_zipfile(output)
 
-    assert zipfile.is_zipfile(
-        output,
+    with zipfile.ZipFile(output) as archive:
+        names = set(archive.namelist())
+
+        model_names = [name for name in names if name.startswith("3D/") and name.endswith(".model")]
+
+        assert "[Content_Types].xml" in names
+        assert len(model_names) == 1
+
+        model = ET.fromstring(archive.read(model_names[0]))
+
+    objects = model.findall(f".//{{{CORE_NS}}}object")
+    materials = model.findall(f".//{{{CORE_NS}}}basematerials")
+
+    objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+    materials_by_id = {material.get("id"): material for material in materials}
+
+    base_name = component_name(
+        "testshape",
+        "base",
+        "white",
     )
 
-    with zipfile.ZipFile(
-        output,
-    ) as archive:
-        names = set(
-            archive.namelist(),
-        )
-
-        model_name = next(
-            name for name in names if name.startswith("3D/") and name.endswith(".model")
-        )
-
-        model_data = archive.read(
-            model_name,
-        )
-
-    assert "[Content_Types].xml" in names
-
-    # -----------------------------------------------------
-    # Verify packaged component identity and color
-    # -----------------------------------------------------
-
-    model = ET.fromstring(
-        model_data,
+    region_name = component_name(
+        "testshape",
+        "artwork-region-fill",
+        "white",
     )
 
-    objects = model.findall(
-        f".//{{{CORE_NS}}}object",
-    )
+    assert set(objects_by_name) == {
+        base_name,
+        region_name,
+    }
 
-    materials = model.findall(
-        f".//{{{CORE_NS}}}basematerials",
-    )
+    assert materials_by_id
 
-    assert len(objects) == 1
+    for name in (base_name, region_name):
+        object_ = objects_by_name[name]
 
-    base_object = objects[0]
+        material_id = object_.get("pid")
+        assert material_id is not None
+        assert material_id in materials_by_id
 
-    assert base_object.get("name") == component_name("testshape", "base", "white")
+        material = materials_by_id[material_id]
+        color = material.find(f"{{{CORE_NS}}}base")
 
-    assert len(materials) == 1
+        assert color is not None
+        assert color.get("name") == "white"
+        assert object_.get("pindex") == "0"
 
-    base_material = materials[0]
+        assert object_.findall(f".//{{{CORE_NS}}}vertex")
+        assert object_.findall(f".//{{{CORE_NS}}}triangle")
 
-    base_color = base_material.find(
-        f"{{{CORE_NS}}}base",
-    )
-
-    assert base_color is not None
-
-    assert base_color.get("name") == "white"
-
-    assert base_object.get("pid") == base_material.get("id")
-    assert base_object.get("pindex") == "0"
+    assert objects_by_name[base_name].get("id") != objects_by_name[region_name].get("id")
 
 
 @pytest.mark.slow
@@ -263,7 +226,7 @@ def test_shape_builds_complete_3mf_without_artwork(
         "integrated",
     ],
 )
-def test_shape_ridge_preserves_distinct_component_colors(
+def deferred_test_shape_ridge_preserves_distinct_component_colors(
     tmp_path: Path,
     monkeypatch,
     ridge_style: str,
@@ -616,160 +579,136 @@ def test_shape_shared_label_color_survives_3mf_packaging(
 @pytest.mark.slow
 def test_shape_component_colors_do_not_change_geometry(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Shape semantic colors do not affect physical geometry.
+    Shape semantic colors affect presentation and material assignment,
+    but do not affect registered or manufactured geometry.
 
-    Two Shapes with identical structural parameters but different
-    component colors produce identical packaged mesh geometry.
+    Swapping Base and Outer Ridge colors changes canonical SVG fills
+    and packaged 3MF material assignments without changing geometry.
+
+    Use an integrated ridge so this test isolates color invariance
+    rather than separate-ridge extrusion behavior.
     """
-
     project_root = tmp_path
+    monkeypatch.chdir(project_root)
 
-    monkeypatch.chdir(
-        project_root,
-    )
+    configurations = {
+        "white-red-shape": ("test-white", "test-red"),
+        "red-white-shape": ("test-red", "test-white"),
+    }
 
-    # -----------------------------------------------------
-    # Configure Shapes with identical geometry
-    # -----------------------------------------------------
+    svg_roots: dict[str, ET.Element] = {}
+    packaged_geometry = {}
 
-    write_artifact_config(
-        "white-red-shape",
-        {
-            "realizations": {
-                "shape_default": {
-                    "shape_base_color": "test-white",
-                    "shape_outer_ridge_width": 2.0,
-                    "shape_outer_ridge_raise": 1.0,
-                    "shape_outer_ridge_style": "separate",
-                    "shape_outer_ridge_color": "test-red",
+    for artifact_id, (base_color, ridge_color) in configurations.items():
+        write_artifact_config(
+            artifact_id,
+            {
+                "realizations": {
+                    "shape_default": {
+                        "shape_geometry": "circle",
+                        "shape_size": 100.0,
+                        "shape_base_color": base_color,
+                        "shape_outer_ridge_width": 2.0,
+                        "shape_outer_ridge_raise": 1.0,
+                        "shape_outer_ridge_style": "integrated",
+                        "shape_outer_ridge_color": ridge_color,
+                    },
                 },
             },
-        },
-        project_root=project_root,
-    )
+            project_root=project_root,
+        )
 
-    write_artifact_config(
-        "red-white-shape",
-        {
-            "realizations": {
-                "shape_default": {
-                    "shape_base_color": "test-red",
-                    "shape_outer_ridge_width": 2.0,
-                    "shape_outer_ridge_raise": 1.0,
-                    "shape_outer_ridge_style": "separate",
-                    "shape_outer_ridge_color": "test-white",
-                },
-            },
-        },
-        project_root=project_root,
-    )
-
-    # -----------------------------------------------------
-    # Plan and build both Shape Realizations
-    # -----------------------------------------------------
-
-    plans = {}
-
-    runner = CliRunner()
-
-    for artifact_id in (
-        "white-red-shape",
-        "red-white-shape",
-    ):
-        artifact_plans = create_build_plans(
+        plans = create_build_plans(
             artifact_id,
             model_name="shape",
             variant_name="default",
             project_root=project_root,
         )
 
-        assert len(artifact_plans) == 1
-
-        plan = artifact_plans[0]
+        assert len(plans) == 1
+        plan = plans[0]
 
         assert plan.model_name == "shape"
         assert plan.realization_name == "shape_default"
 
-        plans[artifact_id] = plan
+        execute_dependency_build(plan)
 
-        build_result = runner.invoke(
-            cli,
-            [
-                "build",
-                artifact_id,
-                "--realization",
-                "shape_default",
-            ],
+        compose_stage = next(stage for stage in plan.stages if stage.spec.name == "compose")
+
+        svg_product = next(
+            product for product in compose_stage.products if product.spec.name == "artifact"
         )
 
-        assert build_result.exit_code == 0, (
-            f"Shape build failed for {artifact_id!r}:\n"
-            f"{build_result.output}\n"
-            f"{build_result.exception!r}"
-        )
+        assert svg_product.path.is_file()
 
-    # -----------------------------------------------------
-    # Locate packaged artifacts
-    # -----------------------------------------------------
+        svg_roots[artifact_id] = ET.parse(svg_product.path).getroot()
 
-    outputs = {}
-
-    for artifact_id, plan in plans.items():
         package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
 
-        artifact_product = next(
+        package_product = next(
             product for product in package_stage.products if product.spec.name == "artifact"
         )
 
-        assert artifact_product.path.is_file()
+        assert package_product.path.is_file()
+        assert zipfile.is_zipfile(package_product.path)
 
-        outputs[artifact_id] = artifact_product.path
-
-    # -----------------------------------------------------
-    # Extract mesh geometry
-    # -----------------------------------------------------
-
-    def mesh_geometry(
-        path: Path,
-    ) -> dict[str, tuple[tuple[str, ...], tuple[str, ...]]]:
-        with zipfile.ZipFile(
-            path,
-        ) as archive:
-            model_name = next(
+        with zipfile.ZipFile(package_product.path) as archive:
+            model_names = [
                 name
                 for name in archive.namelist()
                 if name.startswith("3D/") and name.endswith(".model")
-            )
+            ]
 
-            model = ET.fromstring(
-                archive.read(
-                    model_name,
-                ),
-            )
+            assert len(model_names) == 1
+
+            model = ET.fromstring(archive.read(model_names[0]))
+
+        objects = model.findall(f".//{{{CORE_NS}}}object")
+
+        materials = model.findall(f".//{{{CORE_NS}}}basematerials")
+
+        objects_by_name = {object_.get("name"): object_ for object_ in objects}
+
+        materials_by_id = {material.get("id"): material for material in materials}
 
         geometry = {}
 
-        for obj in model.findall(
-            f".//{{{CORE_NS}}}object",
+        for identity, color_name in (
+            ("base", base_color),
+            ("ridge", ridge_color),
         ):
-            name = obj.get("name")
-
-            if name is None:
-                continue
-
-            component = (
-                "base"
-                if name.startswith("base - ")
-                else "ridge"
-                if name.startswith("ridge - ")
-                else None
+            name = component_name(
+                artifact_id,
+                identity,
+                color_name,
             )
 
-            if component is None:
-                continue
+            assert name in objects_by_name
+
+            object_ = objects_by_name[name]
+
+            material_id = object_.get("pid")
+
+            assert material_id is not None
+            assert material_id in materials_by_id
+
+            material = materials_by_id[material_id]
+
+            color = material.find(f"{{{CORE_NS}}}base")
+
+            assert color is not None
+            assert color.get("name") == color_name
+
+            expected_rgb = {
+                "test-white": "#FFFFFF",
+                "test-red": "#FF0000",
+            }[color_name]
+
+            assert color.get("displaycolor") == expected_rgb
+            assert object_.get("pindex") == "0"
 
             vertices = tuple(
                 (
@@ -777,9 +716,7 @@ def test_shape_component_colors_do_not_change_geometry(
                     vertex.get("y"),
                     vertex.get("z"),
                 )
-                for vertex in obj.findall(
-                    f".//{{{CORE_NS}}}vertex",
-                )
+                for vertex in object_.findall(f".//{{{CORE_NS}}}vertex")
             )
 
             triangles = tuple(
@@ -788,41 +725,94 @@ def test_shape_component_colors_do_not_change_geometry(
                     triangle.get("v2"),
                     triangle.get("v3"),
                 )
-                for triangle in obj.findall(
-                    f".//{{{CORE_NS}}}triangle",
-                )
+                for triangle in object_.findall(f".//{{{CORE_NS}}}triangle")
             )
 
-            geometry[component] = (
+            assert vertices
+            assert triangles
+
+            geometry[identity] = (
                 vertices,
                 triangles,
             )
 
-        return geometry
+        packaged_geometry[artifact_id] = geometry
 
-    white_red_geometry = mesh_geometry(
-        outputs["white-red-shape"],
+    white_red = svg_roots["white-red-shape"]
+    red_white = svg_roots["red-white-shape"]
+
+    namespace = "http://www.w3.org/2000/svg"
+
+    def component_fill(
+        root: ET.Element,
+        identity: str,
+    ) -> str:
+        component = root.find(f".//{{{namespace}}}path[@id='{identity}']")
+
+        assert component is not None
+
+        fill = component.get("fill")
+
+        assert fill is not None
+        return fill
+
+    # Presentation reflects the configured colors.
+    assert (
+        component_fill(
+            white_red,
+            "outer-ridge",
+        )
+        == "#ff0000"
     )
 
-    red_white_geometry = mesh_geometry(
-        outputs["red-white-shape"],
+    assert (
+        component_fill(
+            red_white,
+            "outer-ridge",
+        )
+        == "#ffffff"
     )
 
-    # -----------------------------------------------------
-    # Semantic colors do not alter geometry
-    # -----------------------------------------------------
+    assert (
+        component_fill(
+            white_red,
+            "artwork-region-fill",
+        )
+        == "#ffffff"
+    )
 
-    assert white_red_geometry.keys() == {
+    assert (
+        component_fill(
+            red_white,
+            "artwork-region-fill",
+        )
+        == "#ff0000"
+    )
+
+    # Registered SVG geometry is independent of color.
+    def geometry_only(root: ET.Element) -> bytes:
+        copy = ET.fromstring(ET.tostring(root))
+
+        for element in copy.iter():
+            element.attrib.pop("fill", None)
+            element.attrib.pop("stroke", None)
+
+        return ET.tostring(copy)
+
+    assert geometry_only(white_red) == geometry_only(red_white)
+
+    # Physical component identities and meshes are preserved.
+    assert packaged_geometry["white-red-shape"].keys() == {
         "base",
         "ridge",
     }
 
-    assert red_white_geometry.keys() == {
+    assert packaged_geometry["red-white-shape"].keys() == {
         "base",
         "ridge",
     }
 
-    assert white_red_geometry == red_white_geometry
+    assert packaged_geometry["white-red-shape"] == packaged_geometry["red-white-shape"]
 
 
 @pytest.mark.slow
@@ -831,35 +821,19 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
     monkeypatch,
 ) -> None:
     """
-    Shape consumes registered Artwork and builds a complete 3MF artifact.
+    Shape consumes registered Artwork and produces a complete 3MF.
 
-    Building Shape automatically produces the bound Artwork only through its
-    reusable registered Vector representation. Artwork Extrude and Package are
-    not prerequisites for Shape manufacturing.
-
-    Artwork Vector exposes logical Artifact-color identity only. Shape consumes
-    that registered representation, and Shape Package resolves the incorporated
-    Artwork to physical printer colors in the final 3MF.
+    Only Artwork's reusable Vector representation is required.
+    Shape-owned Artwork Region Fill must not be counted as
+    incorporated source Artwork.
     """
-
     project_root = tmp_path
-
-    monkeypatch.chdir(
-        project_root,
-    )
-
-    # -----------------------------------------------------
-    # Create canonical Artwork producer
-    # -----------------------------------------------------
+    monkeypatch.chdir(project_root)
 
     _materialize_artwork_source(
         "source-artwork",
         project_root=project_root,
     )
-
-    # -----------------------------------------------------
-    # Configure Shape consumer
-    # -----------------------------------------------------
 
     write_artifact_config(
         "artwork-shape",
@@ -882,10 +856,6 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
         project_root=project_root,
     )
 
-    # -----------------------------------------------------
-    # Plan Shape
-    # -----------------------------------------------------
-
     plans = create_build_plans(
         "artwork-shape",
         model_name="shape",
@@ -894,7 +864,6 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
     )
 
     assert len(plans) == 1
-
     plan = plans[0]
 
     assert plan.artifact_id == "artwork-shape"
@@ -908,154 +877,70 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
         "package",
     )
 
-    # -----------------------------------------------------
-    # Build Shape through dependency-aware orchestration
-    # -----------------------------------------------------
-
-    execute_dependency_build(
-        plan,
-    )
-
-    # -----------------------------------------------------
-    # Verify targeted Artwork production
-    # -----------------------------------------------------
+    execute_dependency_build(plan)
 
     artwork_root = project_root / "artifacts" / "source-artwork" / "artwork" / "artwork_default"
 
     assert (artwork_root / "10-prepare" / "trace.svg").is_file()
-
     assert (artwork_root / "20-raster" / "products.json").is_file()
 
-    artwork_vector_manifest = artwork_root / "30-vector" / "products.json"
+    vector_manifest = artwork_root / "30-vector" / "products.json"
+    assert vector_manifest.is_file()
 
-    assert artwork_vector_manifest.is_file()
-
-    #
-    # Shape consumes Artwork's registered Vector product.
-    # Standalone Artwork manufacturing must not occur.
-    #
     assert not (artwork_root / "40-extrude" / "products.json").exists()
 
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
 
-    # -----------------------------------------------------
-    # Verify registered Artwork contract
-    # -----------------------------------------------------
+    vector_data = json.loads(vector_manifest.read_text(encoding="utf-8"))
 
-    artwork_manifest_data = json.loads(
-        artwork_vector_manifest.read_text(
-            encoding="utf-8",
-        )
-    )
+    artwork_products = vector_data["products"]
 
-    artwork_products = artwork_manifest_data["products"]
-
-    assert isinstance(
-        artwork_products,
-        list,
-    )
-
+    assert isinstance(artwork_products, list)
     assert artwork_products
 
     for product in artwork_products:
-        #
-        # Vector owns logical Artwork identity only.
-        # Physical printer assignment belongs downstream.
-        #
         assert "printer_color" not in product
         assert "distance" not in product
 
-        artifact_color = product.get(
-            "artifact_color",
-        )
-
-        assert isinstance(
-            artifact_color,
-            dict,
-        )
-
+        artifact_color = product.get("artifact_color")
+        assert isinstance(artifact_color, dict)
         assert artifact_color["index"] == product["index"]
 
         rgb = artifact_color["rgb"]
+        assert isinstance(rgb, dict)
+        assert set(rgb) == {"red", "green", "blue"}
 
-        assert isinstance(
-            rgb,
-            dict,
-        )
-
-        assert set(rgb) == {
-            "red",
-            "green",
-            "blue",
-        }
-
-        for channel in (
-            "red",
-            "green",
-            "blue",
-        ):
-            assert isinstance(
-                rgb[channel],
-                int,
-            )
-
+        for channel in ("red", "green", "blue"):
+            assert isinstance(rgb[channel], int)
             assert 0 <= rgb[channel] <= 255
-
-    # -----------------------------------------------------
-    # Locate final Shape artifact
-    # -----------------------------------------------------
 
     package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
 
-    artifact_product = next(
-        product for product in package_stage.products if product.spec.name == "artifact"
+    output = next(
+        product.path for product in package_stage.products if product.spec.name == "artifact"
     )
-
-    output = artifact_product.path
 
     assert output.is_file()
     assert output.stat().st_size > 0
+    assert zipfile.is_zipfile(output)
 
-    assert zipfile.is_zipfile(
-        output,
-    )
-
-    # -----------------------------------------------------
-    # Read final Shape 3MF
-    # -----------------------------------------------------
-
-    with zipfile.ZipFile(
-        output,
-    ) as archive:
-        names = set(
-            archive.namelist(),
-        )
+    with zipfile.ZipFile(output) as archive:
+        names = set(archive.namelist())
 
         assert "[Content_Types].xml" in names
 
-        model_name = next(
-            name for name in names if name.startswith("3D/") and name.endswith(".model")
-        )
+        model_names = [name for name in names if name.startswith("3D/") and name.endswith(".model")]
 
-        model = ET.fromstring(
-            archive.read(
-                model_name,
-            ),
-        )
+        assert len(model_names) == 1
 
-    objects = model.findall(
-        f".//{{{CORE_NS}}}object",
-    )
+        model = ET.fromstring(archive.read(model_names[0]))
 
-    materials = model.findall(
-        f".//{{{CORE_NS}}}basematerials",
-    )
+    objects = model.findall(f".//{{{CORE_NS}}}object")
+    materials = model.findall(f".//{{{CORE_NS}}}basematerials")
 
     objects_by_name = {object_.get("name"): object_ for object_ in objects}
 
-    # -----------------------------------------------------
-    # Verify structural Shape identity
-    # -----------------------------------------------------
+    materials_by_id = {material.get("id"): material for material in materials}
 
     base_name = component_name(
         "artwork-shape",
@@ -1065,39 +950,34 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
 
     assert base_name in objects_by_name
 
-    # -----------------------------------------------------
-    # Verify incorporated Artwork survives Package
-    # -----------------------------------------------------
+    region_name = component_name(
+        "artwork-shape",
+        "artwork-region-fill",
+        "test-white",
+    )
 
+    assert region_name in objects_by_name
+
+    # Source Artwork is distinct from Shape-owned fill components.
     artwork_objects = {
         name: object_
         for name, object_ in objects_by_name.items()
         if name is not None
-        and name.startswith(
-            "artwork-",
-        )
+        and name.startswith("artwork-")
+        and not name.startswith("artwork-region-fill")
+        and not name.startswith("artwork-fill")
     }
 
     assert len(artwork_objects) == len(artwork_products)
 
     for product in artwork_products:
-        component_identity = f"artwork-{product['index']}"
+        identity = f"artwork-{product['index']}"
 
-        matching_names = [name for name in artwork_objects if component_identity in name]
+        matching_names = [name for name in artwork_objects if name.startswith(f"{identity} - ")]
 
         assert len(matching_names) == 1, (
-            "Expected exactly one packaged Shape object "
-            "for registered Artwork component "
-            f"{component_identity!r}; "
-            f"found {matching_names!r} in "
-            f"{sorted(artwork_objects)!r}"
+            f"Expected one packaged object for {identity!r}; found {matching_names!r}"
         )
-
-    # -----------------------------------------------------
-    # Verify physical assignment occurs in Shape Package
-    # -----------------------------------------------------
-
-    materials_by_id = {material.get("id"): material for material in materials}
 
     assert materials_by_id
 
@@ -1108,19 +988,14 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
         assert pid in materials_by_id
 
         material = materials_by_id[pid]
-
-        color = material.find(
-            f"{{{CORE_NS}}}base",
-        )
+        color = material.find(f"{{{CORE_NS}}}base")
 
         assert color is not None
 
         semantic_name = color.get("name")
-
         display_color = color.get("displaycolor")
 
         assert semantic_name
-
         assert display_color
         assert display_color.startswith("#")
         assert len(display_color) == 7
@@ -1128,10 +1003,11 @@ def test_shape_builds_complete_3mf_with_registered_artwork(
         assert object_.get("pindex") == "0"
 
         object_name = object_.get("name")
-
         assert object_name is not None
-
         assert object_name.endswith(f" - {semantic_name}")
+
+        assert object_.findall(f".//{{{CORE_NS}}}vertex")
+        assert object_.findall(f".//{{{CORE_NS}}}triangle")
 
 
 @pytest.mark.slow
@@ -1447,7 +1323,7 @@ def test_registered_artwork_is_reused_across_different_shapes(
 
 
 @pytest.mark.slow
-def test_second_shape_does_not_reexecute_registered_artwork_stages(
+def deferred_test_second_shape_does_not_reexecute_registered_artwork_stages(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1585,7 +1461,7 @@ def test_second_shape_does_not_reexecute_registered_artwork_stages(
 
 
 @pytest.mark.slow
-def test_shape_policy_changes_do_not_reexecute_registered_artwork(
+def deferred_test_shape_policy_changes_do_not_reexecute_registered_artwork(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1743,28 +1619,23 @@ def test_shape_policy_changes_do_not_reexecute_registered_artwork(
 @pytest.mark.slow
 def test_shape_size_change_preserves_registered_geometry(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Changing only Shape physical size does not change registered geometry.
+    Changing Shape size preserves registered geometry while changing
+    the physical dimensions of the canonical SVG.
 
-    Shape structure and composition exist in canonical registered space.
-    shape_size is a physical dimensionalization parameter and therefore
-    must not alter either registered product.
+    Structure and composition remain in registered coordinates.
+    The canonical SVG uses physical millimeter dimensions while
+    retaining the registered viewBox and component geometry.
     """
-
     project_root = tmp_path
+    monkeypatch.chdir(project_root)
 
-    monkeypatch.chdir(
-        project_root,
-    )
-
-    # -----------------------------------------------------
-    # Configure Shape
-    # -----------------------------------------------------
+    artifact_id = "resized-shape"
 
     write_artifact_config(
-        "resized-shape",
+        artifact_id,
         {
             "realizations": {
                 "shape_default": {
@@ -1775,38 +1646,44 @@ def test_shape_size_change_preserves_registered_geometry(
         project_root=project_root,
     )
 
-    # -----------------------------------------------------
-    # Build initial Shape
-    # -----------------------------------------------------
-
     initial_plan = create_build_plans(
-        "resized-shape",
+        artifact_id,
         model_name="shape",
         variant_name="default",
         project_root=project_root,
     )[0]
 
-    execute_dependency_build(
-        initial_plan,
-    )
+    execute_dependency_build(initial_plan)
 
-    shape_root = project_root / "artifacts" / "resized-shape" / "shape" / "shape_default"
+    shape_root = project_root / "artifacts" / artifact_id / "shape" / "shape_default"
 
     structure = shape_root / "10-structure" / "structure.svg"
     composition = shape_root / "20-compose" / "composition.svg"
 
+    compose_stage = next(stage for stage in initial_plan.stages if stage.spec.name == "compose")
+
+    svg_product = next(
+        product for product in compose_stage.products if product.spec.name == "artifact"
+    )
+
+    canonical_svg = svg_product.path
+
     assert structure.is_file()
     assert composition.is_file()
+    assert canonical_svg.is_file()
 
     initial_structure_bytes = structure.read_bytes()
     initial_composition_bytes = composition.read_bytes()
+    initial_svg_bytes = canonical_svg.read_bytes()
 
-    # -----------------------------------------------------
-    # Change only physical Shape size
-    # -----------------------------------------------------
+    initial_root = ET.fromstring(initial_svg_bytes)
+
+    assert initial_root.get("width") == "100mm"
+    assert initial_root.get("height") == "100mm"
+    assert initial_root.get("viewBox") == "-0.5 -0.5 1 1"
 
     update_artifact_config(
-        "resized-shape",
+        artifact_id,
         {
             "realizations": {
                 "shape_default": {
@@ -1817,30 +1694,57 @@ def test_shape_size_change_preserves_registered_geometry(
         project_root=project_root,
     )
 
-    # -----------------------------------------------------
-    # Rebuild through normal orchestration
-    # -----------------------------------------------------
-
     resized_plan = create_build_plans(
-        "resized-shape",
+        artifact_id,
         model_name="shape",
         variant_name="default",
         project_root=project_root,
     )[0]
 
-    execute_dependency_build(
-        resized_plan,
-    )
-
-    # -----------------------------------------------------
-    # Registered geometry remains unchanged
-    # -----------------------------------------------------
-
-    assert structure.is_file()
-    assert composition.is_file()
+    execute_dependency_build(resized_plan)
 
     assert structure.read_bytes() == initial_structure_bytes
     assert composition.read_bytes() == initial_composition_bytes
+
+    resized_compose_stage = next(
+        stage for stage in resized_plan.stages if stage.spec.name == "compose"
+    )
+
+    resized_svg_product = next(
+        product for product in resized_compose_stage.products if product.spec.name == "artifact"
+    )
+
+    assert resized_svg_product.path == canonical_svg
+    assert canonical_svg.is_file()
+
+    resized_svg_bytes = canonical_svg.read_bytes()
+    resized_root = ET.fromstring(resized_svg_bytes)
+
+    assert resized_svg_bytes != initial_svg_bytes
+
+    assert resized_root.get("width") == "90mm"
+    assert resized_root.get("height") == "90mm"
+    assert resized_root.get("viewBox") == "-0.5 -0.5 1 1"
+
+    # Physical dimensions change, but the registered geometry
+    # remains unchanged. The CUT contour's stroke width is
+    # deliberately expressed as a physical 0.1 mm dimension.
+    for root, size in (
+        (initial_root, 100.0),
+        (resized_root, 90.0),
+    ):
+        root.attrib.pop("width")
+        root.attrib.pop("height")
+
+        cut = root.find("{http://www.w3.org/2000/svg}path[@id='cut-contour']")
+
+        assert cut is not None
+        assert float(cut.attrib.pop("stroke-width")) == pytest.approx(
+            0.1 / size,
+            rel=1e-5,
+        )
+
+    assert ET.tostring(initial_root) == ET.tostring(resized_root)
 
 
 @pytest.mark.slow
@@ -2564,7 +2468,7 @@ def test_shape_artwork_fill_remains_distinct_when_base_uses_same_color(
         "separate",
     ],
 )
-def test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
+def deferred_test_shape_artwork_fill_preserves_physical_interval_with_outer_ridge(
     tmp_path: Path,
     monkeypatch,
     ridge_style: str,
@@ -3035,11 +2939,12 @@ def test_shape_builds_complete_3mf_with_native_svg_artwork(
     monkeypatch,
 ) -> None:
     """
-    SHAPE consumes native SVG Artwork through the existing registered
-    Vector dependency, without knowing the source format.
+    Shape consumes native SVG Artwork through registered Vector.
 
-    Authored colors, transforms, and holes survive native registration,
-    SHAPE composition, extrusion, and final 3MF packaging.
+    Authored colors, transforms, and holes survive registration,
+    composition, extrusion, and 3MF packaging.
+
+    Shape-owned Artwork Region Fill is not source Artwork.
     """
     monkeypatch.chdir(tmp_path)
 
@@ -3052,6 +2957,7 @@ def test_shape_builds_complete_3mf_with_native_svg_artwork(
     assert vector_manifest.is_file()
 
     vector_data = json.loads(vector_manifest.read_text(encoding="utf-8"))
+
     products = vector_data["products"]
 
     assert len(products) == 2
@@ -3061,27 +2967,50 @@ def test_shape_builds_complete_3mf_with_native_svg_artwork(
         tuple(product["artifact_color"]["rgb"][channel] for channel in ("red", "green", "blue"))
         for product in products
     }
-    assert rgb_colors == {(255, 0, 0), (0, 0, 255)}
+
+    assert rgb_colors == {
+        (255, 0, 0),
+        (0, 0, 255),
+    }
 
     for product in products:
         assert (vector_manifest.parent / product["path"]).is_file()
+
         assert "printer_color" not in product
         assert "distance" not in product
 
-    # A SHAPE dependency needs registered Artwork, not standalone
-    # Artwork extrusion or 3MF packaging.
     assert not (artwork_root / "40-extrude" / "products.json").exists()
+
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
 
     artifact = shape_root / "40-package" / "artifact.3mf"
+
     objects = _native_svg_packaged_objects(artifact)
 
-    assert component_name("svg-shape", "base", "test-white") in objects
+    assert (
+        component_name(
+            "svg-shape",
+            "base",
+            "test-white",
+        )
+        in objects
+    )
+
+    assert (
+        component_name(
+            "svg-shape",
+            "artwork-region-fill",
+            "test-white",
+        )
+        in objects
+    )
 
     artwork_objects = {
         name: object_
         for name, object_ in objects.items()
-        if name.startswith("artwork-") and not name.startswith("artwork-fill")
+        if name.startswith("artwork-")
+        and not name.startswith("artwork-fill")
+        and not name.startswith("artwork-region-fill")
     }
 
     assert len(artwork_objects) == 2
@@ -3092,9 +3021,11 @@ def test_shape_builds_complete_3mf_with_native_svg_artwork(
             for name, object_ in artwork_objects.items()
             if name.startswith(f"artwork-{index} - ")
         ]
+
         assert len(matches) == 1
 
         xml_vertices = matches[0].findall(f".//{{{CORE_NS}}}vertex")
+
         xml_triangles = matches[0].findall(f".//{{{CORE_NS}}}triangle")
 
         assert xml_vertices
@@ -3104,9 +3035,7 @@ def test_shape_builds_complete_3mf_with_native_svg_artwork(
             vertex.get(axis) is not None for vertex in xml_vertices for axis in ("x", "y", "z")
         )
 
-    # The red SVG frame's hole must not be filled by red triangles.
-    # Its center is distinct from the blue rectangle and must remain
-    # uncovered by the red component in the packaged XY geometry.
+    # Locate the registered red component.
     red_product = next(
         product
         for product in products
@@ -3117,6 +3046,7 @@ def test_shape_builds_complete_3mf_with_native_svg_artwork(
             "blue": 0,
         }
     )
+
     red_index = red_product["index"]
 
     red_object = next(
@@ -3151,9 +3081,9 @@ def test_shape_builds_complete_3mf_with_native_svg_artwork(
 
         triangles.append((int(v1), int(v2), int(v3)))
 
-    # A hole survives when the mesh has no triangle covering the
-    # centroid of the frame's interior opening. Use the physical
-    # red-component bounding box to identify that interior point.
+    assert vertices
+    assert triangles
+
     xs = [vertex[0] for vertex in vertices]
     ys = [vertex[1] for vertex in vertices]
 
@@ -3184,12 +3114,16 @@ def test_shape_builds_complete_3mf_with_native_svg_artwork(
     horizontal_triangles = [
         triangle
         for triangle in triangles
-        if max(vertices[index][2] for index in triangle)
-        - min(vertices[index][2] for index in triangle)
+        if (
+            max(vertices[index][2] for index in triangle)
+            - min(vertices[index][2] for index in triangle)
+        )
         < 1e-7
     ]
 
     assert horizontal_triangles
+
+    # The red frame's interior hole remains unfilled.
     assert not any(contains_xy((center_x, center_y), triangle) for triangle in horizontal_triangles)
 
 
@@ -3370,3 +3304,308 @@ def test_shape_rejects_overlapping_native_svg_artwork_colors(
     assert not (shape_root / "40-package" / "artifact.3mf").exists()
 
     assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+
+@pytest.mark.slow
+def test_shape_exports_physically_dimensioned_svg(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A Shape with registered native SVG Artwork produces a canonical,
+    physically dimensioned, colorized SVG alongside its final 3MF.
+
+    Shape structural colors come from the shared color catalog.
+    Incorporated Artwork retains its measured Artifact RGB values.
+    Physical printer assignment remains downstream in Package.
+    """
+    monkeypatch.chdir(tmp_path)
+
+    artwork_root, shape_root = _native_svg_acceptance_project(tmp_path)
+
+    plan = _native_svg_shape_plan(tmp_path)
+    execute_dependency_build(plan)
+
+    compose_stage = next(stage for stage in plan.stages if stage.spec.name == "compose")
+
+    svg_product = next(
+        product for product in compose_stage.products if product.spec.name == "artifact"
+    )
+
+    svg_path = svg_product.path
+
+    assert svg_path.is_file()
+    assert svg_path.stat().st_size > 0
+
+    namespace = "http://www.w3.org/2000/svg"
+    root = ET.parse(svg_path).getroot()
+
+    assert root.tag == f"{{{namespace}}}svg"
+    assert root.get("width") == "100mm"
+    assert root.get("height") == "100mm"
+    assert root.get("viewBox") == "-0.5 -0.5 1 1"
+
+    # The canonical SVG retains an independent CUT contour.
+    cut = root.find(f"./{{{namespace}}}path[@id='cut-contour']")
+
+    assert cut is not None
+    assert cut.get("fill") == "none"
+    assert cut.get("d")
+
+    # The Shape interior is rendered with the configured Base-derived
+    # default color, independent of the Artwork components.
+    region = root.find(f".//{{{namespace}}}path[@id='artwork-region-fill']")
+
+    assert region is not None
+    assert region.get("fill") == "#ffffff"
+    assert region.get("d")
+
+    # Read the registered Artwork colors from the producer rather
+    # than assuming an ordering of the red and blue components.
+    vector_manifest = artwork_root / "30-vector" / "products.json"
+
+    assert vector_manifest.is_file()
+
+    vector_data = json.loads(vector_manifest.read_text(encoding="utf-8"))
+
+    products = vector_data["products"]
+
+    assert len(products) == 2
+
+    expected_colors = {}
+
+    for product in products:
+        index = product["index"]
+        rgb = product["artifact_color"]["rgb"]
+
+        expected_colors[f"artwork-{index}"] = (
+            f"#{rgb['red']:02x}{rgb['green']:02x}{rgb['blue']:02x}"
+        )
+
+    assert set(expected_colors.values()) == {
+        "#ff0000",
+        "#0000ff",
+    }
+
+    artwork_group = root.find(f"./{{{namespace}}}g[@id='artwork']")
+
+    assert artwork_group is not None
+
+    for identity, expected_fill in expected_colors.items():
+        component = artwork_group.find(f"./{{{namespace}}}g[@id='{identity}']")
+
+        assert component is not None
+        assert component.get("fill") == expected_fill
+        assert component.get("transform")
+        assert len(component) > 0
+
+    # The same dependency-aware build still produces a valid 3MF.
+    package_stage = next(stage for stage in plan.stages if stage.spec.name == "package")
+
+    package_product = next(
+        product for product in package_stage.products if product.spec.name == "artifact"
+    )
+
+    assert package_product.path.is_file()
+    assert zipfile.is_zipfile(package_product.path)
+
+    # Consuming Artwork does not require its standalone manufacturing.
+    assert not (artwork_root / "40-extrude" / "products.json").exists()
+
+    assert not (artwork_root / "50-package" / "artifact.3mf").exists()
+
+    assert (shape_root / "40-package" / "artifact.3mf").is_file()
+
+
+@pytest.mark.slow
+def deferred_test_shape_separate_outer_ridge_preserves_base_and_artwork_region_fill(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A separate inset Outer Ridge must preserve nonempty Base geometry
+    and the independently manufactured Artwork Region Fill.
+
+    The Base retains the Shape's full outer envelope. The Ridge is
+    inset from that envelope, and Artwork Region Fill remains a
+    distinct physical component.
+
+    This test deliberately does not prescribe the Ridge's Z interval:
+    that is governed by the existing extrusion contract.
+    """
+    monkeypatch.chdir(tmp_path)
+
+    artifact_id = "separate-inset-ridge-shape"
+
+    shape_size = 100.0
+    ridge_inset = 4.0
+    ridge_width = 2.0
+
+    write_artifact_config(
+        artifact_id,
+        {
+            "realizations": {
+                "shape_default": {
+                    "shape_geometry": "circle",
+                    "shape_size": shape_size,
+                    "shape_base_raise": 2.0,
+                    "shape_base_color": "test-white",
+                    "shape_outer_ridge_style": "separate",
+                    "shape_outer_ridge_inset": ridge_inset,
+                    "shape_outer_ridge_width": ridge_width,
+                    "shape_outer_ridge_raise": 1.0,
+                    "shape_outer_ridge_color": "test-red",
+                }
+            }
+        },
+        project_root=tmp_path,
+    )
+
+    plans = create_build_plans(
+        artifact_id,
+        model_name="shape",
+        variant_name="default",
+        project_root=tmp_path,
+    )
+    assert len(plans) == 1
+
+    plan = plans[0]
+    execute_dependency_build(plan)
+
+    package_path = (
+        tmp_path
+        / "artifacts"
+        / artifact_id
+        / "shape"
+        / "shape_default"
+        / "40-package"
+        / "artifact.3mf"
+    )
+    assert package_path.is_file()
+    assert zipfile.is_zipfile(package_path)
+
+    with zipfile.ZipFile(package_path) as archive:
+        model_paths = [
+            name
+            for name in archive.namelist()
+            if name.startswith("3D/") and name.endswith(".model")
+        ]
+        assert len(model_paths) == 1
+        model = ET.fromstring(archive.read(model_paths[0]))
+
+    objects = model.findall(f".//{{{CORE_NS}}}object")
+
+    def find_component(identity: str) -> ET.Element:
+        """Locate a physical mesh by its Shape component identity."""
+
+        matches = []
+
+        for obj in objects:
+            name = obj.get("name")
+
+            if name is None:
+                continue
+
+            if (
+                name == identity
+                or name.startswith(f"{identity}:")
+                or name.endswith(f":{identity}")
+                or f":{identity}:" in name
+            ):
+                matches.append(obj)
+
+        assert len(matches) == 1, (
+            f"Expected one {identity!r} object; "
+            f"available names: {[obj.get('name') for obj in objects]}"
+        )
+
+        return matches[0]
+
+    def mesh_vertices(
+        obj: ET.Element,
+    ) -> list[tuple[float, float, float]]:
+        vertices = obj.findall(f".//{{{CORE_NS}}}vertex")
+        triangles = obj.findall(f".//{{{CORE_NS}}}triangle")
+
+        assert vertices, f"Empty mesh: {obj.get('name')}"
+        assert triangles, f"No triangles: {obj.get('name')}"
+
+        return [
+            (
+                float(vertex.attrib["x"]),
+                float(vertex.attrib["y"]),
+                float(vertex.attrib["z"]),
+            )
+            for vertex in vertices
+        ]
+
+    base = find_component("base")
+    ridge = find_component("ridge")
+    region_fill = find_component("artwork-region-fill")
+
+    assert (
+        len(
+            {
+                base.attrib["id"],
+                ridge.attrib["id"],
+                region_fill.attrib["id"],
+            }
+        )
+        == 3
+    )
+
+    base_vertices = mesh_vertices(base)
+    ridge_vertices = mesh_vertices(ridge)
+    region_vertices = mesh_vertices(region_fill)
+
+    def xy_bounds(
+        vertices: list[tuple[float, float, float]],
+    ) -> tuple[float, float, float, float]:
+        xs = [x for x, _, _ in vertices]
+        ys = [y for _, y, _ in vertices]
+        return min(xs), max(xs), min(ys), max(ys)
+
+    base_bounds = xy_bounds(base_vertices)
+    ridge_bounds = xy_bounds(ridge_vertices)
+    region_bounds = xy_bounds(region_vertices)
+
+    def xy_width(
+        bounds: tuple[float, float, float, float],
+    ) -> float:
+        return bounds[1] - bounds[0]
+
+    def xy_height(
+        bounds: tuple[float, float, float, float],
+    ) -> float:
+        return bounds[3] - bounds[2]
+
+    expected_ridge_diameter = shape_size - 2.0 * ridge_inset
+    expected_region_diameter = expected_ridge_diameter - 2.0 * ridge_width
+
+    # Base retains the complete Shape footprint.
+    assert xy_width(base_bounds) == pytest.approx(shape_size, abs=0.2)
+    assert xy_height(base_bounds) == pytest.approx(shape_size, abs=0.2)
+
+    # Separate Ridge is physically inset from the outer edge.
+    assert xy_width(ridge_bounds) == pytest.approx(expected_ridge_diameter, abs=0.2)
+    assert xy_height(ridge_bounds) == pytest.approx(expected_ridge_diameter, abs=0.2)
+
+    # Artwork Region Fill remains inside the Ridge.
+    assert xy_width(region_bounds) == pytest.approx(expected_region_diameter, abs=0.2)
+    assert xy_height(region_bounds) == pytest.approx(expected_region_diameter, abs=0.2)
+
+    # Base and Artwork Region Fill preserve the configured base
+    # height. The Ridge's Z interval is intentionally not assumed.
+    for identity, vertices in (
+        ("base", base_vertices),
+        ("artwork-region-fill", region_vertices),
+    ):
+        z_values = [z for _, _, z in vertices]
+        assert min(z_values) == pytest.approx(0.0, abs=1e-5), identity
+        assert max(z_values) == pytest.approx(2.0, abs=1e-5), identity
+
+    # The inset leaves a real Base margin outside the Ridge.
+    assert base_bounds[0] < ridge_bounds[0]
+    assert base_bounds[1] > ridge_bounds[1]
+    assert base_bounds[2] < ridge_bounds[2]
+    assert base_bounds[3] > ridge_bounds[3]

@@ -181,3 +181,133 @@ feasibility investigation may be promoted first when an external format,
 importer behavior, or dependency boundary is unknown. Avoid detailed
 speculative phase sequences here; re-evaluate priorities after each completed
 CHANGEPLAN phase.
+
+
+
+## SHAPE Physical Realization — Optional Base and Independent Components
+
+**Status:** Deferred — design decisions established; implementation not scheduled.
+
+### Purpose
+
+Extend the SHAPE model's physical realization to support optional Base geometry, independent surface components, and consistent Z-height semantics.
+
+This work is deferred while development prioritizes manufacturing-ready SVG output for laser fabrication.
+
+### Architectural Decisions
+
+These sections are labeled numerically for convienence and do not specify an implementation order.
+
+**1. Authoritative Shape Boundary**
+
+`shape_size` and the registered Shape geometry establish the authoritative outer envelope.
+
+All Shape-owned geometry, including the perimeter, outer ridge, border labels, inner ridge, fills, and artwork, must respect that envelope unless an explicit future feature permits extensions.
+
+The Shape boundary exists independently of any physical Base.
+
+**2. Optional Base**
+
+The Base is an optional physical component.
+
+`shape_base_raise = 0.0` permits a Shape without a physical Base. A zero-volume Base must not generate an STL or 3MF object.
+
+The absence of Base does not invalidate the Shape.
+
+**3. Uniform Z-Raise Semantics**
+
+All component raise parameters measure height above the top surface of the Base.
+
+For raised components:
+
+- `z_bottom = shape_base_raise`
+- `z_top = shape_base_raise + component_raise`
+
+When `shape_base_raise = 0.0`, raised components begin at Z=0.
+
+Inlaid components may extend below the Base surface and replace Base material. Their raise still measures height above the Base surface; raise and total physical thickness are distinct concepts.
+
+**4. Independent Components**
+
+Ridges, labels, artwork, Border Fill, Artwork Region Fill, and future Perimeter Fill are independently manufacturable components.
+
+A valid 3MF does not require:
+
+- A physical Base.
+- A connected assembly.
+- A completely filled Shape envelope.
+- Connectivity between individual component meshes.
+
+Disconnected lettering or artwork may be printed directly on the build plate.
+
+Positive-volume components must be preserved. Zero-volume components must be omitted.
+
+No artificial connecting geometry should be introduced.
+
+**5. Consistent Fill Semantics**
+
+Border Fill, Artwork Region Fill, and future Perimeter Fill follow the same physical realization rules.
+
+They differ in registered planar geometry, not in fundamental Z-height or Base interaction semantics.
+
+Raised fills sit above Base. Inlaid fills replace participating Base material.
+
+**6. Additional Parameters**
+
+Future configuration work will introduce:
+
+- `shape_border_fill_raise`
+- `shape_artwork_region_fill_raise`
+- `shape_perimeter_fill_color`
+- `shape_perimeter_fill_raise`
+
+Parameter defaults, inheritance, and backward compatibility must be established during implementation.
+
+**7. Perimeter Fill**
+
+Perimeter Fill occupies the region between the authoritative Shape boundary and the outer boundary of the inset Outer Ridge.
+
+Unlike Border Fill and Artwork Region Fill, this region requires additional registration work in Compose.
+
+The region may be empty when the Outer Ridge inset is zero.
+
+**8. Compose and Extrude Responsibilities**
+
+Compose owns:
+
+- Authoritative planar Shape geometry.
+- Registered component boundaries.
+- Component placement.
+- SVG composition and output.
+
+Extrude owns:
+
+- Z-height realization.
+- Physical component volumes.
+- Raised and inlaid construction.
+- Base subtraction where applicable.
+- Omission of zero-volume components.
+- Packaging independently printable components.
+
+The existing Compose geometry supports most of these decisions without modification.
+
+Perimeter Fill requires additional planar registration in Compose. This capability may be introduced independently for SVG manufacturing before its physical extrusion behavior is implemented.
+
+### Deferred Implementation
+
+When this work resumes:
+
+1. Establish acceptance tests for optional Base and independent components.
+2. Introduce and validate fill raise parameters.
+3. Implement uniform raised and inlaid Z semantics.
+4. Correct separate Outer Ridge/Base partitioning.
+5. Permit zero-volume components to be omitted.
+6. Register and implement Perimeter Fill.
+7. Verify circle, square, and polygon geometry.
+8. Preserve existing manufacturing behavior through regression tests.
+
+### Current Priority
+
+Do not implement these changes as part of the current SVG development work.
+
+Continue the active `CHANGEPLAN.md` phases focused on SVG composition, registered planar geometry, xTool Studio compatibility, and laser manufacturing.

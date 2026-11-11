@@ -2546,6 +2546,7 @@ def test_qr_only_shape_builds_packaged_3mf(
     A source-less Artifact can manufacture a complete QR Shape.
 
     QR participation must not introduce an Artwork dependency.
+    Shape-owned Artwork Region Fill is permitted and expected.
     The packaged 3MF must retain both QR component identities.
     """
     artifact_id = "qr_only"
@@ -2587,8 +2588,26 @@ def test_qr_only_shape_builds_packaged_3mf(
 
     names = {component["name"] for component in data["components"]}
 
-    assert {"base", "qr-dark", "qr-light"} <= names
-    assert not any(name.startswith("artwork-") for name in names)
+    assert {
+        "base",
+        "artwork-region-fill",
+        "qr-dark",
+        "qr-light",
+    } <= names
+
+    # Shape-owned fill is not incorporated source Artwork.
+    assert not any(
+        name.startswith("artwork-")
+        and name
+        not in {
+            "artwork-region-fill",
+            "artwork-fill",
+        }
+        for name in names
+    )
+
+    # An Artwork Fill is not expected without incorporated Artwork.
+    assert "artwork-fill" not in names
 
     package_directory = realization / "40-package"
     packaged = tuple(package_directory.glob("*.3mf"))
@@ -2600,8 +2619,40 @@ def test_qr_only_shape_builds_packaged_3mf(
     objects = model.findall(f".//{{{CORE_NS}}}object")
     object_names = {obj.get("name") for obj in objects}
 
-    assert component_name(artifact_id, "qr-dark", "black") in object_names
-    assert component_name(artifact_id, "qr-light", "white") in object_names
+    assert (
+        component_name(
+            artifact_id,
+            "qr-dark",
+            "black",
+        )
+        in object_names
+    )
+
+    assert (
+        component_name(
+            artifact_id,
+            "qr-light",
+            "white",
+        )
+        in object_names
+    )
+
+    assert (
+        component_name(
+            artifact_id,
+            "artwork-region-fill",
+            "white",
+        )
+        in object_names
+    )
+
+    # No incorporated Artwork objects are packaged.
+    assert not any(
+        name is not None
+        and name.startswith("artwork-")
+        and not name.startswith("artwork-region-fill")
+        for name in object_names
+    )
 
 
 @pytest.mark.slow

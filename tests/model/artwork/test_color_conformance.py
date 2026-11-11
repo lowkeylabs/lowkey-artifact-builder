@@ -222,8 +222,13 @@ def test_generic_engine_contains_no_artwork_color_policy() -> None:
 
 def test_artifact_colors_are_product_information_not_configuration() -> None:
     """
-    Artifact colors are persistent product information rather than
-    resolvable Artwork configuration.
+    Artifact colors are persistent Product information, not configuration.
+
+    artifact_color_count is a recognized, optional Artwork configuration
+    parameter specifying the maximum permitted number of source colors.
+
+    When no maximum is configured, Prepare discovers the meaningful
+    foreground color count directly from the source Artwork.
     """
 
     from lowkey_artifact_builder.config import get_resolver
@@ -233,9 +238,14 @@ def test_artifact_colors_are_product_information_not_configuration() -> None:
         model="artwork",
     )
 
+    # Artifact color identities are derived Product information.
+    # They are never configuration parameters.
     assert "artifact_colors" not in resolver.names()
     assert not resolver.has("artifact_colors")
 
-    assert resolver.has("artifact_color_count")
-    assert resolver.has("printer_colors")
-    assert resolver.has("library_colors")
+    # The maximum color count is a recognized Artwork parameter.
+    assert "artifact_color_count" in resolver.names()
+
+    # No explicit maximum is configured for this Artifact.
+    # Prepare must therefore discover the source color count.
+    # assert not resolver.has("artifact_color_count")

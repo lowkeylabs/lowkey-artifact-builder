@@ -49,12 +49,16 @@ def _context(
     context.input.side_effect = inputs.__getitem__
     context.has_input.side_effect = inputs.__contains__
     context.output.side_effect = outputs.__getitem__
-    context.resolver.side_effect = model_test_resolver(
+
+    resolver = model_test_resolver(
         "shape",
         overrides=parameters,
         project_root=root,
     )
-    context.resolver.colors = {}
+    context.resolver.side_effect = resolver
+    context.resolver.color.side_effect = resolver.color
+    context.resolver.colors = resolver.colors
+
     return context
 
 

@@ -221,7 +221,7 @@ def test_prepare_uses_artifact_color_count_for_multicolor_trace(
 
     resolver = StubResolver(
         {
-            "artifact_color_count": 3,
+            "artifact_color_count": 4,
             "artwork_envelope_mode": "alpha",
         }
     )
@@ -260,7 +260,7 @@ def test_prepare_uses_artifact_color_count_for_multicolor_trace(
         ),
     )
     assert traced_counts == [
-        3,
+        4,
     ]
 
 

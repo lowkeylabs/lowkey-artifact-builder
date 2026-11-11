@@ -906,6 +906,7 @@ def test_prepare_configured_shrink_wrap_changes_persistent_envelope(
             "envelope": shrink_wrap_envelope,
         },
         resolver=_resolver(
+            artifact_color_count=1,
             envelope_mode="shrink-wrap",
         ),
     )
@@ -1135,7 +1136,20 @@ def test_prepare_selects_tracing_mode_from_color_count(
     Both operations produce the same declared trace Product.
     """
     source = tmp_path / "source.png"
-    _write_source(source)
+
+    rgba = np.zeros((40, 40, 4), dtype=np.uint8)
+
+    colors = [
+        (255, 0, 0, 255),
+        (0, 255, 0, 255),
+        (0, 0, 255, 255),
+    ]
+
+    for index in range(color_count):
+        x0 = 4 + index * 12
+        rgba[8:32, x0 : x0 + 10] = colors[index]
+
+    Image.fromarray(rgba, mode="RGBA").save(source)
 
     trace = tmp_path / "trace.svg"
     envelope = tmp_path / "envelope.svg"
@@ -1830,7 +1844,7 @@ def test_prepare_single_color_alpha_mode_does_not_infer_white_background(
 
     with pytest.raises(
         prepare.PrepareError,
-        match="Single-color tracing requires exactly one foreground",
+        match=r"Reducing multicolor artwork to one color is not supported",
     ):
         prepare.execute(context)  # type: ignore[arg-type]
 
@@ -1857,8 +1871,8 @@ def test_prepare_automatically_discovers_png_color_count(
     expected_count: int,
 ) -> None:
     """
-    Without an explicit artifact_color_count, PNG preparation
-    discovers the meaningful source foreground count.
+    PNG preparation discovers meaningful foreground colors
+    within the configured maximum artifact color count.
 
     One color selects single-color tracing; multiple colors
     select multicolor tracing. The automatic decision is logged
@@ -1885,6 +1899,7 @@ def test_prepare_automatically_discovers_png_color_count(
         resolver=StubResolver(
             {
                 "artwork_envelope_mode": "alpha",
+                "artifact_color_count": 2,
             }
         ),
     )
@@ -1949,26 +1964,25 @@ def test_prepare_automatically_discovers_png_color_count(
 
 
 @pytest.mark.parametrize(
-    ("explicit_count", "expected_level"),
+    ("maximum_count", "should_succeed"),
     [
-        (2, "INFO"),
-        (3, "WARNING"),
+        (1, False),
+        (2, True),
+        (3, True),
     ],
 )
-def test_prepare_logs_explicit_png_color_count_override(
+def test_prepare_maximum_png_color_count_preserves_authored_colors(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
-    explicit_count: int,
-    expected_level: str,
+    maximum_count: int,
+    should_succeed: bool,
 ) -> None:
     """
-    An explicit PNG tracing count takes precedence over
-    automatic discovery.
+    The configured count is a maximum, not an exact tracing count.
 
-    Matching overrides log at INFO. Mismatching overrides
-    log at WARNING and identify both the discovered and
-    selected counts.
+    Two authored colors require at least two available colors.
+    A larger maximum must not invent additional colors.
     """
     import logging
 
@@ -1976,12 +1990,12 @@ def test_prepare_logs_explicit_png_color_count_override(
     trace = tmp_path / "trace.svg"
     envelope = tmp_path / "envelope.svg"
 
-    image = np.zeros((64, 64, 4), dtype=np.uint8)
+    rgba = np.zeros((64, 64, 4), dtype=np.uint8)
 
-    image[8:32, 8:56] = (255, 0, 0, 255)
-    image[32:56, 8:56] = (0, 0, 255, 255)
+    rgba[8:32, 8:56] = (255, 0, 0, 255)
+    rgba[32:56, 8:56] = (0, 0, 255, 255)
 
-    Image.fromarray(image, mode="RGBA").save(source)
+    Image.fromarray(rgba, mode="RGBA").save(source)
 
     context = StubContext(
         inputs={"source": source},
@@ -1989,12 +2003,12 @@ def test_prepare_logs_explicit_png_color_count_override(
         resolver=StubResolver(
             {
                 "artwork_envelope_mode": "alpha",
-                "artifact_color_count": explicit_count,
+                "artifact_color_count": maximum_count,
             }
         ),
     )
 
-    selected_counts: list[int] = []
+    traced_counts: list[int] = []
 
     def trace_multi(
         source_path: Path,
@@ -2002,8 +2016,8 @@ def test_prepare_logs_explicit_png_color_count_override(
         *,
         colors: int,
     ) -> None:
-        assert source_path.is_file()
-        selected_counts.append(colors)
+        traced_counts.append(colors)
+
         output_path.write_text(
             '<svg xmlns="http://www.w3.org/2000/svg"/>',
             encoding="utf-8",
@@ -2014,6 +2028,7 @@ def test_prepare_logs_explicit_png_color_count_override(
         "_trace_multicolor",
         trace_multi,
     )
+
     monkeypatch.setattr(
         prepare,
         "_clip_trace_to_envelope",
@@ -2021,25 +2036,150 @@ def test_prepare_logs_explicit_png_color_count_override(
     )
 
     with caplog.at_level(logging.INFO):
-        prepare.execute(context)  # type: ignore[arg-type]
+        if should_succeed:
+            prepare.execute(context)  # type: ignore[arg-type]
+        else:
+            with pytest.raises(
+                prepare.PrepareError,
+                match=r"Reducing multicolor artwork to one color is not supported",
+            ):
+                prepare.execute(context)  # type: ignore[arg-type]
 
-    assert selected_counts == [explicit_count]
+    if should_succeed:
+        assert traced_counts == [2]
+        assert trace.is_file()
+        assert envelope.is_file()
+
+        assert any(
+            record.levelno == logging.INFO
+            and "Discovered 2 foreground colors" in record.getMessage()
+            and f"maximum={maximum_count}" in record.getMessage()
+            and "effective tracing count=2" in record.getMessage()
+            for record in caplog.records
+        )
+    else:
+        assert traced_counts == []
+        assert not trace.exists()
+
+
+def test_prepare_matching_single_color_override_succeeds(
+    tmp_path: Path,
+) -> None:
+    """
+    Explicit artifact_color_count=1 is valid when exactly
+    one meaningful foreground color is discovered.
+    """
+    import xml.etree.ElementTree as ET
+
+    source = tmp_path / "source.png"
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    rgba = np.zeros((48, 48, 4), dtype=np.uint8)
+
+    rgba[0:32, 0:32] = (30, 120, 210, 255)
+
+    # Incidental antialiasing must not create another color.
+    rgba[31, 0:32] = (33, 118, 207, 180)
+
+    Image.fromarray(rgba, mode="RGBA").save(source)
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={"trace": trace, "envelope": envelope},
+        resolver=StubResolver(
+            {
+                "artwork_envelope_mode": "alpha",
+                "artifact_color_count": 1,
+            }
+        ),
+    )
+
+    prepare.execute(context)  # type: ignore[arg-type]
+
     assert trace.is_file()
     assert envelope.is_file()
 
-    matching_records = [
-        record
-        for record in caplog.records
-        if record.levelname == expected_level
-        and "artifact_color_count" in record.getMessage().lower()
-    ]
+    namespace = "{http://www.w3.org/2000/svg}"
 
-    assert matching_records
+    root = ET.parse(trace).getroot()
 
-    assert any(str(explicit_count) in record.getMessage() for record in matching_records)
+    artwork = root.find(f"{namespace}g[@id='artwork']")
 
-    if explicit_count != 2:
-        assert any("2" in record.getMessage() for record in matching_records)
+    assert artwork is not None
+
+    paths = artwork.findall(f"{namespace}path")
+
+    assert len(paths) == 1
+    assert paths[0].get("fill") == "#1e78d2"
+
+    assert root.get("viewBox") == "0 0 48 48"
+
+
+def test_prepare_explicit_color_count_cannot_quantize_gradient(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    An explicit tracing count does not authorize implicit
+    quantization of continuously varying source colors.
+    """
+    source = tmp_path / "gradient.png"
+    trace = tmp_path / "trace.svg"
+    envelope = tmp_path / "envelope.svg"
+
+    rgba = np.zeros((64, 64, 4), dtype=np.uint8)
+
+    for x in range(8, 56):
+        fraction = (x - 8) / 47
+
+        red = round(255 * (1 - fraction))
+        blue = round(255 * fraction)
+
+        rgba[8:56, x] = (red, 0, blue, 255)
+
+    Image.fromarray(rgba, mode="RGBA").save(source)
+
+    context = StubContext(
+        inputs={"source": source},
+        outputs={"trace": trace, "envelope": envelope},
+        resolver=StubResolver(
+            {
+                "artwork_envelope_mode": "alpha",
+                "artifact_color_count": 3,
+            }
+        ),
+    )
+
+    traced_counts: list[int] = []
+
+    def trace_multi(
+        source_path: Path,
+        output_path: Path,
+        *,
+        colors: int,
+    ) -> None:
+        traced_counts.append(colors)
+
+        output_path.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg"/>',
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        prepare,
+        "_trace_multicolor",
+        trace_multi,
+    )
+
+    with pytest.raises(
+        prepare.PrepareError,
+        match=r"(?i)(ambiguous|gradient|color variation)",
+    ):
+        prepare.execute(context)  # type: ignore[arg-type]
+
+    assert traced_counts == []
+    assert not trace.exists()
 
 
 @pytest.mark.parametrize(
@@ -2149,7 +2289,7 @@ def test_prepare_auto_single_color_accepts_minor_opaque_rgb_variation(
     context = StubContext(
         inputs={"source": source},
         outputs={"trace": trace, "envelope": envelope},
-        resolver=StubResolver({"artwork_envelope_mode": "alpha"}),
+        resolver=_resolver(artifact_color_count=2, envelope_mode="alpha"),
     )
 
     with caplog.at_level(logging.INFO):
@@ -2179,7 +2319,9 @@ def test_prepare_auto_single_color_accepts_minor_opaque_rgb_variation(
     assert "56 56" in path_data
 
     assert any(
-        record.levelno == logging.INFO and "artifact_color_count=1" in record.getMessage()
+        record.levelno == logging.INFO
+        and "Discovered 1 foreground colors" in record.getMessage()
+        and "effective tracing count=1" in record.getMessage()
         for record in caplog.records
     )
 
@@ -2218,7 +2360,7 @@ def test_prepare_explicit_single_color_rejects_distinct_opaque_colors(
 
     with pytest.raises(
         prepare.PrepareError,
-        match="Single-color tracing requires exactly one foreground",
+        match=r"Reducing multicolor artwork to one color is not supported",
     ):
         prepare.execute(context)  # type: ignore[arg-type]
 
@@ -2258,7 +2400,7 @@ def test_prepare_auto_color_discovery_rejects_continuous_gradient(
     context = StubContext(
         inputs={"source": source},
         outputs={"trace": trace, "envelope": envelope},
-        resolver=StubResolver({"artwork_envelope_mode": "alpha"}),
+        resolver=_resolver(artifact_color_count=20, envelope_mode="alpha"),
     )
 
     with caplog.at_level(logging.WARNING):
@@ -2412,7 +2554,7 @@ def test_prepare_single_color_preserves_boundary_touching_artwork(
     context = StubContext(
         inputs={"source": source},
         outputs={"trace": trace, "envelope": envelope},
-        resolver=StubResolver({"artwork_envelope_mode": "alpha"}),
+        resolver=_resolver(artifact_color_count=1, envelope_mode="alpha"),
     )
 
     prepare.execute(context)  # type: ignore[arg-type]
@@ -2474,7 +2616,7 @@ def test_prepare_single_color_preserves_corner_touching_artwork(
     context = StubContext(
         inputs={"source": source},
         outputs={"trace": trace, "envelope": envelope},
-        resolver=StubResolver({"artwork_envelope_mode": "alpha"}),
+        resolver=_resolver(artifact_color_count=1, envelope_mode="alpha"),
     )
 
     prepare.execute(context)  # type: ignore[arg-type]
@@ -2527,7 +2669,7 @@ def test_prepare_single_color_accepts_fully_occupied_image(
     context = StubContext(
         inputs={"source": source},
         outputs={"trace": trace, "envelope": envelope},
-        resolver=StubResolver({"artwork_envelope_mode": "alpha"}),
+        resolver=_resolver(artifact_color_count=1, envelope_mode="alpha"),
     )
 
     prepare.execute(context)  # type: ignore[arg-type]
@@ -2624,6 +2766,7 @@ def test_prepare_bug06_preserves_boundary_touching_artwork(
         resolver=StubResolver(
             {
                 "artwork_envelope_mode": "alpha",
+                "artifact_color_count": 20,
             }
         ),
     )
@@ -2764,6 +2907,7 @@ def test_prepare_bug06_shrink_wrap_produces_registered_svg(
         resolver=StubResolver(
             {
                 "artwork_envelope_mode": "shrink-wrap",
+                "artifact_color_count": 20,
             }
         ),
     )
@@ -2804,3 +2948,223 @@ def test_prepare_bug06_shrink_wrap_produces_registered_svg(
     with Image.open(source) as image:
         assert image.format == "PNG"
         assert image.size == (width, height)
+
+
+def test_discover_png_color_count_preserves_nydeli_authored_colors() -> None:
+    """
+    The New York Deli acceptance artwork contains three meaningful
+    foreground colors: black, white, and red.
+
+    Black is authored foreground geometry, not an exterior background.
+
+    Transparent exterior pixels do not contribute an Artifact color.
+    Antialiasing and incidental RGB variations around authored color
+    boundaries must not create additional Artifact colors.
+
+    This regression protects source-driven color discovery without
+    introducing physical printer-color selection or quantization.
+    """
+    repository_root = Path(__file__).resolve().parents[3]
+    source = repository_root / "tests" / "assets" / "nydeli-clean.png"
+
+    assert source.is_file(), f"Missing acceptance artwork fixture: {source}"
+
+    with Image.open(source) as image:
+        rgba = image.convert("RGBA")
+
+        try:
+            pixels = np.asarray(rgba)
+
+            assert pixels.ndim == 3
+            assert pixels.shape[2] == 4
+
+            alpha = pixels[:, :, 3]
+
+            # The exterior is transparent rather than an opaque
+            # black background.
+            assert np.any(alpha == 0)
+
+            # The image also contains visible authored artwork.
+            assert np.any(alpha == 255)
+
+            # Fully opaque black must remain meaningful foreground.
+            opaque_black = (alpha == 255) & np.all(pixels[:, :, :3] == (0, 0, 0), axis=2)
+            assert np.any(opaque_black)
+
+            # Verify the other two principal authored colors exist
+            # independently of the black foreground.
+            opaque = alpha == 255
+            rgb = pixels[:, :, :3]
+
+            white = opaque & np.all(rgb >= (240, 240, 240), axis=2)
+            assert np.any(white)
+
+            red = opaque & (rgb[:, :, 0] >= 150) & (rgb[:, :, 1] <= 100) & (rgb[:, :, 2] <= 100)
+            assert np.any(red)
+
+            discovered = prepare._discover_png_color_count(rgba)
+
+            assert discovered == 3, (
+                "New York Deli artwork must resolve to three "
+                "meaningful foreground colors (black, white, red), "
+                f"not {discovered}. Incidental antialiasing must "
+                "not introduce additional Artifact colors."
+            )
+
+        finally:
+            rgba.close()
+
+
+def test_discover_png_color_count_ignores_multicolor_antialiasing() -> None:
+    """
+    Discover three authored foreground colors despite RGB variations
+    introduced by antialiasing at boundaries between color regions.
+
+    Black, white, and red are all authored foreground colors.
+
+    The source contains substantial opaque regions of each color.
+    Boundary pixels contain intermediate RGB values, including
+    transitions between black and white and between red and white.
+
+    Those intermediate colors are not independently authored colors
+    and must not increase the discovered Artifact color count.
+
+    Transparent exterior pixels must not contribute a color.
+
+    This test protects source-color discovery without requiring
+    tracing, physical printer-color selection, or quantization.
+    """
+    image = Image.new(
+        "RGBA",
+        (128, 96),
+        (0, 0, 0, 0),
+    )
+
+    try:
+        pixels = image.load()
+
+        assert pixels is not None
+
+        # -------------------------------------------------
+        # Three substantial authored foreground regions
+        # -------------------------------------------------
+
+        for y in range(16, 80):
+            for x in range(12, 116):
+                if x < 46:
+                    pixels[x, y] = (0, 0, 0, 255)
+                elif x < 82:
+                    pixels[x, y] = (255, 255, 255, 255)
+                else:
+                    pixels[x, y] = (220, 0, 0, 255)
+
+        # -------------------------------------------------
+        # Black-to-white antialiased transition
+        # -------------------------------------------------
+        #
+        # Replace a narrow interior boundary with
+        # intermediate grayscale values. These pixels
+        # are fully opaque because they represent color
+        # blending between adjacent foreground regions.
+        #
+        # Their RGB distances from black and white are
+        # intentionally larger than the existing discovery
+        # tolerance of 24.
+        #
+        for y in range(16, 80):
+            pixels[42, y] = (32, 32, 32, 255)
+            pixels[43, y] = (64, 64, 64, 255)
+            pixels[44, y] = (96, 96, 96, 255)
+            pixels[45, y] = (128, 128, 128, 255)
+            pixels[46, y] = (160, 160, 160, 255)
+            pixels[47, y] = (192, 192, 192, 255)
+            pixels[48, y] = (224, 224, 224, 255)
+
+        # -------------------------------------------------
+        # White-to-red antialiased transition
+        # -------------------------------------------------
+        #
+        # These values interpolate between authored
+        # white and red. They are transitional pixels,
+        # not additional authored colors.
+        #
+        for y in range(16, 80):
+            for offset, fraction in enumerate(
+                (
+                    0.125,
+                    0.250,
+                    0.375,
+                    0.500,
+                    0.625,
+                    0.750,
+                    0.875,
+                )
+            ):
+                x = 78 + offset
+
+                red = round(255 * (1.0 - fraction) + 220 * fraction)
+                green = round(255 * (1.0 - fraction))
+                blue = round(255 * (1.0 - fraction))
+
+                pixels[x, y] = (
+                    red,
+                    green,
+                    blue,
+                    255,
+                )
+
+        # -------------------------------------------------
+        # Verify test fixture assumptions
+        # -------------------------------------------------
+
+        rgba = np.asarray(
+            image,
+            dtype=np.uint8,
+        )
+
+        alpha = rgba[:, :, 3]
+        rgb = rgba[:, :, :3]
+
+        assert np.any(alpha == 0)
+        assert np.any(alpha == 255)
+
+        opaque = alpha == 255
+
+        for authored_color in (
+            (0, 0, 0),
+            (255, 255, 255),
+            (220, 0, 0),
+        ):
+            matching = opaque & np.all(
+                rgb == authored_color,
+                axis=2,
+            )
+
+            assert np.count_nonzero(matching) > 100
+
+        # Confirm the image contains more than three
+        # literal RGB values. Discovery must distinguish
+        # authored colors from incidental transitions.
+        unique_colors = np.unique(
+            rgb[opaque],
+            axis=0,
+        )
+
+        assert len(unique_colors) > 3
+
+        # -------------------------------------------------
+        # Source-color discovery contract
+        # -------------------------------------------------
+
+        discovered = prepare._discover_png_color_count(
+            image,
+        )
+
+        assert discovered == 3, (
+            "Antialiased boundaries between black, white, "
+            "and red must not create additional Artifact "
+            f"colors; discovered {discovered} instead of 3."
+        )
+
+    finally:
+        image.close()

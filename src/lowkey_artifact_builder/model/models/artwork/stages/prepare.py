@@ -196,12 +196,13 @@ def execute(
 
     PNG sources are normalized and traced into SVG geometry.
 
-    Single-color PNG tracing uses meaningful foreground alpha
-    to construct one compound SVG path. Multicolor PNG tracing
-    uses Inkscape to derive source color regions.
+    The resolved artifact_color_count is the maximum permitted
+    number of meaningful foreground colors. Fewer discovered
+    colors are preserved; excess colors are reduced by multicolor
+    tracing when the effective maximum is at least two.
 
-    SVG sources preserve their authored vector geometry and colors,
-    without invoking PNG tracing.
+    Native SVG sources preserve authored vector geometry and
+    colors without raster tracing.
 
     Both source formats produce trace.svg and envelope.svg.
     """
@@ -250,7 +251,6 @@ def execute(
         envelope_mode = context.resolver(
             "artwork_envelope_mode",
         )
-
     except KeyError:
         envelope_mode = DEFAULT_ENVELOPE_MODE
 
@@ -263,13 +263,18 @@ def execute(
         )
         return
 
-    # PNG tracing count is source-driven unless explicitly configured.
-    try:
-        configured_color_count = context.resolver(
-            "artifact_color_count",
-        )
-    except KeyError:
-        configured_color_count = None
+    # The configuration layer supplies an explicit or derived
+    # maximum, validated against available printer positions.
+    maximum_color_count = context.resolver(
+        "artifact_color_count",
+    )
+
+    if (
+        isinstance(maximum_color_count, bool)
+        or not isinstance(maximum_color_count, int)
+        or maximum_color_count < 1
+    ):
+        raise PrepareError("artifact_color_count must be a positive integer.")
 
     image = _load_source_image(
         source,
@@ -297,40 +302,31 @@ def execute(
         prepared,
     )
 
-    if configured_color_count is None:
-        artifact_color_count = discovered_color_count
+    effective_color_count = min(
+        discovered_color_count,
+        maximum_color_count,
+    )
 
-        logger.info(
-            "ARTWORK: Automatically discovered %d foreground colors (artifact_color_count=%d).",
-            discovered_color_count,
-            artifact_color_count,
+    if discovered_color_count > maximum_color_count and maximum_color_count == 1:
+        raise PrepareError(
+            "ARTWORK: Reducing multicolor artwork to one color "
+            "is not supported by the current single-color tracer."
         )
 
-    else:
-        if (
-            isinstance(configured_color_count, bool)
-            or not isinstance(configured_color_count, int)
-            or configured_color_count < 1
-        ):
-            raise PrepareError("artifact_color_count must be a positive integer.")
+    logger.info(
+        "ARTWORK: Discovered %d foreground colors; maximum=%d; effective tracing count=%d.",
+        discovered_color_count,
+        maximum_color_count,
+        effective_color_count,
+    )
 
-        artifact_color_count = configured_color_count
-
-        if artifact_color_count == discovered_color_count:
-            logger.info(
-                "ARTWORK: Explicit artifact_color_count=%d matches "
-                "%d discovered foreground colors.",
-                artifact_color_count,
-                discovered_color_count,
-            )
-
-        else:
-            logger.warning(
-                "ARTWORK: Explicit artifact_color_count=%d overrides "
-                "%d discovered foreground colors.",
-                artifact_color_count,
-                discovered_color_count,
-            )
+    if discovered_color_count > maximum_color_count:
+        logger.info(
+            "ARTWORK: Reducing source artwork from %d to "
+            "at most %d colors through Inkscape tracing.",
+            discovered_color_count,
+            effective_color_count,
+        )
 
     temporary_path: Path | None = None
 
@@ -350,17 +346,16 @@ def execute(
             format="PNG",
         )
 
-        if artifact_color_count == 1:
+        if effective_color_count == 1:
             _trace_single_color(
                 temporary_path,
                 trace_output,
             )
-
         else:
             _trace_multicolor(
                 temporary_path,
                 trace_output,
-                colors=artifact_color_count,
+                colors=effective_color_count,
             )
 
         _clip_trace_to_envelope(
@@ -384,7 +379,6 @@ def execute(
                 temporary_path.unlink(
                     missing_ok=True,
                 )
-
             except OSError:
                 pass
 
@@ -694,19 +688,19 @@ def _shrink_wrap_foreground_mask(
 
     else:
         #
-        # RGB values beneath transparent pixels are not reliable.
+        # A predominantly transparent source boundary may surround
+        # an opaque white crop containing legitimate Artwork.
         #
-        # Visible near-white pixels may nevertheless be connected
-        # to the transparent exterior and therefore constitute
-        # clean exterior background.
+        # Treat near-white pixels as possible exterior background,
+        # but exclude them only when connected to the source exterior.
+        #
+        # Enclosed opaque white Artwork remains foreground.
         #
         rgb = rgba[:, :, :3]
 
-        background_like = (
-            meaningful
-            & (rgb[:, :, 0] >= DEFAULT_SHRINK_WRAP_WHITE_MINIMUM)
-            & (rgb[:, :, 1] >= DEFAULT_SHRINK_WRAP_WHITE_MINIMUM)
-            & (rgb[:, :, 2] >= DEFAULT_SHRINK_WRAP_WHITE_MINIMUM)
+        background_like = meaningful & np.all(
+            rgb >= DEFAULT_SHRINK_WRAP_WHITE_MINIMUM,
+            axis=2,
         )
 
     background_candidate = transparent | background_like
@@ -1367,21 +1361,24 @@ def _discover_png_color_count(
     image: Image.Image,
 ) -> int:
     """
-    Discover meaningful foreground RGB colors in prepared PNG artwork.
+    Discover meaningful foreground colors in PNG artwork.
 
-    Transparent pixels do not contribute colors. Incidental RGB
-    variation does not introduce additional Artifact colors.
+    Transparent pixels do not contribute Artifact colors.
 
-    Detect substantial continuous color transitions that cannot
-    reliably be interpreted as discrete authored colors. Reject
-    ambiguous gradients rather than silently quantizing them.
+    Discrete authored colors are inferred primarily from locally
+    stable source-color regions. Intermediate RGB values occurring
+    only along antialiased boundaries do not introduce additional
+    Artifact colors.
 
-    Discrete authored colors are clustered by RGB proximity,
-    considering the most opaque pixels first and selecting
-    representatives by frequency.
+    Preserve black and all other visible authored colors as
+    foreground, independently of their RGB values.
 
-    This operation does not assign physical printer colors or
-    perform general-purpose color quantization.
+    Continuous gradients remain ambiguous and are rejected rather
+    than silently quantized.
+
+    This function discovers color count only. It does not alter
+    source pixels, assign physical printer colors, or quantize
+    the image for tracing.
     """
     rgba = np.asarray(
         image.convert("RGBA"),
@@ -1403,16 +1400,12 @@ def _discover_png_color_count(
     # Continuous-gradient ambiguity detection
     # -----------------------------------------------------
     #
-    # A continuous gradient consists of a sufficiently long
-    # sequence of small, nonzero RGB transitions whose
-    # cumulative displacement is substantial.
+    # Preserve the existing gradient contract.
     #
-    # Examine horizontal and vertical runs separately.
-    # Fully opaque pixels provide reliable evidence and
-    # avoid confusing alpha-edge blending with gradients.
-    #
-    # These thresholds are internal heuristics, not public
-    # configuration parameters.
+    # A sufficiently long sequence of gradual RGB
+    # transitions with substantial cumulative displacement
+    # is evidence of an authored gradient rather than
+    # discrete-color artwork.
     #
     minimum_step = 2.0
     maximum_step = 24.0
@@ -1426,11 +1419,7 @@ def _discover_png_color_count(
         valid: np.ndarray,
     ) -> bool:
         """
-        Detect a long, gradual color transition along rows.
-
-        Each row is evaluated independently. A run must
-        contain enough adjacent small transitions and span
-        a substantial RGB distance between its endpoints.
+        Detect long, gradual color transitions along rows.
         """
         for row_pixels, row_valid in zip(
             pixels,
@@ -1491,23 +1480,79 @@ def _discover_png_color_count(
             "authorize silent color quantization."
         )
 
-        logger.warning(message)
+        logger.warning(
+            message,
+        )
 
-        raise PrepareError(message)
+        raise PrepareError(
+            message,
+        )
 
     # -----------------------------------------------------
-    # Discrete foreground color discovery
+    # Identify locally stable source-color regions
     # -----------------------------------------------------
+    #
+    # A pixel is a strong candidate for an authored color
+    # when its surrounding neighborhood contains only
+    # small RGB variations.
+    #
+    # Antialiased boundary pixels generally fail this test
+    # because their neighbors belong to different colors.
+    #
+    # Use a 3x3 neighborhood. This is deliberately small
+    # enough to retain detail while excluding most narrow
+    # transition bands.
+    #
+    neighborhood_size = 3
+    stability_tolerance = 18.0
 
-    rgb = rgba[:, :, :3][meaningful]
-
-    alpha = alpha_image[meaningful]
-
-    maximum_alpha = int(
-        np.max(alpha),
+    local_minimum = ndimage.minimum_filter(
+        rgb_image,
+        size=(neighborhood_size, neighborhood_size, 1),
+        mode="nearest",
     )
 
-    tolerance = 24.0
+    local_maximum = ndimage.maximum_filter(
+        rgb_image,
+        size=(neighborhood_size, neighborhood_size, 1),
+        mode="nearest",
+    )
+
+    local_range = np.linalg.norm(
+        local_maximum - local_minimum,
+        axis=2,
+    )
+
+    # A stable color neighborhood must also consist
+    # entirely of meaningful foreground pixels.
+    #
+    # This prevents transparent exterior RGB values
+    # from influencing candidate selection.
+    #
+    neighborhood_foreground = ndimage.minimum_filter(
+        meaningful.astype(np.uint8),
+        size=neighborhood_size,
+        mode="constant",
+        cval=0,
+    ).astype(bool)
+
+    stable = meaningful & neighborhood_foreground & (local_range <= stability_tolerance)
+
+    # -----------------------------------------------------
+    # Select authored color representatives
+    # -----------------------------------------------------
+    #
+    # Prefer stable pixels with the strongest alpha.
+    #
+    # Nearby RGB values are considered variations of
+    # an existing authored color.
+    #
+    # Unlike the previous algorithm, intermediate
+    # antialiasing colors do not become representatives
+    # merely because their RGB distance exceeds the
+    # clustering tolerance.
+    #
+    color_tolerance = 28.0
 
     representatives: list[np.ndarray] = []
 
@@ -1515,11 +1560,8 @@ def _discover_png_color_count(
         pixels: np.ndarray,
     ) -> None:
         """
-        Add distinct source-color representatives.
-
-        Process colors in descending pixel-frequency order.
-        Nearby RGB values are incidental variations of an
-        established representative.
+        Register distinct candidate colors in descending
+        pixel-frequency order.
         """
         if pixels.size == 0:
             return
@@ -1541,26 +1583,83 @@ def _discover_png_color_count(
             )
 
             if any(
-                np.linalg.norm(candidate - representative) <= tolerance
+                np.linalg.norm(candidate - representative) <= color_tolerance
                 for representative in representatives
             ):
                 continue
 
-            representatives.append(candidate)
+            representatives.append(
+                candidate,
+            )
 
-    # Strongest available color evidence first.
-    add_colors(
-        rgb[alpha == maximum_alpha],
+    # -----------------------------------------------------
+    # Strongest stable color evidence first
+    # -----------------------------------------------------
+
+    stable_alpha = alpha_image[stable]
+
+    if stable_alpha.size:
+        maximum_stable_alpha = int(
+            np.max(
+                stable_alpha,
+            )
+        )
+
+        stable_rgb = rgba[:, :, :3][stable]
+
+        add_colors(
+            stable_rgb[stable_alpha == maximum_stable_alpha],
+        )
+
+        # Preserve distinct translucent authored regions.
+        #
+        # Only locally stable lower-opacity pixels are
+        # considered; arbitrary alpha-edge RGB variation
+        # does not introduce additional colors.
+        #
+        add_colors(
+            stable_rgb[stable_alpha < maximum_stable_alpha],
+        )
+
+    # -----------------------------------------------------
+    # Fallback for very small or thin artwork
+    # -----------------------------------------------------
+    #
+    # Some legitimate artwork may have no complete 3x3
+    # stable neighborhood, such as very thin strokes.
+    #
+    # In that case retain the original color-discovery
+    # behavior rather than reporting zero colors.
+    #
+    if not representatives:
+        rgb = rgba[:, :, :3][meaningful]
+        alpha = alpha_image[meaningful]
+
+        maximum_alpha = int(
+            np.max(
+                alpha,
+            )
+        )
+
+        add_colors(
+            rgb[alpha == maximum_alpha],
+        )
+
+        add_colors(
+            rgb[alpha < maximum_alpha],
+        )
+
+    if not representatives:
+        raise PrepareError("Cannot discover Artifact colors: no meaningful source colors.")
+
+    logger.info(
+        "ARTWORK: Discovered color representatives: %s",
+        [tuple(int(channel) for channel in representative) for representative in representatives],
     )
 
-    # Lower-opacity pixels may contain additional authored
-    # colors, but small variations near established colors
-    # do not create additional representatives.
-    add_colors(
-        rgb[alpha < maximum_alpha],
+    return len(
+        representatives,
     )
-
-    return len(representatives)
 
 
 def _prepare_source_image(
@@ -2000,17 +2099,15 @@ def _clip_trace_to_envelope(
     envelope: np.ndarray,
 ) -> None:
     """
-    Constrain all traced artwork geometry to the physical envelope.
+    Constrain traced artwork geometry to the physical envelope.
 
-    Inkscape's multicolor bitmap trace may represent transparent raster
-    background as a page-sized color region. The physical artwork
-    envelope is authoritative, so all traced geometry is clipped to
-    that envelope.
+    Inkscape may represent transparent raster background as a
+    page-sized color region. The physical envelope is authoritative,
+    so all traced geometry is clipped to that envelope.
 
-    The resulting trace remains self-contained: the envelope geometry
-    is embedded in a clipPath rather than referenced from envelope.svg.
+    Assign deterministic, globally unique path IDs after clipping
+    so downstream Raster processing can identify every SVG path.
     """
-
     if not trace.is_file():
         raise PrepareError(f"Trace does not exist: {trace}")
 
@@ -2022,7 +2119,6 @@ def _clip_trace_to_envelope(
         tree = ET.parse(
             trace,
         )
-
     except (
         OSError,
         ET.ParseError,
@@ -2031,12 +2127,7 @@ def _clip_trace_to_envelope(
 
     root = tree.getroot()
 
-    if (
-        _local_name(
-            root.tag,
-        )
-        != "svg"
-    ):
+    if _local_name(root.tag) != "svg":
         raise PrepareError(f"Trace does not contain an SVG root element: {trace}")
 
     ET.register_namespace(
@@ -2044,45 +2135,52 @@ def _clip_trace_to_envelope(
         SVG_NAMESPACE,
     )
 
+    # Reserve IDs without colliding with IDs from the trace.
+    reserved_ids = {
+        element_id for element in root.iter() if (element_id := element.get("id")) is not None
+    }
+
+    def unique_id(base: str) -> str:
+        candidate = base
+        index = 1
+
+        while candidate in reserved_ids:
+            candidate = f"{base}-{index}"
+            index += 1
+
+        reserved_ids.add(candidate)
+        return candidate
+
+    envelope_id = unique_id("artwork-envelope")
+    group_id = unique_id("artwork")
+
     defs = ET.Element(
-        _svg_tag(
-            "defs",
-        )
+        _svg_tag("defs"),
     )
 
     clip_path = ET.SubElement(
         defs,
-        _svg_tag(
-            "clipPath",
-        ),
+        _svg_tag("clipPath"),
         {
-            "id": "artwork-envelope",
+            "id": envelope_id,
             "clipPathUnits": "userSpaceOnUse",
         },
     )
 
     ET.SubElement(
         clip_path,
-        _svg_tag(
-            "path",
-        ),
+        _svg_tag("path"),
         {
             "d": path_data,
         },
     )
 
-    #
-    # Keep metadata and definitions at the SVG root. Move all drawable
-    # root-level content into one clipped group.
-    #
+    # Keep existing metadata and definitions at the root.
+    # Move drawable root-level elements into the clipped group.
     drawable: list[ET.Element] = []
 
-    for child in list(
-        root,
-    ):
-        if _local_name(
-            child.tag,
-        ) in {
+    for child in list(root):
+        if _local_name(child.tag) in {
             "defs",
             "metadata",
             "namedview",
@@ -2102,24 +2200,23 @@ def _clip_trace_to_envelope(
     )
 
     group = ET.Element(
-        _svg_tag(
-            "g",
-        ),
+        _svg_tag("g"),
         {
-            "id": "artwork",
-            "clip-path": "url(#artwork-envelope)",
+            "id": group_id,
+            "clip-path": f"url(#{envelope_id})",
         },
     )
 
     for child in drawable:
-        root.remove(
-            child,
-        )
-
+        root.remove(child)
         group.append(child)
 
-    root.append(
-        group,
+    root.append(group)
+
+    # Reuse native SVG normalization for deterministic IDs.
+    # This covers traced paths and the clipping definition.
+    _assign_native_svg_path_ids(
+        root,
     )
 
     try:
@@ -2128,7 +2225,6 @@ def _clip_trace_to_envelope(
             encoding="utf-8",
             xml_declaration=True,
         )
-
     except OSError as exc:
         raise PrepareError(f"Could not write clipped trace SVG: {trace}") from exc
 

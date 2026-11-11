@@ -290,6 +290,7 @@ def _configure_compose_context(
     context.output.side_effect = outputs.__getitem__
     context.has_input.return_value = False
     context.resolver.side_effect = resolver
+    context.resolver.color.side_effect = resolver.color
 
 
 @pytest.mark.slow
