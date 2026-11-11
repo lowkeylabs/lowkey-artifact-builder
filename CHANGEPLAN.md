@@ -118,7 +118,6 @@ The requested Product and its transitive dependencies determine the minimum work
 
 | Order | Phase | Consolidates | Primary result |
 | --- | --- | --- | --- |
-| 1 | Cross-Realization ARTWORK Dependencies for SHAPE | Realization selection and dependency planning | Each SHAPE Realization consumes its selected ARTWORK Realization |
 | 2 | First-Class SHAPE SVG Products | Terminal SVG build path and manufacturing identity | Independent SVG Product for every SHAPE Realization, without unnecessary 3MF work |
 | 3 | ARTWORK Representation and Source Correctness | BUG-006, BUG-004, related BUG-002; representation policy | Correct envelope and source handling across representation-specific ARTWORK Realizations |
 | 4 | Raster-Preserving SVG Manufacturing | BUG-005 | Embedded raster from a selected ARTWORK Realization in terminal SHAPE SVG |
@@ -131,49 +130,6 @@ The requested Product and its transitive dependencies determine the minimum work
 | 11 | Hierarchical SVG Manufacturing Project Assembly | Manufacturing project assembly | Grouped SVG containing independently manufacturable Products |
 
 **Dependency policy:** Phase 1 establishes correct cross-Realization Product dependency identity; Phase 2 makes SHAPE SVG an independently requested first-class Product; Phase 3 resolves source correctness and representation-specific preparation; Phase 4 makes raster representation composable; Phase 5 verifies the combined end-to-end manufacturing contract. Phases 6–10 extend supported source and planar composition features; Phase 11 assembles existing Products. Independent defect fixes may move earlier when required for manufacturing correctness, but must not undermine the dependency and Product contracts.
-
----
-## Phase 1 — Cross-Realization ARTWORK Dependencies for SHAPE
-
-**Status:** OPEN — Inspect HEAD binding and planner contracts; normative specification and implementation pending.
-
-### Purpose
-
-Allow each SHAPE Realization to select a specific ARTWORK Realization, rather than always depending on `artwork_default`. ARTWORK Realizations already have distinct identities and Product namespaces; reuse those mechanisms. This phase establishes the binding and dependency graph, not new artwork-processing algorithms.
-
-### Contract to Resolve
-
-1. Inspect current SHAPE Product dependency declarations, configuration resolution, canonical/explicit Realization identities, planner dependency closure, and freshness tracking. Determine which behavior is already implemented.
-2. Define the smallest configuration mechanism by which an Artifact-specific SHAPE Realization selects an Artifact-specific ARTWORK Realization. **The name and syntax below are illustrative, not yet approved:**
-
-   ```toml
-   [realizations.coaster_print]
-   variant = "shape.coaster"
-   artwork_realization = "artwork_full_color"
-
-   [realizations.coaster_engrave]
-   variant = "shape.coaster"
-   artwork_realization = "artwork_grayscale"
-   ```
-
-3. Preserve the existing implicit selection of `artwork_default` when no alternate selection is configured. Do not silently change canonical Variant/Realization naming or legacy configuration resolution.
-4. Bind the selected ARTWORK Realization's **registered Product** through the ordinary Product dependency mechanism. The planner must see the selected Realization identity; do not implement a Compose-only filename lookup or private dependency override.
-5. Ensure Product dependency closure builds only required upstream Realizations and Stages. Shared dependencies may be reused; unrelated ARTWORK Realizations must not be built merely because they are declared.
-6. Preserve independent namespaces, completion records, fingerprints, and freshness. A changed selected ARTWORK Product invalidates its dependent SHAPE Products; an unrelated ARTWORK Realization must not invalidate them.
-7. Diagnose missing names, wrong Model types, unavailable required Products, and dependency cycles clearly at the appropriate configuration/planning boundary.
-8. Reconcile the selection contract with `ARCHITECTURE.md` and ARTWORK/SHAPE `DEFINITION.md` before tests. Reusable manufacturing configurations belong to Variants; Realizations remain Artifact-specific.
-
-### TDD Work
-
-**RED:** One Artifact declares at least two ARTWORK Realizations and two SHAPE Realizations. Each SHAPE Realization selects a different ARTWORK Realization; planning and dependency identity reflect the selection. Verify default fallback, missing/invalid selection, independent Product namespaces, transitive dependency closure, and targeted freshness invalidation.
-
-**GREEN:** Extend existing configuration and Product dependency binding at the owning layer. Avoid new Models, new Stage implementations, hardcoded Realization names in Compose, or SHAPE-specific logic in the generic planner.
-
-**VERIFY:** Build the selected paths through the ordinary application/CLI workflow; inspect Product provenance and dependencies. Confirm existing default ARTWORK-to-SHAPE and 3MF builds remain compatible. Run required quality checks.
-
-### Completion
-
-A SHAPE Realization can select any compatible ARTWORK Realization for the same Artifact, and the build graph, persistent state, and dependency-driven work reflect that selection correctly.
 
 ---
 
