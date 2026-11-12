@@ -80,15 +80,6 @@ def _outputs(plan) -> dict[str, Path]:
 def test_jpeg_source_registers_png_product(tmp_path: Path) -> None:
     source = _configure(tmp_path)
     plan = _plan(tmp_path)
-
-    print("\nSource:", source)
-    print("Source suffix:", source.suffix)
-
-    for stage in plan.stages:
-        print("Stage:", stage.name)
-        for product in stage.products:
-            print("Product:", product.spec.name, product.path)
-
     outputs = _outputs(plan)
 
     execute_dependency_build(plan)
@@ -120,26 +111,9 @@ def test_jpeg_normalization_preserves_original_source(
     assert artifact_source.is_file()
     assert artifact_source.read_bytes() == original_bytes
 
-    artifact_dir = tmp_path / "artifacts" / ARTIFACT_ID
-
-    print("\nBEFORE BUILD")
-    for path in sorted(artifact_dir.glob("artifact.*")):
-        print(path.name, path.stat().st_size)
-
     plan = _plan(tmp_path)
 
-    for stage in plan.stages:
-        print("Stage:", stage.name)
-        for dependency in stage.dependencies:
-            print("Dependency:", dependency)
-
     execute_dependency_build(plan)
-
-    print("\nAFTER BUILD")
-    for path in sorted(artifact_dir.glob("artifact.*")):
-        print(path.name, path.stat().st_size)
-
-    execute_dependency_build(_plan(tmp_path))
 
     assert source.read_bytes() == original_bytes
     assert artifact_source.read_bytes() == original_bytes

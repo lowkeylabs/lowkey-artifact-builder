@@ -17,7 +17,7 @@ Each Artwork Realization independently selects:
 
 Supported representations are:
 
-- `source` — preserve the original source file and format without transformation;
+- source — register source artwork without intentional image processing, preserving PNG and SVG unchanged and normalizing JPEG to PNG;
 - `vector` — produce registered vector artwork;
 - `raster` — produce registered raster artwork encoded as PNG.
 
@@ -56,7 +56,7 @@ source
 
 Supported customer source formats are PNG, JPEG (`.jpg`, `.jpeg`), and SVG.
 
-An Artifact retains its original customer-supplied source file alongside `artifact.toml`, preserving the original filename, format, and content. The source is not replaced by a normalized representation.
+An Artifact retains its original customer-supplied source content and format alongside artifact.toml, using the canonical filename artifact with the original file extension (.png, .jpg, .jpeg, or .svg). The source is not replaced by a normalized representation.
 
 Source format does not establish a separate Artifact identity. An Artifact has at most one registered source, and a new source does not silently replace an existing registration.
 
@@ -1407,7 +1407,7 @@ The following are model-wide invariants. Feature-specific invariants are defined
 
 A conforming Artwork implementation satisfies the following:
 
-1. Artwork consumes one materialized PNG, JPEG, or SVG source. The Artifact preserves the original customer-supplied file and format independently of registered Artwork Products.
+1. Artwork consumes one materialized PNG, JPEG, or SVG source. The Artifact preserves the original source bytes and format under its canonical filename, independently of registered Artwork Products.
 2.  Prepared Artwork is limited to its derived Artwork envelope.
 3.  Artwork envelope derivation is controlled by `artwork_envelope_mode`.
 4.  `artwork_envelope_mode` defaults to `shrink-wrap`.

@@ -1,10 +1,9 @@
 """
 Artwork source-preserving Stage.
 
-Registers the original materialized Artwork source without tracing,
-rasterization, color discovery, or dimensionalization.
+Registers PNG and SVG sources unchanged and normalizes JPEG to PNG,
+without tracing, color discovery, or dimensionalization.
 """
-
 # File: src/lowkey_artifact_builder/model/models/artwork/stages/source.py
 # Copyright 2026 LowKeyLabs LLC
 # SPDX-License-Identifier: Apache-2.0
