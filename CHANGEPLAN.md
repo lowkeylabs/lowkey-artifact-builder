@@ -655,4 +655,3 @@ Begin with the next appropriate phase and slice.
 **Do not implement new depth-map processing, depth parameters, physical Extrude changes, or native xTool project formats as part of this first slice.**
 
 No implementation work is authorized merely by adopting this plan.
-

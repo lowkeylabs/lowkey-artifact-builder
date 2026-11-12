@@ -1,9 +1,12 @@
 """
 Selected Artwork Realization dependency fingerprint isolation.
 
-Each Shape Realization consumes the registered Product of its selected
-Artwork Realization. A change to one producer's required fingerprint
-must affect its consumer without invalidating an unrelated consumer.
+Each Shape Realization consumes only the Artwork Product selected by
+its producer's effective representation and processing configuration.
+
+Changes to a selected producer's required fingerprint invalidate its
+consumer without invalidating unrelated consumers. Changes to
+unselected Artwork products do not affect consumer fingerprints.
 
 These tests do not execute manufacturing stages.
 """
@@ -99,30 +102,24 @@ def _required(
 def test_selected_artwork_change_invalidates_only_its_consumer(
     tmp_path: Path,
 ) -> None:
-    """
-    A changed Artwork producer fingerprint affects only its bound Shape.
-
-    Shape structural geometry does not depend on Artwork. The selected
-    Artwork dependency enters the Shape compose stage.
-    """
+    """Changing one bound vector producer invalidates only its Shape consumer."""
     _configure(tmp_path)
 
     print_plan = _shape_plan(tmp_path, "coaster_print")
     engrave_plan = _shape_plan(tmp_path, "coaster_engrave")
 
     initial = {
+        "artwork_default": _fingerprint("raster-v1"),
         "artwork_color": _fingerprint("color-v1"),
         "artwork_vector": _fingerprint("vector-v1"),
     }
-
     changed = {
+        **initial,
         "artwork_color": _fingerprint("color-v2"),
-        "artwork_vector": _fingerprint("vector-v1"),
     }
 
     print_before = _required(print_plan, initial)
     print_after = _required(print_plan, changed)
-
     engrave_before = _required(engrave_plan, initial)
     engrave_after = _required(engrave_plan, changed)
 
@@ -137,59 +134,69 @@ def test_selected_artwork_fingerprint_participates_in_compose(
     tmp_path: Path,
 ) -> None:
     """
-    Compose provenance depends on the selected producer's fingerprint.
+    Compose fingerprints depend only on selected Artwork products.
 
-    Repeating the same producer fingerprint yields deterministic
-    consumer fingerprints.
+    The selected vector producer participates in Compose fingerprinting.
+    Changes to an unselected raster producer do not invalidate Compose.
     """
     _configure(tmp_path)
-
     plan = _shape_plan(tmp_path, "coaster_print")
 
-    first = _required(
-        plan,
-        {
-            "artwork_color": _fingerprint("color-v1"),
-        },
-    )
+    initial = {
+        "artwork_default": _fingerprint("raster-v1"),
+        "artwork_color": _fingerprint("color-v1"),
+    }
 
-    repeated = _required(
-        plan,
-        {
-            "artwork_color": _fingerprint("color-v1"),
-        },
-    )
+    first = _required(plan, initial)
+    repeated = _required(plan, initial)
 
-    changed = _required(
+    changed_vector = _required(
         plan,
         {
+            **initial,
             "artwork_color": _fingerprint("color-v2"),
         },
     )
 
+    changed_raster = _required(
+        plan,
+        {
+            **initial,
+            "artwork_default": _fingerprint("raster-v2"),
+        },
+    )
+
+    # Fingerprinting is deterministic.
     assert first["compose"] == repeated["compose"]
-    assert first["compose"] != changed["compose"]
+
+    # The selected vector producer participates in Compose.
+    assert first["compose"] != changed_vector["compose"]
+
+    # An unselected raster producer does not participate.
+    assert first["compose"] == changed_raster["compose"]
+
+    # Artwork changes do not invalidate Shape structure.
+    assert first["structure"] == changed_vector["structure"]
+    assert first["structure"] == changed_raster["structure"]
 
 
 def test_unselected_artwork_fingerprint_is_not_requested(
     tmp_path: Path,
 ) -> None:
-    """
-    Fingerprinting a Shape must not consult sibling Artwork Realizations.
-    """
+    """Fingerprinting consults bound producers, not unrelated siblings."""
     _configure(tmp_path)
-
     plan = _shape_plan(tmp_path, "coaster_print")
 
-    requested: list[str] = []
+    requested: set[str] = set()
+    producer_fingerprints = {
+        "artwork_color": _fingerprint("color-v1"),
+        "artwork_default": _fingerprint("raster-v1"),
+    }
 
     def resolve(dependency):
         realization = dependency.binding.realization
-        requested.append(realization)
-
-        assert realization == "artwork_color"
-
-        return _fingerprint("color-v1")
+        requested.add(realization)
+        return producer_fingerprints[realization]
 
     fingerprints = create_required_fingerprints(
         plan,
@@ -197,4 +204,104 @@ def test_unselected_artwork_fingerprint_is_not_requested(
     )
 
     assert "compose" in fingerprints
-    assert requested == ["artwork_color"]
+    assert "artwork_default" not in requested
+    assert "artwork_color" in requested
+    assert "artwork_vector" not in requested
+    assert requested <= producer_fingerprints.keys()
+
+
+def test_selected_raster_artwork_fingerprint_participates_in_compose(
+    tmp_path: Path,
+) -> None:
+    """
+    A source-preserving raster Artwork producer invalidates Compose
+    only when its selected fingerprint changes.
+
+    Changes to an unrelated vector producer do not invalidate Compose,
+    and neither change invalidates Shape structure.
+    """
+    write_artifact_config(
+        ARTIFACT_ID,
+        {
+            "source": "source.png",
+            "realizations": {
+                "artwork_raster": {
+                    "variant": "artwork.default",
+                    "artwork_representation": "raster",
+                    "artwork_processing": "none",
+                },
+                "artwork_vector": {
+                    "variant": "artwork.default",
+                },
+                "coaster_print": {
+                    "variant": "shape.coaster",
+                    "product_dependencies": {
+                        "manifest": {
+                            "artifact": ARTIFACT_ID,
+                            "realization": "artwork_raster",
+                        },
+                        "raster_artwork": {
+                            "artifact": ARTIFACT_ID,
+                            "realization": "artwork_raster",
+                        },
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plan = _shape_plan(tmp_path, "coaster_print")
+
+    # Verify that the raster product, rather than the vector manifest,
+    # is the selected cross-model dependency.
+    assert {
+        dependency.binding.dependency.name for dependency in plan.planned_product_dependencies
+    } == {"raster_artwork"}
+
+    raster_dependency = plan.planned_product_dependencies[0]
+
+    assert raster_dependency.product_ref == ProductRef(
+        artifact=ARTIFACT_ID,
+        model="artwork",
+        realization="artwork_raster",
+        stage="raster_source",
+        product="artifact",
+    )
+
+    initial = {
+        "artwork_raster": _fingerprint("raster-v1"),
+        "artwork_vector": _fingerprint("vector-v1"),
+    }
+
+    first = _required(plan, initial)
+    repeated = _required(plan, initial)
+
+    changed_raster = _required(
+        plan,
+        {
+            **initial,
+            "artwork_raster": _fingerprint("raster-v2"),
+        },
+    )
+
+    changed_vector = _required(
+        plan,
+        {
+            **initial,
+            "artwork_vector": _fingerprint("vector-v2"),
+        },
+    )
+
+    # Fingerprinting is deterministic.
+    assert first["compose"] == repeated["compose"]
+
+    # The selected raster Artwork participates in Compose.
+    assert first["compose"] != changed_raster["compose"]
+
+    # The unrelated vector producer does not participate.
+    assert first["compose"] == changed_vector["compose"]
+
+    # Neither Artwork change affects Shape structure.
+    assert first["structure"] == changed_raster["structure"]
+    assert first["structure"] == changed_vector["structure"]

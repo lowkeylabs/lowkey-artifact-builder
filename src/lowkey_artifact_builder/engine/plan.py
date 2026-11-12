@@ -162,28 +162,15 @@ def create_build_plan(
 
     Variant and Realization are distinct coordinates.
 
-    variant_name selects reusable Model configuration. Planning resolves that
-    Variant selection to the Artifact Realization that applies it.
+    When targets are supplied, only stages required to produce those
+    products and their transitive dependencies are planned.
 
-    realization directly selects an Artifact Realization. variant_name and
-    realization therefore cannot be supplied together.
+    Product dependencies are first resolved to concrete producer
+    Realizations. Alternative Artwork dependencies are then selected
+    according to the producer's effective Artwork configuration.
 
-    When neither variant_name nor realization is supplied, planning selects
-    the "default" Variant of the Artifact's effective Model and resolves that
-    Variant to its canonical Artifact Realization.
-
-    The resulting realization-specific Resolver is retained by the BuildPlan
-    and later supplied unchanged to every StageContext created during
-    execution.
-
-    When targets are supplied, only stages required to produce those products
-    and their transitive dependencies are planned. Declarative product
-    dependencies discovered by the selected Realization Graph are preserved by
-    the BuildPlan and resolved to their configured producer artifact and
-    realization bindings.
-
-    When targets are omitted, every participating model stage is planned,
-    preserving complete-artifact build behavior.
+    Only selected dependencies participate in the resulting BuildPlan,
+    producer execution, and consumer fingerprinting.
     """
 
     if targets == ():
@@ -194,9 +181,6 @@ def create_build_plan(
 
     root = project_root if project_root is not None else Path.cwd()
 
-    # A direct Realization selection is already a complete Artifact execution
-    # identity. Otherwise planning is Variant-driven. Omitted selection means
-    # the default Variant of the Artifact's effective Model.
     if realization is None:
         if model_name is None:
             artifact_resolver = get_resolver(
@@ -206,10 +190,7 @@ def create_build_plan(
 
             resolved_model_name = artifact_resolver("model")
 
-            if not isinstance(
-                resolved_model_name,
-                str,
-            ):
+            if not isinstance(resolved_model_name, str):
                 raise BuildPlanError("Artifact model must resolve to a string.")
 
             model_name = resolved_model_name
@@ -233,18 +214,12 @@ def create_build_plan(
 
     resolved_model_name = resolver("model")
 
-    if not isinstance(
-        resolved_model_name,
-        str,
-    ):
+    if not isinstance(resolved_model_name, str):
         raise BuildPlanError("Artifact model must resolve to a string.")
 
     realization_name = resolver("realization")
 
-    if not isinstance(
-        realization_name,
-        str,
-    ):
+    if not isinstance(realization_name, str):
         raise BuildPlanError("Artifact realization must resolve to a string.")
 
     registry = build_model_registry()
@@ -253,7 +228,6 @@ def create_build_plan(
         model = registry.get_model(
             resolved_model_name,
         )
-
     except ModelNotFoundError as exc:
         raise BuildPlanError(f"unknown model {resolved_model_name!r}") from exc
 
@@ -274,10 +248,20 @@ def create_build_plan(
         targets=targets,
     )
 
+    # Resolve the producer identities using the existing
+    # realization-scoped binding semantics.
     product_dependency_bindings = _resolve_product_dependency_bindings(
         artifact_id=artifact_id,
         realization_name=realization_name,
         product_dependencies=product_dependencies,
+        project_root=root,
+    )
+
+    # Select alternative Artwork representations only after their
+    # producer Realizations are known.
+    product_dependencies, product_dependency_bindings = _select_artwork_product_dependencies(
+        product_dependencies=product_dependencies,
+        bindings=product_dependency_bindings,
         project_root=root,
     )
 
@@ -671,6 +655,125 @@ def _resolve_product_dependency_bindings(
         ) from exc
 
     return tuple(bindings)
+
+
+def _select_artwork_product_dependencies(
+    *,
+    product_dependencies: tuple[ProductDependencySpec, ...],
+    bindings: tuple[ProductDependencyBinding, ...],
+    project_root: Path,
+) -> tuple[
+    tuple[ProductDependencySpec, ...],
+    tuple[ProductDependencyBinding, ...],
+]:
+    """
+    Select the Artwork Product representation required by a consumer.
+
+    Artwork vector and source-preserving raster products are alternative
+    inputs to Shape Compose, not simultaneous requirements.
+
+    Selection uses the effective configuration of each bound producer
+    Realization rather than assuming that the consumer's configuration
+    also describes the producer.
+
+    Other Product dependencies are unaffected.
+
+    If independently bound Artwork producers would select conflicting
+    representations, fail explicitly rather than silently choosing one.
+    """
+
+    vector_identity = (
+        "artwork",
+        "vector",
+        "manifest",
+    )
+
+    raster_identity = (
+        "artwork",
+        "raster_source",
+        "artifact",
+    )
+
+    alternatives = {
+        vector_identity,
+        raster_identity,
+    }
+
+    def identity(
+        dependency: ProductDependencySpec,
+    ) -> tuple[str, str, str]:
+        return (
+            dependency.model,
+            dependency.stage,
+            dependency.product,
+        )
+
+    selected_bindings: list[ProductDependencyBinding] = []
+    selected_artwork: list[ProductDependencyBinding] = []
+
+    for binding in bindings:
+        dependency = binding.dependency
+        dependency_identity = identity(dependency)
+
+        if dependency_identity not in alternatives:
+            selected_bindings.append(binding)
+            continue
+
+        producer_resolver = get_resolver(
+            binding.artifact,
+            realization=binding.realization,
+            project_root=project_root,
+        )
+
+        representation = producer_resolver("artwork_representation")
+
+        processing = producer_resolver("artwork_processing")
+
+        selected_identity = (
+            raster_identity
+            if representation == "raster" and processing == "none"
+            else vector_identity
+        )
+
+        if dependency_identity == selected_identity:
+            selected_artwork.append(binding)
+
+    if len(selected_artwork) > 1:
+        selected_names = ", ".join(
+            (
+                f"{binding.artifact}/"
+                f"{binding.realization}/"
+                f"{binding.dependency.stage}/"
+                f"{binding.dependency.product}"
+            )
+            for binding in selected_artwork
+        )
+
+        raise BuildPlanError(
+            f"Shape Artwork dependencies select multiple representations: {selected_names}."
+        )
+
+    selected_bindings.extend(selected_artwork)
+
+    selected_dependencies = {binding.dependency for binding in selected_bindings}
+
+    # Preserve the original declaration order, including any
+    # dependencies without a concrete producer binding.
+    selected_product_dependencies = tuple(
+        dependency
+        for dependency in product_dependencies
+        if identity(dependency) not in alternatives or dependency in selected_dependencies
+    )
+
+    # Preserve the original binding order.
+    selected_binding_set = set(selected_bindings)
+
+    ordered_bindings = tuple(binding for binding in bindings if binding in selected_binding_set)
+
+    return (
+        selected_product_dependencies,
+        ordered_bindings,
+    )
 
 
 def _plan_product_dependencies(

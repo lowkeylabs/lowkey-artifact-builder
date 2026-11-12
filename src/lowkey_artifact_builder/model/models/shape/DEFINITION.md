@@ -22,7 +22,8 @@ The initial Shape model supports:
 - an optional integrated or separately printable outer ridge;
 - independently assignable base and outer-ridge colors;
 - optional registered Artwork;
-- a printable multicomponent 3MF.
+- an SVG manufacturing Product supporting vector or raster Artwork;
+- a printable multicomponent 3MF when the composed geometry is extrudable.
 
 Shape owns the physical dimensions and placement of geometry
 incorporated into the Shape.
@@ -503,22 +504,27 @@ Artwork is optional.
 
 A Shape without Artwork is a complete valid artifact.
 
-Shape does not consume an Artwork source PNG and does not require a
-completed standalone Artwork 3MF.
+Shape consumes registered Artwork produced as an intermediate Product
+by the `artwork` model. It does not require a completed standalone
+Artwork 3MF.
 
-Shape consumes registered Artwork produced as an intermediate product by
-the `artwork` model.
+Shape Compose supports registered vector Artwork and source-preserving
+raster Artwork.
 
-The initial Shape model consumes the registered vector representation
-defined by the Artwork model.
+Vector Artwork retains its registered component geometry and logical
+Artifact-color identity.
 
-Artwork components remain registered with one another when consumed by
-Shape.
+Raster Artwork retains its original image content, transparency, and
+aspect ratio. Shape Compose incorporates raster Artwork into its SVG
+representation without tracing, quantization, color separation, or
+conversion to vector geometry.
 
-Each consumed Artwork color layer retains its logical Artifact-color
-identity. The registered Artwork dependency does not require or carry a
-standalone Artwork Package printer assignment into Shape.
+Artwork components remain registered with one another when consumed
+by Shape.
 
+Shape Compose does not determine whether incorporated Artwork is
+suitable for physical extrusion. That responsibility belongs
+exclusively to Shape Extrude.
 
 ## Artwork Dependency
 
@@ -528,61 +534,39 @@ mechanism defined in `ARCHITECTURE.md`.
 Each Shape Realization independently selects the Artwork producer
 Artifact and Realization through its Product dependency binding.
 
-Different Shape Realizations may consume registered Artwork from
-different Artwork Realizations, including Realizations belonging to
-the same Artifact or to different Artifacts.
+Different Shape Realizations may consume Artwork from different
+Artwork Realizations, including Realizations belonging to the same
+Artifact or to different Artifacts.
 
-The selected producer must satisfy the declared registered Artwork
-Product contract. Shape does not select a producer by inspecting
-generated directories or assuming a particular Artwork Realization
-name.
+The selected producer must satisfy the declared Artwork Product
+contract. Shape does not select a producer by inspecting generated
+directories or assuming a particular Artwork Realization name.
 
-Shape depends on the registered Artwork Product it consumes, not
-on completion of the producer's entire Artwork Realization.
+Shape depends on the Artwork Product it consumes, not on completion
+of the producer's entire Artwork Realization.
 
-For the current Artwork model, consuming registered vector Artwork
-requires the upstream dependency:
+Vector Artwork consumes the declared registered vector Product and
+its manifest. Raster Artwork consumes the declared source-preserving
+raster Product and its metadata.
 
-```text
-artwork/prepare
-      ↓
-artwork/raster
-      ↓
-artwork/vector
-      ↓
-shape/compose
-```
+The required upstream stages are determined by the selected Artwork
+representation and its Product dependencies. Consuming source-preserving
+raster Artwork does not implicitly require
+the Artwork raster, vector, extrude, or package stages.
 
-For SVG sources, the Artwork model may satisfy its vector dependency
-through prepared native vector regions without executing rasterization,
-as defined by the Artwork model.
 
-Artwork stages after the consumed vector Product are not prerequisites.
-
-In particular, Shape does not require:
-
-```text
-artwork/extrude
-artwork/package
-```
-
-to consume registered vector Artwork.
-
-Shape consumes the selected producer's declared Artwork manifest
-rather than discovering dynamic Artwork components by scanning
-generated directories.
+Artwork stages after the consumed Product are not prerequisites.
 
 The generic dependency engine resolves, validates, and builds the
-selected producer's required Product before executing a dependent
+selected producer's required Products before executing a dependent
 Shape Stage.
 
-A current registered Artwork Product may be reused without
-reexecuting its producing Stages.
+A current Artwork Product may be reused without reexecuting its
+producing Stages.
 
-Shape Compose freshness depends on the selected registered Artwork
-Product and its fingerprint. Changes to an unselected Artwork
-Realization do not, by themselves, invalidate the consuming Shape
-Realization.
+Shape Compose freshness depends on the selected Artwork Products
+and their fingerprints. Changes to an unselected Artwork Realization
+do not, by themselves, invalidate the consuming Shape Realization.
 
 Producer selection and dependency freshness are independent for
 each Shape Realization.
@@ -591,30 +575,59 @@ The Shape model does not implement generic producer resolution,
 dependency graph traversal, or cross-Realization freshness policy.
 Those responsibilities belong to the generic build infrastructure.
 
+
+### Representation-Aware Manufacturing Product Selection
+
+Shape declares representation-specific manufacturing Product applicability. The generic build planner uses that applicability to select Products and their required upstream Stages.
+
+The ordinary `artifact build` workflow selects only manufacturing
+Products applicable to the Artifact's declared Artwork representation
+and requested Realization.
+
+- Vector Artwork may participate in SVG and 3MF manufacturing.
+- Source-preserving raster Artwork may participate in SVG manufacturing
+  but is not eligible for 3MF extrusion.
+- Shape without Artwork may participate in both manufacturing paths.
+
+An inapplicable manufacturing Product is excluded from the build plan
+before execution. Its exclusion is not a manufacturing failure.
+
+The build planner must not schedule upstream stages required exclusively
+by an inapplicable Product.
+
+A requested manufacturing Product that is explicitly required but
+inapplicable must produce a clear eligibility diagnostic rather than
+silently substituting another Product.
+
+Product applicability is distinct from execution success. Applicable
+Products remain subject to their ordinary validation and manufacturing
+requirements.
+
+
 ## Registered Artwork Coordinate Space
 
-Registered Artwork may use a different coordinate extent from registered
-Shape geometry.
+Registered Artwork may use a different coordinate extent from
+registered Shape geometry.
 
-For example, Artwork may have a registered extent derived from its
-vectorization coordinate system while Shape uses its canonical:
+Vector Artwork uses the coordinate space defined by its registered
+vector Product.
 
-```text
--0.5 through +0.5
-```
+Raster Artwork uses its image dimensions and associated metadata
+to establish its authoritative rectangular envelope.
 
-registered envelope.
+There is no requirement that one Artwork coordinate unit equal one
+Shape registered unit.
 
-There is no requirement that one Artwork registered unit equal one Shape
-registered unit.
+The relationship between Artwork coordinates and registered Shape
+coordinates is established by the Shape composition transformation.
 
-The relationship between the two registered coordinate spaces is
-established by the Shape composition transformation.
-
-All components belonging to one registered Artwork collection share the
-same Artwork coordinate system and receive the same transformation into
+All components belonging to one Artwork collection share the same
+Artwork coordinate system and receive the same transformation into
 registered Shape space.
 
+For raster Artwork, the transformation preserves the original pixel
+content, transparency, and aspect ratio without resampling the
+source image.
 
 ## Artwork Placement
 
@@ -685,67 +698,70 @@ Neutral adjustment values preserve existing placement behavior.
 
 ## Registered Composition
 
-Shape composition operates on registered geometry.
+Shape composition operates on registered geometry and incorporated
+Artwork representations.
 
-The structural Shape geometry and any incorporated registered Artwork
-remain nonphysical through composition.
-
-Conceptually:
-
-```text
-registered Shape structure ─────┐
-                                │
-                                ▼
-                             compose
-                                ▲
-                                │
-registered Artwork ─────────────┘
-                                │
-                                ▼
-                     registered composition
-```
+Structural Shape geometry and incorporated Artwork remain registered
+through composition.
 
 Composition establishes the spatial relationship between structural
 Shape geometry and incorporated Artwork.
 
-When Artwork is present, its registered coordinate system is transformed
-into registered Shape coordinate space.
+When Artwork is present, its coordinate system is transformed into
+registered Shape coordinate space.
 
-Composition does not assign the final physical X/Y dimensions of the
-Shape.
+Vector Artwork contributes registered vector geometry and retains
+its semantic component identity and logical Artifact-color separation.
+
+Raster Artwork contributes an embedded image representation, preserving
+its original image content, transparency, aspect ratio, and registered
+placement.
+
+Composition does not trace, vectorize, extrude, or assign physical
+printer colors to incorporated Artwork.
+
+Composition does not assign the final physical X/Y dimensions of
+the Shape.
 
 Physical Shape policy may nevertheless be used to derive relative
-registered-space relationships required for composition. Participating Features
-may define such relationships within their Feature contracts.
+registered-space relationships required for composition. Participating
+Features may define such relationships within their Feature contracts.
 
-Composition retains sufficient semantic component identity to support
-downstream physical dimensionalization and packaging. Incorporated
-Artwork retains logical Artifact-color identity; composition does not
-resolve that identity to physical printer colors.
+Composition retains the semantic identities and placement information
+needed by downstream consumers.
 
-The composed result similarly retains sufficient Artwork component
-identity to allow different structural and Artwork components to receive
-their appropriate physical Z semantics and to remain independently
-printable where required. Incorporated Artwork color layers retain their
-logical Artifact-color identity through this stage.
+Shape Compose does not evaluate extrusion eligibility. The presence
+of raster Artwork does not invalidate an otherwise valid composed SVG.
+
 
 ## Physical Dimensionalization
 
 Physical dimensionalization occurs after registered composition.
 
-The Shape extrusion boundary converts composed registered geometry into
+Shape Extrude converts supported composed vector geometry into
 physical manufacturing geometry.
+
+Extrude independently validates whether the composed representation
+is suitable for physical dimensionalization.
+
+Raster Artwork is not extrudable geometry. When raster Artwork is
+incorporated, Extrude must reject unsupported extrusion rather than
+silently omitting the Artwork or implicitly converting it to vector
+geometry.
+
+This constraint belongs to Extrude and does not restrict Shape
+Compose or SVG Export.
 
 Conceptually:
 
 ```text
 registered composition
-          │
-          ▼
-       extrude
-          │
-          ▼
- physical geometry
+          |
+          v
+        extrude
+          |
+          v
+  physical geometry
 ```
 
 At this boundary:
@@ -4147,12 +4163,21 @@ The exported SVG:
 - preserves registered placement, orientation, semantic component
   identity, and logical Artwork-color separation;
 - uses physical millimeter dimensions derived from `shape_size`;
-- contains portable vector geometry without external resources,
-  unresolved fonts, or editor-specific dependencies;
+- contains portable vector geometry and, when raster Artwork
+  participates, embedded source-preserving raster image data;
+- requires no external image resources, unresolved fonts, or
+  editor-specific dependencies;
 - avoids construction geometry, unintended opaque backgrounds,
   duplicate filled regions, and oversized default strokes; the visible
   foreground footprints do not imply full-depth subtraction of raised-style
   background material.
+
+Raster Artwork is embedded directly in the SVG Product, preserving
+its original image bytes and transparency. Raster Artwork uses the
+same Shape Artwork-placement contract as vector Artwork.
+
+SVG Export does not require raster Artwork to be extrudable and does
+not depend on successful Shape Extrude or Package.
 
 Structural outlines use explicit physical stroke widths.
 
@@ -4180,27 +4205,37 @@ SVG Export provides a direct planar representation of SHAPE.
 
 ## Final Product
 
-Shape produces:
+Shape supports SVG and 3MF manufacturing Products.
 
-```text
-artifact.3mf
-```
+The SVG manufacturing Product is defined by the SVG Export Feature
+and may incorporate registered vector or source-preserving raster
+Artwork.
 
-When the SVG Export Feature is enabled, Shape additionally produces
-the SVG manufacturing Product defined by that Feature.
+The 3MF manufacturing Product requires successful Shape Extrude and
+Package processing. Extrusion eligibility is determined by Extrude,
+independently of Compose.
 
-The final artifact contains the dimensionalized structural Shape
-geometry.
+A Shape containing raster Artwork may produce a valid SVG Product
+without producing a 3MF Product.
 
-Participating Features contribute physical geometry and component partitioning according to their Feature contracts.
+When SVG Export is enabled, Shape publishes the SVG manufacturing
+Product defined by that Feature.
 
-When Artwork is configured, the final artifact also contains the
-incorporated Artwork components.
+When extrusion succeeds, the packaged 3MF contains the dimensionalized
+structural Shape geometry and participating physical components.
 
-Artwork color components remain suitable for multicolor printing.
+Participating Features contribute physical geometry and component
+partitioning according to their Feature contracts.
 
-A Shape without Artwork still produces a complete valid printable
-artifact.
+Incorporated vector Artwork retains its logical Artifact-color
+identity through composition and extrusion. Package resolves that
+identity to physical printer colors for multicolor manufacturing.
+
+Incorporated raster Artwork retains its source image content and
+transparency in the SVG manufacturing Product without requiring
+physical printer-color assignment.
+
+A Shape without Artwork remains a complete valid artifact.
 
 ## Model Invariants
 
@@ -4227,9 +4262,12 @@ A conforming initial Shape implementation satisfies the following:
 16. Physical Shape policy may be converted into relative registered-space relationships when required for composition without assigning final physical dimensions to the registered coordinate system.
 17. Every Shape has a base color determined by `shape_base_color` and applied during Shape Package.
 18. The default base color is `white`.
-19. Shape can consume registered vector Artwork produced by another artifact.
+19. Shape Compose can incorporate registered vector Artwork or
+    source-preserving raster Artwork.
 20. Consuming registered Artwork does not require standalone Artwork extrusion or packaging.
-21. Dynamic Artwork component membership is obtained from its declared manifest rather than filesystem scanning.
+21. Dynamic vector Artwork component membership is obtained from its
+    declared manifest rather than filesystem scanning. Raster Artwork
+    uses its declared source-preserving Product and metadata.
 22. Registered Artwork and registered structural Shape geometry are composed before final physical X/Y dimensionalization.
 23. Shape determines the physical size and placement of incorporated Artwork.
 24. Shape uses one geometry-independent Artwork placement computation for circle, square, and regular polygon geometry. The Artwork placement region is the largest circle centered at the registered Shape origin that is wholly contained within the available registered Shape interior region, and incorporated Artwork is centered and uniformly scaled to the largest size at which its authoritative envelope remains contained within that placement region.
@@ -4241,7 +4279,9 @@ A conforming initial Shape implementation satisfies the following:
 30. Required color distinctions remain representable through dimensionalization and packaging.
 31. Packaged 3MF component names preserve semantic component role and resolved printing-color identity without relying on intermediate component ordinals.
 32. Packaging occurs after physical dimensionalization.
-33. Shape produces a valid printable 3MF containing its structural geometry and any incorporated Artwork components.
+33. Shape Extrude independently validates whether composed geometry can
+    produce a valid 3MF. Raster Artwork is not extrudable, and its presence
+    does not invalidate SVG composition or export.
 34. `shape_raise_style` supports `raised` and `inlaid`, with `raised` as the default.
 35. `shape_raise_style` changes physical Z dimensionalization without changing registered Shape geometry, registered interior geometry, or Artwork fitting.
 36. With `shape_raise_style = "raised"`, incorporated Artwork begins at the top surface of the Shape Base at `Z = shape_base_raise`.
@@ -4263,11 +4303,16 @@ A conforming initial Shape implementation satisfies the following:
 52. Artwork fill remains semantically distinct from the structural Base even when both resolve to the same printing color.
 53. The default Artwork-fill color is the resolved Base color; an explicitly configured `shape_artwork_fill_color` overrides that derived default.
 54. `shape_artwork_fill_color` does not determine Artwork-fill participation or geometry.
-55. Incorporated Artwork preserves logical Artifact-color identity through Shape Compose and Shape Extrude.
+55. Incorporated vector Artwork preserves logical Artifact-color
+    identity through Shape Compose and Shape Extrude. Raster Artwork
+    preserves its source image content and transparency through
+    Shape Compose and SVG Export.
 56. Shape Compose and Shape Extrude do not assign physical printer colors to incorporated Artwork.
 57. Shape Extrude owns physical geometry and component participation and does not assign physical colors to Shape-owned components.
 58. Shape Package applies physical color policy for Shape-owned components.
-59. Shape Package resolves incorporated Artwork Artifact-color identity to physical printer colors using `printer_colors`.
+59. Shape Package resolves incorporated vector Artwork Artifact-color
+    identity to physical printer colors using `printer_colors`.
+    Raster Artwork does not require printer-color resolution.
 60. Changing only `printer_colors`, `shape_base_color`, `shape_artwork_fill_color`, `shape_border_fill_color`, `shape_artwork_region_fill_color`, or Feature-specific packaging color parameters does not by itself change Shape Structure, Compose, or Extrude geometry.
 61. Changing `shape_artwork_fill_raise` changes Artwork-fill participation and therefore affects Shape Extrude and downstream Package; with raised style it also changes fill physical height.
 62. The initial inlaid Shape contract applies to incorporated Artwork, Artwork fill, Outer Ridge, Inner Ridge, Border Labels, and Loop.

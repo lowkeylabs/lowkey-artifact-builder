@@ -89,6 +89,12 @@ MODEL = ModelSpec(
                     stage="vector",
                     product="manifest",
                 ),
+                ProductDependencySpec(
+                    name="raster_artwork",
+                    model="artwork",
+                    stage="raster_source",
+                    product="artifact",
+                ),
             ),
             parameters=(
                 "shape_size",

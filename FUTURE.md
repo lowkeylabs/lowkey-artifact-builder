@@ -352,4 +352,3 @@ Grayscale raster output remains an intended manufacturing capability, particular
 It is not required for completion of the initial `none` and `auto` processing implementation.
 
 Individual capabilities should move from this document into `CHANGEPLAN.md` when selected for active implementation.
-

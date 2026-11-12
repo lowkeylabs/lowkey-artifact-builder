@@ -14,6 +14,7 @@ extrusion belong to downstream Shape stages.
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 import shutil
@@ -99,6 +100,15 @@ class RegisteredArtwork:
     registered_extent: RegisteredExtent
     envelope: Path
     components: tuple[RegisteredArtworkComponent, ...]
+
+
+@dataclass(frozen=True)
+class RegisteredRasterArtwork:
+    """Source-preserving raster Artwork supplied by its producer."""
+
+    path: Path
+    width: int
+    height: int
 
 
 @dataclass(frozen=True)
@@ -457,20 +467,21 @@ def execute(
     """
     Execute registered Shape composition.
 
-    Structural geometry and optional Artwork are composed in registered
-    space. Artwork adjustments are applied after automatic fitting.
+    Structural geometry and optional vector or raster Artwork are
+    composed in registered space. Artwork adjustments are applied
+    after automatic fitting.
 
-    Border Fill is resolved from the registered structural boundaries,
+    Border Fill is resolved from registered structural boundaries,
     independently of Border Label participation.
 
-    Artwork Region Fill uses the authoritative registered Shape interior,
-    independently of whether Artwork participates.
+    Artwork Region Fill uses the authoritative registered Shape
+    interior, independently of whether Artwork participates.
 
-    A participating QR Code is generated as separate registered dark/light
-    geometry without requiring Artwork.
+    A participating QR Code is generated as separate registered
+    dark/light geometry without requiring Artwork.
 
-    The canonical SVG is physically dimensioned but remains two-dimensional.
-    Color assignment and physical extrusion remain downstream.
+    The canonical SVG is physically dimensioned but remains
+    two-dimensional. Physical extrusion remains downstream.
     """
     structure_input = context.input("structure.structure")
     composition_output = context.output("composition")
@@ -539,10 +550,17 @@ def execute(
     )
 
     artwork: RegisteredArtwork | None = None
+    raster_artwork: RegisteredRasterArtwork | None = None
     artwork_transform: RegisteredArtworkTransform | None = None
     artwork_fill: RegisteredArtworkFillRegion | None = None
 
-    if context.has_input("artwork.vector.manifest"):
+    has_vector = context.has_input("artwork.vector.manifest")
+    has_raster = context.has_input("artwork.raster_source.artifact")
+
+    if has_vector and has_raster:
+        raise ValueError("Shape Compose cannot consume vector and raster Artwork together.")
+
+    if has_vector:
         artwork_manifest = context.input("artwork.vector.manifest")
         artwork = load_registered_artwork(artwork_manifest)
 
@@ -559,6 +577,21 @@ def execute(
             registered_interior_region(composition_output),
             artwork,
             transform=artwork_transform,
+        )
+
+    elif has_raster:
+        raster_artwork = load_registered_raster_artwork(
+            context.input("artwork.raster_source.artifact"),
+            context.input("artwork.raster_source.metadata"),
+        )
+
+        artwork_transform = fit_registered_raster_to_shape(
+            raster_artwork,
+            composition=composition_output,
+            shape_size=shape_size,
+            offset_x=float(context.resolver("shape_artwork_offset_x")),
+            offset_y=float(context.resolver("shape_artwork_offset_y")),
+            scale=float(context.resolver("shape_artwork_scale")),
         )
 
     qr: RegisteredQR | None = None
@@ -582,6 +615,7 @@ def execute(
         border_fill=border_fill,
         artwork_region_fill=artwork_region_fill,
         artwork=artwork,
+        raster_artwork=raster_artwork,
         artwork_transform=artwork_transform,
         artwork_fill=artwork_fill,
         qr=qr,
@@ -617,6 +651,7 @@ def execute(
         border_fill=border_fill,
         artwork_region_fill=artwork_region_fill,
         artwork=artwork,
+        raster_artwork=raster_artwork,
         artwork_transform=artwork_transform,
         qr=qr,
         shape_size=shape_size,
@@ -636,6 +671,7 @@ def _write_artifact_svg(
     qr: RegisteredQR | None,
     shape_size: float,
     svg_colors: dict[str, str],
+    raster_artwork: RegisteredRasterArtwork | None = None,
 ) -> None:
     """
     Write the canonical, physically dimensioned Shape SVG.
@@ -648,14 +684,20 @@ def _write_artifact_svg(
     Artwork Region Fill is represented by the registered Shape interior.
     Border Labels and QR components reuse persistent registered geometry.
 
-    Artwork retains its component identities, RGB colors, and common
-    placement transform. A participating QR excludes its complete rounded
-    footprint from Artwork, including the quiet zone.
+    Vector Artwork retains its component identities, RGB colors, and
+    common placement transform. Raster Artwork retains its original
+    encoded PNG bytes and aspect ratio.
+
+    A participating QR excludes its complete rounded footprint from
+    either Artwork representation, including the quiet zone.
 
     Construction geometry and the solid Shape Base are excluded.
     """
     if not math.isfinite(shape_size) or shape_size <= 0.0:
         raise ValueError("Canonical Shape SVG requires positive finite Shape size.")
+
+    if artwork is not None and raster_artwork is not None:
+        raise ValueError("Canonical Shape SVG cannot contain both Artwork representations.")
 
     composition_root = ET.parse(composition).getroot()
 
@@ -677,11 +719,6 @@ def _write_artifact_svg(
     if shape_boundary is None:
         raise ValueError("Canonical Shape SVG requires a registered Shape boundary.")
 
-    # The outside CUT contour follows the authoritative Shape Base
-    # boundary, independently of Outer Ridge participation.
-    #
-    # It is a standalone, unfilled path rather than part of the
-    # printable structure group.
     ET.SubElement(
         root,
         SVG_PATH,
@@ -701,7 +738,6 @@ def _write_artifact_svg(
     )
 
     # Background regions precede ridges in SVG painter order.
-
     if border_fill is not None:
         ET.SubElement(
             structural_group,
@@ -777,9 +813,7 @@ def _write_artifact_svg(
             },
         )
 
-    # Border Labels are already fitted and vectorized by Compose.
-    # Import their registered glyph geometry without repeating typography.
-
+    # Import the already-fitted registered Border Label glyph geometry.
     for position in ("top", "bottom"):
         component = border_labels.get(position)
 
@@ -806,9 +840,8 @@ def _write_artifact_svg(
             path.parent / relative_path,
         )
 
-    # The QR footprint is the authoritative exclusion geometry shared
-    # by the manifest, QR background, and Artwork mask.
-
+    # The QR footprint is shared by the manifest, background, and
+    # Artwork exclusion mask.
     footprint: dict[str, float | str] | None = None
 
     if qr is not None:
@@ -817,7 +850,7 @@ def _write_artifact_svg(
             shape_size=shape_size,
         )
 
-    if artwork is not None:
+    if artwork is not None or raster_artwork is not None:
         if artwork_transform is None:
             raise ValueError("Canonical Shape SVG requires registered Artwork placement.")
 
@@ -884,34 +917,51 @@ def _write_artifact_svg(
 
         transform = artwork_transform
 
-        for component in artwork.components:
-            rgb = component.artifact_color
-            fill = f"#{rgb['red']:02x}{rgb['green']:02x}{rgb['blue']:02x}"
+        if raster_artwork is not None:
+            # Embed the exact registered PNG bytes. Do not decode,
+            # resample, quantize, or re-encode the source image.
+            encoded = base64.b64encode(raster_artwork.path.read_bytes()).decode("ascii")
 
-            component_group = ET.SubElement(
+            ET.SubElement(
                 artwork_group,
-                SVG_GROUP,
+                f"{{{SVG_NAMESPACE}}}image",
                 {
-                    "id": f"artwork-{component.index}",
-                    "fill": fill,
-                    "transform": (
-                        f"translate({transform.translate_x:g} "
-                        f"{transform.translate_y:g}) "
-                        f"scale({transform.scale:g})"
-                    ),
+                    "x": f"{transform.translate_x:g}",
+                    "y": f"{transform.translate_y:g}",
+                    "width": f"{transform.width:g}",
+                    "height": f"{transform.height:g}",
+                    "preserveAspectRatio": "xMidYMid meet",
+                    "href": f"data:image/png;base64,{encoded}",
                 },
             )
 
-            _append_registered_svg(
-                component_group,
-                component.path,
-                fill=fill,
-            )
+        elif artwork is not None:
+            for component in artwork.components:
+                rgb = component.artifact_color
+                fill = f"#{rgb['red']:02x}{rgb['green']:02x}{rgb['blue']:02x}"
 
-    # QR is independent of Artwork. Its light background must cover
-    # the entire quiet zone, and its dark modules remain a distinct
-    # manufacturing component.
+                component_group = ET.SubElement(
+                    artwork_group,
+                    SVG_GROUP,
+                    {
+                        "id": f"artwork-{component.index}",
+                        "fill": fill,
+                        "transform": (
+                            f"translate({transform.translate_x:g} "
+                            f"{transform.translate_y:g}) "
+                            f"scale({transform.scale:g})"
+                        ),
+                    },
+                )
 
+                _append_registered_svg(
+                    component_group,
+                    component.path,
+                    fill=fill,
+                )
+
+    # QR is independent of Artwork. Its light background covers
+    # the complete quiet zone.
     if qr is not None:
         if footprint is None:
             raise ValueError("Canonical Shape SVG requires QR footprint.")
@@ -1090,6 +1140,7 @@ def _write_composition_manifest(
     artwork_fill: RegisteredArtworkFillRegion | None = None,
     qr: RegisteredQR | None = None,
     shape_size: float | None = None,
+    raster_artwork: RegisteredRasterArtwork | None = None,
 ) -> None:
     """
     Write the persistent registered Shape composition manifest.
@@ -1098,15 +1149,17 @@ def _write_composition_manifest(
     region identities. Neither assigns a physical color or changes
     the structural boundaries.
 
-    Registered Artwork and QR retain independent component identities.
+    Vector and raster Artwork retain their representation-specific
+    identities and common placement information.
 
     When QR participates, its rounded footprint establishes the
-    authoritative registered exclusion geometry. Artwork remains
-    unmodified in its original registered coordinate system.
+    authoritative registered exclusion geometry.
 
-    Downstream dimensionalization applies the persisted exclusion
-    after Artwork placement, before physical extrusion.
+    Physical dimensionalization remains downstream.
     """
+    if artwork is not None and raster_artwork is not None:
+        raise ValueError("Shape composition cannot register both Artwork representations.")
+
     artwork_manifest: dict[str, Any] | None = None
 
     if artwork is not None:
@@ -1126,6 +1179,34 @@ def _write_composition_manifest(
             artwork,
             transform=artwork_transform,
         )
+
+    elif raster_artwork is not None:
+        if artwork_transform is None:
+            raise ValueError("Registered raster Artwork requires a composition transform.")
+
+        # Preserve a local copy of the registered raster Product.
+        destination = path.parent / "raster-artwork.png"
+
+        if raster_artwork.path != destination:
+            shutil.copyfile(
+                raster_artwork.path,
+                destination,
+            )
+
+        artwork_manifest = {
+            "representation": "raster",
+            "processing": "none",
+            "format": "png",
+            "source": destination.name,
+            "width": raster_artwork.width,
+            "height": raster_artwork.height,
+            "transform": {
+                "scale": artwork_transform.scale,
+                "translate_x": artwork_transform.translate_x,
+                "translate_y": artwork_transform.translate_y,
+            },
+            "components": [],
+        }
 
     if border_labels is None:
         border_labels = {
@@ -2979,6 +3060,102 @@ def fit_registered_artwork(
         scale=scale,
         width=width,
         height=height,
+        translate_x=translate_x,
+        translate_y=translate_y,
+    )
+
+
+def load_registered_raster_artwork(
+    artifact: Path,
+    metadata: Path,
+) -> RegisteredRasterArtwork:
+    """Load and validate a source-preserving raster Product."""
+    data = json.loads(metadata.read_text(encoding="utf-8"))
+
+    if not isinstance(data, dict):
+        raise ValueError("Raster Artwork metadata must be an object.")
+
+    if data.get("representation") != "raster":
+        raise ValueError("Raster Artwork requires raster representation.")
+
+    if data.get("processing") != "none":
+        raise ValueError("Raster Artwork must be source-preserving.")
+
+    if data.get("format") != "png":
+        raise ValueError("Raster Artwork requires PNG format.")
+
+    width = data.get("width")
+    height = data.get("height")
+
+    if type(width) is not int or type(height) is not int or width <= 0 or height <= 0:
+        raise ValueError("Raster Artwork requires positive pixel dimensions.")
+
+    if not artifact.is_file():
+        raise ValueError("Registered raster Artwork Product is missing.")
+
+    return RegisteredRasterArtwork(
+        path=artifact,
+        width=width,
+        height=height,
+    )
+
+
+def fit_registered_raster_to_shape(
+    artwork: RegisteredRasterArtwork,
+    *,
+    composition: Path,
+    shape_size: float,
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
+    scale: float = 1.0,
+) -> RegisteredArtworkTransform:
+    """Fit the complete raster rectangle inside the Shape interior."""
+    if not math.isfinite(shape_size) or shape_size <= 0:
+        raise ValueError("Shape size must be positive and finite.")
+
+    if not math.isfinite(scale) or scale <= 0:
+        raise ValueError("Artwork scale must be positive and finite.")
+
+    if not all(math.isfinite(value) for value in (offset_x, offset_y)):
+        raise ValueError("Artwork offsets must be finite.")
+
+    placement = artwork_placement_circle(registered_interior_region(composition))
+
+    if placement.radius <= 0:
+        raise ValueError("Artwork placement requires a positive interior radius.")
+
+    width = float(artwork.width)
+    height = float(artwork.height)
+
+    # Fit all four corners, not merely the image's bounding width.
+    fitted_scale = 2.0 * placement.radius / math.hypot(width, height)
+    adjusted_scale = fitted_scale * scale
+
+    center_x = placement.center_x + offset_x / shape_size
+    center_y = placement.center_y - offset_y / shape_size
+
+    translate_x = center_x - width * adjusted_scale / 2.0
+    translate_y = center_y - height * adjusted_scale / 2.0
+
+    # Validate the actual displaced rectangle.
+    for x in (0.0, width):
+        for y in (0.0, height):
+            px = translate_x + x * adjusted_scale
+            py = translate_y + y * adjusted_scale
+
+            if (
+                math.hypot(
+                    px - placement.center_x,
+                    py - placement.center_y,
+                )
+                > placement.radius + 1.0e-9
+            ):
+                raise ValueError("Raster Artwork placement exceeds the Shape interior.")
+
+    return RegisteredArtworkTransform(
+        scale=adjusted_scale,
+        width=width * adjusted_scale,
+        height=height * adjusted_scale,
         translate_x=translate_x,
         translate_y=translate_y,
     )

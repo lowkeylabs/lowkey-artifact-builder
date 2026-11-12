@@ -1982,9 +1982,10 @@ def test_compose_stage_materializes_registered_composition(
         call("structure.structure"),
     ]
 
-    context.has_input.assert_called_once_with(
-        "artwork.vector.manifest",
-    )
+    assert context.has_input.call_args_list == [
+        call("artwork.vector.manifest"),
+        call("artwork.raster_source.artifact"),
+    ]
 
     assert context.output.call_args_list == [
         call("composition"),
@@ -2981,6 +2982,7 @@ def test_compose_manifest_preserves_registered_artwork_membership(
         "artwork.vector.manifest": artwork_manifest,
     }
     context.input.side_effect = inputs.__getitem__
+    context.has_input.side_effect = inputs.__contains__
 
     outputs = {
         "composition": composition_output,
@@ -3254,6 +3256,7 @@ def test_compose_manifest_records_one_common_artwork_transform(
         "artwork.vector.manifest": artwork_manifest,
     }
     context.input.side_effect = inputs.__getitem__
+    context.has_input.side_effect = inputs.__contains__
 
     outputs = {
         "composition": composition_output,
@@ -3418,9 +3421,10 @@ def test_compose_stage_succeeds_without_registered_artwork(
     assert data["composition"] == composition.name
     assert data["artwork"] is None
 
-    context.has_input.assert_called_once_with(
-        "artwork.vector.manifest",
-    )
+    assert context.has_input.call_args_list == [
+        call("artwork.vector.manifest"),
+        call("artwork.raster_source.artifact"),
+    ]
 
 
 def test_registered_artwork_envelope_bounds_applies_group_translation(

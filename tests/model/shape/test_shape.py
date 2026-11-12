@@ -76,39 +76,56 @@ def test_shape_declares_registered_composition_stage() -> None:
 
 def test_shape_compose_declares_registered_artwork_dependency() -> None:
     """
-    Shape composition declares registered Artwork as its external product dependency.
+    Shape composition declares reusable Artwork product dependencies.
 
-    The dependency identifies the reusable Artwork vector manifest by logical
-    model, stage, and product identity without embedding artifact identity,
-    realization identity, or generated filesystem paths.
+    Vector Artwork is consumed through its registered manifest, while
+    source-preserving raster Artwork is consumed through its source artifact.
+
+    Dependencies identify products by logical model, stage, and product
+    identity without embedding artifact identity, realization identity,
+    or generated filesystem paths.
     """
 
     compose_stage = _compose_stage()
 
-    assert len(compose_stage.product_dependencies) == 1
+    dependencies = {
+        (dependency.model, dependency.stage, dependency.product, dependency.name)
+        for dependency in compose_stage.product_dependencies
+    }
 
-    dependency = compose_stage.product_dependencies[0]
-
-    assert dependency.model == "artwork"
-    assert dependency.stage == "vector"
-    assert dependency.product == "manifest"
+    assert dependencies == {
+        ("artwork", "vector", "manifest", None),
+        ("artwork", "raster_source", "artifact", "raster_artwork"),
+    }
 
 
 def test_shape_artwork_dependency_belongs_only_to_compose() -> None:
     """
-    Registered Artwork enters Shape through registered composition.
+    Registered Artwork enters Shape exclusively through composition.
 
     Structural Shape generation remains independent of Artwork, while
     extrusion and packaging consume the resulting Shape-local dependency
     closure rather than declaring their own Artwork dependencies.
+
+    Compose owns both vector and source-preserving raster Artwork
+    dependencies.
     """
 
     dependencies_by_stage = {stage.name: stage.product_dependencies for stage in MODEL.stages}
 
     assert dependencies_by_stage["structure"] == ()
-    assert len(dependencies_by_stage["compose"]) == 1
     assert dependencies_by_stage["extrude"] == ()
     assert dependencies_by_stage["package"] == ()
+
+    compose_dependencies = dependencies_by_stage["compose"]
+
+    assert {
+        (dependency.model, dependency.stage, dependency.product)
+        for dependency in compose_dependencies
+    } == {
+        ("artwork", "vector", "manifest"),
+        ("artwork", "raster_source", "artifact"),
+    }
 
 
 # =========================================================

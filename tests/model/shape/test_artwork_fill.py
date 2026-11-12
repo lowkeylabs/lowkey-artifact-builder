@@ -147,6 +147,7 @@ def _compose_context(
     )
 
     context.input.side_effect = inputs.__getitem__
+    context.has_input.side_effect = inputs.__contains__
     context.output.side_effect = outputs.__getitem__
 
     configure_mock_resolver(context, resolver)

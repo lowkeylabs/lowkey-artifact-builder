@@ -1,13 +1,21 @@
 """
 Architectural dependency tests for the Shape model.
 
-Shape may consume persistent registered Artwork without depending on Artwork's
-physical dimensionalization or packaging stages.
+Shape may consume persistent registered Artwork without depending on
+Artwork's physical dimensionalization or packaging stages.
 
-A persistent registered Artwork product is sufficient to satisfy Shape's
-cross-artifact dependency. Historical source inputs and configuration needed
-only to reproduce that product do not participate when the registered product
-already exists.
+Shape Compose declares two optional alternative Artwork dependencies:
+
+- registered vector Artwork, consumed through its vector manifest;
+- source-preserving raster Artwork, consumed through its raster source.
+
+BuildPlan selects only the representation required by the bound
+Artwork producer. Neither dependency is selected when Artwork is absent.
+
+A persistent registered Artwork product is sufficient to satisfy
+Shape's cross-artifact dependency. Historical source inputs and
+configuration needed only to reproduce that product do not participate
+when the registered product already exists.
 """
 # File: tests/model/shape/test_dependencies.py
 # Copyright 2026 LowKeyLabs LLC
@@ -21,7 +29,12 @@ from pathlib import Path
 
 import lowkey_artifact_builder.model.models.shape.stages.extrude as shape_extrude
 from lowkey_artifact_builder.config import write_artifact_config
-from lowkey_artifact_builder.engine import create_build_plan
+from lowkey_artifact_builder.engine import (
+    BuildPlan,
+    PlannedProductDependency,
+    create_build_plan,
+)
+from lowkey_artifact_builder.model import ProductDependencySpec
 
 # =========================================================
 # Architectural dependency tests
@@ -57,6 +70,80 @@ def test_shape_extrude_does_not_depend_on_artwork_stage_implementation() -> None
 
 
 # =========================================================
+# Artwork dependency declarations
+# =========================================================
+
+
+def _dependencies_by_name(
+    plan: BuildPlan,
+) -> dict[str, ProductDependencySpec]:
+    """Index dependencies by explicit name or product name."""
+    return {
+        dependency.name or dependency.product: dependency
+        for dependency in plan.product_dependencies
+    }
+
+
+def _planned_dependencies_by_name(
+    plan: BuildPlan,
+) -> dict[str, PlannedProductDependency]:
+    """Index planned dependencies by explicit name or product name."""
+    return {
+        planned.binding.dependency.name or planned.binding.dependency.product: planned
+        for planned in plan.planned_product_dependencies
+    }
+
+
+def test_shape_declares_optional_vector_and_raster_artwork_dependencies(
+    tmp_path: Path,
+) -> None:
+    """
+    Shape Compose declares both optional Artwork representations.
+
+    Without a bound Artwork producer, neither alternative is selected
+    for execution.
+    """
+    write_artifact_config(
+        "shape-only",
+        {"model": "shape"},
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        "shape-only",
+        project_root=tmp_path,
+    )
+
+    compose = next(stage for stage in plan.stages if stage.name == "compose")
+
+    declared = {
+        dependency.name or dependency.product: dependency
+        for dependency in compose.spec.product_dependencies
+    }
+
+    assert set(declared) == {
+        "manifest",
+        "raster_artwork",
+    }
+
+    vector = declared["manifest"]
+    assert vector.model == "artwork"
+    assert vector.stage == "vector"
+    assert vector.product == "manifest"
+
+    raster = declared["raster_artwork"]
+    assert raster.model == "artwork"
+    assert raster.stage == "raster_source"
+    assert raster.product == "artifact"
+
+    # Both declarations are optional. Neither is selected without
+    # an Artwork producer.
+    assert _dependencies_by_name(plan) == {}
+    assert plan.product_dependency_bindings == ()
+    assert plan.planned_product_dependencies == ()
+
+
+# =========================================================
 # Persistent registered Artwork dependencies
 # =========================================================
 
@@ -65,7 +152,7 @@ def test_shape_can_consume_persistent_registered_artwork_without_source(
     tmp_path: Path,
 ) -> None:
     """
-    Persistent registered Artwork satisfies Shape without its historical source.
+    Persistent registered vector Artwork satisfies Shape without its source.
 
     Once Artwork's registered vector manifest and component geometry persist,
     Shape does not require the original raster source merely to consume that
@@ -172,11 +259,18 @@ def test_shape_can_consume_persistent_registered_artwork_without_source(
         project_root=tmp_path,
     )
 
-    assert len(plan.product_dependencies) == 1
-    assert len(plan.product_dependency_bindings) == 1
-    assert len(plan.planned_product_dependencies) == 1
+    assert set(_dependencies_by_name(plan)) == {
+        "manifest",
+    }
 
-    dependency = plan.planned_product_dependencies[0]
+    planned = _planned_dependencies_by_name(plan)
+
+    # An explicitly selected persistent vector product must not cause
+    # the historical raster source to be required.
+    assert set(planned) == {"manifest"}
+    assert len(plan.product_dependency_bindings) == 1
+
+    dependency = planned["manifest"]
 
     assert dependency.binding.dependency.model == "artwork"
     assert dependency.binding.dependency.stage == "vector"
@@ -199,14 +293,11 @@ def test_shape_uses_same_artifact_default_artwork_when_available(
     tmp_path: Path,
 ) -> None:
     """
-    Canonical Shape consumes the same Artifact's canonical Artwork by default.
+    Canonical Shape binds the same Artifact's canonical Artwork.
 
-    An Artifact with a source has canonical Artwork and Shape Realizations.
-    Planning its canonical Shape Realization therefore binds Shape's registered
-    Artwork dependency to the same Artifact's canonical Artwork Realization
-    without requiring an explicit product-dependency binding.
+    The default Artwork representation is vector, so Shape selects
+    only the registered vector manifest.
     """
-
     artifact_id = "example"
 
     write_artifact_config(
@@ -223,18 +314,32 @@ def test_shape_uses_same_artifact_default_artwork_when_available(
         project_root=tmp_path,
     )
 
-    assert len(plan.product_dependencies) == 1
+    # Only the vector representation is selected.
+    assert set(_dependencies_by_name(plan)) == {
+        "manifest",
+    }
+
+    planned = _planned_dependencies_by_name(plan)
+
+    assert set(planned) == {
+        "manifest",
+    }
+
     assert len(plan.product_dependency_bindings) == 1
-    assert len(plan.planned_product_dependencies) == 1
 
-    dependency = plan.planned_product_dependencies[0]
+    vector = planned["manifest"]
 
-    assert dependency.binding.dependency.model == "artwork"
-    assert dependency.binding.dependency.stage == "vector"
-    assert dependency.binding.dependency.product == "manifest"
+    assert vector.binding.dependency.model == "artwork"
+    assert vector.binding.dependency.stage == "vector"
+    assert vector.binding.dependency.product == "manifest"
 
-    assert dependency.binding.artifact == artifact_id
-    assert dependency.binding.realization == "artwork_default"
+    # The implicit binding uses the same Artifact and canonical
+    # Artwork Realization.
+    assert vector.binding.artifact == artifact_id
+    assert vector.binding.realization == "artwork_default"
+
+    # The alternative raster product is not selected.
+    assert "raster_artwork" not in planned
 
 
 def test_shape_without_artwork_leaves_artwork_dependency_unbound(
@@ -243,10 +348,9 @@ def test_shape_without_artwork_leaves_artwork_dependency_unbound(
     """
     Shape remains valid when its Artifact has no Artwork source.
 
-    Shape declares an optional registered-Artwork dependency, but planning
-    leaves that dependency unbound when the Artifact has no Artwork to supply.
+    Both Artwork representations are optional. Without an available
+    producer, neither alternative is selected or bound.
     """
-
     artifact_id = "shape-only"
 
     write_artifact_config(
@@ -262,6 +366,17 @@ def test_shape_without_artwork_leaves_artwork_dependency_unbound(
         project_root=tmp_path,
     )
 
-    assert len(plan.product_dependencies) == 1
+    # No Artwork representation is selected.
+    assert _dependencies_by_name(plan) == {}
+
+    # No producer is bound or planned.
     assert plan.product_dependency_bindings == ()
     assert plan.planned_product_dependencies == ()
+
+    # Shape remains independently buildable.
+    assert tuple(stage.name for stage in plan.stages) == (
+        "structure",
+        "compose",
+        "extrude",
+        "package",
+    )
