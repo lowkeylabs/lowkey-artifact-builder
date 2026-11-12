@@ -274,3 +274,85 @@ def test_unselected_artwork_fingerprint_is_not_requested(
     assert "artwork_color" in requested
     assert "artwork_vector" not in requested
     assert requested <= producer_fingerprints.keys()
+
+
+def test_raster_artifact_and_metadata_independently_invalidate_compose(
+    tmp_path: Path,
+) -> None:
+    """
+    Each registered raster Product contributes independently to
+    the consuming Shape Compose fingerprint.
+
+    Changing either Product invalidates Compose, while Shape
+    structure remains unchanged.
+    """
+    write_artifact_config(
+        ARTIFACT_ID,
+        {
+            "source": "source.png",
+            "realizations": {
+                "artwork_raster": {
+                    "variant": "artwork.default",
+                    "artwork_representation": "raster",
+                    "artwork_processing": "none",
+                },
+                "coaster_print": {
+                    "variant": "shape.coaster",
+                    "product_dependencies": {
+                        "manifest": {
+                            "artifact": ARTIFACT_ID,
+                            "realization": "artwork_raster",
+                        },
+                        "raster_artwork": {
+                            "artifact": ARTIFACT_ID,
+                            "realization": "artwork_raster",
+                        },
+                        "raster_metadata": {
+                            "artifact": ARTIFACT_ID,
+                            "realization": "artwork_raster",
+                        },
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plan = _shape_plan(tmp_path, "coaster_print")
+
+    dependencies = {
+        dependency.product_ref.product for dependency in plan.planned_product_dependencies
+    }
+
+    assert dependencies == {"artifact", "metadata"}
+
+    def required(
+        artifact_version: str,
+        metadata_version: str,
+    ) -> dict[str, ProductFingerprint]:
+        fingerprints = {
+            "artifact": _fingerprint(artifact_version),
+            "metadata": _fingerprint(metadata_version),
+        }
+
+        def resolve(dependency):
+            return fingerprints[dependency.product_ref.product]
+
+        return create_required_fingerprints(
+            plan,
+            product_dependency_fingerprint=resolve,
+        )
+
+    baseline = required("png-v1", "metadata-v1")
+    repeated = required("png-v1", "metadata-v1")
+
+    changed_png = required("png-v2", "metadata-v1")
+    changed_metadata = required("png-v1", "metadata-v2")
+
+    assert baseline == repeated
+
+    assert baseline["compose"] != changed_png["compose"]
+    assert baseline["compose"] != changed_metadata["compose"]
+
+    assert baseline["structure"] == changed_png["structure"]
+    assert baseline["structure"] == changed_metadata["structure"]

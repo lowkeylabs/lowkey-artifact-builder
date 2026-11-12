@@ -13,9 +13,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from lowkey_artifact_builder.config import write_artifact_config
 from lowkey_artifact_builder.engine import (
     BuildPlan,
+    BuildPlanError,
     PlannedProductDependency,
     create_build_plan,
     create_planned_stage_context,
@@ -427,3 +430,51 @@ def test_source_preserving_raster_artwork_selects_only_raster_dependency(
 
     assert context.inputs["raster_artwork"] == raster.path
     assert "artwork.vector.manifest" not in context.inputs
+
+
+def test_raster_artifact_and_metadata_reject_different_producers(
+    tmp_path: Path,
+) -> None:
+    """
+    A Shape cannot compose a PNG from one Artwork Realization
+    using metadata registered by another Artwork Realization.
+
+    The invalid binding must fail during planning, before
+    manufacturing or filesystem Product consumption.
+    """
+    write_artifact_config(
+        ARTIFACT_ID,
+        {
+            "source": "source.png",
+            "realizations": {
+                "artwork_first": {
+                    "variant": "artwork.default",
+                    "artwork_representation": "raster",
+                    "artwork_processing": "none",
+                },
+                "artwork_second": {
+                    "variant": "artwork.default",
+                    "artwork_representation": "raster",
+                    "artwork_processing": "none",
+                },
+                "coaster_print": {
+                    "variant": "shape.coaster",
+                    "product_dependencies": {
+                        "manifest": _artwork_binding("artwork_first"),
+                        "raster_artwork": _artwork_binding("artwork_first"),
+                        "raster_metadata": _artwork_binding("artwork_second"),
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    with pytest.raises(
+        BuildPlanError,
+        match="multiple producers",
+    ):
+        _shape_svg_plan(
+            tmp_path,
+            "coaster_print",
+        )
