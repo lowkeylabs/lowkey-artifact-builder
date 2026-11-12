@@ -130,92 +130,15 @@ def test_selected_artwork_change_invalidates_only_its_consumer(
     assert engrave_before["compose"] == engrave_after["compose"]
 
 
-def test_selected_artwork_fingerprint_participates_in_compose(
-    tmp_path: Path,
-) -> None:
-    """
-    Compose fingerprints depend only on selected Artwork products.
-
-    The selected vector producer participates in Compose fingerprinting.
-    Changes to an unselected raster producer do not invalidate Compose.
-    """
-    _configure(tmp_path)
-    plan = _shape_plan(tmp_path, "coaster_print")
-
-    initial = {
-        "artwork_default": _fingerprint("raster-v1"),
-        "artwork_color": _fingerprint("color-v1"),
-    }
-
-    first = _required(plan, initial)
-    repeated = _required(plan, initial)
-
-    changed_vector = _required(
-        plan,
-        {
-            **initial,
-            "artwork_color": _fingerprint("color-v2"),
-        },
-    )
-
-    changed_raster = _required(
-        plan,
-        {
-            **initial,
-            "artwork_default": _fingerprint("raster-v2"),
-        },
-    )
-
-    # Fingerprinting is deterministic.
-    assert first["compose"] == repeated["compose"]
-
-    # The selected vector producer participates in Compose.
-    assert first["compose"] != changed_vector["compose"]
-
-    # An unselected raster producer does not participate.
-    assert first["compose"] == changed_raster["compose"]
-
-    # Artwork changes do not invalidate Shape structure.
-    assert first["structure"] == changed_vector["structure"]
-    assert first["structure"] == changed_raster["structure"]
-
-
-def test_unselected_artwork_fingerprint_is_not_requested(
-    tmp_path: Path,
-) -> None:
-    """Fingerprinting consults bound producers, not unrelated siblings."""
-    _configure(tmp_path)
-    plan = _shape_plan(tmp_path, "coaster_print")
-
-    requested: set[str] = set()
-    producer_fingerprints = {
-        "artwork_color": _fingerprint("color-v1"),
-        "artwork_default": _fingerprint("raster-v1"),
-    }
-
-    def resolve(dependency):
-        realization = dependency.binding.realization
-        requested.add(realization)
-        return producer_fingerprints[realization]
-
-    fingerprints = create_required_fingerprints(
-        plan,
-        product_dependency_fingerprint=resolve,
-    )
-
-    assert "compose" in fingerprints
-    assert "artwork_default" not in requested
-    assert "artwork_color" in requested
-    assert "artwork_vector" not in requested
-    assert requested <= producer_fingerprints.keys()
-
-
 def test_selected_raster_artwork_fingerprint_participates_in_compose(
     tmp_path: Path,
 ) -> None:
     """
     A source-preserving raster Artwork producer invalidates Compose
-    only when its selected fingerprint changes.
+    when its selected fingerprint changes.
+
+    Both raster Artwork Products, artifact and metadata, must be
+    selected from the same producer Realization.
 
     Changes to an unrelated vector producer do not invalidate Compose,
     and neither change invalidates Shape structure.
@@ -244,6 +167,10 @@ def test_selected_raster_artwork_fingerprint_participates_in_compose(
                             "artifact": ARTIFACT_ID,
                             "realization": "artwork_raster",
                         },
+                        "raster_metadata": {
+                            "artifact": ARTIFACT_ID,
+                            "realization": "artwork_raster",
+                        },
                     },
                 },
             },
@@ -253,20 +180,32 @@ def test_selected_raster_artwork_fingerprint_participates_in_compose(
 
     plan = _shape_plan(tmp_path, "coaster_print")
 
-    # Verify that the raster product, rather than the vector manifest,
-    # is the selected cross-model dependency.
-    assert {
-        dependency.binding.dependency.name for dependency in plan.planned_product_dependencies
-    } == {"raster_artwork"}
+    # Raster Artwork requires two selected registered Products.
+    # The vector manifest must not participate.
+    dependencies = {
+        dependency.binding.dependency.name: dependency
+        for dependency in plan.planned_product_dependencies
+    }
 
-    raster_dependency = plan.planned_product_dependencies[0]
+    assert set(dependencies) == {
+        "raster_artwork",
+        "raster_metadata",
+    }
 
-    assert raster_dependency.product_ref == ProductRef(
+    assert dependencies["raster_artwork"].product_ref == ProductRef(
         artifact=ARTIFACT_ID,
         model="artwork",
         realization="artwork_raster",
         stage="raster_source",
         product="artifact",
+    )
+
+    assert dependencies["raster_metadata"].product_ref == ProductRef(
+        artifact=ARTIFACT_ID,
+        model="artwork",
+        realization="artwork_raster",
+        stage="raster_source",
+        product="metadata",
     )
 
     initial = {
@@ -305,3 +244,33 @@ def test_selected_raster_artwork_fingerprint_participates_in_compose(
     # Neither Artwork change affects Shape structure.
     assert first["structure"] == changed_raster["structure"]
     assert first["structure"] == changed_vector["structure"]
+
+
+def test_unselected_artwork_fingerprint_is_not_requested(
+    tmp_path: Path,
+) -> None:
+    """Fingerprinting consults bound producers, not unrelated siblings."""
+    _configure(tmp_path)
+    plan = _shape_plan(tmp_path, "coaster_print")
+
+    requested: set[str] = set()
+    producer_fingerprints = {
+        "artwork_color": _fingerprint("color-v1"),
+        "artwork_default": _fingerprint("raster-v1"),
+    }
+
+    def resolve(dependency):
+        realization = dependency.binding.realization
+        requested.add(realization)
+        return producer_fingerprints[realization]
+
+    fingerprints = create_required_fingerprints(
+        plan,
+        product_dependency_fingerprint=resolve,
+    )
+
+    assert "compose" in fingerprints
+    assert "artwork_default" not in requested
+    assert "artwork_color" in requested
+    assert "artwork_vector" not in requested
+    assert requested <= producer_fingerprints.keys()

@@ -403,11 +403,20 @@ def test_source_preserving_raster_artwork_selects_only_raster_dependency(
 
     assert set(dependencies) == {
         "raster_artwork",
+        "raster_metadata",
     }
 
     raster = dependencies["raster_artwork"]
 
     assert raster.product_ref == _selected_raster_product("artwork_default")
+
+    assert dependencies["raster_metadata"].product_ref == ProductRef(
+        artifact=ARTIFACT_ID,
+        model="artwork",
+        realization="artwork_default",
+        stage="raster_source",
+        product="metadata",
+    )
 
     compose = next(stage for stage in plan.stages if stage.name == "compose")
 

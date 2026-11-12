@@ -669,17 +669,20 @@ def _select_artwork_product_dependencies(
     """
     Select the Artwork Product representation required by a consumer.
 
-    Artwork vector and source-preserving raster products are alternative
-    inputs to Shape Compose, not simultaneous requirements.
+    Vector Artwork requires its registered vector manifest.
 
-    Selection uses the effective configuration of each bound producer
-    Realization rather than assuming that the consumer's configuration
-    also describes the producer.
+    Source-preserving raster Artwork requires two registered Products:
+    the PNG artifact and its metadata. Both must originate from the
+    same producer Artifact and Realization.
 
-    Other Product dependencies are unaffected.
+    Selection uses each bound producer's effective configuration,
+    rather than assuming that the consumer configuration describes
+    the producer.
 
-    If independently bound Artwork producers would select conflicting
-    representations, fail explicitly rather than silently choosing one.
+    Vector and raster representations are alternatives. Unrelated
+    Product dependencies are unaffected.
+
+    Multiple independently selected Artwork producers are rejected.
     """
 
     vector_identity = (
@@ -688,15 +691,26 @@ def _select_artwork_product_dependencies(
         "manifest",
     )
 
-    raster_identity = (
+    raster_artifact_identity = (
         "artwork",
         "raster_source",
         "artifact",
     )
 
+    raster_metadata_identity = (
+        "artwork",
+        "raster_source",
+        "metadata",
+    )
+
+    raster_identities = {
+        raster_artifact_identity,
+        raster_metadata_identity,
+    }
+
     alternatives = {
         vector_identity,
-        raster_identity,
+        *raster_identities,
     }
 
     def identity(
@@ -706,6 +720,14 @@ def _select_artwork_product_dependencies(
             dependency.model,
             dependency.stage,
             dependency.product,
+        )
+
+    def producer_identity(
+        binding: ProductDependencyBinding,
+    ) -> tuple[str, str]:
+        return (
+            binding.artifact,
+            binding.realization,
         )
 
     selected_bindings: list[ProductDependencyBinding] = []
@@ -729,40 +751,71 @@ def _select_artwork_product_dependencies(
 
         processing = producer_resolver("artwork_processing")
 
-        selected_identity = (
-            raster_identity
-            if representation == "raster" and processing == "none"
-            else vector_identity
-        )
+        is_raster = representation == "raster" and processing == "none"
 
-        if dependency_identity == selected_identity:
+        if is_raster:
+            if dependency_identity in raster_identities:
+                selected_artwork.append(binding)
+        elif dependency_identity == vector_identity:
             selected_artwork.append(binding)
 
-    if len(selected_artwork) > 1:
+    # Validate the selected representation as a group, rather
+    # than counting individual Products as independent Artwork.
+    selected_producers = {producer_identity(binding) for binding in selected_artwork}
+
+    if len(selected_producers) > 1:
         selected_names = ", ".join(
-            (
-                f"{binding.artifact}/"
-                f"{binding.realization}/"
-                f"{binding.dependency.stage}/"
-                f"{binding.dependency.product}"
-            )
-            for binding in selected_artwork
+            f"{artifact}/{realization}" for artifact, realization in sorted(selected_producers)
         )
 
         raise BuildPlanError(
-            f"Shape Artwork dependencies select multiple representations: {selected_names}."
+            f"Shape Artwork dependencies select multiple producers: {selected_names}."
         )
+
+    selected_identities = {identity(binding.dependency) for binding in selected_artwork}
+
+    if selected_artwork:
+        selected_producer = selected_artwork[0]
+
+        producer_resolver = get_resolver(
+            selected_producer.artifact,
+            realization=selected_producer.realization,
+            project_root=project_root,
+        )
+
+        is_raster = (
+            producer_resolver("artwork_representation") == "raster"
+            and producer_resolver("artwork_processing") == "none"
+        )
+
+        if is_raster:
+            missing = raster_identities - selected_identities
+
+            if missing:
+                missing_products = ", ".join(sorted(product for _, _, product in missing))
+
+                raise BuildPlanError(
+                    "Raster Artwork requires both registered "
+                    "raster_source Products: artifact and metadata. "
+                    f"Missing: {missing_products}."
+                )
+
+            if selected_identities != raster_identities:
+                raise BuildPlanError("Raster Artwork selected unexpected Artwork Products.")
+
+        elif selected_identities != {vector_identity}:
+            raise BuildPlanError("Vector Artwork requires its registered vector manifest.")
 
     selected_bindings.extend(selected_artwork)
 
     selected_dependencies = {binding.dependency for binding in selected_bindings}
 
-    # Preserve the original declaration order, including any
-    # dependencies without a concrete producer binding.
+    # Preserve the original declaration order, including unrelated
+    # dependencies that have no concrete producer binding.
     selected_product_dependencies = tuple(
         dependency
         for dependency in product_dependencies
-        if identity(dependency) not in alternatives or dependency in selected_dependencies
+        if (identity(dependency) not in alternatives or dependency in selected_dependencies)
     )
 
     # Preserve the original binding order.

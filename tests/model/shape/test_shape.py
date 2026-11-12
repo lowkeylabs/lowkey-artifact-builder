@@ -79,7 +79,8 @@ def test_shape_compose_declares_registered_artwork_dependency() -> None:
     Shape composition declares reusable Artwork product dependencies.
 
     Vector Artwork is consumed through its registered manifest, while
-    source-preserving raster Artwork is consumed through its source artifact.
+    source-preserving raster Artwork is consumed through its source artifact
+    and associated metadata.
 
     Dependencies identify products by logical model, stage, and product
     identity without embedding artifact identity, realization identity,
@@ -89,13 +90,19 @@ def test_shape_compose_declares_registered_artwork_dependency() -> None:
     compose_stage = _compose_stage()
 
     dependencies = {
-        (dependency.model, dependency.stage, dependency.product, dependency.name)
+        (
+            dependency.model,
+            dependency.stage,
+            dependency.product,
+            dependency.name,
+        )
         for dependency in compose_stage.product_dependencies
     }
 
     assert dependencies == {
         ("artwork", "vector", "manifest", None),
         ("artwork", "raster_source", "artifact", "raster_artwork"),
+        ("artwork", "raster_source", "metadata", "raster_metadata"),
     }
 
 
@@ -107,8 +114,8 @@ def test_shape_artwork_dependency_belongs_only_to_compose() -> None:
     extrusion and packaging consume the resulting Shape-local dependency
     closure rather than declaring their own Artwork dependencies.
 
-    Compose owns both vector and source-preserving raster Artwork
-    dependencies.
+    Compose owns vector manifest dependencies and both source-preserving
+    raster dependencies: artifact and metadata.
     """
 
     dependencies_by_stage = {stage.name: stage.product_dependencies for stage in MODEL.stages}
@@ -120,11 +127,16 @@ def test_shape_artwork_dependency_belongs_only_to_compose() -> None:
     compose_dependencies = dependencies_by_stage["compose"]
 
     assert {
-        (dependency.model, dependency.stage, dependency.product)
+        (
+            dependency.model,
+            dependency.stage,
+            dependency.product,
+        )
         for dependency in compose_dependencies
     } == {
         ("artwork", "vector", "manifest"),
         ("artwork", "raster_source", "artifact"),
+        ("artwork", "raster_source", "metadata"),
     }
 
 

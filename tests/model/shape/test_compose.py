@@ -1984,7 +1984,8 @@ def test_compose_stage_materializes_registered_composition(
 
     assert context.has_input.call_args_list == [
         call("artwork.vector.manifest"),
-        call("artwork.raster_source.artifact"),
+        call("raster_artwork"),
+        call("raster_metadata"),
     ]
 
     assert context.output.call_args_list == [
@@ -3423,7 +3424,8 @@ def test_compose_stage_succeeds_without_registered_artwork(
 
     assert context.has_input.call_args_list == [
         call("artwork.vector.manifest"),
-        call("artwork.raster_source.artifact"),
+        call("raster_artwork"),
+        call("raster_metadata"),
     ]
 
 

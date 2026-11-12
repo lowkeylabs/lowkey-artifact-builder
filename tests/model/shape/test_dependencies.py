@@ -4,13 +4,15 @@ Architectural dependency tests for the Shape model.
 Shape may consume persistent registered Artwork without depending on
 Artwork's physical dimensionalization or packaging stages.
 
-Shape Compose declares two optional alternative Artwork dependencies:
+Shape Compose supports two optional Artwork representations:
 
 - registered vector Artwork, consumed through its vector manifest;
-- source-preserving raster Artwork, consumed through its raster source.
+- source-preserving raster Artwork, consumed through its raster
+  artifact and metadata Products.
 
 BuildPlan selects only the representation required by the bound
-Artwork producer. Neither dependency is selected when Artwork is absent.
+Artwork producer. Neither representation is selected when Artwork
+is absent.
 
 A persistent registered Artwork product is sufficient to satisfy
 Shape's cross-artifact dependency. Historical source inputs and
@@ -98,10 +100,15 @@ def test_shape_declares_optional_vector_and_raster_artwork_dependencies(
     tmp_path: Path,
 ) -> None:
     """
-    Shape Compose declares both optional Artwork representations.
+    Shape Compose declares two optional Artwork representations.
 
-    Without a bound Artwork producer, neither alternative is selected
-    for execution.
+    Vector Artwork requires its registered vector manifest.
+
+    Source-preserving raster Artwork requires both its registered
+    raster artifact and metadata Products.
+
+    Without a bound Artwork producer, neither representation is
+    selected for execution.
     """
     write_artifact_config(
         "shape-only",
@@ -124,20 +131,33 @@ def test_shape_declares_optional_vector_and_raster_artwork_dependencies(
     assert set(declared) == {
         "manifest",
         "raster_artwork",
+        "raster_metadata",
     }
 
+    # Vector Artwork is consumed through its registered manifest.
     vector = declared["manifest"]
+
     assert vector.model == "artwork"
     assert vector.stage == "vector"
     assert vector.product == "manifest"
 
+    # Raster Artwork is consumed through its registered PNG Product.
     raster = declared["raster_artwork"]
+
     assert raster.model == "artwork"
     assert raster.stage == "raster_source"
     assert raster.product == "artifact"
 
-    # Both declarations are optional. Neither is selected without
-    # an Artwork producer.
+    # Raster metadata is a separate registered Product belonging
+    # to the same producer stage.
+    metadata = declared["raster_metadata"]
+
+    assert metadata.model == "artwork"
+    assert metadata.stage == "raster_source"
+    assert metadata.product == "metadata"
+
+    # Both Artwork representations are optional. Without an
+    # available producer, neither representation is selected.
     assert _dependencies_by_name(plan) == {}
     assert plan.product_dependency_bindings == ()
     assert plan.planned_product_dependencies == ()

@@ -51,8 +51,15 @@ def _raster_source(directory: Path) -> tuple[Path, Path]:
 
 
 def _compose_raster(directory: Path) -> tuple[Path, Path]:
-    """Execute the declared SHAPE Compose boundary without vector input."""
+    """
+    Execute the declared Shape Compose boundary using registered
+    raster Artwork Products, without vector Artwork.
+
+    The StageContext mock uses the explicit dependency names
+    declared by Shape Compose.
+    """
     directory.mkdir(parents=True, exist_ok=True)
+
     png, metadata = _raster_source(directory / "source")
 
     structure = directory / "structure.svg"
@@ -68,13 +75,17 @@ def _compose_raster(directory: Path) -> tuple[Path, Path]:
         "manifest": directory / "products.json",
         "artifact": directory / "artifact.svg",
     }
+
+    # StageContext resolves registered Product dependencies
+    # using their declared names.
     inputs = {
         "structure.structure": structure,
-        "artwork.raster_source.artifact": png,
-        "artwork.raster_source.metadata": metadata,
+        "raster_artwork": png,
+        "raster_metadata": metadata,
     }
 
     context = Mock(spec=StageContext)
+
     context.input.side_effect = inputs.__getitem__
     context.has_input.side_effect = inputs.__contains__
     context.output.side_effect = outputs.__getitem__
@@ -96,24 +107,50 @@ def _compose_raster(directory: Path) -> tuple[Path, Path]:
         },
         project_root=directory,
     )
+
     context.resolver.side_effect = resolver
     context.resolver.color.side_effect = resolver.color
 
     compose.execute(context)
+
     return outputs["artifact"], png
 
 
 def test_shape_declares_raster_artwork_dependency() -> None:
-    """Raster SVG builds need a declared, independently bindable Product."""
+    """
+    Raster SVG composition requires two independently bindable
+    registered Artwork Products: the PNG artifact and metadata.
+
+    Both Products originate from Artwork's raster_source stage.
+    """
     stage = next(stage for stage in MODEL.stages if stage.name == "compose")
 
-    assert any(
-        dependency.name == "raster_artwork"
-        and dependency.model == "artwork"
-        and dependency.stage == "raster_source"
-        and dependency.product == "artifact"
+    dependencies = {
+        dependency.name: dependency
         for dependency in stage.product_dependencies
-    )
+        if dependency.name
+        in {
+            "raster_artwork",
+            "raster_metadata",
+        }
+    }
+
+    assert set(dependencies) == {
+        "raster_artwork",
+        "raster_metadata",
+    }
+
+    raster_artwork = dependencies["raster_artwork"]
+
+    assert raster_artwork.model == "artwork"
+    assert raster_artwork.stage == "raster_source"
+    assert raster_artwork.product == "artifact"
+
+    raster_metadata = dependencies["raster_metadata"]
+
+    assert raster_metadata.model == "artwork"
+    assert raster_metadata.stage == "raster_source"
+    assert raster_metadata.product == "metadata"
 
 
 def test_raster_compose_embeds_original_png(

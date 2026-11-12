@@ -554,14 +554,21 @@ def execute(
     artwork_transform: RegisteredArtworkTransform | None = None
     artwork_fill: RegisteredArtworkFillRegion | None = None
 
+    # The build engine exposes selected cross-Product dependencies
+    # under their declared semantic input names.
     has_vector = context.has_input("artwork.vector.manifest")
-    has_raster = context.has_input("artwork.raster_source.artifact")
+    has_raster = context.has_input("raster_artwork")
+    has_raster_metadata = context.has_input("raster_metadata")
 
-    if has_vector and has_raster:
+    if has_vector and (has_raster or has_raster_metadata):
         raise ValueError("Shape Compose cannot consume vector and raster Artwork together.")
+
+    if has_raster != has_raster_metadata:
+        raise ValueError("Shape Compose requires both raster_artwork and raster_metadata inputs.")
 
     if has_vector:
         artwork_manifest = context.input("artwork.vector.manifest")
+
         artwork = load_registered_artwork(artwork_manifest)
 
         artwork_transform = fit_registered_artwork_to_shape(
@@ -581,8 +588,8 @@ def execute(
 
     elif has_raster:
         raster_artwork = load_registered_raster_artwork(
-            context.input("artwork.raster_source.artifact"),
-            context.input("artwork.raster_source.metadata"),
+            context.input("raster_artwork"),
+            context.input("raster_metadata"),
         )
 
         artwork_transform = fit_registered_raster_to_shape(
