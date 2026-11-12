@@ -311,3 +311,45 @@ When this work resumes:
 Do not implement these changes as part of the current SVG development work.
 
 Continue the active `CHANGEPLAN.md` phases focused on SVG composition, registered planar geometry, xTool Studio compatibility, and laser manufacturing.
+
+
+## ARTWORK — Deferred Representation Processing Strategies
+
+### Context
+
+The initial ARTWORK representation architecture supports independently selected `artwork_representation` and `artwork_processing` parameters.
+
+The initial implementation establishes source-preserving, raster-preserving, and vector-processing capabilities without implementing every possible processing strategy.
+
+The following capabilities are deferred pending specific manufacturing requirements, normative specifications, and independent TDD implementation slices.
+
+### Candidate Processing Strategies
+
+- **Grayscale conversion:** Convert color raster Artwork to grayscale, with an explicit alpha and background-handling policy.
+- **Raster dithering:** Support Jarvis, Floyd–Steinberg, and other raster dithering strategies.
+- **Explicit vector tracing:** Support color tracing, mask tracing, and pixel-boundary tracing as independently selectable strategies.
+- **Vector optimization:** Provide configurable simplification, smoothing, optimization, and intentional color reduction.
+- **Ordered processing pipelines:** Consider composable processing operations when individual processing strategies prove insufficient.
+- **Depth-map generation:** Support depth-map generation and depth-specific semantics under a separate specification and manufacturing validation.
+- **SVG rasterization:** Extend SVG-to-raster support beyond the currently specified source interpretation contract.
+
+### Architectural Guidance
+
+These capabilities may extend `artwork_processing` without changing the meaning of `artwork_representation` or requiring special Realization names.
+
+Preserve the distinction between:
+
+- Representation — the required registered output.
+- Processing — the strategy used to produce that representation.
+- Realization — an independently configured application of the ARTWORK Model.
+
+Do not introduce a general-purpose processing pipeline framework without a demonstrated manufacturing requirement.
+
+### Manufacturing Motivation
+
+Grayscale raster output remains an intended manufacturing capability, particularly for laser engraving and ablation workflows.
+
+It is not required for completion of the initial `none` and `auto` processing implementation.
+
+Individual capabilities should move from this document into `CHANGEPLAN.md` when selected for active implementation.
+

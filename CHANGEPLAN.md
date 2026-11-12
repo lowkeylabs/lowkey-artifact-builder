@@ -118,7 +118,6 @@ The requested Product and its transitive dependencies determine the minimum work
 
 | Order | Phase | Consolidates | Primary result |
 | --- | --- | --- | --- |
-| 3 | ARTWORK Representation and Source Correctness | BUG-006, BUG-004, related BUG-002; representation policy | Correct envelope and source handling across representation-specific ARTWORK Realizations |
 | 4 | Raster-Preserving SVG Manufacturing | BUG-005 | Embedded raster from a selected ARTWORK Realization in terminal SHAPE SVG |
 | 5 | Multi-Realization SVG Manufacturing Acceptance | End-to-end selection, isolation, and xTool acceptance | One source yields independently manufacturable raster/vector SVGs and compatible 3MF |
 | 6 | Broader SVG Source Interpretation | BUG-001 + BUG-003 | Embedded PNG SVG inputs and visible stroke geometry |
@@ -128,167 +127,7 @@ The requested Product and its transitive dependencies determine the minimum work
 | 10 | Artwork Scaling and Boundary Policies | Artwork enlargement | Explicit enlargement with fixed outer SHAPE boundary |
 | 11 | Hierarchical SVG Manufacturing Project Assembly | Manufacturing project assembly | Grouped SVG containing independently manufacturable Products |
 
-**Dependency policy:**  Phase 3 resolves source correctness and representation-specific preparation; Phase 4 makes raster representation composable; Phase 5 verifies the combined end-to-end manufacturing contract. Phases 6–10 extend supported source and planar composition features; Phase 11 assembles existing Products. Independent defect fixes may move earlier when required for manufacturing correctness, but must not undermine the dependency and Product contracts.
-
----
-
-## Phase 3 — ARTWORK Representation and Source Correctness
-
-**Status:** OPEN — Source-envelope and color-discovery corrections partially implemented; representation and processing selection pending normative reconciliation and implementation.
-
-### Purpose
-
-Establish independently configurable ARTWORK representations and processing strategies through the existing Variant/Realization architecture.
-
-Introduce two independent parameters:
-
-- `artwork_representation` — defines the required output representation.
-- `artwork_processing` — defines the processing strategy used to produce that representation.
-
-Support source-preserving, raster, and vector ARTWORK Realizations without requiring every Realization to perform color separation or vector tracing.
-
-Resolve remaining BUG-006 and BUG-004 requirements (related BUG-002), preserve existing source semantics, and maintain compatibility with registered vector Artwork and standalone 3MF manufacturing.
-
-### Reproductions
-
-- `tests/fixtures/artwork/bug06.png`: transparent PNG with boundary-touching black foreground; confirm fixture and current behavior at HEAD.
-- Existing transparent PNG, authored-background SVG, single-color and multicolor fixtures.
-- Small synthetic PNG and JPEG images with known dimensions, colors, transparency where supported, and antialiasing.
-- Native SVG artwork containing supported authored vector geometry.
-
-### Contract to Resolve
-
-1. **Representation selection.** Define `artwork_representation` through the existing Model parameter and Variant/Realization configuration mechanisms. Initially support:
-
-   - `source` — preserve the original materialized source file and format without transformation.
-   - `vector` — produce registered SVG vector geometry.
-   - `raster` — produce registered PNG raster artwork.
-
-   Representation describes the required output, not the source format or Realization name.
-
-2. **Processing selection.** Define `artwork_processing` independently of representation and Realization identity. Initially support:
-
-   - `none` — perform no image-processing transformation beyond representation-required format normalization.
-   - `auto` — select the established processing strategy appropriate to the source and requested representation.
-
-   Processing selects a strategy, not an arbitrary sequence of operations. Do not introduce a general-purpose processing pipeline framework.
-
-3. **Initial combinations.** Support:
-
-   | Representation | Processing | Required behavior |
-   |---|---|---|
-   | `source` | `none` | Preserve original source bytes and format |
-   | `raster` | `none` | Produce PNG without unnecessary pixel transformation |
-   | `vector` | `auto` | Preserve the established vector interpretation, tracing, and registration workflow |
-
-   Unsupported combinations must fail with actionable errors rather than silently selecting another strategy.
-
-4. **Default compatibility.** Preserve the existing vector-processing behavior as the effective default for existing ARTWORK Realizations and consumers. In particular, existing `artwork_default` dependencies and standalone 3MF manufacturing must remain compatible. Do not reinterpret the existing default Realization as source-preserving merely because `source` is now an available representation.
-
-5. **Source preservation.** `source + none` preserves the materialized source content and original format. It must not require color discovery, `artifact_color_count`, `printer_colors`, rasterization, tracing, or standalone dimensionalization merely to register a reusable Product.
-
-6. **Raster preservation.** `raster + none` produces a registered PNG Product. PNG sources preserve decoded pixel content, dimensions, color information, and alpha without unnecessary transformation. JPEG sources are decoded and normalized to PNG without intentional color reduction or image-processing effects. Supported SVG-to-PNG conversion requires an explicit, deterministic rasterization contract; do not silently introduce general-purpose SVG rendering.
-
-7. **Vector processing.** `vector + auto` preserves the established source-dependent vector workflow:
-
-   - PNG sources use existing single-color or multicolor tracing as appropriate.
-   - Supported native SVG geometry is interpreted without raster retracing.
-   - Registered vector color layers retain their existing manifest, envelope, color identity, and coordinate-system contracts.
-
-   JPEG vector input may use normalized raster decoding before the existing tracing workflow. Preserve the established tracing behavior unless an explicit specification change requires otherwise.
-
-8. **Color-policy separation.** Source-preserving and raster-preserving Realizations must not require `artifact_color_count`, physical printer-color availability, or vector color tracing. Existing vector Realizations retain their established Artifact-color discovery and tracing behavior. Physical printer colors must not become a universal source-color constraint.
-
-9. **Envelope correctness.** Boundary-touching foreground is valid. Where an Artwork envelope is required, derivation must preserve meaningful edge geometry, distinguish exterior transparency from enclosed holes, retain source registration, and produce a valid closed envelope. Source-preserving Products must not modify source content merely to derive an envelope.
-
-10. **Tracing diagnostics.** Preserve the existing automatic and explicit `artifact_color_count` behavior and associated INFO/WARNING diagnostics for vector tracing. An explicit tracing count does not authorize silent loss, merging, or invention of authored colors. Broader intentional color-reduction strategies require separate processing contracts.
-
-11. **Registered Products.** Define the representation-specific Product identities and metadata required by downstream consumers. Preserve the existing registered vector Product contract. Source and raster Products must expose sufficient information to identify their representation, format, dimensions, transparency where applicable, and provenance without manufacturing-specific interpretation.
-
-12. **Realization identity and reuse.** Arbitrarily named ARTWORK Realizations may use different effective representation and processing configurations. Realization names do not imply algorithms. Products retain independent ownership, completion state, and freshness. Effective representation and processing configuration must participate in Product invalidation and dependency planning.
-
-13. **Consumer compatibility.** A consuming Realization selects its upstream ARTWORK Realization through the generic Product dependency mechanism and requires a compatible registered Product. SHAPE must not independently repeat ARTWORK processing or silently substitute another representation.
-
-14. **Stage execution.** Preserve existing Stage identities and Product contracts where possible. Source-preserving and raster-preserving requests must not execute unnecessary tracing, vectorization, extrusion, or packaging. The dependency planner determines the minimum required work.
-
-15. **Source compatibility.** Preserve existing PNG and native SVG behavior. Introduce JPEG support through the smallest coherent source-registration and decoding changes required by the selected representations. Unsupported formats or SVG constructs must produce actionable errors.
-
-### Implementation Slices
-
-Complete the following as independently testable RED/GREEN/VERIFY slices. Credit existing HEAD behavior before implementing changes. Each slice must leave the application production-capable.
-
-#### Slice A — Representation and Processing Configuration
-
-**RED:** Verify parameter resolution, supported values, invalid combinations, independent named Realizations, and compatibility with existing default vector behavior.
-
-**GREEN:** Introduce the two parameters through existing configuration mechanisms. Resolve representation and processing at the appropriate Model/Realization boundary without creating a new Model or processing framework.
-
-**VERIFY:** Confirm configuration precedence, effective defaults, Realization isolation, and unchanged existing vector and 3MF builds.
-
-#### Slice B — Source-Preserving Products
-
-**RED:** Verify that `source + none` preserves original PNG and SVG bytes and formats, requires no tracing or color discovery, and registers a reusable Product with stable identity and provenance.
-
-**GREEN:** Implement source-preserving Product registration using the existing materialized source and Product infrastructure. Avoid unnecessary copying or transformations.
-
-**VERIFY:** Build representative source-preserving Realizations and confirm content identity, Product freshness, and absence of unnecessary downstream Stage execution.
-
-#### Slice C — Raster-Preserving Products
-
-**RED:** Verify that `raster + none` preserves PNG dimensions, pixels, color information, and alpha; normalizes supported JPEG input to PNG; avoids vector tracing and physical printer-color resolution; and registers a reusable raster Product.
-
-**GREEN:** Implement the smallest raster-preserving registration path, reusing existing image decoding and Product mechanisms. Do not implement grayscale conversion, dithering, or arbitrary SVG rendering as part of this slice.
-
-**VERIFY:** Build representative PNG and JPEG Realizations. Inspect registered PNG content, transparency, dimensions, provenance, and dependency isolation.
-
-#### Slice D — Vector Compatibility and Source Correctness
-
-**RED:** Verify that `vector + auto` retains existing PNG tracing, native SVG interpretation, Artifact-color discovery, registered vector manifests, and standalone 3MF compatibility. Cover remaining boundary-touching foreground, envelope, color-count, and tracing-diagnostic regressions.
-
-**GREEN:** Integrate explicit vector selection with the established preparation and registration pipeline. Correct only remaining source-envelope or color-policy defects demonstrated by RED tests.
-
-**VERIFY:** Build representative single-color PNG, multicolor PNG, native SVG, boundary reproduction, and existing Prusa cases. Confirm unchanged registered vector contracts and manufacturing behavior.
-
-#### Slice E — Integration and Product Freshness
-
-**RED:** Verify that one Artifact supports independently configured source, raster, and vector ARTWORK Realizations; each produces the requested compatible Product; configuration changes invalidate only affected Products and their dependents; and unrelated Realizations are not rebuilt.
-
-**GREEN:** Resolve remaining configuration, dependency, registration, or freshness gaps in their owning layers. Avoid new abstractions unless required by demonstrated behavior.
-
-**VERIFY:** Exercise ordinary `artifact build` workflows, inspect Product identities and dependency closure, and run focused tests, applicable non-slow tests, Ruff, and Pyright.
-
-### Deferred Processing Strategies
-
-The initial implementation establishes representation and processing selection without implementing every possible processing method.
-
-Defer the following to subsequent, separately specified implementation slices:
-
-- Grayscale conversion and explicit alpha/background policy.
-- Jarvis, Floyd–Steinberg, and other raster dithering methods.
-- Explicit vector tracing strategies, including color tracing, mask tracing, and pixel-boundary tracing.
-- Configurable vector simplification, smoothing, optimization, and color reduction.
-- Ordered processing pipelines.
-- Depth-map generation and depth-specific semantics.
-- General-purpose SVG rasterization beyond a separately established supported contract.
-
-These capabilities may extend `artwork_processing` without changing the meaning of `artwork_representation` or requiring special Realization names.
-
-Grayscale raster output remains an intended manufacturing capability, but it is not required for completion of the initial `none` and `auto` implementation.
-
-### Completion
-
-Phase 3 is complete when:
-
-1. `artwork_representation` and `artwork_processing` are supported through existing configuration and Realization mechanisms.
-2. Source-preserving, raster-preserving, and vector Realizations produce independently registered, representation-compatible Products.
-3. Existing default vector and standalone 3MF manufacturing behavior remains compatible.
-4. Source-preserving and raster-preserving requests avoid unnecessary tracing, color discovery, physical printer-color assignment, extrusion, and packaging.
-5. Remaining source-envelope and tracing-policy defects within this phase are resolved.
-6. Product identity, provenance, dependency planning, freshness, and cross-Realization isolation are verified.
-7. The applicable ARTWORK definition, architecture contracts, and implementation documentation agree with the implemented behavior.
-8. Required tests and quality checks pass.
-
-Phase 4 may then consume registered raster Products in SHAPE SVG composition without introducing a competing ARTWORK processing pipeline.
+**Dependency policy:**  Phase 4 makes raster representation composable; Phase 5 verifies the combined end-to-end manufacturing contract. Phases 6–10 extend supported source and planar composition features; Phase 11 assembles existing Products. Independent defect fixes may move earlier when required for manufacturing correctness, but must not undermine the dependency and Product contracts.
 
 ---
 
@@ -816,3 +655,4 @@ Begin with the next appropriate phase and slice.
 **Do not implement new depth-map processing, depth parameters, physical Extrude changes, or native xTool project formats as part of this first slice.**
 
 No implementation work is authorized merely by adopting this plan.
+
