@@ -435,3 +435,116 @@ def test_raster_shape_svg_does_not_require_vector_or_3mf(
     # Shape physical manufacturing is also unnecessary.
     assert not (shape_root / "30-extrude").exists()
     assert not (shape_root / "40-package").exists()
+
+
+def test_grayscale_raster_shape_preserves_pixels_and_svg_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    A grayscale raster Artwork Realization produces a self-contained
+    Shape SVG without converting, tracing, or recoloring the image.
+
+    Grayscale source pixels, physical dimensions, and independent
+    structural SVG components survive the manufacturing build.
+    """
+    source = tmp_path / "grayscale.png"
+
+    image = Image.new("L", (19, 13), 0)
+
+    for y in range(13):
+        for x in range(19):
+            image.putpixel(
+                (x, y),
+                (x * 11 + y * 7) % 256,
+            )
+
+    image.save(source, format="PNG")
+    image.close()
+
+    write_artifact_config(
+        ARTIFACT_ID,
+        {
+            "source": str(source),
+            "realizations": {
+                ARTWORK_REALIZATION: {
+                    "variant": "artwork.default",
+                    "artwork_representation": "raster",
+                    "artwork_processing": "none",
+                },
+                SHAPE_REALIZATION: {
+                    "variant": "shape.coaster",
+                    "product_dependencies": {
+                        "manifest": {
+                            "artifact": ARTIFACT_ID,
+                            "realization": ARTWORK_REALIZATION,
+                        },
+                        "raster_artwork": {
+                            "artifact": ARTIFACT_ID,
+                            "realization": ARTWORK_REALIZATION,
+                        },
+                        "raster_metadata": {
+                            "artifact": ARTIFACT_ID,
+                            "realization": ARTWORK_REALIZATION,
+                        },
+                    },
+                },
+            },
+        },
+        project_root=tmp_path,
+    )
+
+    plan = create_build_plan(
+        ARTIFACT_ID,
+        realization=SHAPE_REALIZATION,
+        targets=(_shape_target(),),
+        project_root=tmp_path,
+    )
+
+    assert set(_selected_dependencies(plan)) == {
+        "raster_artwork",
+        "raster_metadata",
+    }
+
+    assert tuple(stage.name for stage in plan.stages) == (
+        "structure",
+        "compose",
+    )
+
+    execute_dependency_build(plan)
+
+    svg_path = _svg_product_path(plan)
+
+    assert svg_path.is_file()
+
+    root = ET.parse(svg_path).getroot()
+
+    embedded = _embedded_png(root)
+
+    with (
+        Image.open(source) as original,
+        Image.open(io.BytesIO(embedded)) as reproduced,
+    ):
+        assert original.mode == "L"
+        assert reproduced.mode == "L"
+        assert reproduced.size == original.size
+        assert reproduced.tobytes() == original.tobytes()
+
+    # The embedded PNG must remain byte-identical to the
+    # registered source-preserving PNG.
+    assert embedded == source.read_bytes()
+
+    # The canonical SVG remains physically dimensioned.
+    assert root.get("width", "").endswith("mm")
+    assert root.get("height", "").endswith("mm")
+
+    # Raster content and structural geometry coexist.
+    assert root.find(".//*[@id='artwork']") is not None
+    assert root.find(".//*[@id='structure']") is not None
+    assert root.find(".//*[@id='cut-contour']") is not None
+
+    # SVG-only manufacturing does not execute Shape's
+    # physical extrusion or packaging stages.
+    shape_root = tmp_path / "artifacts" / ARTIFACT_ID / "shape" / SHAPE_REALIZATION
+
+    assert not (shape_root / "30-extrude").exists()
+    assert not (shape_root / "40-package").exists()
