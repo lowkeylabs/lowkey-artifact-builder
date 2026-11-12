@@ -130,7 +130,9 @@ def test_raster_none_records_format_dimensions_and_provenance(
     assert metadata["format"] == "png"
     assert metadata["width"] == 19
     assert metadata["height"] == 13
-    assert metadata["source_name"] == "artifact.png"
+    assert metadata["source_name"] == (
+        "artifact.jpg" if raster_source.suffix == ".jpg" else "artifact.png"
+    )
 
 
 def test_unchanged_raster_product_is_reused(

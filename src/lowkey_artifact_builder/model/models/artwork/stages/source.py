@@ -15,6 +15,8 @@ import hashlib
 import json
 import shutil
 
+from PIL import Image, UnidentifiedImageError
+
 from lowkey_artifact_builder.engine import StageContext
 
 
@@ -26,7 +28,10 @@ def execute(
     context: StageContext,
 ) -> None:
     """
-    Register a byte-identical source Product and its provenance.
+    Register source-preserving Artwork and its provenance.
+
+    PNG and SVG are copied without transformation.
+    JPEG is decoded and normalized to PNG.
 
     The original materialized source is never modified.
     """
@@ -48,31 +53,66 @@ def execute(
     if not source.is_file():
         raise SourceError(f"Artwork source does not exist: {source}")
 
-    source_format = source.suffix.lower().removeprefix(".")
-
-    if source_format not in {"png", "svg"}:
-        raise SourceError(f"Unsupported source format {source_format!r}. Expected PNG or SVG.")
-
     if artifact.resolve() == source.resolve():
         raise SourceError("Source Product must not overwrite its materialized input.")
 
     if artifact.resolve() == metadata.resolve():
         raise SourceError("Source Product and metadata paths must differ.")
 
+    source_format = source.suffix.lower().removeprefix(".")
+
+    if source_format not in {"png", "svg", "jpg", "jpeg"}:
+        raise SourceError(
+            f"Unsupported source format {source_format!r}. Expected PNG, JPEG, or SVG."
+        )
+
     artifact.parent.mkdir(parents=True, exist_ok=True)
     metadata.parent.mkdir(parents=True, exist_ok=True)
 
-    shutil.copyfile(source, artifact)
+    if source_format == "svg":
+        shutil.copyfile(source, artifact)
 
-    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        output_format = "svg"
+        width = None
+        height = None
+        mode = None
 
-    provenance = {
+    else:
+        try:
+            with Image.open(source) as image:
+                if image.format not in {"PNG", "JPEG"}:
+                    raise SourceError(f"Unsupported image encoding: {image.format!r}")
+
+                image.load()
+
+                width, height = image.size
+                mode = image.mode
+
+                if image.format == "JPEG":
+                    image.save(artifact, format="PNG")
+                    output_format = "png"
+                else:
+                    shutil.copyfile(source, artifact)
+                    output_format = "png"
+
+        except (OSError, UnidentifiedImageError) as exc:
+            raise SourceError(f"Cannot decode Artwork source: {source}") from exc
+
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    provenance: dict[str, str | int | None] = {
         "representation": "source",
         "processing": "none",
-        "format": source_format,
+        "format": output_format,
+        "source_format": source_format,
         "source_name": source.name,
         "sha256": digest,
     }
+
+    if width is not None and height is not None:
+        provenance["width"] = width
+        provenance["height"] = height
+        provenance["mode"] = mode
 
     metadata.write_text(
         json.dumps(provenance, indent=2, sort_keys=True) + "\n",

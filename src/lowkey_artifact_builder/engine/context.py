@@ -650,9 +650,9 @@ def _add_explicit_inputs(
             input_spec.name == "source"
             and input_spec.parameter == "source"
             and destination == Path("artifact.png")
-            and source_path.suffix.lower() == ".svg"
+            and source_path.suffix.lower() in {".svg", ".jpg", ".jpeg"}
         ):
-            destination = destination.with_suffix(".svg")
+            destination = destination.with_suffix(source_path.suffix.lower())
 
         _add_input(
             artifact_id=artifact_id,

@@ -41,7 +41,8 @@ from .config import (
 _ARTWORK_INPUT = "artwork"
 _ARTWORK_FILENAME = "artifact"
 _ORIGINALS_DIRECTORY = "originals"
-_ORIGINAL_SUFFIXES = frozenset({".png", ".svg"})
+
+_ORIGINAL_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".svg"})
 
 
 # =========================================================
@@ -468,7 +469,7 @@ def _configure_artwork_input(
     project_root: Path,
 ) -> None:
     """
-    Ingest PNG or SVG Artwork and persist its Artifact-owned source location.
+    Ingest PNG, JPEG, or SVG Artwork and persist its Artifact-owned source location.
 
     Artwork is an Artifact input. It does not select a Model, Variant,
     or Realization.
@@ -481,7 +482,7 @@ def _configure_artwork_input(
 
     if suffix not in _ORIGINAL_SUFFIXES:
         raise ConfigError(
-            f"Unsupported Artwork source format {source.suffix!r}; expected PNG or SVG."
+            f"Unsupported Artwork source format {source.suffix!r}; expected PNG, JPEG, or SVG."
         )
 
     destination = _artifact_input_path(
@@ -580,7 +581,7 @@ def materialize_artifact(
     """
     Materialize baseline workspace state for one Artifact.
 
-    A preserved PNG or SVG original establishes a source-backed Artifact.
+    A preserved PNG, JPEG, or SVG original establishes a source-backed Artifact.
     Its native format is retained during materialization.
 
     Materialization creates:

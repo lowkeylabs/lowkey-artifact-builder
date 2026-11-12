@@ -45,6 +45,7 @@ Representation and processing are independent of Realization identity. A named R
 
 Processing strategies may be extended without requiring new representation values or hard-coded Realization names.
 
+
 ## Source
 
 Artwork consumes one source:
@@ -53,35 +54,36 @@ Artwork consumes one source:
 source
 ```
 
-Supported source formats are PNG and SVG. JPEG (`.jpg` and `.jpeg`) support is introduced as part of the representation-specific processing implementation.
+Supported customer source formats are PNG, JPEG (`.jpg`, `.jpeg`), and SVG.
+
+An Artifact retains its original customer-supplied source file alongside `artifact.toml`, preserving the original filename, format, and content. The source is not replaced by a normalized representation.
 
 Source format does not establish a separate Artifact identity. An Artifact has at most one registered source, and a new source does not silently replace an existing registration.
 
-The build system materializes the source into the Artifact workspace before Artwork processing begins, preserving its original format and content.
+The build system materializes the original source into the Artifact workspace before Artwork processing begins. Artwork Stages consume this materialized source through the build-engine context rather than depending on its original filesystem location.
 
-Artwork stages consume the materialized source through the build-engine context rather than depending on the source's original filesystem location.
+The selected `artwork_representation` determines the required registered Product. The selected `artwork_processing` independently determines the processing strategy.
 
-The selected `artwork_representation` determines the required output:
+The supported combinations are:
 
-- `source` preserves the materialized source without conversion or image processing.
-- `vector` produces SVG geometry, tracing raster sources when necessary and preserving supported native SVG geometry.
-- `raster` produces PNG artwork, preserving PNG image content and converting other supported source formats when necessary.
-
-The selected `artwork_processing` determines the processing strategy.
-
-The initially supported combinations are:
-
-| Representation | Processing | Behavior |
+| Representation | Processing | Registered Product behavior |
 |---|---|---|
-| `source` | `none` | Preserve original source and format |
-| `vector` | `auto` | Use established vector preparation and registration |
-| `raster` | `none` | Preserve raster image content, converting to PNG when necessary |
+| `source` | `none` | Preserve PNG or SVG unchanged; normalize JPEG to PNG |
+| `raster` | `none` | Register PNG artwork, preserving PNG content or decoding JPEG without intentional image-processing effects |
+| `vector` | `auto` | Produce registered SVG vector geometry using the established source-dependent workflow |
 
-Unsupported representation and processing combinations must fail with an actionable error rather than silently selecting a different strategy.
+For `source + none`, preservation means retaining the source artwork without intentional image-processing transformations. PNG and SVG content remains byte-identical. JPEG is decoded and registered as PNG; its original file remains preserved by the Artifact.
 
-For the existing vector workflow, PNG sources use source-color tracing and SVG sources use native vector interpretation. Both continue to produce the established registered vector Artwork contract.
+For `raster + none`, PNG content is preserved without unnecessary transformation. JPEG is decoded into PNG without intentional color reduction, tracing, or other image-processing effects. General-purpose SVG-to-PNG rasterization is not supported.
 
-Source-preserving and raster-preserving Products do not require source-color discovery, vector tracing, physical printer-color assignment, or standalone dimensionalization merely to become reusable registered Products.
+For `vector + auto`, PNG and JPEG sources use the established tracing workflow. Supported native SVG geometry is interpreted without raster retracing. The existing registered vector Artwork contract remains unchanged.
+
+Unsupported representation and processing combinations, source formats, and SVG constructs must fail with actionable errors rather than silently selecting another strategy.
+
+Registered Products retain representation-specific identity, format, provenance, completion state, and freshness. Normalization never overwrites the original Artifact source.
+
+Source-preserving and raster-preserving Products do not require Artifact-color discovery, vector tracing, physical printer-color assignment, extrusion, or packaging merely to become reusable Products.
+
 
 ## Artifact Colors
 
@@ -1257,79 +1259,133 @@ The Loop participates only in standalone physical dimensionalization and packagi
 
 It is not part of registered raster or vector Artwork and is not required by a consumer of registered Artwork.
 
+
 ## Stages
 
-Artwork defines:
+Artwork supports three representation-specific execution paths:
 
-``` text
-10 prepare 20 raster 30 vector 40 extrude 50 package
-```
-
-with dependencies:
-
-``` text
-                      source
-                     PNG | SVG
+```text
+materialized source
+        |
+        +---- source + none
+        |          |
+        |          v
+        |        source
+        |          |
+        |          v
+        |    registered source Product
+        |
+        +---- raster + none
+        |          |
+        |          v
+        |     raster_source
+        |          |
+        |          v
+        |    registered PNG Product
+        |
+        +---- vector + auto
+                   |
+                   v
+                prepare
+                   |
+             +-----+-----+
+             |           |
+             v           |
+           raster        |
+             |           |
+             +-----+-----+
+                   |
+                   v
+                 vector
+                   |
+             +-----+-----+
+             |           |
+             v           v
+          consumer     extrude
                          |
                          v
-                      prepare
-                         |
-              +----------+----------+
-              |                     |
-              v                     |
-             raster                 |
-              |                     |
-              +----------+----------+
+                       package
                          |
                          v
-                       vector
-                         |
-                +--------+--------+
-                |                 |
-                v                 v
-             consumer           extrude
-                                  |
-                                  v
-                                package
+                        3MF
 ```
 
+The established vector manufacturing Stages retain their identities:
 
+```text
+10 prepare
+20 raster
+30 vector
+40 extrude
+50 package
+```
 
-The Artwork stages retain their established identities and declared Products.
+The independent `source` and `raster_source` Stages register reusable Products without executing the vector manufacturing pipeline.
 
-PNG follows the existing Prepare → Raster → Vector processing path.
+The `source` Stage preserves PNG and SVG content unchanged. JPEG input is normalized to a PNG Product while the original materialized JPEG remains unchanged.
 
-SVG follows native vector interpretation through Prepare and Vector. Raster remains responsible for registered raster Products where required, but SVG vector geometry must not be reconstructed by raster tracing.
+The `raster_source` Stage preserves PNG content or normalizes JPEG to PNG without vector tracing or Artifact-color discovery.
 
-The source-dependent execution path must preserve existing logical Product identities, dependency planning, fingerprinting, and manufacturing-state semantics.
+For `vector + auto`, PNG and JPEG sources follow the existing raster tracing workflow. SVG sources follow native vector interpretation through Prepare and Vector without raster retracing.
 
+Registered vector Products remain available to consuming Models without standalone extrusion or packaging.
 
-The stage boundaries also define the Artwork color lifecycle:
+The dependency planner determines the minimum required Stage closure for the requested Product. Realization names do not determine processing algorithms.
 
-``` text
+The vector manufacturing path retains the established Artifact-color lifecycle:
+
+```text
 prepare
-    discover Artifact colors raster
-    registered Artifact-color raster geometry vector
-    registered Artifact-color vector geometry extrude
-    physical geometry retaining Artifact-color identity package
+    discover Artifact colors
+        |
+        v
+raster
+    registered Artifact-color raster geometry
+        |
+        v
+vector
+    registered Artifact-color vector geometry
+        |
+        v
+extrude
+    physical geometry retaining Artifact-color identity
+        |
+        v
+package
     physical printer-color assignment and final 3MF
 ```
 
-`printer_colors` is material to standalone packaging, not to raster, vector, or extrusion geometry.
+`printer_colors` is material to standalone packaging, not to registered raster, registered vector, or extrusion geometry.
 
 Feature physical-color overrides such as `loop_color`, `artwork_base_color`, and `artwork_outer_ridge_color` are likewise packaging concerns. Feature geometry produced during extrusion retains the logical Artifact-color attachment required to apply inherited physical color during packaging.
 
-The principal declared products are:
+The principal declared Products include:
 
-``` text
-prepare/trace.svg prepare/envelope.svg raster/products.json vector/products.json extrude/products.json package/artifact.3mf
+```text
+source/artifact
+source/metadata
+
+raster_source/artifact
+raster_source/metadata
+
+prepare/trace.svg
+prepare/envelope.svg
+
+raster/products.json
+vector/products.json
+extrude/products.json
+
+package/artifact.3mf
 ```
 
-Product paths are local to their producing stages.
+Source-preserving and raster-preserving metadata records the selected representation, processing strategy, source provenance, and applicable format and image information.
 
-Artifact color analysis and alternative physical color assignment are consumers of persistent Artwork color information.
+Product paths are local to their producing Stages. Each Realization independently owns its registered Products and completion state.
 
-They do not introduce additional Artwork manufacturing stages.
+Effective configuration and source changes participate in Product fingerprinting and invalidation. Unchanged Products may be reused without re-executing their producing Stages.
+
+Artifact-color analysis and alternative physical color assignment consume persistent Artwork color information. They do not introduce additional Artwork manufacturing Stages.
+
 
 ## Dynamic Products
 
@@ -1351,7 +1407,7 @@ The following are model-wide invariants. Feature-specific invariants are defined
 
 A conforming Artwork implementation satisfies the following:
 
-1. Artwork consumes one materialized PNG or SVG source.
+1. Artwork consumes one materialized PNG, JPEG, or SVG source. The Artifact preserves the original customer-supplied file and format independently of registered Artwork Products.
 2.  Prepared Artwork is limited to its derived Artwork envelope.
 3.  Artwork envelope derivation is controlled by `artwork_envelope_mode`.
 4.  `artwork_envelope_mode` defaults to `shrink-wrap`.
@@ -1427,7 +1483,7 @@ A conforming Artwork implementation satisfies the following:
 74. Supported initial representations are `source`, `vector`, and `raster`.
 75. Supported initial processing strategies are `none` and `auto`.
 76. The existing registered vector workflow remains the default until explicitly migrated.
-77. Source-preserving Artwork retains the original source format and content without image-processing transformation.
+77. Source-preserving Artwork retains PNG and SVG content and format unchanged. JPEG input is normalized to a registered PNG Product without intentional image-processing transformation. The original materialized source is never overwritten.
 78. Raster-preserving Artwork produces PNG content without requiring vector tracing or Artifact-color quantization.
 79. Unsupported representation and processing combinations fail explicitly.
 80. A consuming Realization selects its Artwork producer through generic Product dependency binding and validates the selected Product's representation.
