@@ -394,14 +394,19 @@ def _require_source(
     """
     Validate the source Artwork file.
 
-    PNG and SVG are supported source formats.
+    PNG, JPEG, and SVG are supported source formats.
     """
 
     if not source.is_file():
         raise PrepareError(f"Source artwork does not exist: {source}")
 
-    if source.suffix.lower() not in {".png", ".svg"}:
-        raise PrepareError(f"Source artwork must be a PNG or SVG file: {source}")
+    if source.suffix.lower() not in {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".svg",
+    }:
+        raise PrepareError(f"Source artwork must be a PNG, JPEG, or SVG file: {source}")
 
 
 def _require_svg_output(

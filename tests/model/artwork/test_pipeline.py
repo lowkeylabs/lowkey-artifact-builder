@@ -1602,3 +1602,178 @@ artwork_envelope_mode = "shrink-wrap"
     with Image.open(source) as image:
         assert image.format == "PNG"
         assert image.size == source_size
+
+
+def test_artwork_pipeline_preserves_boundary_touching_geometry(
+    tmp_path: Path,
+) -> None:
+    """
+    Real tracing and clipping preserve a foreground region touching
+    the top and left boundaries of a transparent PNG.
+    """
+    _write_workspace(tmp_path)
+
+    source = tmp_path / "boundary.png"
+
+    with Image.new("RGBA", (96, 96), (0, 0, 0, 0)) as image:
+        for y in range(0, 64):
+            for x in range(0, 64):
+                image.putpixel((x, y), (0, 0, 0, 255))
+        image.save(source, format="PNG")
+
+    write_artifact_config(
+        "boundary",
+        {
+            "model": "artwork",
+            "source": "boundary.png",
+            "artifact_color_count": 1,
+            "artwork_envelope_mode": "alpha",
+        },
+        project_root=tmp_path,
+    )
+
+    target = ProductRef(
+        artifact="boundary",
+        model="artwork",
+        realization="artwork_default",
+        stage="vector",
+        product="manifest",
+    )
+
+    plans = create_build_plans(
+        "boundary",
+        targets=(target,),
+        project_root=tmp_path,
+    )
+
+    assert len(plans) == 1
+    execute_build(plans[0])
+
+    realization = tmp_path / "artifacts" / "boundary" / "artwork" / "artwork_default"
+
+    prepare_directory = realization / "10-prepare"
+    vector_directory = realization / "30-vector"
+
+    trace = prepare_directory / "trace.svg"
+    envelope = prepare_directory / "envelope.svg"
+
+    _assert_svg_has_geometry(trace)
+    _assert_svg_has_geometry(envelope)
+
+    manifest = _read_manifest(vector_directory / "products.json")
+
+    products = _manifest_products(manifest)
+    assert len(products) == 1
+
+    registered_layer = vector_directory / products[0]["path"]
+    _assert_svg_has_geometry(registered_layer)
+
+    # Boundary geometry must remain represented by the actual
+    # registered vector Product, not merely by Prepare's input.
+    root = ET.parse(registered_layer).getroot()
+    paths = list(root.iter("{http://www.w3.org/2000/svg}path"))
+
+    assert paths
+    assert any(path.get("d") for path in paths)
+
+
+def test_artwork_pipeline_registers_vector_envelope_with_layers(
+    tmp_path: Path,
+) -> None:
+    """
+    Registered vector layers and their envelope share one
+    declared coordinate extent.
+    """
+    realization = _build_artwork(tmp_path)
+
+    vector_directory = realization / "30-vector"
+    manifest = _read_manifest(vector_directory / "products.json")
+
+    products = _manifest_products(manifest)
+    assert len(products) == 2
+
+    extent = manifest["registered_extent"]
+    assert isinstance(extent, int | float)
+    assert extent > 0
+
+    envelope = vector_directory / manifest["envelope"]
+    assert envelope.is_file()
+    _assert_svg_has_geometry(envelope)
+
+    envelope_root = ET.parse(envelope).getroot()
+    envelope_viewbox = [float(value) for value in envelope_root.attrib["viewBox"].split()]
+
+    assert envelope_viewbox == [0.0, 0.0, float(extent), float(extent)]
+
+    for product in products:
+        layer = vector_directory / product["path"]
+        assert layer.is_file()
+        _assert_svg_has_geometry(layer)
+
+        root = ET.parse(layer).getroot()
+        viewbox = [float(value) for value in root.attrib["viewBox"].split()]
+
+        assert viewbox == [0.0, 0.0, float(extent), float(extent)]
+
+
+def test_artwork_pipeline_packages_valid_build_references(
+    tmp_path: Path,
+) -> None:
+    """
+    Standalone Artwork 3MF packaging produces mesh objects
+    referenced by its build section, without orphaned objects.
+    """
+    realization = _build_artwork(tmp_path)
+
+    artifact = realization / "50-package" / "artifact.3mf"
+    assert artifact.is_file()
+
+    model = _read_3mf_model(artifact)
+    namespace = {"m": CORE_NS}
+
+    objects = model.findall(
+        "./m:resources/m:object",
+        namespace,
+    )
+    build_items = model.findall(
+        "./m:build/m:item",
+        namespace,
+    )
+
+    assert len(objects) >= 2
+    assert len(build_items) == len(objects)
+
+    object_ids = [obj.get("id") for obj in objects]
+
+    assert all(object_ids)
+    assert len(set(object_ids)) == len(object_ids)
+
+    referenced_ids = [item.get("objectid") for item in build_items]
+
+    assert all(isinstance(value, str) for value in object_ids)
+    assert all(isinstance(value, str) for value in referenced_ids)
+
+    assert sorted(value for value in referenced_ids if value is not None) == sorted(
+        value for value in object_ids if value is not None
+    )
+
+    for obj in objects:
+        vertices = obj.findall(
+            "./m:mesh/m:vertices/m:vertex",
+            namespace,
+        )
+        triangles = obj.findall(
+            "./m:mesh/m:triangles/m:triangle",
+            namespace,
+        )
+
+        assert vertices
+        assert triangles
+
+        vertex_count = len(vertices)
+
+        for triangle in triangles:
+            indices = [int(triangle.attrib[key]) for key in ("v1", "v2", "v3")]
+
+            assert all(0 <= index < vertex_count for index in indices)
+            assert len(set(indices)) == 3
