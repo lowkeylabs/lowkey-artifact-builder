@@ -332,6 +332,7 @@ def test_artwork_region_supports_inlaid_foreground_subtraction(
     assert "linear_extrude(" in source
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     ("raise_style", "expects_subtraction"),
     [

@@ -26,9 +26,10 @@ from lowkey_artifact_builder.engine import (
     BuildPlan,
     PlannedStage,
     create_build_plans,
-    execute_incremental_artifact_build,
-    plan_incremental_execution,
+    execute_dependency_build,
+    plan_dependency_build,
 )
+from lowkey_artifact_builder.model.specs import ProductRef
 
 # =========================================================
 # Helpers
@@ -91,12 +92,21 @@ def _create_plan(
     project_root: Path,
 ) -> BuildPlan:
     """
-    Return the single realized acceptance BuildPlan.
+    Return the BuildPlan targeting the canonical Artwork vector manifest.
     """
+
+    target = ProductRef(
+        artifact="nydeli",
+        model="artwork",
+        realization="artwork_default",
+        stage="package",
+        product="artifact",
+    )
 
     plans = create_build_plans(
         "nydeli",
         realization="artwork_default",
+        targets=(target,),
         project_root=project_root,
     )
 
@@ -115,10 +125,10 @@ def _required_stage_names(
     plan: BuildPlan,
 ) -> tuple[str, ...]:
     """
-    Return stages currently requiring incremental execution.
+    Return stages requiring dependency-aware incremental execution.
     """
 
-    execution_plan = plan_incremental_execution(
+    execution_plan = plan_dependency_build(
         plan,
     )
 
@@ -237,7 +247,7 @@ def test_changed_artwork_size_invalidates_declaring_stages_and_descendants(
         project_root,
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         original_plan,
     )
 
@@ -289,7 +299,12 @@ def test_changed_artwork_size_preserves_unaffected_upstream_stages(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Stages preceding every use of the changed parameter remain reusable.
+    Changing artwork_size invalidates downstream geometry without
+    invalidating the upstream vector Product.
+
+    Product-targeted BuildPlans do not necessarily contain their
+    upstream producer Stages. Verify upstream reuse through a
+    separately targeted vector BuildPlan.
     """
 
     project_root = tmp_path
@@ -303,41 +318,77 @@ def test_changed_artwork_size_preserves_unaffected_upstream_stages(
         project_root,
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         original_plan,
     )
+
+    vector_target = ProductRef(
+        artifact="nydeli",
+        model="artwork",
+        realization="artwork_default",
+        stage="vector",
+        product="manifest",
+    )
+
+    vector_plans = create_build_plans(
+        "nydeli",
+        realization="artwork_default",
+        targets=(vector_target,),
+        project_root=project_root,
+    )
+
+    assert len(vector_plans) == 1
+
+    vector_plan = vector_plans[0]
+
+    assert vector_plan.stages
+    assert _required_stage_names(vector_plan) == ()
 
     changed_plan = _change_artwork_size(
         project_root,
     )
 
+    # The changed parameter belongs to downstream geometry.
     declaring_stages = _stages_declaring_parameter(
         changed_plan,
         "artwork_size",
     )
 
-    declaring_names = {stage.name for stage in declaring_stages}
+    assert declaring_stages
 
-    earliest_index = next(
-        index
-        for index, stage in enumerate(
-            changed_plan.stages,
-        )
-        if stage.name in declaring_names
-    )
-
-    upstream = changed_plan.stages[:earliest_index]
-
-    assert upstream
-
-    required = set(
+    downstream_required = set(
         _required_stage_names(
             changed_plan,
         )
     )
 
-    for stage in upstream:
-        assert stage.name not in required
+    for stage in declaring_stages:
+        assert stage.name in downstream_required
+
+    # Replan the upstream Product against the changed configuration.
+    # Its fingerprint must remain valid because artwork_size is not
+    # part of its declared build context.
+    changed_vector_plans = create_build_plans(
+        "nydeli",
+        realization="artwork_default",
+        targets=(vector_target,),
+        project_root=project_root,
+    )
+
+    assert len(changed_vector_plans) == 1
+
+    changed_vector_plan = changed_vector_plans[0]
+
+    assert changed_vector_plan.stages
+
+    assert _required_stage_names(changed_vector_plan) == ()
+
+    # Dependency-aware execution must reuse the upstream Product.
+    reused = execute_dependency_build(
+        changed_vector_plan,
+    )
+
+    assert reused.required_stages == ()
 
 
 # =========================================================
@@ -365,7 +416,7 @@ def test_changed_artwork_size_real_rebuild_reconverges(
         project_root,
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         original_plan,
     )
 
@@ -379,7 +430,7 @@ def test_changed_artwork_size_real_rebuild_reconverges(
 
     assert required_before
 
-    rebuilt = execute_incremental_artifact_build(
+    rebuilt = execute_dependency_build(
         changed_plan,
     )
 
@@ -394,7 +445,7 @@ def test_changed_artwork_size_real_rebuild_reconverges(
         == ()
     )
 
-    second = execute_incremental_artifact_build(
+    second = execute_dependency_build(
         changed_plan,
     )
 

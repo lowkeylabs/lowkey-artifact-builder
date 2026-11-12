@@ -24,9 +24,10 @@ from lowkey_artifact_builder.engine import (
     BuildPlan,
     PlannedStage,
     create_build_plans,
-    execute_incremental_artifact_build,
-    plan_incremental_execution,
+    execute_dependency_build,
+    plan_dependency_build,
 )
+from lowkey_artifact_builder.model.specs import ProductRef
 
 # =========================================================
 # Helpers
@@ -89,12 +90,21 @@ def _create_plan(
     project_root: Path,
 ) -> BuildPlan:
     """
-    Return the single realized acceptance BuildPlan.
+    Return the BuildPlan targeting the canonical Artwork vector manifest.
     """
+
+    target = ProductRef(
+        artifact="nydeli",
+        model="artwork",
+        realization="artwork_default",
+        stage="vector",
+        product="manifest",
+    )
 
     plans = create_build_plans(
         "nydeli",
         realization="artwork_default",
+        targets=(target,),
         project_root=project_root,
     )
 
@@ -154,10 +164,10 @@ def _required_stage_names(
     plan: BuildPlan,
 ) -> tuple[str, ...]:
     """
-    Return stages currently requiring incremental execution.
+    Return stages requiring dependency-aware incremental execution.
     """
 
-    execution_plan = plan_incremental_execution(
+    execution_plan = plan_dependency_build(
         plan,
     )
 
@@ -218,7 +228,7 @@ def test_changed_artwork_invalidates_real_incremental_build(
         project_root,
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         plan,
     )
 
@@ -270,7 +280,7 @@ def test_changed_artwork_preserves_existing_products_until_rebuild(
         project_root,
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         plan,
     )
 
@@ -319,7 +329,7 @@ def test_changed_artwork_real_rebuild_executes_invalidated_chain(
         project_root,
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         plan,
     )
 
@@ -333,7 +343,7 @@ def test_changed_artwork_real_rebuild_executes_invalidated_chain(
 
     assert required_before
 
-    rebuilt = execute_incremental_artifact_build(
+    rebuilt = execute_dependency_build(
         plan,
     )
 
@@ -362,7 +372,7 @@ def test_changed_artwork_real_rebuild_reconverges(
         project_root,
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         plan,
     )
 
@@ -374,7 +384,7 @@ def test_changed_artwork_real_rebuild_reconverges(
         plan,
     )
 
-    rebuilt = execute_incremental_artifact_build(
+    rebuilt = execute_dependency_build(
         plan,
     )
 
@@ -387,7 +397,7 @@ def test_changed_artwork_real_rebuild_reconverges(
         == ()
     )
 
-    second = execute_incremental_artifact_build(
+    second = execute_dependency_build(
         plan,
     )
 

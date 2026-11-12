@@ -2785,6 +2785,7 @@ def test_prepare_single_color_accepts_fully_occupied_image(
     assert envelope_paths[0].get("d", "").strip().endswith("Z")
 
 
+@pytest.mark.slow
 def test_prepare_bug06_preserves_boundary_touching_artwork(
     tmp_path: Path,
 ) -> None:
@@ -2896,6 +2897,7 @@ def test_prepare_bug06_preserves_boundary_touching_artwork(
         assert image.format == "PNG"
 
 
+@pytest.mark.slow
 def test_bug06_shrink_wrap_produces_valid_envelope() -> None:
     """
     BUG-006: the original PNG must produce a valid
@@ -2955,6 +2957,7 @@ def test_bug06_shrink_wrap_produces_valid_envelope() -> None:
     assert path_data.strip().endswith("Z")
 
 
+@pytest.mark.slow
 def test_prepare_bug06_shrink_wrap_produces_registered_svg(
     tmp_path: Path,
 ) -> None:

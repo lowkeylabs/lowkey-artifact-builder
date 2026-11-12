@@ -28,6 +28,7 @@ from lowkey_artifact_builder.model.models.artwork.hole import (
 from lowkey_artifact_builder.model.models.artwork.stages import (
     extrude,
 )
+from lowkey_artifact_builder.model.specs import ProductRef
 
 # =========================================================
 # Acceptance tests
@@ -122,6 +123,15 @@ def test_png_builds_complete_3mf(
         "nydeli",
         model_name="artwork",
         variant_name="default",
+        targets=(
+            ProductRef(
+                artifact="nydeli",
+                model="artwork",
+                realization="artwork_default",
+                stage="package",
+                product="artifact",
+            ),
+        ),
         project_root=project_root,
     )
 
@@ -157,6 +167,8 @@ def test_png_builds_complete_3mf(
             "nydeli",
             "--realization",
             "artwork_default",
+            "--product",
+            "3mf",
         ],
     )
 
@@ -463,6 +475,15 @@ loop_position = 0
     plans = create_build_plans(
         "nydeli",
         realization="artwork_default",
+        targets=(
+            ProductRef(
+                artifact="nydeli",
+                model="artwork",
+                realization="artwork_default",
+                stage="package",
+                product="artifact",
+            ),
+        ),
         project_root=project_root,
     )
 
@@ -489,6 +510,8 @@ loop_position = 0
             "nydeli",
             "--realization",
             "artwork_default",
+            "--product",
+            "3mf",
         ],
     )
 
@@ -783,6 +806,15 @@ artwork_base_color = "test-black"
     plans = create_build_plans(
         "nydeli",
         realization="artwork_default",
+        targets=(
+            ProductRef(
+                artifact="nydeli",
+                model="artwork",
+                realization="artwork_default",
+                stage="package",
+                product="artifact",
+            ),
+        ),
         project_root=project_root,
     )
 
@@ -808,6 +840,8 @@ artwork_base_color = "test-black"
             "nydeli",
             "--realization",
             "artwork_default",
+            "--product",
+            "3mf",
         ],
     )
 
@@ -1045,6 +1079,15 @@ loop_raise = 3.0
     plans = create_build_plans(
         "nydeli",
         realization="artwork_default",
+        targets=(
+            ProductRef(
+                artifact="nydeli",
+                model="artwork",
+                realization="artwork_default",
+                stage="package",
+                product="artifact",
+            ),
+        ),
         project_root=project_root,
     )
 
@@ -1074,6 +1117,8 @@ loop_raise = 3.0
             "nydeli",
             "--realization",
             "artwork_default",
+            "--product",
+            "3mf",
         ],
     )
 
@@ -1485,6 +1530,15 @@ artwork_hole_edge_distance = 1.0
     plans = create_build_plans(
         "nydeli",
         realization="artwork_default",
+        targets=(
+            ProductRef(
+                artifact="nydeli",
+                model="artwork",
+                realization="artwork_default",
+                stage="package",
+                product="artifact",
+            ),
+        ),
         project_root=project_root,
     )
 
@@ -1518,6 +1572,8 @@ artwork_hole_edge_distance = 1.0
             "nydeli",
             "--realization",
             "artwork_default",
+            "--product",
+            "3mf",
         ],
     )
 
@@ -1849,6 +1905,15 @@ artwork_hole_edge_distance = 1.0
     plans = create_build_plans(
         "nydeli",
         realization="artwork_default",
+        targets=(
+            ProductRef(
+                artifact="nydeli",
+                model="artwork",
+                realization="artwork_default",
+                stage="package",
+                product="artifact",
+            ),
+        ),
         project_root=project_root,
     )
 
@@ -1863,6 +1928,8 @@ artwork_hole_edge_distance = 1.0
             "nydeli",
             "--realization",
             "artwork_default",
+            "--product",
+            "3mf",
         ],
     )
 
@@ -1874,7 +1941,25 @@ artwork_hole_edge_distance = 1.0
     # Recover resolved physical Hole geometry
     # -----------------------------------------------------
 
-    vector_stage = next(stage for stage in plan.stages if stage.spec.name == "vector")
+    vector_plans = create_build_plans(
+        "nydeli",
+        realization="artwork_default",
+        targets=(
+            ProductRef(
+                artifact="nydeli",
+                model="artwork",
+                realization="artwork_default",
+                stage="vector",
+                product="manifest",
+            ),
+        ),
+        project_root=project_root,
+    )
+
+    assert len(vector_plans) == 1
+    vector_plan = vector_plans[0]
+
+    vector_stage = next(stage for stage in vector_plan.stages if stage.spec.name == "vector")
 
     vector_manifest_product = next(
         product for product in vector_stage.products if product.spec.name == "manifest"

@@ -130,6 +130,8 @@ def test_cli_builds_artifact_with_cross_artifact_dependency(
             "artwork-shape",
             "--realization",
             "shape_default",
+            "--product",
+            "3mf",
         ],
     )
 

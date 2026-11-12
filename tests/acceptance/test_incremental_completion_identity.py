@@ -31,11 +31,12 @@ from lowkey_artifact_builder.engine import (
     PlannedStage,
     StageCompletion,
     create_build_plans,
-    execute_incremental_artifact_build,
-    plan_incremental_execution,
+    execute_dependency_build,
+    plan_dependency_build,
     read_stage_completion,
     write_stage_completion,
 )
+from lowkey_artifact_builder.model.specs import ProductRef
 
 # =========================================================
 # Helpers
@@ -98,12 +99,21 @@ def _create_plan(
     project_root: Path,
 ) -> BuildPlan:
     """
-    Return the single realized acceptance BuildPlan.
+    Return the BuildPlan targeting the canonical artwork vector manifest.
     """
+
+    target = ProductRef(
+        artifact="nydeli",
+        model="artwork",
+        realization="artwork_default",
+        stage="vector",
+        product="manifest",
+    )
 
     plans = create_build_plans(
         "nydeli",
         realization="artwork_default",
+        targets=(target,),
         project_root=project_root,
     )
 
@@ -122,10 +132,10 @@ def _required_stage_names(
     plan: BuildPlan,
 ) -> tuple[str, ...]:
     """
-    Return stages currently requiring incremental execution.
+    Return stages requiring execution after dependency-aware planning.
     """
 
-    execution_plan = plan_incremental_execution(
+    execution_plan = plan_dependency_build(
         plan,
     )
 
@@ -230,7 +240,7 @@ def test_mismatched_completion_stage_identity_requires_execution(
         project_root,
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         plan,
     )
 
@@ -277,7 +287,7 @@ def test_mismatched_completion_stage_identity_preserves_downstream_reuse(
         project_root,
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         plan,
     )
 
@@ -326,7 +336,7 @@ def test_mismatched_completion_stage_identity_rebuild_reconverges(
         project_root,
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         plan,
     )
 
@@ -345,7 +355,7 @@ def test_mismatched_completion_stage_identity_rebuild_reconverges(
 
     assert stage.name in required_before
 
-    rebuilt = execute_incremental_artifact_build(
+    rebuilt = execute_dependency_build(
         plan,
     )
 
@@ -375,7 +385,7 @@ def test_mismatched_completion_stage_identity_rebuild_reconverges(
         == ()
     )
 
-    second = execute_incremental_artifact_build(
+    second = execute_dependency_build(
         plan,
     )
 

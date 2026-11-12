@@ -85,7 +85,8 @@ def _build_artifact(
     runner: CliRunner,
 ):
     """
-    Build the acceptance Realization through the public CLI.
+    Build the acceptance Realization's manufacturing 3MF
+    through the public CLI.
     """
 
     return runner.invoke(
@@ -95,6 +96,8 @@ def _build_artifact(
             "nydeli",
             "--realization",
             "artwork_default",
+            "--product",
+            "3mf",
         ],
     )
 

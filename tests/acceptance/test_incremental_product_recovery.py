@@ -30,9 +30,10 @@ from lowkey_artifact_builder.engine import (
     BuildPlan,
     PlannedStage,
     create_build_plans,
-    execute_incremental_artifact_build,
-    plan_incremental_execution,
+    execute_dependency_build,
+    plan_dependency_build,
 )
+from lowkey_artifact_builder.model.specs import ProductRef
 
 # =========================================================
 # Helpers
@@ -93,14 +94,26 @@ def _configure_artifact(
 
 def _create_plan(
     project_root: Path,
+    *,
+    stage: str = "vector",
+    product: str = "manifest",
 ) -> BuildPlan:
     """
-    Return the single realized acceptance BuildPlan.
+    Return the BuildPlan targeting one explicit Artwork Product.
     """
+
+    target = ProductRef(
+        artifact="nydeli",
+        model="artwork",
+        realization="artwork_default",
+        stage=stage,
+        product=product,
+    )
 
     plans = create_build_plans(
         "nydeli",
         realization="artwork_default",
+        targets=(target,),
         project_root=project_root,
     )
 
@@ -119,14 +132,14 @@ def _required_stage_names(
     plan: BuildPlan,
 ) -> tuple[str, ...]:
     """
-    Return stages currently requiring incremental execution.
+    Return stages requiring dependency-aware incremental execution.
     """
 
-    execution_plan = plan_incremental_execution(
+    execution_plan = plan_dependency_build(
         plan,
     )
 
-    return tuple(stage.stage_name for stage in execution_plan.required_stages)
+    return tuple(execution.stage_name for execution in execution_plan.required_stages)
 
 
 def _stage(
@@ -169,7 +182,7 @@ def test_missing_persistent_product_requires_producing_stage(
         project_root,
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         plan,
     )
 
@@ -227,14 +240,20 @@ def test_missing_product_does_not_invalidate_unchanged_downstream_context(
 
     plan = _create_plan(
         project_root,
+        stage="package",
+        product="artifact",
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         plan,
+    )
+
+    vector_plan = _create_plan(
+        project_root,
     )
 
     stage = _stage(
-        plan,
+        vector_plan,
         "vector",
     )
 
@@ -242,23 +261,35 @@ def test_missing_product_does_not_invalidate_unchanged_downstream_context(
 
     stage.products[0].path.unlink()
 
+    vector_required = _required_stage_names(
+        vector_plan,
+    )
+
+    assert stage.name in vector_required
+
+    # Repair the missing producer Product.
+    rebuilt = execute_dependency_build(
+        vector_plan,
+    )
+
+    rebuilt_names = tuple(execution.stage_name for execution in rebuilt.required_stages)
+
+    assert stage.name in rebuilt_names
+    assert all(product.path.is_file() for product in stage.products)
+
+    # The producer is now reusable.
+    assert _required_stage_names(vector_plan) == ()
+
+    # Its restored build context must not invalidate completed consumers.
     required = _required_stage_names(
         plan,
     )
 
-    assert stage.name in required
-
     descendants = {
-        candidate.name
-        for candidate in plan.stages
-        if candidate.name
-        in {
-            "extrude",
-            "package",
-        }
+        candidate.name for candidate in plan.stages if candidate.name in {"extrude", "package"}
     }
 
-    assert descendants
+    assert descendants == {"extrude", "package"}
 
     for descendant in descendants:
         assert descendant not in required
@@ -289,7 +320,7 @@ def test_missing_product_real_rebuild_repairs_and_reconverges(
         project_root,
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         plan,
     )
 
@@ -312,7 +343,7 @@ def test_missing_product_real_rebuild_repairs_and_reconverges(
 
     assert stage.name in required_before
 
-    rebuilt = execute_incremental_artifact_build(
+    rebuilt = execute_dependency_build(
         plan,
     )
 
@@ -329,7 +360,7 @@ def test_missing_product_real_rebuild_repairs_and_reconverges(
         == ()
     )
 
-    second = execute_incremental_artifact_build(
+    second = execute_dependency_build(
         plan,
     )
 

@@ -38,12 +38,81 @@ from lowkey_artifact_builder.config import (
     get_realization_names,
 )
 from lowkey_artifact_builder.engine import (
-    execute_artifact_build,
+    create_build_plans,
+    execute_dependency_build,
 )
+from lowkey_artifact_builder.model.specs import ProductRef
 
 # =========================================================
 # Helpers
 # =========================================================
+
+
+def _build_manufacturing_product(
+    project_root: Path,
+    *,
+    artifact_id: str = "skippy",
+    realization: str = "shape_ornament",
+) -> None:
+    """
+    Establish a current canonical manufacturing Product and its
+    operator-accessible 3MF publication.
+
+    The Artifact is defined directly by the test fixture rather
+    than through the public CREATE workflow.
+
+    Dependency-aware execution produces the canonical Product.
+    The fixture then establishes its convenience publication so
+    manufacturing inspection can test both independently.
+    """
+
+    target = ProductRef(
+        artifact=artifact_id,
+        model="shape",
+        realization=realization,
+        stage="package",
+        product="artifact",
+    )
+
+    plans = create_build_plans(
+        artifact_id,
+        realization=realization,
+        targets=(target,),
+        project_root=project_root,
+    )
+
+    assert len(plans) == 1
+
+    plan = plans[0]
+
+    execute_dependency_build(
+        plan,
+    )
+
+    package_stages = tuple(stage for stage in plan.stages if stage.name == "package")
+
+    assert len(package_stages) == 1
+
+    package_stage = package_stages[0]
+
+    products = tuple(
+        product for product in package_stage.products if product.path.suffix.lower() == ".3mf"
+    )
+
+    assert len(products) == 1
+
+    canonical = products[0].path
+
+    assert canonical.is_file()
+
+    published = project_root / "artifacts" / artifact_id / f"{realization}.3mf"
+
+    shutil.copy2(
+        canonical,
+        published,
+    )
+
+    assert published.is_file()
 
 
 def _define_artifact(
@@ -226,10 +295,8 @@ def test_current_realization_reports_current_accessible_3mf(
         tmp_path,
     )
 
-    execute_artifact_build(
-        "skippy",
-        realization="shape_ornament",
-        project_root=tmp_path,
+    _build_manufacturing_product(
+        tmp_path,
     )
 
     result = inspect_artifact_manufacturing(
@@ -266,10 +333,8 @@ def test_stale_realization_reports_stale_existing_3mf(
         tmp_path,
     )
 
-    execute_artifact_build(
-        "skippy",
-        realization="shape_ornament",
-        project_root=tmp_path,
+    _build_manufacturing_product(
+        tmp_path,
     )
 
     published = artifact_dir / "shape_ornament.3mf"
@@ -319,10 +384,8 @@ def test_current_realization_without_publication_remains_current(
         tmp_path,
     )
 
-    execute_artifact_build(
-        "skippy",
-        realization="shape_ornament",
-        project_root=tmp_path,
+    _build_manufacturing_product(
+        tmp_path,
     )
 
     published = artifact_dir / "shape_ornament.3mf"

@@ -26,6 +26,7 @@ from lowkey_artifact_builder.formats.threemf import (
     CORE_NS,
     component_name,
 )
+from lowkey_artifact_builder.model.specs import ProductRef
 
 
 @pytest.mark.slow
@@ -65,6 +66,8 @@ def test_shape_ornament_variant_builds_complete_3mf(
             "ornament-shape",
             "--realization",
             "shape_ornament",
+            "--product",
+            "3mf",
         ],
     )
 
@@ -77,6 +80,15 @@ def test_shape_ornament_variant_builds_complete_3mf(
         model_name="shape",
         variant_name="ornament",
         project_root=project_root,
+        targets=(
+            ProductRef(
+                artifact="ornament-shape",
+                model="shape",
+                realization="shape_ornament",
+                stage="package",
+                product="artifact",
+            ),
+        ),
     )
 
     assert len(plans) == 1
@@ -168,6 +180,8 @@ def test_shape_ornament_variant_accepts_artifact_customization(
             "custom-ornament",
             "--realization",
             "shape_ornament",
+            "--product",
+            "3mf",
         ],
     )
 
@@ -180,6 +194,15 @@ def test_shape_ornament_variant_accepts_artifact_customization(
         model_name="shape",
         variant_name="ornament",
         project_root=project_root,
+        targets=(
+            ProductRef(
+                artifact="custom-ornament",
+                model="shape",
+                realization="shape_ornament",
+                stage="package",
+                product="artifact",
+            ),
+        ),
     )
 
     assert len(plans) == 1
@@ -278,6 +301,8 @@ def test_shape_canonical_realizations_have_distinct_persistent_product_identity(
             "multi-variant-shape",
             "--realization",
             "shape_default",
+            "--product",
+            "3mf",
         ],
     )
 
@@ -292,6 +317,8 @@ def test_shape_canonical_realizations_have_distinct_persistent_product_identity(
             "multi-variant-shape",
             "--realization",
             "shape_ornament",
+            "--product",
+            "3mf",
         ],
     )
 
@@ -446,6 +473,15 @@ def test_shape_ornament_variant_reuses_current_artwork_product(
         model_name="shape",
         variant_name="default",
         project_root=project_root,
+        targets=(
+            ProductRef(
+                artifact="variant-artwork-shape",
+                model="shape",
+                realization="shape_default",
+                stage="package",
+                product="artifact",
+            ),
+        ),
     )[0]
 
     execute_dependency_build(
@@ -476,6 +512,15 @@ def test_shape_ornament_variant_reuses_current_artwork_product(
         model_name="shape",
         variant_name="ornament",
         project_root=project_root,
+        targets=(
+            ProductRef(
+                artifact="variant-artwork-shape",
+                model="shape",
+                realization="shape_ornament",
+                stage="package",
+                product="artifact",
+            ),
+        ),
     )[0]
 
     assert ornament_plan.resolver("variant") == "ornament"
@@ -589,6 +634,8 @@ def test_shape_default_realization_preserves_default_manufacturing(
             "default-shape",
             "--realization",
             "shape_default",
+            "--product",
+            "3mf",
         ],
     )
 
@@ -605,6 +652,15 @@ def test_shape_default_realization_preserves_default_manufacturing(
         model_name="shape",
         variant_name="default",
         project_root=project_root,
+        targets=(
+            ProductRef(
+                artifact="default-shape",
+                model="shape",
+                realization="shape_default",
+                stage="package",
+                product="artifact",
+            ),
+        ),
     )
 
     assert len(plans) == 1
@@ -703,12 +759,30 @@ def test_variant_and_canonical_realization_use_same_configuration(
         model_name="shape",
         variant_name="ornament",
         project_root=tmp_path,
+        targets=(
+            ProductRef(
+                artifact="example",
+                model="shape",
+                realization="shape_ornament",
+                stage="package",
+                product="artifact",
+            ),
+        ),
     )
 
     realization_plans = create_build_plans(
         "example",
         realization="shape_ornament",
         project_root=tmp_path,
+        targets=(
+            ProductRef(
+                artifact="example",
+                model="shape",
+                realization="shape_ornament",
+                stage="package",
+                product="artifact",
+            ),
+        ),
     )
 
     assert len(variant_plans) == 1

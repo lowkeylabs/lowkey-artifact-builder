@@ -19,10 +19,9 @@ import pytest
 from lowkey_artifact_builder.config import write_artifact_config
 from lowkey_artifact_builder.engine import (
     StageContext,
-    create_build_plan,
     create_build_plans,
-    execute_build,
     execute_builds,
+    execute_dependency_build,
 )
 from lowkey_artifact_builder.engine.bootstrap import build_stage_registry
 from lowkey_artifact_builder.formats.threemf import (
@@ -33,6 +32,7 @@ from lowkey_artifact_builder.formats.threemf import (
 )
 from lowkey_artifact_builder.model.models.shape import stages
 from lowkey_artifact_builder.model.models.shape.stages import compose, extrude, package, structure
+from lowkey_artifact_builder.model.specs import ProductRef
 
 # =========================================================
 # Helpers
@@ -82,12 +82,22 @@ artwork_island_connectivity = 8
         },
         project_root=project_root,
     )
-    plan = create_build_plan(
+    target = ProductRef(
+        artifact="clean_bg_house",
+        model="artwork",
+        realization="artwork_default",
+        stage="vector",
+        product="manifest",
+    )
+    plans = create_build_plans(
         "clean_bg_house",
+        realization="artwork_default",
+        targets=(target,),
         project_root=project_root,
     )
-    execute_build(
-        plan,
+    assert len(plans) == 1
+    execute_dependency_build(
+        plans[0],
     )
     return (
         project_root

@@ -146,6 +146,8 @@ def test_shape_builds_complete_3mf_without_artwork(
             "testshape",
             "--realization",
             "shape_default",
+            "--product",
+            "3mf",
         ],
     )
 

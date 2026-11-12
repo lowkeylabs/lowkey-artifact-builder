@@ -38,11 +38,14 @@ def execute(
     representation = context.resolver("artwork_representation")
     processing = context.resolver("artwork_processing")
 
-    if (representation, processing) != ("source", "none"):
+    if (representation, processing) not in {
+        ("source", "none"),
+        ("raster", "none"),
+        ("vector", "auto"),
+    }:
         raise SourceError(
-            "Artwork source Stage requires "
-            "artwork_representation='source' and "
-            "artwork_processing='none'."
+            "Unsupported Artwork representation and processing combination: "
+            f"{representation!r}, {processing!r}."
         )
 
     source = context.input("source")

@@ -2429,6 +2429,7 @@ def test_border_label_symbolic_bullet_uses_effective_font() -> None:
     assert symbolic.glyph_height == pytest.approx(literal.glyph_height)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     ("position", "invalid_value"),
     [

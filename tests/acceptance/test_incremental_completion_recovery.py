@@ -30,9 +30,10 @@ from lowkey_artifact_builder.engine import (
     PlannedStage,
     completion_path,
     create_build_plans,
-    execute_incremental_artifact_build,
-    plan_incremental_execution,
+    execute_dependency_build,
+    plan_dependency_build,
 )
+from lowkey_artifact_builder.model.specs import ProductRef
 
 # =========================================================
 # Helpers
@@ -95,12 +96,21 @@ def _create_plan(
     project_root: Path,
 ) -> BuildPlan:
     """
-    Return the single realized acceptance BuildPlan.
+    Return the BuildPlan targeting the canonical Artwork vector manifest.
     """
+
+    target = ProductRef(
+        artifact="nydeli",
+        model="artwork",
+        realization="artwork_default",
+        stage="vector",
+        product="manifest",
+    )
 
     plans = create_build_plans(
         "nydeli",
         realization="artwork_default",
+        targets=(target,),
         project_root=project_root,
     )
 
@@ -119,10 +129,10 @@ def _required_stage_names(
     plan: BuildPlan,
 ) -> tuple[str, ...]:
     """
-    Return stages currently requiring incremental execution.
+    Return stages requiring dependency-aware incremental execution.
     """
 
-    execution_plan = plan_incremental_execution(
+    execution_plan = plan_dependency_build(
         plan,
     )
 
@@ -193,7 +203,7 @@ def test_missing_completion_metadata_requires_stage_execution(
         project_root,
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         plan,
     )
 
@@ -257,7 +267,7 @@ def test_invalid_completion_metadata_fails_incremental_planning(
         project_root,
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         plan,
     )
 
@@ -288,7 +298,7 @@ def test_invalid_completion_metadata_fails_incremental_planning(
         ValueError,
         match="Invalid stage completion metadata",
     ):
-        plan_incremental_execution(
+        plan_dependency_build(
             plan,
         )
 
@@ -318,7 +328,7 @@ def test_missing_completion_metadata_real_rebuild_reconverges(
         project_root,
     )
 
-    execute_incremental_artifact_build(
+    execute_dependency_build(
         plan,
     )
 
@@ -341,7 +351,7 @@ def test_missing_completion_metadata_real_rebuild_reconverges(
 
     assert stage.name in required_before
 
-    rebuilt = execute_incremental_artifact_build(
+    rebuilt = execute_dependency_build(
         plan,
     )
 
@@ -358,7 +368,7 @@ def test_missing_completion_metadata_real_rebuild_reconverges(
         == ()
     )
 
-    second = execute_incremental_artifact_build(
+    second = execute_dependency_build(
         plan,
     )
 
